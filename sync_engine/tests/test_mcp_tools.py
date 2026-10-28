@@ -50,6 +50,20 @@ class FakeApi:
         return {"ok": True, "chapter": {"id": 7, "body_hash": "def456"}}
     def create_chapter(self, payload):
         self.calls.append(("chapter_create", payload)); return {"ok": True, "chapter": {"id": 8, "file": "ch-03-x.md"}}
+    # workspace docs
+    def list_docs(self, book, prefix=None):
+        self.calls.append(("docs", book, prefix)); return {"ok": True, "latest_state": "chapter-05", "docs": []}
+    def get_doc(self, book, path):
+        self.calls.append(("doc", book, path)); return {"path": path, "body": "# Plan", "body_hash": "h1"}
+    def save_doc(self, payload):
+        self.calls.append(("save_doc", payload))
+        if self.conflict:
+            raise ApiError("save_doc: locked", {"error": "locked", "current_hash": "h9", "current_body": "# Done"})
+        return {"ok": True, "doc": {"path": payload["path"], "body_hash": "h2"}}
+    def append_doc(self, payload):
+        self.calls.append(("append_doc", payload)); return {"ok": True}
+    def lock_docs(self, payload):
+        self.calls.append(("lock_docs", payload)); return {"ok": True, "changed": 4}
 
 
 class Tools(unittest.TestCase):
@@ -176,6 +190,43 @@ class Tools(unittest.TestCase):
     def test_push_files_empty_rejected(self):
         with self.assertRaises(ValueError):
             self.t.push_files("b1", {})
+
+    # ---- workspace docs ----
+    def test_list_docs_passes_prefix(self):
+        r = self.t.list_docs("b1", "state/chapter-05")
+        self.assertEqual(self.api.calls[-1], ("docs", "b1", "state/chapter-05"))
+        self.assertEqual(r["latest_state"], "chapter-05")
+        self.t.list_docs("b1", "")
+        self.assertEqual(self.api.calls[-1], ("docs", "b1", None))
+
+    def test_get_doc_requires_path(self):
+        self.assertEqual(self.t.get_doc("b1", "plan")["body_hash"], "h1")
+        with self.assertRaises(ValueError):
+            self.t.get_doc("b1", "  ")
+
+    def test_save_doc_create_sends_no_hash(self):
+        self.t.save_doc("b1", "development/world/region-cut", "# Cut")
+        _, payload = self.api.calls[-1]
+        self.assertEqual(payload, {"book": "b1", "path": "development/world/region-cut", "markdown": "# Cut"})
+
+    def test_save_doc_update_sends_hash_and_title(self):
+        self.t.save_doc("b1", "plan", "# Plan v2", base_hash="h1", title="Outline")
+        _, payload = self.api.calls[-1]
+        self.assertEqual(payload["base_hash"], "h1")
+        self.assertEqual(payload["title"], "Outline")
+
+    def test_save_doc_refusal_is_returned_as_data(self):
+        self.api.conflict = True
+        r = self.t.save_doc("b1", "state/chapter-01/situation", "x", base_hash="old")
+        self.assertEqual(r["status"], "refused")
+        self.assertEqual(r["error"], "locked")
+        self.assertEqual(r["current_body"], "# Done")
+
+    def test_append_and_lock_shapes(self):
+        self.t.append_doc("b1", "timeline/history", "## Ch 05")
+        self.assertEqual(self.api.calls[-1], ("append_doc", {"book": "b1", "path": "timeline/history", "markdown": "## Ch 05"}))
+        self.assertEqual(self.t.lock_docs("b1", "state/chapter-05")["changed"], 4)
+        self.assertEqual(self.api.calls[-1], ("lock_docs", {"book": "b1", "path": "state/chapter-05", "locked": True}))
 
 
 if __name__ == "__main__":

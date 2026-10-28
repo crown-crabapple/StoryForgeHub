@@ -378,4 +378,31 @@ CREATE TABLE IF NOT EXISTS editing_locks (
   KEY k_edit_lock_ch (chapter_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- workspace_docs — the per-book Workspace (Claude-Book planning layer): plan,
+-- style, development proposals, state/chapter-NN snapshots, chapter log.
+-- path is the Claude-Book relpath without .md. Lazy-migrated (ensure_workspace).
+CREATE TABLE IF NOT EXISTS workspace_docs (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     VARCHAR(40)  NOT NULL,
+  path        VARCHAR(255) NOT NULL,                  -- e.g. plan | development/world/region-cut | state/chapter-05/situation
+  title       VARCHAR(255) DEFAULT '',
+  body        MEDIUMTEXT,
+  locked      INT          DEFAULT 0,                 -- 1 = refuses writes (finished chapter state)
+  updated_by  INT          DEFAULT NULL,
+  updated_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_wsdoc (book_id, path)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS workspace_revisions (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     VARCHAR(40)  NOT NULL,
+  path        VARCHAR(255) NOT NULL,
+  body        MEDIUMTEXT,
+  body_hash   VARCHAR(40)  DEFAULT '',
+  kind        VARCHAR(10)  DEFAULT 'save',            -- save|delete
+  saved_by    INT          DEFAULT NULL,
+  saved_via   VARCHAR(10)  DEFAULT '',                -- web|api|cli
+  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  KEY k_wsrev (book_id, path)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET foreign_key_checks = 1;

@@ -99,7 +99,7 @@ def build_app(service_token: str, api_url: str, public_url: str = ""):
 
     @mcp.tool()
     def codex_search(query: str, book: str | None = None, limit: int = 25) -> list:
-        """Search entries, chapters, and notes (server-side, with snippets)."""
+        """Search entries, chapters, notes, and Workspace docs (server-side, with snippets)."""
         return tools.search(query, book, limit)
 
     @mcp.tool()
@@ -145,8 +145,9 @@ def build_app(service_token: str, api_url: str, public_url: str = ""):
     def codex_push_files(book: str, files: dict, reconcile_chapters: bool = False) -> dict:
         """Push new/updated files (a map of relpath -> Markdown) to a book.
         Handles chapters (Manuscript/<file>.md), entries (Codex/<Folder>/<slug>.md),
-        notes (Codex/Notes/<slug>.md), meta (Codex/Meta/<slug>.md), and sources
-        (Codex/Sources/<key>.md). reconcile_chapters=True lets a manuscript push
+        notes (Codex/Notes/<slug>.md), meta (Codex/Meta/<slug>.md), sources
+        (Codex/Sources/<key>.md), and Workspace docs (Workspace/<path>.md, bulk —
+        no hash check; prefer codex_save_doc). reconcile_chapters=True lets a manuscript push
         archive chapters it omits; default False preserves existing chapters."""
         return tools.push_files(book, files, reconcile_chapters)
 
@@ -160,6 +161,48 @@ def build_app(service_token: str, api_url: str, public_url: str = ""):
         """Prose diagnostics for a chapter — overused words, repeated phrases,
         patterns to review, dialogue tags — the app's Smart-editing data."""
         return tools.get_diagnostics(book, chapter_id)
+
+    @mcp.tool()
+    def codex_list_docs(book: str, prefix: str | None = None) -> dict:
+        """List a book's Workspace docs (path, title, locked, words, body_hash)
+        without bodies, optionally under a prefix ('development', 'state/chapter-05').
+        The Workspace holds the planning layer: book (settings), synopsis, plan
+        (the outline), structure, style, development/* proposals (not canon),
+        state/chapter-NN/{characters,inventory,knowledge,situation}, and
+        timeline/{history,current-chapter}. latest_state names the newest
+        state/chapter-NN folder."""
+        return tools.list_docs(book, prefix)
+
+    @mcp.tool()
+    def codex_get_doc(book: str, path: str) -> dict:
+        """Read one Workspace doc with its body and body_hash. Paths are
+        Claude-Book relpaths without '.md' (e.g. 'plan', 'style',
+        'development/world/region-cut'). state/current/<file> reads the newest
+        state/chapter-NN/<file>."""
+        return tools.get_doc(book, path)
+
+    @mcp.tool()
+    def codex_save_doc(book: str, path: str, markdown: str,
+                       base_hash: str = "", title: str = "") -> dict:
+        """Create or update a Workspace doc. Creating needs no base_hash; to
+        UPDATE you must pass the body_hash from codex_get_doc — a stale hash is
+        refused with the current hash + body so you can merge and retry. Locked
+        docs (finished chapters' state) refuse writes. timeline/history is
+        append-only — use codex_append_doc. state/current/* can't be written:
+        write state/chapter-NN/* instead."""
+        return tools.save_doc(book, path, markdown, base_hash, title)
+
+    @mcp.tool()
+    def codex_append_doc(book: str, path: str, markdown: str) -> dict:
+        """Append Markdown to the end of a Workspace doc (created if missing);
+        no hash needed. Use for timeline/history and running logs."""
+        return tools.append_doc(book, path, markdown)
+
+    @mcp.tool()
+    def codex_lock_docs(book: str, path: str, locked: bool = True) -> dict:
+        """Lock a doc or a whole folder (e.g. 'state/chapter-05') once the
+        chapter is done, so it can't be edited. Unlocking needs the owner role."""
+        return tools.lock_docs(book, path, locked)
 
     @mcp.tool()
     def codex_get_tasks(book: str | None = None, for_claude: int | None = None,

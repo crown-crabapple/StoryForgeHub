@@ -72,6 +72,18 @@ the app's Account page.
 | `codex_create_chapter(book, title, num="")` | a titled empty chapter (`ch-NN-title.md`), numbered after the last |
 | `codex_push_files(book, files, reconcile_chapters=false)` | push a map of relpath→Markdown (entries, notes, meta, sources; bulk import) |
 | `codex_log_writing(book, words_added, total_words?, chapters?, minutes?, mood?, note?)` | append a writing-log row for today |
+| `codex_list_docs(book, prefix?)` | Workspace docs (path, title, locked, words, body_hash) — no bodies; `latest_state` names the newest `state/chapter-NN` |
+| `codex_get_doc(book, path)` | one Workspace doc with body + `body_hash`; `state/current/<file>` reads the newest snapshot |
+| `codex_save_doc(book, path, markdown, base_hash="", title="")` | create (no hash) or update (hash required) a Workspace doc; refusals carry `current_hash` + `current_body` |
+| `codex_append_doc(book, path, markdown)` | add to the end of a doc (creates it); the only way `timeline/history` grows |
+| `codex_lock_docs(book, path, locked=true)` | lock a doc or folder (e.g. `state/chapter-05`) once the chapter is done |
+
+### Workspace paths
+Claude-Book relpaths without `.md`: `book`, `synopsis`, `plan` (the outline),
+`structure`, `style`; `development/<area>/<slug>` (proposals — never canon);
+`state/chapter-NN/{characters,inventory,knowledge,situation}`;
+`timeline/history` (append-only) and `timeline/current-chapter`.
+`state/current/*` is virtual and can't be written.
 
 Every write flows through the app's `api.php` (the single DB-writer path) under
 the author's own permissions — a viewer-role connector can read but not write.

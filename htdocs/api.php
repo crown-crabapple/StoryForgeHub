@@ -150,6 +150,57 @@ case 'chapter_create':  // POST {book, title, num?} — a titled empty chapter (
     unset($cur['body']);
     out(['ok' => true, 'chapter' => $cur]);
 
+/* ---- workspace docs (plan, style, story state, chapter log) ---- */
+
+case 'docs':            // ?book=ID[&prefix=state/chapter-05]  → doc list, no bodies
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $list = [];
+    foreach (get_workspace_docs($bookParam, $_GET['prefix'] ?? '') as $d)
+        $list[] = ['path' => $d['path'], 'title' => $d['title'], 'locked' => (bool)$d['locked'],
+                   'words' => $d['words'], 'body_hash' => $d['body_hash'], 'updated_at' => $d['updated_at']];
+    out(['ok' => true, 'latest_state' => ws_latest_state_chapter($bookParam), 'docs' => $list]);
+
+case 'doc':             // ?book=ID&path=plan  → body + body_hash (state/current/* resolves)
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $d = get_workspace_doc($bookParam, (string)($_GET['path'] ?? ''));
+    if (!$d) out(['error' => 'doc not found'], 404);
+    out(['ok' => true, 'doc' => ['path' => $d['path'], 'requested' => $d['requested'], 'title' => $d['title'],
+        'locked' => (bool)$d['locked'], 'updated_at' => $d['updated_at'], 'body' => $d['body'], 'body_hash' => $d['body_hash']]]);
+
+case 'save_doc':        // POST {book, path, markdown, base_hash?, title?} — create, or update with the hash you read
+case 'append_doc':      // POST {book, path, markdown} — add to the end (creates if missing)
+    if (!$body || !isset($body['markdown']) || empty($body['path'])) out(['error' => 'expected {book, path, markdown, ...}'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    $r = $action === 'append_doc'
+        ? append_workspace_doc($bookParam, $body['path'], (string)$body['markdown'])
+        : save_workspace_doc($bookParam, $body['path'], (string)$body['markdown'], $body['title'] ?? null, (string)($body['base_hash'] ?? ''));
+    if ($r['status'] === 'conflict' || $r['status'] === 'locked') {
+        $cur = get_workspace_doc($bookParam, $r['path'] ?? $body['path']);
+        out(['error' => $r['status'], 'msg' => $r['msg'],
+             'current_hash' => $cur['body_hash'] ?? '', 'current_body' => $cur['body'] ?? ''], $r['status'] === 'locked' ? 423 : 409);
+    }
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['path']);
+    $cur = get_workspace_doc($bookParam, $r['path']);
+    out(['ok' => true, 'msg' => $r['msg'], 'created' => !empty($r['created']),
+         'doc' => ['path' => $cur['path'], 'title' => $cur['title'], 'body_hash' => $cur['body_hash']]]);
+
+case 'lock_docs':       // POST {book, path, locked?=true} — path may be a folder (state/chapter-05); unlocking is owner-only
+    if (!$body || empty($body['path'])) out(['error' => 'expected {book, path, locked?}'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    $lock = !array_key_exists('locked', $body) || !empty($body['locked']);
+    if (!$IS_SERVICE) require_cap($bookParam, $lock ? 'edit' : 'manage');
+    $n = set_workspace_lock($bookParam, $body['path'], $lock);
+    log_activity($bookParam, $lock ? 'doc_lock' : 'doc_unlock', ws_norm_path($body['path']) . ' (' . $n . ')');
+    out(['ok' => true, 'locked' => $lock, 'changed' => $n]);
+
 case 'task_create':     // POST {book,title,body?,for_claude?,priority?}
     if (!$body || trim((string)($body['title'] ?? '')) === '') out(['error' => 'expected {book,title,...}'], 400);
     $bookParam = (string)($body['book'] ?? '');
@@ -234,5 +285,5 @@ case 'import':          // load a canonical snapshot — global op, admin/servic
     out(['ok' => true, 'books' => count($body['books'])]);
 
 default:
-    out(['error' => 'unknown action', 'actions' => ['ping','push','chapter','save_chapter','chapter_create','entries','search','diagnostics','tasks','task_create','task_update','apply','writing-log','export','import']], 400);
+    out(['error' => 'unknown action', 'actions' => ['ping','push','chapter','save_chapter','chapter_create','entries','search','diagnostics','docs','doc','save_doc','append_doc','lock_docs','tasks','task_create','task_update','apply','writing-log','export','import']], 400);
 }

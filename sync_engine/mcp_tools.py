@@ -144,7 +144,8 @@ class CodexTools:
 
         Accepts any relpath api.php's push understands: Manuscript/<file>.md
         (chapters), Codex/<Folder>/<slug>.md (entries), Codex/Notes/<slug>.md,
-        Codex/Meta/<slug>.md, Codex/Sources/<key>.md, Codex/Meta/progressions.md.
+        Codex/Meta/<slug>.md, Codex/Sources/<key>.md, Codex/Meta/progressions.md,
+        Workspace/<path>.md.
 
         Guard: pushing any Manuscript/*.md normally makes the app archive every
         chapter NOT in the push (folder is treated as the full set). Unless
@@ -198,6 +199,51 @@ class CodexTools:
             out.update({k: v for k, v in (e.payload or {}).items() if k != "ok"})
             out.setdefault("error", str(e))
             return out
+
+    # ---- workspace docs (plan, style, story state, chapter log) ----
+    def list_docs(self, book: str, prefix: Optional[str] = None) -> dict:
+        return self.api.list_docs(book, prefix or None)
+
+    def get_doc(self, book: str, path: str) -> dict:
+        if not (path or "").strip():
+            raise ValueError("path is required")
+        return self.api.get_doc(book, path)
+
+    @staticmethod
+    def _refusal(e: ApiError) -> dict:
+        out = {"status": "refused"}
+        out.update({k: v for k, v in (e.payload or {}).items() if k != "ok"})
+        out.setdefault("error", str(e))
+        return out
+
+    def save_doc(self, book: str, path: str, markdown: str,
+                 base_hash: str = "", title: str = "") -> dict:
+        """Create a doc (no base_hash) or update one (base_hash from get_doc).
+        Conflicts and locked docs come back as data, not exceptions."""
+        if not (path or "").strip():
+            raise ValueError("path is required")
+        payload = {"book": book, "path": path, "markdown": markdown}
+        if base_hash:
+            payload["base_hash"] = base_hash
+        if title:
+            payload["title"] = title
+        try:
+            return self.api.save_doc(payload)
+        except ApiError as e:
+            return self._refusal(e)
+
+    def append_doc(self, book: str, path: str, markdown: str) -> dict:
+        if not (path or "").strip():
+            raise ValueError("path is required")
+        try:
+            return self.api.append_doc({"book": book, "path": path, "markdown": markdown})
+        except ApiError as e:
+            return self._refusal(e)
+
+    def lock_docs(self, book: str, path: str, locked: bool = True) -> dict:
+        if not (path or "").strip():
+            raise ValueError("path is required")
+        return self.api.lock_docs({"book": book, "path": path, "locked": bool(locked)})
 
     def create_chapter(self, book: str, title: str, num: str = "") -> dict:
         title = (title or "").strip()

@@ -17,6 +17,7 @@
  *   Codex/Meta/progressions.md      plot beats (canonical ### chapter headings)
  *   Codex/Meta/book.json            book row (identity, profile, series…)
  *   Codex/Sources/<cite_key>.md     sources (self-help/non-fiction profiles)
+ *   Workspace/<path>.md             workspace docs (plan, style, state/chapter-NN/…, timeline/…)
  */
 require_once __DIR__ . '/../src/repo.php';
 $GLOBALS['__save_via'] = 'cli';
@@ -61,6 +62,7 @@ foreach ($books as $b) {
 
     foreach (get_notes($bid) as $note) { put($root.'/Codex/Notes/'.$note['slug'].'.md', (string)$note['body']); $n++; }
     foreach (get_meta($bid) as $mp)    { put($root.'/Codex/Meta/'.$mp['slug'].'.md', (string)$mp['body']); $n++; }
+    foreach (get_workspace_docs($bid) as $wd) { put($root.'/Workspace/'.$wd['path'].'.md', (string)get_workspace_doc($bid, $wd['path'])['body']); $n++; }
 
     $prog = get_progressions($bid);
     if ($prog) {

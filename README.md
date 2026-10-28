@@ -128,6 +128,25 @@ for reference.
 - **Writing log:** add sessions by hand on the **Writing log** page, or say **"fill in
   the writing log"** and Claude logs the word delta from your manuscript automatically.
 
+## Workspace (plan, style, story state, chapter log)
+
+Each book has a **Workspace** page holding the planning layer that the Claude-Book
+framework used to keep in local `books/<id>/` folders. Docs are keyed by the same
+relpaths (without `.md`):
+
+| Section | Paths | Rules |
+|---|---|---|
+| Planning | `book`, `synopsis`, `plan` (the outline), `structure`, `style` | normal docs |
+| Development | `development/…` | proposals, labelled *not canon* |
+| Story state | `state/chapter-NN/{characters,inventory,knowledge,situation}` | lock a chapter's folder when it's done; `state/current/*` reads the newest snapshot (no copies) |
+| Chapter log | `timeline/history`, `timeline/current-chapter` | history is append-only |
+
+Every change records an attributed, restorable revision; updates need the body hash
+you read (web and MCP alike), so nothing is clobbered. Claude uses
+`codex_list_docs` / `codex_get_doc` / `codex_save_doc` / `codex_append_doc` /
+`codex_lock_docs`. Docs export as `Workspace/<path>.md` and import back through
+push or a book `.zip` (a lock flag is not carried by the export).
+
 ## Good to know
 - **Nothing is ever auto-deleted.** Chapters archive instead of deleting, entry deletes
   record a final restorable revision, and every save through any door is in History.

@@ -59,6 +59,19 @@ not improvise another route.
    and tell the author.
 5. Report what ran and what changed. Writes are already persisted — nothing to push.
 
+## The Workspace (plan, style, story state, chapter log)
+Each book has a **Workspace** of Markdown docs for the planning layer:
+`book` (settings), `synopsis`, `plan` (the outline), `structure`, `style`,
+`development/*` (proposals — never treat as canon), `state/chapter-NN/*`
+(story state after each chapter), and `timeline/history` + `timeline/current-chapter`.
+- Read with `codex_list_docs(book, prefix?)` / `codex_get_doc(book, path)`.
+- Write with `codex_save_doc` — same rule as chapters: read first, pass the
+  `body_hash`; a refusal carries the current body to merge into.
+- `timeline/history` only grows: `codex_append_doc`. `state/current/*` is the
+  newest snapshot, read-only — write `state/chapter-NN/*` instead.
+- Once a chapter's state is final, `codex_lock_docs(book, "state/chapter-NN")`.
+  Locked docs refuse writes; only the author can unlock.
+
 ## Task: "fill in the writing log" / "log my writing"
 1. `codex_list_chapters(book)` and sum the words for the manuscript total.
 2. Compare to the last logged baseline (`codex_get_tasks` is not the log —

@@ -4,6 +4,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/md.php';
 require_once __DIR__ . '/profiles.php';   // book profiles (Phase 10): db sets, templates, band labels
 require_once __DIR__ . '/auth.php';       // accounts, sessions, invites (Phase 17)
+require_once __DIR__ . '/workspace.php';  // Workspace: plan, style, story state, chapter log
 
 /* ----------------------------------------------------------------- books */
 /** Lazy-migration for the Phase 10 book profile. Additive column; existing books
@@ -455,7 +456,7 @@ function import_book_zip($zip_path, $opts = []) {
         $total += $e['size'];
         if ($total > $MAX_TOTAL) { $za->close(); return ['status'=>'error', 'msg'=>'That archive is too large (over 200 MB uncompressed).']; }
         $rels[$rel] = $e['idx'];
-        if (preg_match('#^(Codex|Manuscript)/#', $rel) && preg_match('/\.md$/i', $rel)) $hasBook = true;
+        if (preg_match('#^(Codex|Manuscript|Workspace)/#', $rel) && preg_match('/\.md$/i', $rel)) $hasBook = true;
     }
     if (!$hasBook) { $za->close(); return ['status'=>'error', 'msg'=>'That doesn\'t look like a book folder (no Codex/*.md or Manuscript/*.md inside).']; }
 
@@ -467,7 +468,7 @@ function import_book_zip($zip_path, $opts = []) {
     // Gather the .md payload for the DB straight from the archive.
     $payload = []; $present = [];
     foreach ($rels as $rel => $idx) {
-        if (!preg_match('#^(Codex|Manuscript)/#', $rel) || !preg_match('/\.md$/i', $rel)) continue;
+        if (!preg_match('#^(Codex|Manuscript|Workspace)/#', $rel) || !preg_match('/\.md$/i', $rel)) continue;
         $data = $za->getFromIndex($idx);
         if ($data === false) continue;
         $payload[$rel] = str_replace(["\r\n", "\r", "\x00"], ["\n", "\n", ''], $data);
@@ -1237,7 +1238,7 @@ function import_snapshot($snap) {
 /* ===================================================== SYNC: push files */
 /** payload: { books: [ {folder, files:{relpath: content}} ] }  (folder -> web) */
 function push_files($payload) {
-    $report = ['entries'=>0,'chapters'=>0,'meta'=>0,'notes'=>0,'progressions'=>0,'sources'=>0,'archived'=>0,'skipped'=>0,'created'=>[],'books'=>[]];
+    $report = ['entries'=>0,'chapters'=>0,'meta'=>0,'notes'=>0,'progressions'=>0,'sources'=>0,'workspace'=>0,'archived'=>0,'skipped'=>0,'created'=>[],'books'=>[]];
     // Recognize every profile's Codex folders (Phase 11), not just fiction's, so a
     // non-fiction book's Codex/Concepts/*.md round-trips through the same parser.
     $db_by_folder = folder_db_map();
@@ -1289,6 +1290,11 @@ function push_files($payload) {
                 $title = ucfirst(str_replace(array('-','_','/'), array(' ',' ',' / '), $slug));
                 save_note_page($bid, $slug, $title, $content);
                 $report['notes']++;
+            } elseif (preg_match('#^Workspace/(.+)\.md$#', $rel, $m)) {
+                // Workspace docs: a push is a bulk restore, so no base hash —
+                // but locked / append-only / virtual docs still refuse it.
+                $r = save_workspace_doc($bid, $m[1], $content, null, '', true);
+                if ($r['status'] === 'ok') { $report['workspace']++; $touched++; } else { $report['skipped']++; }
             } elseif (preg_match('#^Codex/Meta/(.+)\.md$#', $rel, $m)) {
                 $slug = $m[1];
                 $title = ucfirst(str_replace('-', ' ', $slug));
@@ -2194,7 +2200,7 @@ function search_snippet($text, $q, $ctx = 50) {
     return ($start > 0 ? '…' : '') . $frag . (($start + mb_strlen($q) + 2 * $ctx) < mb_strlen($text) ? '…' : '');
 }
 
-/** Search entries, chapters, and notes across the given (already scoped)
+/** Search entries, chapters, notes, and workspace docs across the given (already scoped)
  *  book ids. Returns hits: {kind, book, snippet, ...kind-specific keys}. */
 function search_codex(array $book_ids, $q, $limit = 25) {
     $q = trim((string)$q);
@@ -2240,6 +2246,18 @@ function search_codex(array $book_ids, $q, $limit = 25) {
                     array_merge($book_ids, [$like, $like]));
         foreach ($rows as $r) {
             $hits[] = ['kind' => 'note', 'book' => $r['book_id'], 'slug' => $r['slug'],
+                       'title' => $r['title'], 'snippet' => search_snippet($r['body'], $q)];
+        }
+    }
+
+    if (count($hits) < $limit) {
+        ensure_workspace();
+        $rows = all("SELECT book_id, path, title, body FROM workspace_docs
+                      WHERE book_id IN ($in) AND (title LIKE ? ESCAPE '!' OR path LIKE ? ESCAPE '!' OR body LIKE ? ESCAPE '!')
+                      ORDER BY path LIMIT " . ($limit - count($hits)),
+                    array_merge($book_ids, [$like, $like, $like]));
+        foreach ($rows as $r) {
+            $hits[] = ['kind' => 'doc', 'book' => $r['book_id'], 'path' => $r['path'],
                        'title' => $r['title'], 'snippet' => search_snippet($r['body'], $q)];
         }
     }

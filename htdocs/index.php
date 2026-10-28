@@ -46,6 +46,8 @@ function book_gate($a) {
         case 'entry_save': case 'entry_new': case 'entry_delete': case 'meta_save':
         case 'entry_revision_restore':   // A1: restore = a new save, same capability
         case 'note_save':                // C3: notes are editable in-app now
+        case 'ws_save': case 'ws_append': case 'ws_restore': case 'ws_delete':
+        case 'ws_lock':                  // Workspace docs (unlock re-checks 'manage' in the handler)
         case 'task_save': case 'log_add': case 'scene_label': case 'progression_when':
         case 'reindex_mentions': case 'chapter_save': case 'chapter_new': case 'chapter_import':
         case 'dictionary_add': case 'dictionary_remove': case 'dictionary_import_codex':
@@ -202,6 +204,46 @@ if ($method === 'POST') {
         log_activity($book, 'note_save', $_POST['slug']);
         flash('Note saved.');
         redirect(['p'=>'note_page','book'=>$book,'slug'=>$_POST['slug']]);
+    }
+    if (strpos($a, 'ws_') === 0) {   // Workspace docs — every rule lives in save_workspace_doc() & co.
+        $wpath = ws_norm_path($_POST['path'] ?? '');
+        $back = function ($path) use ($book) { redirect($path !== '' ? ['p'=>'workspace_doc','book'=>$book,'path'=>$path] : ['p'=>'workspace','book'=>$book]); };
+        if ($a === 'ws_save') {
+            $isNew = !empty($_POST['new']);
+            if ($isNew && get_workspace_doc($book, $wpath)) { flash('A doc already exists at that path — opened it instead.', 'err'); $back($wpath); }
+            $r = save_workspace_doc($book, $wpath, $_POST['body'] ?? '', $_POST['title'] ?? null, (string)($_POST['base'] ?? ''));
+            if ($r['status'] === 'ok') { log_activity($book, 'doc_save', $r['path']); flash($r['msg']); $back($r['path']); }
+            flash($r['msg'], 'err');
+            redirect($isNew || $r['status'] === 'error' ? ['p'=>'workspace','book'=>$book] : ['p'=>'workspace_doc','book'=>$book,'path'=>$wpath]);
+        }
+        if ($a === 'ws_append') {
+            $r = append_workspace_doc($book, $wpath, $_POST['text'] ?? '');
+            if ($r['status'] === 'ok') log_activity($book, 'doc_append', $wpath);
+            flash($r['status'] === 'ok' ? 'Added.' : $r['msg'], $r['status'] === 'ok' ? 'ok' : 'err');
+            $back($wpath);
+        }
+        if ($a === 'ws_restore') {   // restore = a new save on top, never a rewind
+            $rev = get_workspace_revision($book, (int)($_POST['id'] ?? 0));
+            $cur = get_workspace_doc($book, $wpath);
+            if (!$rev || $rev['path'] !== $wpath || !$cur) { flash('Revision not found.', 'err'); $back($wpath); }
+            $r = save_workspace_doc($book, $wpath, $rev['body'], null, $cur['body_hash']);
+            if ($r['status'] === 'ok') log_activity($book, 'doc_restore', $wpath.' ← '.substr((string)$rev['created_at'],0,16));
+            flash($r['status'] === 'ok' ? 'Restored the version from '.substr((string)$rev['created_at'],0,16).'.' : $r['msg'], $r['status'] === 'ok' ? 'ok' : 'err');
+            $back($wpath);
+        }
+        if ($a === 'ws_delete') {
+            $r = delete_workspace_doc($book, $wpath);
+            if ($r['status'] === 'ok') { log_activity($book, 'doc_delete', $wpath); flash($r['msg']); redirect(['p'=>'workspace','book'=>$book]); }
+            flash($r['msg'], 'err'); $back($wpath);
+        }
+        if ($a === 'ws_lock') {
+            $lock = !empty($_POST['locked']);
+            if (!$lock && !user_can($book, 'manage')) { flash('Only a book owner can unlock.', 'err'); $back($wpath); }
+            $n = set_workspace_lock($book, $wpath, $lock);
+            log_activity($book, $lock ? 'doc_lock' : 'doc_unlock', $wpath.' ('.$n.')');
+            flash(($lock ? 'Locked ' : 'Unlocked ').$n.' doc'.($n === 1 ? '' : 's').'.');
+            redirect(!empty($_POST['return_list']) ? ['p'=>'workspace','book'=>$book] : ['p'=>'workspace_doc','book'=>$book,'path'=>$wpath]);
+        }
     }
     if ($a === 'task_save') {
         save_task(['id'=>$_POST['id']?:null,'book_id'=>$book,'title'=>$_POST['title'],'body'=>$_POST['body'],
@@ -630,7 +672,7 @@ $titles = ['overview'=>'Overview','library'=>'Library','book'=>$book['title']??'
            'manuscript'=>'Manuscript','chapter'=>'Chapter','chapter_edit'=>'Edit chapter','diagnostics'=>'Diagnostics','progressions'=>'Progressions','timeline'=>'Timeline',
            'threads'=>($book ? threads_label($book['profile'] ?? 'fiction')['title'] : 'Open threads'),
            'references'=>'References','exercises'=>'Exercises',
-           'tasks'=>'Tasks','log'=>'Writing log','meta'=>'Meta','notes'=>'Notes','sync'=>'Sync','dictionary'=>'Dictionary',
+           'tasks'=>'Tasks','log'=>'Writing log','meta'=>'Meta','notes'=>'Notes','workspace'=>'Workspace','workspace_doc'=>'Workspace','sync'=>'Sync','dictionary'=>'Dictionary',
            'plot'=>'Plot board','vision'=>'Mood board','account'=>'Account','admin_users'=>'Users &amp; invites','members'=>'Members',
            'claude'=>'Working with Claude'];
 layout_head($titles[$p] ?? 'Codex', $accent, $bodyType, $density, $mode);
@@ -2445,6 +2487,159 @@ case 'note_page':
            . (user_can($book['id'], 'edit') ? '<a class="btn sm" href="'.url(['p'=>'note_page','book'=>$book['id'],'slug'=>$np['slug'],'edit'=>1]).'">Edit</a>' : '')
            . '</div>';
         echo '<div class="entrybody">'.md_to_html($np['body'], $book['id']).'</div>';
+    }
+    break;
+
+case 'workspace':
+    $bid = $book['id'];
+    $docs = get_workspace_docs($bid);
+    $canEdit = user_can($bid, 'edit');
+    $latest = ws_latest_state_chapter($bid);
+    $bySec = ['planning'=>[], 'development'=>[], 'state'=>[], 'timeline'=>[], 'other'=>[]];
+    foreach ($docs as $d) $bySec[ws_section($d['path'])][$d['path']] = $d;
+    $docLink = function ($path, $label = null) use ($bid) {
+        return '<a href="'.url(['p'=>'workspace_doc','book'=>$bid,'path'=>$path]).'">'.e($label ?? $path).'</a>';
+    };
+    $meta = function ($d) {
+        return '<span class="muted mono">'.number_format($d['words']).' words · '.e(substr((string)$d['updated_at'],0,16))
+             . ($d['updated_by_name'] ? ' · '.e($d['updated_by_name']) : '').'</span>'
+             . ((int)$d['locked'] ? ' <span class="pill canon">locked</span>' : '');
+    };
+    echo '<div class="pagehead"><div><h1>Workspace</h1><p class="desc">The planning layer behind the manuscript — settings, outline, style, development proposals, story state after each chapter, and the chapter log. Claude reads and writes these with the <span class="kbd">codex_*_doc</span> tools; they export as <span class="kbd">Workspace/*.md</span>.</p></div></div>';
+
+    // Planning: fixed slots, missing ones offered for creation.
+    echo '<h2 style="font-size:15px;margin-top:22px">Planning</h2><table class="grid"><tr><th>Doc</th><th>Path</th><th></th></tr>';
+    foreach (WORKSPACE_PLANNING as $path => $label) {
+        $d = $bySec['planning'][$path] ?? null;
+        echo '<tr><td>'.($d ? $docLink($path, $label) : '<span class="muted">'.e($label).'</span>').'</td><td class="mono muted">'.e($path).'</td><td>'
+           . ($d ? $meta($d) : ($canEdit ? '<a class="btn sm" href="'.url(['p'=>'workspace_doc','book'=>$bid,'path'=>$path,'new'=>1]).'">Create</a>' : '<span class="muted">—</span>'))
+           . '</td></tr>';
+    }
+    echo '</table>';
+
+    echo '<h2 style="font-size:15px;margin-top:26px">Development <span class="pill seed">proposals — not canon</span></h2>';
+    echo '<table class="grid"><tr><th>Path</th><th>Title</th><th></th></tr>';
+    foreach ($bySec['development'] as $path => $d) echo '<tr><td class="mono">'.$docLink($path, substr($path, strlen('development/'))).'</td><td>'.e($d['title']).'</td><td>'.$meta($d).'</td></tr>';
+    if (!$bySec['development']) echo '<tr><td colspan="3" class="empty">No development docs yet — character, world and story proposals go under <span class="mono">development/…</span></td></tr>';
+    echo '</table>';
+
+    // Story state, grouped by chapter folder, newest first; "current" = the newest.
+    echo '<h2 style="font-size:15px;margin-top:26px">Story state</h2>';
+    echo '<p class="desc">One snapshot per chapter (<span class="mono">state/chapter-NN/</span>). '.($latest ? '<strong>Current</strong> is '.e($latest).' — <span class="mono">state/current/*</span> reads it, no copy needed.' : 'No snapshots yet.').' Lock a chapter\'s state once it\'s done.</p>';
+    $groups = [];
+    foreach ($bySec['state'] as $path => $d) { $parts = explode('/', $path); $groups[count($parts) > 2 ? $parts[1] : '(loose)'][$path] = $d; }
+    uksort($groups, function ($a, $b) { return strnatcmp($b, $a); });
+    echo '<table class="grid"><tr><th>Snapshot</th><th>Files</th><th></th></tr>';
+    foreach ($groups as $g => $items) {
+        $allLocked = !array_filter($items, function ($d) { return !(int)$d['locked']; });
+        $files = [];
+        foreach ($items as $path => $d) $files[] = $docLink($path, basename($path)).((int)$d['locked'] ? ' 🔒' : '');
+        echo '<tr><td class="mono">'.e($g).($g === $latest ? ' <span class="pill doing">current</span>' : '').'</td><td>'.implode(' · ', $files).'</td><td>';
+        if ($g !== '(loose)' && ($allLocked ? user_can($bid, 'manage') : $canEdit)) {
+            echo '<form method="post" style="margin:0"><input type="hidden" name="action" value="ws_lock"><input type="hidden" name="book" value="'.e($bid).'">'
+               . '<input type="hidden" name="path" value="state/'.e($g).'"><input type="hidden" name="return_list" value="1">'
+               . '<input type="hidden" name="locked" value="'.($allLocked ? '' : '1').'"><button class="btn sm">'.($allLocked ? 'Unlock' : 'Lock').'</button></form>';
+        }
+        echo '</td></tr>';
+    }
+    if (!$groups) echo '<tr><td colspan="3" class="empty">No story state yet.</td></tr>';
+    echo '</table>';
+
+    echo '<h2 style="font-size:15px;margin-top:26px">Chapter log</h2><table class="grid"><tr><th>Doc</th><th>Path</th><th></th></tr>';
+    foreach (['timeline/history' => 'History (append-only)', 'timeline/current-chapter' => 'Current chapter'] as $path => $label) {
+        $d = $bySec['timeline'][$path] ?? null;
+        echo '<tr><td>'.($d ? $docLink($path, $label) : '<span class="muted">'.e($label).'</span>').'</td><td class="mono muted">'.e($path).'</td><td>'
+           . ($d ? $meta($d) : ($canEdit ? '<a class="btn sm" href="'.url(['p'=>'workspace_doc','book'=>$bid,'path'=>$path,'new'=>1]).'">Create</a>' : '—')).'</td></tr>';
+        unset($bySec['timeline'][$path]);
+    }
+    foreach ($bySec['timeline'] as $path => $d) echo '<tr><td>'.$docLink($path, $d['title']).'</td><td class="mono muted">'.e($path).'</td><td>'.$meta($d).'</td></tr>';
+    echo '</table>';
+
+    if ($bySec['other']) {
+        echo '<h2 style="font-size:15px;margin-top:26px">Other</h2><table class="grid"><tr><th>Path</th><th>Title</th><th></th></tr>';
+        foreach ($bySec['other'] as $path => $d) echo '<tr><td class="mono">'.$docLink($path).'</td><td>'.e($d['title']).'</td><td>'.$meta($d).'</td></tr>';
+        echo '</table>';
+    }
+
+    if ($canEdit) {
+        echo '<div class="notewrap" style="margin-top:26px"><form method="get"><input type="hidden" name="p" value="workspace_doc"><input type="hidden" name="book" value="'.e($bid).'"><input type="hidden" name="new" value="1">';
+        echo '<label class="f">New doc — path</label><input type="text" name="path" required placeholder="development/world/region-cut  ·  state/chapter-06/situation">';
+        echo '<div class="toolbar"><button class="btn primary">Create</button></div></form></div>';
+    }
+    break;
+
+case 'workspace_doc':
+    $bid = $book['id'];
+    $req = ws_norm_path($_GET['path'] ?? '');
+    $d = $req !== '' ? get_workspace_doc($bid, $req) : null;
+    $canEdit = user_can($bid, 'edit');
+    $isNew = !$d && !empty($_GET['new']) && $canEdit;
+    if ($req === '') { echo '<p class="empty">Invalid path — use lowercase segments like <span class="mono">development/world/region-cut</span>.</p>'; break; }
+    if ($isNew && ws_is_virtual($req)) { echo '<p class="empty">state/current is derived from the newest state/chapter-NN — create that chapter\'s files instead.</p>'; break; }
+    if (!$d && !$isNew) { echo '<p class="empty">Not found.</p><div class="toolbar"><a class="btn sm" href="'.url(['p'=>'workspace','book'=>$bid]).'">← Workspace</a></div>'; break; }
+    $path = $d ? $d['path'] : $req;
+    $edit = $isNew || (isset($_GET['edit']) && $canEdit && !(int)$d['locked'] && !ws_is_append_only($path));
+    $title = $d ? $d['title'] : ws_title_for($path);
+    $pills = ($d && (int)$d['locked'] ? ' <span class="pill canon">locked</span>' : '')
+           . (ws_section($path) === 'development' ? ' <span class="pill seed">proposal — not canon</span>' : '')
+           . (ws_is_append_only($path) ? ' <span class="pill todo">append-only</span>' : '');
+    $note = ($d && $d['requested'] !== $d['path']) ? ' · showing <span class="mono">'.e($d['requested']).'</span> → newest snapshot' : '';
+    echo '<div class="pagehead"><div><h1>'.e($title).$pills.'</h1><p class="desc mono" style="font-size:12px">Workspace/'.e($path).'.md'.$note.'</p></div></div>';
+    if ($edit) {
+        echo '<form method="post"><input type="hidden" name="action" value="ws_save"><input type="hidden" name="book" value="'.e($bid).'"><input type="hidden" name="path" value="'.e($path).'">';
+        echo $d ? '<input type="hidden" name="base" value="'.e($d['body_hash']).'">' : '<input type="hidden" name="new" value="1">';
+        echo '<label class="f">Title</label><input type="text" name="title" value="'.e($title).'">';
+        echo '<label class="f">Body</label>';
+        echo '<div class="toolbar" style="margin:4px 0"><button type="button" class="btn sm" id="wsToggle">Rich text</button></div>';
+        echo '<div class="wys" data-for="ws-body" data-toggle="wsToggle" data-mentions hidden></div>';
+        echo '<textarea id="ws-body" name="body" style="min-height:55vh">'.e($d['body'] ?? '').'</textarea>';
+        echo '<div class="toolbar"><button class="btn primary">Save</button><a class="btn" href="'.url($d ? ['p'=>'workspace_doc','book'=>$bid,'path'=>$path] : ['p'=>'workspace','book'=>$bid]).'">Cancel</a></div></form>';
+        $tg = function_exists('build_mention_targets')
+            ? array_map(function($t){ return ['phrase'=>$t['phrase'],'slug'=>$t['slug']]; }, build_mention_targets($bid))
+            : [];
+        echo '<script>window.__scene='.json_encode(['book'=>$bid,'targets'=>$tg], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).';</script>';
+        $ev = @filemtime(__DIR__ . '/assets/app/editor.js') ?: time();
+        echo '<link rel="stylesheet" href="assets/app/editor.css?v='.$ev.'"><script src="assets/app/editor.js?v='.$ev.'" defer></script>';
+        break;
+    }
+    $locked = (int)$d['locked'];
+    echo '<div class="toolbar"><a class="btn sm" href="'.url(['p'=>'workspace','book'=>$bid]).'">← Workspace</a>';
+    if ($canEdit && !$locked && !ws_is_append_only($path)) echo '<a class="btn sm" href="'.url(['p'=>'workspace_doc','book'=>$bid,'path'=>$path,'edit'=>1]).'">Edit</a>';
+    if ($locked ? user_can($bid, 'manage') : $canEdit) {
+        echo '<form method="post" style="display:inline-block;margin:0"><input type="hidden" name="action" value="ws_lock"><input type="hidden" name="book" value="'.e($bid).'">'
+           . '<input type="hidden" name="path" value="'.e($path).'"><input type="hidden" name="locked" value="'.($locked ? '' : '1').'"><button class="btn sm">'.($locked ? 'Unlock' : 'Lock').'</button></form>';
+    }
+    if ($canEdit && !$locked) {
+        echo '<form method="post" style="display:inline-block;margin:0" onsubmit="return confirm(\'Delete this doc? Its last version stays in history.\')"><input type="hidden" name="action" value="ws_delete"><input type="hidden" name="book" value="'.e($bid).'">'
+           . '<input type="hidden" name="path" value="'.e($path).'"><button class="btn sm">Delete</button></form>';
+    }
+    echo '</div>';
+    echo '<div class="entrybody">'.md_to_html($d['body'], $bid).'</div>';
+    if ($canEdit && !$locked && ws_is_append_only($path)) {
+        echo '<div class="notewrap" style="margin-top:14px"><form method="post"><input type="hidden" name="action" value="ws_append"><input type="hidden" name="book" value="'.e($bid).'"><input type="hidden" name="path" value="'.e($path).'">';
+        echo '<label class="f">Add to the end</label><textarea name="text" style="min-height:18vh"></textarea>';
+        echo '<div class="toolbar"><button class="btn primary">Append</button></div></form></div>';
+    }
+    // History: every save through any door, restorable (a restore is a new save on top).
+    $wrevs = get_workspace_revisions($bid, $path);
+    if ($wrevs && $canEdit) {
+        echo '<details class="entrybody" style="margin-top:14px"><summary style="cursor:pointer;font-weight:600">History <span class="muted mono">'.count($wrevs).'</span></summary>';
+        echo '<p class="desc">Saved versions of this doc (newest first). Restoring makes a new save on top — nothing is rewound or lost.</p>';
+        foreach ($wrevs as $i => $rv) {
+            $who = $rv['saved_by_name'] ?: ($rv['saved_via'] === 'api' ? 'Claude / API' : ($rv['saved_via'] === 'cli' ? 'CLI' : '—'));
+            $via = $rv['saved_via'] ? ' · '.e($rv['saved_via']) : '';
+            echo '<details style="margin:6px 0"><summary style="cursor:pointer" class="mono">'
+               . e(substr((string)$rv['created_at'],0,16)).' · '.e($who).$via.($rv['kind']!=='save'?' · '.e($rv['kind']):'').($i===0?' · current':'').'</summary>';
+            $full = get_workspace_revision($bid, (int)$rv['id']);
+            echo '<div class="codeblock" style="margin:8px 0">'.e($full['body']).'</div>';
+            if ($i !== 0 && !$locked && !ws_is_append_only($path)) {
+                echo '<form method="post" style="margin:0 0 8px" onsubmit="return confirm(\'Restore this version? The current version stays in history.\')">'
+                   . '<input type="hidden" name="action" value="ws_restore"><input type="hidden" name="book" value="'.e($bid).'">'
+                   . '<input type="hidden" name="path" value="'.e($path).'"><input type="hidden" name="id" value="'.(int)$rv['id'].'"><button class="btn sm">Restore this version</button></form>';
+            }
+            echo '</details>';
+        }
+        echo '</details>';
     }
     break;
 

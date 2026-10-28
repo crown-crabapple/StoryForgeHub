@@ -44,16 +44,25 @@ to merge against — never a clobber), `codex_create_chapter`, `codex_push_files
 `codex_log_writing`. Every write flows through api.php, at the caller's role, and
 records a revision with the caller's identity (A1).
 
+Workspace docs (the Claude-Book planning layer — book settings, synopsis, plan,
+structure, style, `development/*`, `state/chapter-NN/*`, `timeline/*`):
+`codex_list_docs`, `codex_get_doc` (body + `body_hash`; `state/current/<file>`
+reads the newest `state/chapter-NN/<file>`), `codex_save_doc` (same base-hash
+contract as chapters; locked docs refuse with HTTP 423), `codex_append_doc`
+(the only way `timeline/history` grows), `codex_lock_docs` (lock a finished
+chapter's state folder; unlocking needs the owner role).
+
 The granular reads/writes ride api.php's object-level actions (`chapter`,
 `save_chapter`, `chapter_create`, `entries`, `search`, `diagnostics`,
-`task_create`, `task_update`); only `codex_get_entry`/`codex_list_chapters`/
+`task_create`, `task_update`, `docs`, `doc`, `save_doc`, `append_doc`, `lock_docs`); only `codex_get_entry`/`codex_list_chapters`/
 `codex_status` still read via the `export` snapshot.
 
 ### Bulk Markdown writes
 - `codex_push_files(book, files, reconcile_chapters=False)` — a map of
   relpath→Markdown for any type api.php's push understands: `Manuscript/<file>.md`,
   `Codex/<Folder>/<slug>.md`, `Codex/Notes/<slug>.md`, `Codex/Meta/<slug>.md`,
-  `Codex/Sources/<key>.md`, `Codex/Meta/progressions.md`. The `folder` prefix is
+  `Codex/Sources/<key>.md`, `Codex/Meta/progressions.md`, `Workspace/<path>.md`
+  (bulk, no hash check — locked and virtual docs are still skipped). The `folder` prefix is
   resolved from the live `export` snapshot — it's a payload key, not a disk path.
   Pushing `Manuscript/*.md` normally archives every chapter the payload omits;
   the tool guards against this by declaring the book's current chapters present,

@@ -91,7 +91,25 @@ class CodexApi:
     def get_diagnostics(self, book: str, chapter) -> dict:
         return (self._call("diagnostics", params={"book": book, "id": chapter}) or {}).get("diagnostics", {})
 
+    def list_docs(self, book: str, prefix: Optional[str] = None) -> dict:
+        return self._call("docs", params={"book": book, "prefix": prefix}) or {}
+
+    def get_doc(self, book: str, path: str) -> dict:
+        return (self._call("doc", params={"book": book, "path": path}) or {}).get("doc", {})
+
     # --- granular writes ---
+    def save_doc(self, payload: dict) -> dict:
+        """{book, path, markdown, base_hash?, title?} — conflicts (409) and
+        locked docs (423) surface as ApiError with .payload carrying
+        current_hash/current_body."""
+        return self._call("save_doc", body=payload)
+
+    def append_doc(self, payload: dict) -> dict:
+        return self._call("append_doc", body=payload)
+
+    def lock_docs(self, payload: dict) -> dict:
+        return self._call("lock_docs", body=payload)
+
     def create_task(self, task: dict) -> dict:
         return self._call("task_create", body=task)
 
