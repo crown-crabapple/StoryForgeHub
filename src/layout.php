@@ -14,37 +14,79 @@ function accent_vars($accent, $mode = 'Light') {
     return $A[$accent] ?? $A['Indigo'];
 }
 
-/** Minimal, safe markdown -> HTML for section bodies and meta pages. */
-function md_to_html($md, $book_id = null) {
+/** Minimal, safe markdown -> HTML for section bodies and meta pages.
+ *  $levels: map #/##/### to h2/h3/h4 (Workspace docs); default renders every heading as h3. */
+function md_to_html($md, $book_id = null, $levels = false) {
     $md = str_replace("\x00", '', (string)$md);
     $lines = explode("\n", $md);
-    $html = ''; $inUl = false; $inOl = false; $para = []; $bq = []; $linked = [];   // $linked: dedupe auto-mentions across this render
+    $html = ''; $lists = []; $blank = false; $para = []; $bq = []; $linked = [];   // $linked: dedupe auto-mentions across this render
     $flushPara = function() use (&$para, &$html, &$linked) {
         if ($para) { $html .= '<p>' . inline_md_with_mentions(implode(' ', $para), $linked) . "</p>\n"; $para = []; }
     };
-    $closeUl = function() use (&$inUl, &$html) { if ($inUl) { $html .= "</ul>\n"; $inUl = false; } };
-    $closeOl = function() use (&$inOl, &$html) { if ($inOl) { $html .= "</ol>\n"; $inOl = false; } };
+    // $lists: stack of open [tag, indent]; the innermost <li> stays open so a deeper item nests inside it.
+    $closeLists = function($indent = -1) use (&$lists, &$html) {
+        while ($lists && end($lists)[1] > $indent) { $html .= "</li>\n</" . array_pop($lists)[0] . ">\n"; }
+    };
     $flushBq = function() use (&$bq, &$html, &$linked) {
         if ($bq) { $html .= '<blockquote>' . inline_md_with_mentions(implode(' ', $bq), $linked) . "</blockquote>\n"; $bq = []; }
     };
-    foreach ($lines as $ln) {
-        $t = rtrim($ln);
-        if (trim($t) === '') { $flushPara(); $closeUl(); $closeOl(); $flushBq(); continue; }
+    $closeAll = function() use ($flushPara, $closeLists, $flushBq) { $flushPara(); $closeLists(); $flushBq(); };
+    $sepRe = '/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/';
+    $cells = function($row) {   // split a GFM table row on unescaped pipes
+        $row = trim($row);
+        if ($row !== '' && $row[0] === '|') $row = substr($row, 1);
+        if (substr($row, -1) === '|' && substr($row, -2) !== '\\|') $row = substr($row, 0, -1);
+        return array_map(function($c) { return trim(str_replace('\\|', '|', $c)); }, preg_split('/(?<!\\\\)\|/', $row));
+    };
+    for ($i = 0, $n = count($lines); $i < $n; $i++) {
+        $t = rtrim($lines[$i]);
+        if (preg_match('/^\s*(```|~~~)/', $t, $fm)) {   // fenced code block — verbatim until the closing fence
+            $closeAll(); $code = [];
+            for ($i++; $i < $n && !preg_match('/^\s*' . preg_quote($fm[1], '/') . '\s*$/', rtrim($lines[$i])); $i++) $code[] = rtrim($lines[$i], "\r");
+            $html .= '<pre><code>' . e(implode("\n", $code)) . "</code></pre>\n"; continue; }
+        if (strpos($t, '|') !== false && $i + 1 < $n && preg_match($sepRe, $lines[$i + 1])
+            && count($cells($t)) === count($cells($lines[$i + 1]))) {   // GFM table: header + matching delimiter row
+            $closeAll();
+            $align = array_map(function($c) {
+                $l = $c !== '' && $c[0] === ':'; $r = substr($c, -1) === ':';
+                return $l && $r ? 'center' : ($r ? 'right' : ($l ? 'left' : ''));
+            }, $cells($lines[$i + 1]));
+            $td = function($tag, $c, $k) use ($align, &$linked) {
+                $a = $align[$k] ?? '';
+                return '<' . $tag . ($a ? ' style="text-align:' . $a . '"' : '') . '>' . inline_md_with_mentions($c, $linked) . '</' . $tag . '>';
+            };
+            $head = $cells($t); $cols = count($head);
+            $html .= "<div class=\"mdtable\"><table>\n<thead><tr>";
+            foreach ($head as $k => $c) $html .= $td('th', $c, $k);
+            $html .= "</tr></thead>\n<tbody>\n";
+            for ($i += 2; $i < $n && trim($lines[$i]) !== '' && strpos($lines[$i], '|') !== false; $i++) {
+                $row = array_pad(array_slice($cells($lines[$i]), 0, $cols), $cols, '');
+                $html .= '<tr>';
+                foreach ($row as $k => $c) $html .= $td('td', $c, $k);
+                $html .= "</tr>\n";
+            }
+            $i--;
+            $html .= "</tbody>\n</table></div>\n"; continue; }
+        if (trim($t) === '') { $flushPara(); $flushBq(); $blank = true; continue; }   // lists stay open: a blank line between items doesn't split the list
+        $afterBlank = $blank; $blank = false;
         if (preg_match('/^\s*([-*_])(?:\s*\1){2,}\s*$/', $t) || trim($t) === '***') {
-            $flushPara(); $closeUl(); $closeOl(); $flushBq(); $html .= "<hr>\n"; continue; }
-        if (preg_match('/^#{1,6}\s+(.*)$/', $t, $m)) { $flushPara(); $closeUl(); $closeOl(); $flushBq();
-            $html .= '<h3>' . inline_md($m[1]) . "</h3>\n"; continue; }
-        if (preg_match('/^\s*>\s?(.*)$/', $t, $m)) { $flushPara(); $closeUl(); $closeOl();
+            $closeAll(); $html .= "<hr>\n"; continue; }
+        if (preg_match('/^(#{1,6})\s+(.*?)\s*#*$/', $t, $m)) { $closeAll();
+            $h = $levels ? 'h' . min(4, strlen($m[1]) + 1) : 'h3';
+            $html .= "<$h>" . inline_md($m[2]) . "</$h>\n"; continue; }
+        if (preg_match('/^\s*>\s?(.*)$/', $t, $m)) { $flushPara(); $closeLists();
             $bq[] = $m[1]; continue; }
-        if (preg_match('/^\s*\d+[.)]\s+(.*)$/', $t, $m)) { $flushPara(); $closeUl(); $flushBq();
-            if (!$inOl) { $html .= "<ol>\n"; $inOl = true; }
-            $html .= '<li>' . inline_md_with_mentions($m[1], $linked) . "</li>\n"; continue; }
-        if (preg_match('/^\s*[-*]\s+(.*)$/', $t, $m)) { $flushPara(); $closeOl(); $flushBq();
-            if (!$inUl) { $html .= "<ul>\n"; $inUl = true; }
-            $html .= '<li>' . inline_md_with_mentions($m[1], $linked) . "</li>\n"; continue; }
-        $flushBq(); $para[] = trim($t);
+        if (preg_match('/^([ \t]*)(?:(\d+)[.)]|[-*+])\s+(.*)$/', $t, $m)) { $flushPara(); $flushBq();
+            $indent = strlen(str_replace("\t", '    ', $m[1])); $tag = $m[2] !== '' ? 'ol' : 'ul';
+            $closeLists($indent);
+            if ($lists && end($lists)[1] === $indent && end($lists)[0] !== $tag) $closeLists($indent - 1);   // - after 1. at the same depth: new list
+            if ($lists && end($lists)[1] === $indent) $html .= "</li>\n";
+            else { $html .= ($tag === 'ol' && $m[2] !== '1' ? '<ol start="' . (int)$m[2] . '">' : "<$tag>") . "\n"; $lists[] = [$tag, $indent]; }
+            $html .= '<li>' . inline_md_with_mentions($m[3], $linked); continue; }
+        if ($lists && !$afterBlank) { $html .= ' ' . inline_md_with_mentions(trim($t), $linked); continue; }   // wrapped line of the open item
+        $closeLists(); $flushBq(); $para[] = trim($t);
     }
-    $flushPara(); $closeUl(); $closeOl(); $flushBq();
+    $closeAll();
     // wiki links -> entry links handled in inline_md via global book
     return $html;
 }

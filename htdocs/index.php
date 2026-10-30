@@ -2614,7 +2614,7 @@ case 'workspace_doc':
            . '<input type="hidden" name="path" value="'.e($path).'"><button class="btn sm">Delete</button></form>';
     }
     echo '</div>';
-    echo '<div class="entrybody">'.md_to_html($d['body'], $bid).'</div>';
+    echo '<div class="entrybody wsdoc">'.md_to_html($d['body'], $bid, true).'</div>';
     if ($canEdit && !$locked && ws_is_append_only($path)) {
         echo '<div class="notewrap" style="margin-top:14px"><form method="post"><input type="hidden" name="action" value="ws_append"><input type="hidden" name="book" value="'.e($bid).'"><input type="hidden" name="path" value="'.e($path).'">';
         echo '<label class="f">Add to the end</label><textarea name="text" style="min-height:18vh"></textarea>';
