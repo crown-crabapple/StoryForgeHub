@@ -9,6 +9,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 require_once dirname(__DIR__) . '/src/layout.php';      // src/ lives above the docroot
 require_once dirname(__DIR__) . '/src/auth_pages.php';  // Phase 17 accounts gate + screens
+require_once dirname(__DIR__) . '/src/continuity_pages.php';  // Continuity page + chapter cast
 
 $CFG = cfg();
 
@@ -54,6 +55,8 @@ function book_gate($a) {
         case 'book_profile': case 'source_save': case 'act_add': case 'sprint_log':
         case 'vision_add': case 'reorder_chapters': case 'reorder_scenes':
         case 'canvas_add_card': case 'canvas_add_ref_card': case 'canvas_add_link':
+        case 'cont_ledger_save': case 'cont_ledger_delete': case 'cont_event_save': case 'cont_event_delete':
+        case 'cont_fact_save': case 'cont_fact_delete': case 'cont_dismiss': case 'cont_restore': case 'cont_cast_save':
             $json = in_array($a, ['reorder_chapters','reorder_scenes','canvas_add_card','canvas_add_ref_card','canvas_add_link','dictionary_add'], true);
             return $mk('edit', $postbook, $json);
         case 'chapter_autosave': case 'chapter_revision_get': case 'chapter_revision_discard_draft':
@@ -95,6 +98,7 @@ function book_gate($a) {
         /* --- owner-only: per-book membership & lifecycle --- */
         case 'member_add': case 'member_role': case 'member_remove':
         case 'member_invite': case 'member_revoke_invite':
+        case 'cont_settings':            // continuity thresholds
             return $mk('manage', $postbook);
 
         default:
@@ -114,6 +118,7 @@ if ($method === 'POST') {
         flash('You don’t have permission to do that in this book.', 'err');
         redirect(user_can($book, 'view') && $book ? ['p'=>'book','book'=>$book] : ['p'=>'overview']);
     }
+    if (strpos($a, 'cont_') === 0) redirect(continuity_post($a, $book));   // continuity ledgers (role-gated above)
     if (strpos($a, 'canvas_') === 0) {   // plot board AJAX (JSON in/out, same-origin session auth)
         header('Content-Type: application/json; charset=utf-8');
         if ($a === 'canvas_add_card')    { echo json_encode(['ok'=>true,'id'=>add_canvas_card($book,(int)($_POST['x']??40),(int)($_POST['y']??40),'',$_POST['color']??'#7c8cff')]); exit; }
@@ -674,7 +679,7 @@ $titles = ['overview'=>'Overview','library'=>'Library','book'=>$book['title']??'
            'references'=>'References','exercises'=>'Exercises',
            'tasks'=>'Tasks','log'=>'Writing log','meta'=>'Meta','notes'=>'Notes','workspace'=>'Workspace','workspace_doc'=>'Workspace','sync'=>'Sync','dictionary'=>'Dictionary',
            'plot'=>'Plot board','vision'=>'Mood board','account'=>'Account','admin_users'=>'Users &amp; invites','members'=>'Members',
-           'claude'=>'Working with Claude'];
+           'claude'=>'Working with Claude','continuity'=>'Continuity'];
 layout_head($titles[$p] ?? 'Codex', $accent, $bodyType, $density, $mode);
 echo '<div class="app">';
 render_sidebar($book, $p, $_GET['db'] ?? null);
@@ -1346,6 +1351,7 @@ case 'chapter':
     $edn = other_editor_names((int)$c['id'], current_user_id());   // Phase 21 presence
     if ($edn) echo '<span style="margin-left:8px;font-size:12px;color:#8A3F4B;font-weight:600" title="Someone has this chapter open in the editor">✎ '.e(implode(', ', $edn)).' '.(count($edn) > 1 ? 'are' : 'is').' editing now</span>';
     echo '</div>';
+    render_chapter_cast($book, $c);   // who's on the page vs mentioned + this chapter's continuity findings
     /* ---- Phase 9c: slide-in Smart-editing panel (renders the cached diagnostics) ---- */
     if (trim((string)$c['body']) !== '') try {
         $dg = get_chapter_diagnostics($book['id'], $c['id']);
@@ -2308,6 +2314,11 @@ case 'threads':
     if ($res) { echo '<h2 style="font-size:15px;margin-top:24px">Resolved</h2><table class="grid"><tr><th>Entry</th><th>Thread</th><th></th></tr>';
         foreach ($res as $t) echo '<tr><td class="muted">'.e($t['entry_name']).'</td><td class="muted">'.inline_md($t['text']).'</td><td><form method="post"><input type="hidden" name="action" value="thread_status"><input type="hidden" name="book" value="'.e($book['id']).'"><input type="hidden" name="id" value="'.$t['id'].'"><input type="hidden" name="status" value="open"><button class="btn sm">Reopen</button></form></td></tr>';
         echo '</table>'; }
+    break;
+
+case 'continuity':
+    if (!profile_has_continuity($book['profile'] ?? 'fiction')) { echo '<p class="empty">Continuity tracking is for narrative books (fiction, memoir).</p>'; break; }
+    render_continuity_page($book);
     break;
 
 case 'tasks':

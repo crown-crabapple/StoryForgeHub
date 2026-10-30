@@ -243,6 +243,9 @@ function render_sidebar($book, $active, $activeDb = null) {
       <a class="navitem <?= $active==='progressions'?'active':'' ?>" href="<?=url(['p'=>'progressions','book'=>$bid])?>"><span class="dot" style="background:#C9933A"></span>Progressions</a>
       <a class="navitem <?= $active==='timeline'?'active':'' ?>" href="<?=url(['p'=>'timeline','book'=>$bid])?>"><span class="dot" style="background:#B07A2E"></span>Timeline</a>
       <a class="navitem <?= $active==='threads'?'active':'' ?>" href="<?=url(['p'=>'threads','book'=>$bid])?>"><span class="dot" style="background:#C25A6E"></span><?=e(threads_label($book['profile'] ?? 'fiction')['nav'])?><span class="count"><?=$book['threadCount']?></span></a>
+      <?php if (profile_has_continuity($book['profile'] ?? 'fiction')): ?>
+      <a class="navitem <?= $active==='continuity'?'active':'' ?>" href="<?=url(['p'=>'continuity','book'=>$bid])?>"><span class="dot" style="background:#A85648"></span>Continuity</a>
+      <?php endif ?>
 
       <div class="navgroup">Work</div>
       <a class="navitem <?= $active==='tasks'?'active':'' ?>" href="<?=url(['p'=>'tasks','book'=>$bid])?>"><span class="dot" style="background:#5b54b8"></span>Tasks<?php if($book['taskCount']):?><span class="count"><?=$book['taskCount']?></span><?php endif?></a>

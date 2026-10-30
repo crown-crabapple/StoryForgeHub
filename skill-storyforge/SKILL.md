@@ -104,6 +104,8 @@ entry or a task rather than inventing canon.
    the author's reason. Never hide a finding by editing the record.
 The check reads only the ledgers, never prose — judgement calls (does the
 scene act on knowledge it shouldn't?) stay with the reviewer.
+The author sees the same findings, ledgers and knowledge on the book's
+**Continuity** page, and each chapter page shows its cast and finding count.
 
 ## Task: "fill in the writing log" / "log my writing"
 1. `codex_list_chapters(book)` and sum the words for the manuscript total.

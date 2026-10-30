@@ -118,6 +118,15 @@ table.grid tr:hover td{background:#FAF5E9}
 .wsdoc h2:first-child{margin-top:4px}
 .wsdoc h3{font-size:15px;margin:18px 0 6px}
 .wsdoc h4{font-size:14px;margin:14px 0 4px;color:var(--muted)}
+/* chapter cast bar (continuity) */
+.castbar{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:4px 0 14px;font-size:13px}
+.castlbl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin-left:6px}
+.castlbl:first-child{margin-left:0}
+.castedit{flex-basis:100%}
+.castedit>summary{list-style:none;display:inline-block;cursor:pointer}
+.castedit>summary::-webkit-details-marker{display:none}
+.castedit form{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px 16px 12px;margin-top:8px;max-width:620px}
+.castedit input[type=text]{width:100%}
 .fieldtable{margin:14px 0}
 .fieldtable .row{display:flex;gap:10px;padding:6px 0;border-bottom:1px dotted var(--line)}
 .fieldtable .lbl{width:170px;flex:none;color:var(--faint);font-size:13px}

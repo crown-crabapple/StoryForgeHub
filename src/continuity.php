@@ -171,6 +171,7 @@ function ch_ord($ref) { return $ref === '' ? 1e9 : prog_chapter_num($ref); }
 /** A kebab id: lowercase letters, digits and hyphens. */
 function ledger_slug($s) {
     $s = strtolower(trim((string)$s));
+    $s = preg_replace("/['’]/u", '', $s);   // "ferryman's" -> ferrymans, not ferryman-s
     $s = preg_replace('/[^a-z0-9]+/', '-', $s);
     return substr(trim($s, '-'), 0, 80);
 }

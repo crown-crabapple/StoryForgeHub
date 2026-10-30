@@ -131,7 +131,7 @@ function continuity_check($book_id, $candidate = null) {
     foreach ($chs as $ref => $c) foreach ($c['cast'] as $slug => $role) {
         if ($role === 'mentioned') continue;
         if (($d = $deadAt($slug, $c['ord'])) !== null)
-            $add('posthumous-appearance', $ref, $slug, "$slug is $role in chapter $ref but died in chapter $d; record them as mentioned if this is a memory or flashback");
+            $add('posthumous-appearance', $ref, $slug, "$slug is " . ($role === 'pov' ? 'the POV' : 'on the page') . " in chapter $ref but died in chapter $d; record them as mentioned if this is a memory or flashback");
     }
     foreach ($facts as $f) {
         if ($f['learned_in'] === '') continue;
