@@ -64,6 +64,28 @@ class FakeApi:
         self.calls.append(("append_doc", payload)); return {"ok": True}
     def lock_docs(self, payload):
         self.calls.append(("lock_docs", payload)); return {"ok": True, "changed": 4}
+    # continuity ledgers
+    def get_ledger(self, book, kind=None, status=None):
+        self.calls.append(("ledger", book, kind, status)); return [{"slug": "the-sealed-letter"}]
+    def save_ledger_item(self, payload):
+        self.calls.append(("ledger_save", payload))
+        if self.conflict:
+            raise ApiError("ledger_save: status for a promise must be planned|planted|paid-off|dropped|abandoned",
+                           {"error": "status for a promise must be planned|planted|paid-off|dropped|abandoned"})
+        return {"ok": True, "created": True, "item": {"slug": "the-sealed-letter"}}
+    def delete_ledger_item(self, payload):
+        self.calls.append(("ledger_delete", payload))
+        raise ApiError("ledger_delete: ledger item not found", {"error": "ledger item not found"})
+    def get_cast(self, book, chapter=None, slug=None):
+        self.calls.append(("cast", book, chapter, slug)); return {"ok": True, "cast": []}
+    def set_cast(self, payload):
+        self.calls.append(("cast_set", payload)); return {"ok": True, "msg": "2 in cast"}
+    def get_knowledge(self, book, character, at=None):
+        self.calls.append(("knowledge", book, character, at)); return {"ok": True, "facts": []}
+    def save_knowledge(self, payload):
+        self.calls.append(("knowledge_save", payload)); return {"ok": True}
+    def delete_knowledge(self, payload):
+        self.calls.append(("knowledge_delete", payload)); return {"ok": True}
 
 
 class Tools(unittest.TestCase):
@@ -227,6 +249,57 @@ class Tools(unittest.TestCase):
         self.assertEqual(self.api.calls[-1], ("append_doc", {"book": "b1", "path": "timeline/history", "markdown": "## Ch 05"}))
         self.assertEqual(self.t.lock_docs("b1", "state/chapter-05")["changed"], 4)
         self.assertEqual(self.api.calls[-1], ("lock_docs", {"book": "b1", "path": "state/chapter-05", "locked": True}))
+
+    # ---- continuity ledgers ----
+    def test_get_ledger_blank_filters_become_none(self):
+        self.t.get_ledger("b1", "", "planted")
+        self.assertEqual(self.api.calls[-1], ("ledger", "b1", None, "planted"))
+
+    def test_save_ledger_item_sends_only_given_fields(self):
+        self.t.save_ledger_item("b1", title="The Sealed Letter", planted_in="chapter-01", characters=["aria"])
+        self.assertEqual(self.api.calls[-1], ("ledger_save", {"book": "b1", "title": "The Sealed Letter",
+                                                              "planted_in": "chapter-01", "characters": ["aria"]}))
+
+    def test_save_ledger_item_empty_string_clears_a_chapter(self):
+        self.t.save_ledger_item("b1", slug="the-sealed-letter", payoff_in="")
+        self.assertEqual(self.api.calls[-1][1], {"book": "b1", "slug": "the-sealed-letter", "payoff_in": ""})
+
+    def test_save_ledger_item_needs_slug_or_title(self):
+        with self.assertRaises(ValueError):
+            self.t.save_ledger_item("b1")
+
+    def test_ledger_refusals_are_returned_as_data(self):
+        self.api.conflict = True
+        r = self.t.save_ledger_item("b1", slug="x", status="open")
+        self.assertEqual(r["status"], "refused")
+        self.assertIn("planned|planted", r["error"])
+        self.assertEqual(self.t.delete_ledger_item("b1", "nope")["error"], "ledger item not found")
+
+    def test_get_cast_passes_chapter_as_string(self):
+        self.t.get_cast("b1", 4)
+        self.assertEqual(self.api.calls[-1], ("cast", "b1", "4", None))
+        self.t.get_cast("b1", slug="aria")
+        self.assertEqual(self.api.calls[-1], ("cast", "b1", None, "aria"))
+
+    def test_set_chapter_cast_accepts_bare_slugs(self):
+        self.t.set_chapter_cast("b1", "chapter-04", [{"slug": "aria", "role": "pov"}, "bram"])
+        self.assertEqual(self.api.calls[-1], ("cast_set", {"book": "b1", "chapter": "chapter-04",
+                                                           "cast": [{"slug": "aria", "role": "pov"}, {"slug": "bram"}]}))
+        with self.assertRaises(ValueError):
+            self.t.set_chapter_cast("b1", " ", [])
+
+    def test_knowledge_at_and_record(self):
+        self.t.knowledge_at("b1", "aria", 12)
+        self.assertEqual(self.api.calls[-1], ("knowledge", "b1", "aria", "12"))
+        self.t.knowledge_at("b1", "aria")
+        self.assertEqual(self.api.calls[-1], ("knowledge", "b1", "aria", None))
+        facts = [{"character": "aria", "knows": "Bram lit the fire", "learned_in": "10"}]
+        self.t.record_knowledge("b1", facts)
+        self.assertEqual(self.api.calls[-1], ("knowledge_save", {"book": "b1", "facts": facts}))
+        with self.assertRaises(ValueError):
+            self.t.record_knowledge("b1", [])
+        self.t.delete_knowledge("b1", "aria", "bram-lit-the-fire")
+        self.assertEqual(self.api.calls[-1], ("knowledge_delete", {"book": "b1", "character": "aria", "fact": "bram-lit-the-fire"}))
 
 
 if __name__ == "__main__":

@@ -97,6 +97,17 @@ class CodexApi:
     def get_doc(self, book: str, path: str) -> dict:
         return (self._call("doc", params={"book": book, "path": path}) or {}).get("doc", {})
 
+    # --- continuity: ledger, chapter cast, character knowledge ---
+    def get_ledger(self, book: str, kind: Optional[str] = None, status: Optional[str] = None) -> List[dict]:
+        p = {"book": book, "kind": kind, "status": status}
+        return (self._call("ledger", params=p) or {}).get("items", [])
+
+    def get_cast(self, book: str, chapter: Optional[str] = None, slug: Optional[str] = None) -> dict:
+        return self._call("cast", params={"book": book, "chapter": chapter, "slug": slug}) or {}
+
+    def get_knowledge(self, book: str, character: str, at: Optional[str] = None) -> dict:
+        return self._call("knowledge", params={"book": book, "character": character, "at": at}) or {}
+
     # --- granular writes ---
     def save_doc(self, payload: dict) -> dict:
         """{book, path, markdown, base_hash?, title?} — conflicts (409) and
@@ -109,6 +120,21 @@ class CodexApi:
 
     def lock_docs(self, payload: dict) -> dict:
         return self._call("lock_docs", body=payload)
+
+    def save_ledger_item(self, payload: dict) -> dict:
+        return self._call("ledger_save", body=payload)
+
+    def delete_ledger_item(self, payload: dict) -> dict:
+        return self._call("ledger_delete", body=payload)
+
+    def set_cast(self, payload: dict) -> dict:
+        return self._call("cast_set", body=payload)
+
+    def save_knowledge(self, payload: dict) -> dict:
+        return self._call("knowledge_save", body=payload)
+
+    def delete_knowledge(self, payload: dict) -> dict:
+        return self._call("knowledge_delete", body=payload)
 
     def create_task(self, task: dict) -> dict:
         return self._call("task_create", body=task)

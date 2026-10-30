@@ -201,6 +201,81 @@ case 'lock_docs':       // POST {book, path, locked?=true} — path may be a fol
     log_activity($bookParam, $lock ? 'doc_lock' : 'doc_unlock', ws_norm_path($body['path']) . ' (' . $n . ')');
     out(['ok' => true, 'locked' => $lock, 'changed' => $n]);
 
+/* ---- continuity: promise/question ledger, chapter cast, character knowledge ---- */
+
+case 'ledger':          // ?book=ID[&kind=promise|question][&status=planted]
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    out(['ok' => true, 'items' => get_ledger($bookParam, $_GET['kind'] ?? null, $_GET['status'] ?? null)]);
+
+case 'ledger_save':     // POST {book, slug?|title, kind?, status?, planted_in?, payoff_in?, characters?, notes?} — merge by slug
+case 'ledger_delete':   // POST {book, slug}
+    if (!$body) out(['error' => 'expected JSON body'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    if ($action === 'ledger_delete') {
+        if (!delete_ledger_item($bookParam, $body['slug'] ?? '')) out(['error' => 'ledger item not found'], 404);
+        log_activity($bookParam, $action, (string)$body['slug']);
+        out(['ok' => true]);
+    }
+    $r = save_ledger_item($bookParam, $body);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['item']['slug']);
+    unset($r['status']);
+    out(['ok' => true] + $r);
+
+case 'cast':            // ?book=ID[&chapter=4|file][&slug=aria]  → one chapter's cast, a slug's chapters, or every chapter's cast
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    if (!empty($_GET['slug'])) out(['ok' => true, 'slug' => ledger_slug($_GET['slug']), 'chapters' => get_slug_appearances($bookParam, $_GET['slug'])]);
+    if (!empty($_GET['chapter'])) {
+        $ch = find_chapter_ref($bookParam, $_GET['chapter']);
+        if (!$ch) out(['error' => 'chapter not found'], 404);
+        out(['ok' => true, 'chapter' => ['file' => $ch['file'], 'num' => $ch['num'], 'title' => $ch['title']], 'cast' => get_chapter_cast($bookParam, $ch['file'])]);
+    }
+    out(['ok' => true, 'cast' => get_chapter_cast($bookParam)]);
+
+case 'cast_set':        // POST {book, chapter (number or file), cast:[{slug, role: pov|appears|mentioned}]} — replaces the chapter's cast
+    if (!$body || !isset($body['cast'])) out(['error' => 'expected {book, chapter, cast:[...]}'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    $ch = find_chapter_ref($bookParam, $body['chapter'] ?? '');
+    if (!$ch) out(['error' => 'chapter not found'], 404);
+    $r = set_chapter_cast($bookParam, $ch['file'], $body['cast']);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $ch['file']);
+    unset($r['status']);
+    out(['ok' => true, 'chapter' => ['file' => $ch['file'], 'num' => $ch['num']]] + $r);
+
+case 'knowledge':       // ?book=ID&character=aria[&at=12]  → facts known (by chapter 12) + arc beats
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam || empty($_GET['character'])) out(['error' => 'book and character are required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $k = knowledge_at($bookParam, $_GET['character'], $_GET['at'] ?? '');
+    if ($k === null) out(['error' => 'at must be a chapter number'], 400);
+    out(['ok' => true] + $k);
+
+case 'knowledge_save':  // POST {book, facts:[{character, knows, learned_in?, fact?}]}
+case 'knowledge_delete': // POST {book, character, fact}
+    if (!$body) out(['error' => 'expected JSON body'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    if ($action === 'knowledge_delete') {
+        if (!delete_knowledge($bookParam, $body['character'] ?? '', $body['fact'] ?? '')) out(['error' => 'fact not found'], 404);
+        log_activity($bookParam, $action, ($body['character'] ?? '') . '/' . ($body['fact'] ?? ''));
+        out(['ok' => true]);
+    }
+    $r = save_knowledge($bookParam, $body['facts'] ?? null);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['msg']);
+    unset($r['status']);
+    out(['ok' => true] + $r);
+
 case 'task_create':     // POST {book,title,body?,for_claude?,priority?}
     if (!$body || trim((string)($body['title'] ?? '')) === '') out(['error' => 'expected {book,title,...}'], 400);
     $bookParam = (string)($body['book'] ?? '');

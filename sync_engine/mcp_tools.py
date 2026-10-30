@@ -251,3 +251,74 @@ class CodexTools:
             raise ValueError("title is required")
         return self.api.create_chapter({"book": book, "title": title, "num": num})
 
+
+    # ---- continuity: promise/question ledger, chapter cast, character knowledge ----
+    def get_ledger(self, book: str, kind: Optional[str] = None,
+                   status: Optional[str] = None) -> List[dict]:
+        return self.api.get_ledger(book, kind or None, status or None)
+
+    def save_ledger_item(self, book: str, slug: str = "", title: str = "", kind: str = "",
+                         status: str = "", planted_in: Optional[str] = None,
+                         payoff_in: Optional[str] = None, characters: Optional[List[str]] = None,
+                         notes: Optional[str] = None) -> dict:
+        """Create or merge-update one promise/question. Only the fields you pass
+        change; an empty planted_in/payoff_in string clears that chapter.
+        Validation refusals come back as data."""
+        if not (slug or "").strip() and not (title or "").strip():
+            raise ValueError("slug or title is required")
+        payload: Dict[str, Any] = {"book": book}
+        for k, v in (("slug", slug), ("title", title), ("kind", kind), ("status", status)):
+            if v:
+                payload[k] = v
+        for k, v in (("planted_in", planted_in), ("payoff_in", payoff_in),
+                     ("characters", characters), ("notes", notes)):
+            if v is not None:
+                payload[k] = v
+        try:
+            return self.api.save_ledger_item(payload)
+        except ApiError as e:
+            return self._refusal(e)
+
+    def delete_ledger_item(self, book: str, slug: str) -> dict:
+        if not (slug or "").strip():
+            raise ValueError("slug is required")
+        try:
+            return self.api.delete_ledger_item({"book": book, "slug": slug})
+        except ApiError as e:
+            return self._refusal(e)
+
+    def get_cast(self, book: str, chapter: Optional[str] = None,
+                 slug: Optional[str] = None) -> dict:
+        return self.api.get_cast(book, str(chapter) if chapter else None, slug or None)
+
+    def set_chapter_cast(self, book: str, chapter: str, cast: List[dict]) -> dict:
+        """Replace a chapter's cast: [{slug, role: pov|appears|mentioned}]."""
+        if not str(chapter or "").strip():
+            raise ValueError("chapter is required")
+        rows = [c if isinstance(c, dict) else {"slug": c} for c in (cast or [])]
+        try:
+            return self.api.set_cast({"book": book, "chapter": str(chapter), "cast": rows})
+        except ApiError as e:
+            return self._refusal(e)
+
+    def knowledge_at(self, book: str, character: str, at: Optional[str] = None) -> dict:
+        if not (character or "").strip():
+            raise ValueError("character is required")
+        return self.api.get_knowledge(book, character, str(at) if at else None)
+
+    def record_knowledge(self, book: str, facts: List[dict]) -> dict:
+        """Upsert facts: [{character, knows, learned_in?, fact?}]; all-or-nothing."""
+        if not facts:
+            raise ValueError("facts is required")
+        try:
+            return self.api.save_knowledge({"book": book, "facts": facts})
+        except ApiError as e:
+            return self._refusal(e)
+
+    def delete_knowledge(self, book: str, character: str, fact: str) -> dict:
+        if not (character or "").strip() or not (fact or "").strip():
+            raise ValueError("character and fact are required")
+        try:
+            return self.api.delete_knowledge({"book": book, "character": character, "fact": fact})
+        except ApiError as e:
+            return self._refusal(e)

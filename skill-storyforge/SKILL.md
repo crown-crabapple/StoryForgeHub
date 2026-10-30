@@ -72,6 +72,23 @@ Each book has a **Workspace** of Markdown docs for the planning layer:
 - Once a chapter's state is final, `codex_lock_docs(book, "state/chapter-NN")`.
   Locked docs refuse writes; only the author can unlock.
 
+## Continuity ledgers (promises, chapter cast, knowledge)
+Structured story state the Workspace prose can't check:
+- **Promises & questions** — `codex_get_ledger(book)` before planning a
+  chapter; `codex_save_ledger_item` when a chapter plants a setup or poses a
+  question (`planted_in`) and again when it pays off / resolves (`payoff_in`).
+  One item per setup. Retire with status `dropped`/`abandoned`, don't delete.
+- **Cast** — after a chapter is final, `codex_set_chapter_cast(book, chapter,
+  [{slug, role}])`: `pov`, `appears` (physically on the page) or `mentioned`
+  (memory, letter, flashback, talk). A dead character in a flashback is
+  `mentioned`, never `appears`.
+- **Knowledge** — `codex_record_knowledge` for what each character learned in
+  the chapter (`learned_in`); `codex_knowledge_at(book, character, at=N)`
+  before writing a scene, so a POV character never acts on what they don't
+  know yet.
+Slugs are bible entry slugs; an unknown slug saves with a warning — create the
+entry or a task rather than inventing canon.
+
 ## Task: "fill in the writing log" / "log my writing"
 1. `codex_list_chapters(book)` and sum the words for the manuscript total.
 2. Compare to the last logged baseline (`codex_get_tasks` is not the log —

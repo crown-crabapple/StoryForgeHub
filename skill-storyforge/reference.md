@@ -77,6 +77,14 @@ the app's Account page.
 | `codex_save_doc(book, path, markdown, base_hash="", title="")` | create (no hash) or update (hash required) a Workspace doc; refusals carry `current_hash` + `current_body` |
 | `codex_append_doc(book, path, markdown)` | add to the end of a doc (creates it); the only way `timeline/history` grows |
 | `codex_lock_docs(book, path, locked=true)` | lock a doc or folder (e.g. `state/chapter-05`) once the chapter is done |
+| `codex_get_ledger(book, kind?, status?)` | promises and questions, ordered by setup chapter |
+| `codex_save_ledger_item(book, slug?, title?, kind?, status?, planted_in?, payoff_in?, characters?, notes?)` | create/merge one promise or question by slug; `''` clears a chapter; refusals come back as data |
+| `codex_delete_ledger_item(book, slug)` | remove an item recorded by mistake (retire real ones with `dropped`) |
+| `codex_get_cast(book, chapter?, slug?)` | a chapter's cast, or every chapter a slug is in, with role |
+| `codex_set_chapter_cast(book, chapter, cast)` | replace a chapter's cast: `[{slug, role: pov\|appears\|mentioned}]` |
+| `codex_knowledge_at(book, character, at?)` | facts the character knows by chapter `at`, plus arc beats to that point |
+| `codex_record_knowledge(book, facts)` | upsert `[{character, knows, learned_in?, fact?}]`, all-or-nothing |
+| `codex_delete_knowledge(book, character, fact)` | remove one recorded fact |
 
 ### Workspace paths
 Claude-Book relpaths without `.md`: `book`, `synopsis`, `plan` (the outline),
@@ -84,6 +92,15 @@ Claude-Book relpaths without `.md`: `book`, `synopsis`, `plan` (the outline),
 `state/chapter-NN/{characters,inventory,knowledge,situation}`;
 `timeline/history` (append-only) and `timeline/current-chapter`.
 `state/current/*` is virtual and can't be written.
+
+### Continuity ledgers
+Chapter refs are chapter numbers: `7`, `chapter-07` and `Ch. 7` all store as
+`7`; `prologue`/`epilogue` are allowed. A payoff may name an unwritten chapter.
+Promise status: `planned | planted | paid-off | dropped | abandoned`
+(default from the chapters). Question status: `open | resolved | dropped |
+abandoned`; for a question `planted_in` = introduced, `payoff_in` = resolved.
+Cast is keyed to the chapter file, so renumbering keeps it. A knowledge fact
+with no `learned_in` was known before the story.
 
 Every write flows through the app's `api.php` (the single DB-writer path) under
 the author's own permissions — a viewer-role connector can read but not write.

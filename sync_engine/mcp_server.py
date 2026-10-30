@@ -205,6 +205,77 @@ def build_app(service_token: str, api_url: str, public_url: str = ""):
         return tools.lock_docs(book, path, locked)
 
     @mcp.tool()
+    def codex_get_ledger(book: str, kind: str | None = None, status: str | None = None) -> list:
+        """The book's promises and open questions, ordered by the chapter that
+        sets them up. kind: promise|question. Promise status: planned|planted|
+        paid-off|dropped|abandoned; question status: open|resolved|dropped|
+        abandoned. planted_in/payoff_in are chapter numbers (for a question:
+        introduced / resolved). Check this before planning a chapter so setups
+        get paid off and no payoff lands before its setup."""
+        return tools.get_ledger(book, kind, status)
+
+    @mcp.tool()
+    def codex_save_ledger_item(book: str, slug: str = "", title: str = "", kind: str = "",
+                               status: str = "", planted_in: str | None = None,
+                               payoff_in: str | None = None, characters: list[str] | None = None,
+                               notes: str | None = None) -> dict:
+        """Create or update one promise (a setup the reader expects to pay off)
+        or question (something the reader is waiting to learn), keyed by slug
+        (derived from title when new). Only the fields you pass change.
+        Chapters accept '7', 'chapter-07' or 'Ch. 7'; '' clears one. Status
+        defaults from the chapters (planted / paid-off, open / resolved).
+        kind defaults to promise and can't change later. Record one item per
+        setup, at the chapter where it is planted or paid off."""
+        return tools.save_ledger_item(book, slug, title, kind, status, planted_in,
+                                      payoff_in, characters, notes)
+
+    @mcp.tool()
+    def codex_delete_ledger_item(book: str, slug: str) -> dict:
+        """Delete a ledger item recorded by mistake. To retire a real setup,
+        save it with status 'dropped' or 'abandoned' instead."""
+        return tools.delete_ledger_item(book, slug)
+
+    @mcp.tool()
+    def codex_get_cast(book: str, chapter: str | None = None, slug: str | None = None) -> dict:
+        """Who is in a chapter. With chapter (number or file): that chapter's
+        cast as {slug, role} — role pov|appears (physically present) or
+        mentioned (remembered, in a letter or flashback, talked about). With
+        slug: every chapter that character/object is in, with its role.
+        With neither: every recorded chapter cast."""
+        return tools.get_cast(book, chapter, slug)
+
+    @mcp.tool()
+    def codex_set_chapter_cast(book: str, chapter: str, cast: list[dict]) -> dict:
+        """Replace a chapter's cast: [{slug, role}] with role pov|appears|
+        mentioned (default appears; at most one pov). Use 'appears' only for
+        those physically on the page; a dead character in a flashback or a
+        letter is 'mentioned'. Slugs are bible entry slugs (characters,
+        objects); unknown slugs are saved with a warning."""
+        return tools.set_chapter_cast(book, chapter, cast)
+
+    @mcp.tool()
+    def codex_knowledge_at(book: str, character: str, at: str | None = None) -> dict:
+        """What a character knows by chapter `at` (all chapters if omitted):
+        facts known before the story plus those learned up to and including
+        that chapter, each with learned_in, and the character's arc beats
+        (progressions) up to that point. Use it to keep a scene inside a POV
+        character's knowledge."""
+        return tools.knowledge_at(book, character, at)
+
+    @mcp.tool()
+    def codex_record_knowledge(book: str, facts: list[dict]) -> dict:
+        """Record what characters learn: [{character, knows, learned_in?, fact?}].
+        learned_in is the chapter number ('' = known before the story); fact is
+        a short kebab id, unique per character, derived from `knows` if
+        omitted — saving the same id again updates it. All-or-nothing."""
+        return tools.record_knowledge(book, facts)
+
+    @mcp.tool()
+    def codex_delete_knowledge(book: str, character: str, fact: str) -> dict:
+        """Delete one recorded fact (by its fact id) for a character."""
+        return tools.delete_knowledge(book, character, fact)
+
+    @mcp.tool()
     def codex_get_tasks(book: str | None = None, for_claude: int | None = None,
                         status: str | None = None) -> list:
         """List tasks, optionally filtered (for_claude=1, status=todo)."""

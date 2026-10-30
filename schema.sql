@@ -406,3 +406,42 @@ CREATE TABLE IF NOT EXISTS workspace_revisions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 SET foreign_key_checks = 1;
+
+-- Continuity ledgers (src/continuity.php, lazy-created by ensure_continuity()).
+-- Chapter refs in story_ledger / knowledge_facts are normalised chapter numbers
+-- ("4", "3.5", "prologue"); chapter_cast is keyed by chapters.file.
+CREATE TABLE IF NOT EXISTS story_ledger (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  book_id        VARCHAR(40)  NOT NULL,
+  kind           VARCHAR(10)  NOT NULL,                -- promise|question
+  slug           VARCHAR(80)  NOT NULL,
+  title          VARCHAR(255) DEFAULT '',
+  status         VARCHAR(20)  DEFAULT '',              -- planned|planted|paid-off|dropped|abandoned / open|resolved|dropped|abandoned
+  planted_in     VARCHAR(20)  DEFAULT '',              -- question: introduced
+  payoff_in      VARCHAR(20)  DEFAULT '',              -- question: resolved
+  characters_csv TEXT,
+  notes          TEXT,
+  updated_by     INT          DEFAULT NULL,
+  updated_at     DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_ledger (book_id, slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS chapter_cast (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  book_id      VARCHAR(40)  NOT NULL,
+  chapter_file VARCHAR(255) NOT NULL,
+  slug         VARCHAR(80)  NOT NULL,
+  role         VARCHAR(12)  NOT NULL DEFAULT 'appears', -- pov|appears|mentioned
+  sort_order   INT          DEFAULT 0,
+  UNIQUE KEY uniq_cast (book_id, chapter_file, slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS knowledge_facts (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  book_id        VARCHAR(40)  NOT NULL,
+  character_slug VARCHAR(80)  NOT NULL,
+  fact           VARCHAR(80)  NOT NULL,
+  knows          TEXT,
+  learned_in     VARCHAR(20)  DEFAULT '',              -- '' = known before the story
+  updated_by     INT          DEFAULT NULL,
+  updated_at     DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_fact (book_id, character_slug, fact)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
