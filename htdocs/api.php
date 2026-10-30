@@ -276,6 +276,63 @@ case 'knowledge_delete': // POST {book, character, fact}
     unset($r['status']);
     out(['ok' => true] + $r);
 
+case 'state_events':    // ?book=ID[&slug=aria]  → deaths/revivals, object destroyed/lost/found/holder/location, in story order
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    out(['ok' => true, 'events' => get_state_events($bookParam, !empty($_GET['slug']) ? $_GET['slug'] : null)]);
+
+case 'state_events_save':   // POST {book, events:[{slug, event, chapter, value?, note?}]}
+case 'state_event_delete':  // POST {book, slug, event, chapter}
+    if (!$body) out(['error' => 'expected JSON body'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    if ($action === 'state_event_delete') {
+        if (!delete_state_event($bookParam, $body['slug'] ?? '', $body['event'] ?? '', $body['chapter'] ?? '')) out(['error' => 'event not found'], 404);
+        log_activity($bookParam, $action, ($body['slug'] ?? '') . ' ' . ($body['event'] ?? ''));
+        out(['ok' => true]);
+    }
+    $r = save_state_events($bookParam, $body['events'] ?? null);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['msg']);
+    unset($r['status']);
+    out(['ok' => true] + $r);
+
+case 'continuity_check':    // GET ?book=ID, or POST {book, candidate?:{chapter, cast?}} — read-only, saves nothing
+    $bookParam = (string)($body['book'] ?? ($_GET['book'] ?? ''));
+    if (!$bookParam || !get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $r = continuity_check($bookParam, $body['candidate'] ?? null);
+    if (isset($r['error'])) out(['error' => $r['error']], 400);
+    out(['ok' => true] + $r);
+
+case 'exemptions':          // ?book=ID → dismissed-finding rules
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    out(['ok' => true, 'exemptions' => get_exemptions($bookParam)]);
+
+case 'exemption_save':      // POST {book, code, slug?, chapter?, reason}
+case 'exemption_delete':    // POST {book, code, slug?, chapter?}
+case 'continuity_settings': // POST {book, promise_gap?, question_gap?} (0 = default)
+    if (!$body) out(['error' => 'expected JSON body'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, $action === 'continuity_settings' ? 'manage' : 'edit');
+    if ($action === 'exemption_delete') {
+        if (!delete_exemption($bookParam, $body['code'] ?? '', $body['slug'] ?? '', $body['chapter'] ?? '')) out(['error' => 'exemption not found'], 404);
+        log_activity($bookParam, $action, (string)($body['code'] ?? ''));
+        out(['ok' => true]);
+    }
+    $r = $action === 'exemption_save'
+        ? save_exemption($bookParam, $body['code'] ?? '', $body['slug'] ?? '', $body['chapter'] ?? '', $body['reason'] ?? '')
+        : set_continuity_thresholds($bookParam, $body['promise_gap'] ?? null, $body['question_gap'] ?? null);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['msg'] ?? '');
+    unset($r['status']);
+    out(['ok' => true] + $r);
+
 case 'task_create':     // POST {book,title,body?,for_claude?,priority?}
     if (!$body || trim((string)($body['title'] ?? '')) === '') out(['error' => 'expected {book,title,...}'], 400);
     $bookParam = (string)($body['book'] ?? '');

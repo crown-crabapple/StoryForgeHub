@@ -86,6 +86,25 @@ class FakeApi:
         self.calls.append(("knowledge_save", payload)); return {"ok": True}
     def delete_knowledge(self, payload):
         self.calls.append(("knowledge_delete", payload)); return {"ok": True}
+    def get_state_events(self, book, slug=None):
+        self.calls.append(("state_events", book, slug)); return [{"slug": "aria", "event": "died", "chapter": "4"}]
+    def save_state_events(self, payload):
+        self.calls.append(("state_events_save", payload)); return {"ok": True}
+    def delete_state_event(self, payload):
+        self.calls.append(("state_event_delete", payload)); return {"ok": True}
+    def continuity_check(self, payload):
+        self.calls.append(("continuity_check", payload))
+        if self.conflict:
+            raise ApiError("continuity_check: candidate.chapter must be a chapter number",
+                           {"error": "candidate.chapter must be a chapter number"})
+        return {"ok": True, "pass": False, "errors": 1, "findings": [{"code": "posthumous-appearance"}]}
+    def save_exemption(self, payload):
+        self.calls.append(("exemption_save", payload))
+        raise ApiError("exemption_save: a reason is required", {"error": "a reason is required"})
+    def delete_exemption(self, payload):
+        self.calls.append(("exemption_delete", payload)); return {"ok": True}
+    def set_continuity_settings(self, payload):
+        self.calls.append(("continuity_settings", payload)); return {"ok": True}
 
 
 class Tools(unittest.TestCase):
@@ -300,6 +319,55 @@ class Tools(unittest.TestCase):
             self.t.record_knowledge("b1", [])
         self.t.delete_knowledge("b1", "aria", "bram-lit-the-fire")
         self.assertEqual(self.api.calls[-1], ("knowledge_delete", {"book": "b1", "character": "aria", "fact": "bram-lit-the-fire"}))
+
+    # ---- state events + continuity check ----
+    def test_continuity_check_whole_book(self):
+        r = self.t.continuity_check("b1")
+        self.assertEqual(self.api.calls[-1], ("continuity_check", {"book": "b1"}))
+        self.assertFalse(r["pass"])
+
+    def test_continuity_check_candidate(self):
+        self.t.continuity_check("b1", 7, [{"slug": "aria", "role": "pov"}, "bram"])
+        self.assertEqual(self.api.calls[-1], ("continuity_check", {"book": "b1", "candidate": {
+            "chapter": "7", "cast": [{"slug": "aria", "role": "pov"}, {"slug": "bram"}]}}))
+        self.t.continuity_check("b1", "chapter-07")
+        self.assertEqual(self.api.calls[-1][1]["candidate"], {"chapter": "chapter-07"})
+        with self.assertRaises(ValueError):
+            self.t.continuity_check("b1", cast=["aria"])
+
+    def test_continuity_check_refusal_is_data(self):
+        self.api.conflict = True
+        r = self.t.continuity_check("b1", "soon")
+        self.assertEqual(r["status"], "refused")
+
+    def test_state_events_shapes(self):
+        self.assertEqual(self.t.get_state_events("b1", "")[0]["event"], "died")
+        self.assertEqual(self.api.calls[-1], ("state_events", "b1", None))
+        ev = [{"slug": "aria", "event": "died", "chapter": "4"}]
+        self.t.record_state_events("b1", ev)
+        self.assertEqual(self.api.calls[-1], ("state_events_save", {"book": "b1", "events": ev}))
+        self.t.delete_state_event("b1", "aria", "died", 4)
+        self.assertEqual(self.api.calls[-1][1]["chapter"], "4")
+        with self.assertRaises(ValueError):
+            self.t.record_state_events("b1", [])
+        with self.assertRaises(ValueError):
+            self.t.delete_state_event("b1", "aria", "died", "")
+
+    def test_dismiss_and_restore(self):
+        r = self.t.dismiss_finding("b1", "promise-unpaid", "Pays off in book two", slug="the-letter")
+        self.assertEqual(self.api.calls[-1], ("exemption_save", {"book": "b1", "code": "promise-unpaid", "slug": "the-letter",
+                                                                "chapter": "", "reason": "Pays off in book two"}))
+        self.assertEqual(r["status"], "refused")
+        with self.assertRaises(ValueError):
+            self.t.dismiss_finding("b1", "promise-unpaid", " ")
+        self.t.restore_finding("b1", "promise-unpaid", chapter=4)
+        self.assertEqual(self.api.calls[-1], ("exemption_delete", {"book": "b1", "code": "promise-unpaid", "slug": "", "chapter": "4"}))
+
+    def test_thresholds(self):
+        self.t.set_continuity_thresholds("b1", question_gap=8)
+        self.assertEqual(self.api.calls[-1], ("continuity_settings", {"book": "b1", "question_gap": 8}))
+        with self.assertRaises(ValueError):
+            self.t.set_continuity_thresholds("b1")
 
 
 if __name__ == "__main__":

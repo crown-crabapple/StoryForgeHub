@@ -108,6 +108,13 @@ class CodexApi:
     def get_knowledge(self, book: str, character: str, at: Optional[str] = None) -> dict:
         return self._call("knowledge", params={"book": book, "character": character, "at": at}) or {}
 
+    def get_state_events(self, book: str, slug: Optional[str] = None) -> List[dict]:
+        return (self._call("state_events", params={"book": book, "slug": slug}) or {}).get("events", [])
+
+    def continuity_check(self, payload: dict) -> dict:
+        """{book, candidate?:{chapter, cast?}} — read-only."""
+        return self._call("continuity_check", body=payload)
+
     # --- granular writes ---
     def save_doc(self, payload: dict) -> dict:
         """{book, path, markdown, base_hash?, title?} — conflicts (409) and
@@ -135,6 +142,21 @@ class CodexApi:
 
     def delete_knowledge(self, payload: dict) -> dict:
         return self._call("knowledge_delete", body=payload)
+
+    def save_state_events(self, payload: dict) -> dict:
+        return self._call("state_events_save", body=payload)
+
+    def delete_state_event(self, payload: dict) -> dict:
+        return self._call("state_event_delete", body=payload)
+
+    def save_exemption(self, payload: dict) -> dict:
+        return self._call("exemption_save", body=payload)
+
+    def delete_exemption(self, payload: dict) -> dict:
+        return self._call("exemption_delete", body=payload)
+
+    def set_continuity_settings(self, payload: dict) -> dict:
+        return self._call("continuity_settings", body=payload)
 
     def create_task(self, task: dict) -> dict:
         return self._call("task_create", body=task)

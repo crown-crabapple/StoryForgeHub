@@ -85,6 +85,13 @@ the app's Account page.
 | `codex_knowledge_at(book, character, at?)` | facts the character knows by chapter `at`, plus arc beats to that point |
 | `codex_record_knowledge(book, facts)` | upsert `[{character, knows, learned_in?, fact?}]`, all-or-nothing |
 | `codex_delete_knowledge(book, character, fact)` | remove one recorded fact |
+| `codex_continuity_check(book, chapter?, cast?)` | deterministic findings over the ledgers; with chapter (+cast) checks a draft as a candidate without saving |
+| `codex_get_state_events(book, slug?)` | deaths/revivals and object destroyed/lost/found/holder/location, in story order |
+| `codex_record_state_events(book, events)` | upsert `[{slug, event, chapter, value?, note?}]`, all-or-nothing |
+| `codex_delete_state_event(book, slug, event, chapter)` | remove one event recorded by mistake |
+| `codex_dismiss_finding(book, code, reason, slug?, chapter?)` | dismiss a deliberate finding (slug and/or chapter required) |
+| `codex_restore_finding(book, code, slug?, chapter?)` | undo a dismissal |
+| `codex_set_continuity_thresholds(book, promise_gap?, question_gap?)` | chapters before unpaid/unanswered warnings (defaults 3 / 12; owner only) |
 
 ### Workspace paths
 Claude-Book relpaths without `.md`: `book`, `synopsis`, `plan` (the outline),
@@ -101,6 +108,20 @@ Promise status: `planned | planted | paid-off | dropped | abandoned`
 abandoned`; for a question `planted_in` = introduced, `payoff_in` = resolved.
 Cast is keyed to the chapter file, so renumbering keeps it. A knowledge fact
 with no `learned_in` was known before the story.
+State events hold as of the END of their chapter (revived in 9 → may appear
+in 9). A death or loss counts once its chapter is drafted.
+
+### Continuity finding codes
+Errors: `posthumous-appearance` (dead character is pov/appears — `mentioned`
+is fine), `posthumous-learning`, `revived-without-death`, `gone-object-used`
+(destroyed/lost object on the page, or moved after destruction),
+`promise-payoff-before-plant`, `question-resolved-before-introduced`,
+`promise-plant-missing`, `promise-payoff-missing`,
+`question-resolution-missing`, `question-open-but-resolved`.
+Warnings: `deceased-holder`, `object-away-from-holder` (object appears; its
+last holder isn't on the page and no handover is recorded),
+`promise-stale-planned`, `promise-payoff-passed`, `promise-unpaid`,
+`question-unanswered`, `pov-not-in-cast`, `missing-chapter`, `unknown-entry`.
 
 Every write flows through the app's `api.php` (the single DB-writer path) under
 the author's own permissions — a viewer-role connector can read but not write.

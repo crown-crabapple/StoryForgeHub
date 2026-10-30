@@ -276,6 +276,67 @@ def build_app(service_token: str, api_url: str, public_url: str = ""):
         return tools.delete_knowledge(book, character, fact)
 
     @mcp.tool()
+    def codex_continuity_check(book: str, chapter: str | None = None,
+                               cast: list[dict] | None = None) -> dict:
+        """Deterministic continuity check over the recorded ledgers (cast,
+        state events, knowledge, promises/questions) — no prose is read, the
+        same data always gives the same findings. Run it BEFORE the AI
+        reviewers. With chapter (+ optional cast [{slug, role}]) a draft
+        chapter is checked as a candidate without saving; its findings carry
+        candidate=true. Returns pass, errors, warnings, findings
+        [{code, severity, chapter, slug, message}] (errors first) and
+        dismissed_findings. Errors are plain contradictions (dead character on
+        the page, payoff before setup, destroyed object used) — fix the
+        chapter or the record. Warnings are prompts (unpaid promise, object
+        away from its holder). Dismiss a deliberate one with
+        codex_dismiss_finding, never by editing the record to hide it."""
+        return tools.continuity_check(book, chapter, cast)
+
+    @mcp.tool()
+    def codex_get_state_events(book: str, slug: str | None = None) -> list:
+        """Status changes in story order: characters died|revived; objects
+        destroyed|lost|found, holder (value = who has it), location
+        (value = where it is). Each holds as of the end of its chapter."""
+        return tools.get_state_events(book, slug)
+
+    @mcp.tool()
+    def codex_record_state_events(book: str, events: list[dict]) -> dict:
+        """Record status changes after a chapter: [{slug, event, chapter,
+        value?, note?}]. event: died|revived (characters) or destroyed|lost|
+        found|holder|location (objects); holder and location need value (a
+        slug). One per (slug, event, chapter) — saving again replaces it.
+        All-or-nothing. Record a handover as a holder event in the chapter it
+        happens."""
+        return tools.record_state_events(book, events)
+
+    @mcp.tool()
+    def codex_delete_state_event(book: str, slug: str, event: str, chapter: str) -> dict:
+        """Delete one recorded state event (recorded by mistake)."""
+        return tools.delete_state_event(book, slug, event, chapter)
+
+    @mcp.tool()
+    def codex_dismiss_finding(book: str, code: str, reason: str,
+                              slug: str = "", chapter: str = "") -> dict:
+        """Dismiss a deliberate continuity finding (a seance, an unreliable
+        narrator, a payoff in the sequel). Needs the finding code, a reason,
+        and its slug and/or chapter — a code alone is refused as too broad.
+        Dismissed findings still show under dismissed_findings."""
+        return tools.dismiss_finding(book, code, reason, slug, chapter)
+
+    @mcp.tool()
+    def codex_restore_finding(book: str, code: str, slug: str = "", chapter: str = "") -> dict:
+        """Undo a dismissal (same code/slug/chapter it was saved with)."""
+        return tools.restore_finding(book, code, slug, chapter)
+
+    @mcp.tool()
+    def codex_set_continuity_thresholds(book: str, promise_gap: int | None = None,
+                                        question_gap: int | None = None) -> dict:
+        """How many chapters a planted promise (default 3) or an open question
+        (default 12) may go unanswered before a warning. 0 restores the
+        default. Needs the owner role."""
+        return tools.set_continuity_thresholds(book, promise_gap, question_gap)
+
+    @mcp.tool()
     def codex_get_tasks(book: str | None = None, for_claude: int | None = None,
                         status: str | None = None) -> list:
         """List tasks, optionally filtered (for_claude=1, status=todo)."""

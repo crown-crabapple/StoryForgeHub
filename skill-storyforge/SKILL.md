@@ -88,6 +88,22 @@ Structured story state the Workspace prose can't check:
   know yet.
 Slugs are bible entry slugs; an unknown slug saves with a warning — create the
 entry or a task rather than inventing canon.
+- **State events** — after a chapter, `codex_record_state_events` for deaths
+  and revivals, and objects destroyed / lost / found / changing `holder` or
+  `location`, each in the chapter it happens.
+
+## Task: "check continuity" (and before every chapter review)
+1. `codex_continuity_check(book)` — or, for a draft not yet saved,
+   `codex_continuity_check(book, chapter=N, cast=[...])` (nothing is saved).
+2. **Errors** are contradictions in the record: fix the draft, or fix the
+   record if the record is wrong. Report what you changed.
+3. **Warnings** are prompts: an unpaid promise, an object away from its holder.
+   Mention them; act only if the author's plan agrees.
+4. A deliberate break (a seance, an unreliable narrator, a payoff in the
+   sequel) → `codex_dismiss_finding(book, code, reason, slug?, chapter?)` with
+   the author's reason. Never hide a finding by editing the record.
+The check reads only the ledgers, never prose — judgement calls (does the
+scene act on knowledge it shouldn't?) stay with the reviewer.
 
 ## Task: "fill in the writing log" / "log my writing"
 1. `codex_list_chapters(book)` and sum the words for the manuscript total.

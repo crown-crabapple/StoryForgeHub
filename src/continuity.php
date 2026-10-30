@@ -16,6 +16,8 @@
  *  human-readable view; these tables are the checkable data.
  *  Loaded by repo.php. Lazy-migrated (ensure_continuity) like the other P-tables. */
 
+require_once __DIR__ . '/continuity_check.php';   // the deterministic checks over these tables
+
 const LEDGER_KINDS = ['promise', 'question'];
 const LEDGER_STATUSES = [
     'promise'  => ['planned', 'planted', 'paid-off', 'dropped', 'abandoned'],
@@ -41,6 +43,116 @@ function ensure_continuity() {
         knows TEXT, learned_in VARCHAR(20) DEFAULT '', updated_by INT DEFAULT NULL,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP )"); } catch (Exception $e) {}
     try { db()->exec("CREATE UNIQUE INDEX uniq_fact ON knowledge_facts (book_id, character_slug, fact)"); } catch (Exception $e) {}
+    // Phase 2: status changes over story time, dismissed findings, per-book thresholds.
+    try { db()->exec("CREATE TABLE IF NOT EXISTS state_events (
+        id $pk, book_id VARCHAR(40) NOT NULL, slug VARCHAR(80) NOT NULL, event VARCHAR(12) NOT NULL,
+        chapter VARCHAR(20) NOT NULL, value VARCHAR(80) DEFAULT '', note TEXT, updated_by INT DEFAULT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP )"); } catch (Exception $e) {}
+    try { db()->exec("CREATE UNIQUE INDEX uniq_stev ON state_events (book_id, slug, event, chapter)"); } catch (Exception $e) {}
+    try { db()->exec("CREATE TABLE IF NOT EXISTS continuity_exemptions (
+        id $pk, book_id VARCHAR(40) NOT NULL, code VARCHAR(40) NOT NULL, slug VARCHAR(80) DEFAULT '',
+        chapter VARCHAR(20) DEFAULT '', reason TEXT, created_by INT DEFAULT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP )"); } catch (Exception $e) {}
+    try { db()->exec("CREATE UNIQUE INDEX uniq_exempt ON continuity_exemptions (book_id, code, slug, chapter)"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE books ADD COLUMN promise_gap INT DEFAULT NULL"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE books ADD COLUMN question_gap INT DEFAULT NULL"); } catch (Exception $e) {}
+}
+
+/* ---------------------------------------------- state events (story time) */
+/** Status changes, each as of the END of a chapter. Characters: died | revived.
+ *  Objects: destroyed | lost | found, holder (value = who has it) and location
+ *  (value = where it is). One row per (slug, event, chapter): saving again replaces it. */
+const STATE_EVENTS = ['died', 'revived', 'destroyed', 'lost', 'found', 'holder', 'location'];
+const STATE_EVENTS_VALUED = ['holder', 'location'];
+
+function get_state_events($book_id, $slug = null) {
+    ensure_continuity();
+    $w = 'book_id=?'; $p = [$book_id];
+    if ($slug !== null) { $w .= ' AND slug=?'; $p[] = ledger_slug($slug); }
+    $rows = all("SELECT slug, event, chapter, value, note FROM state_events WHERE $w", $p);
+    usort($rows, function ($a, $b) { return [ch_ord($a['chapter']), $a['slug'], $a['event']] <=> [ch_ord($b['chapter']), $b['slug'], $b['event']]; });
+    return $rows;
+}
+/** Upsert events: [{slug, event, chapter, value?, note?}]. All-or-nothing. */
+function save_state_events($book_id, $events) {
+    ensure_continuity();
+    if (!is_array($events) || !$events) return ['status' => 'error', 'msg' => 'events must be a non-empty list'];
+    $rows = [];
+    foreach ($events as $i => $e) {
+        $slug = ledger_slug($e['slug'] ?? ''); $ev = (string)($e['event'] ?? ''); $ref = ch_ref($e['chapter'] ?? '');
+        $val = ledger_slug($e['value'] ?? '');
+        if ($slug === '') return ['status' => 'error', 'msg' => "event $i needs a slug"];
+        if (!in_array($ev, STATE_EVENTS, true)) return ['status' => 'error', 'msg' => "event $i: event must be " . implode('|', STATE_EVENTS)];
+        if (!$ref) return ['status' => 'error', 'msg' => "event $i: chapter must be a chapter number"];
+        if (in_array($ev, STATE_EVENTS_VALUED, true) && $val === '') return ['status' => 'error', 'msg' => "event $i: $ev needs a value (a slug)"];
+        if (!in_array($ev, STATE_EVENTS_VALUED, true)) $val = '';
+        $rows[] = [$slug, $ev, $ref, $val, (string)($e['note'] ?? '')];
+    }
+    $uid = function_exists('current_user_id') ? current_user_id() : null;
+    db()->beginTransaction();
+    try {
+        foreach ($rows as [$slug, $ev, $ref, $val, $note]) {
+            q("DELETE FROM state_events WHERE book_id=? AND slug=? AND event=? AND chapter=?", [$book_id, $slug, $ev, $ref]);
+            q("INSERT INTO state_events (book_id, slug, event, chapter, value, note, updated_by) VALUES (?,?,?,?,?,?,?)", [$book_id, $slug, $ev, $ref, $val, $note, $uid]);
+        }
+        db()->commit();
+    } catch (Exception $e) { db()->rollBack(); throw $e; }
+    $known = known_entry_slugs($book_id);
+    $slugs = array_unique(array_merge(array_column($rows, 0), array_filter(array_column($rows, 3), 'strlen')));
+    $unknown = array_values(array_filter($slugs, function ($s) use ($known) { return !isset($known[$s]); }));
+    $out = ['status' => 'ok', 'msg' => count($rows) . ' event(s) saved'];
+    if ($unknown) $out['warnings'] = ['unknown slugs (no bible entry): ' . implode(', ', $unknown)];
+    return $out;
+}
+function delete_state_event($book_id, $slug, $event, $chapter) {
+    ensure_continuity();
+    return q("DELETE FROM state_events WHERE book_id=? AND slug=? AND event=? AND chapter=?",
+             [$book_id, ledger_slug($slug), (string)$event, (string)ch_ref($chapter)])->rowCount() > 0;
+}
+
+/* ------------------------------------------------ exemptions + thresholds */
+/** Dismiss a finding: code plus a slug and/or chapter (code alone is too broad),
+ *  and a reason. Matches findings with that code whose slug/chapter equal the set keys. */
+function save_exemption($book_id, $code, $slug, $chapter, $reason) {
+    ensure_continuity();
+    $code = trim((string)$code); $slug = ledger_slug($slug); $ref = ch_ref($chapter); $reason = trim((string)$reason);
+    if (!preg_match('/^[a-z][a-z-]{2,39}$/', $code)) return ['status' => 'error', 'msg' => 'code must be a finding code'];
+    if ($ref === null) return ['status' => 'error', 'msg' => 'chapter must be a chapter number'];
+    if ($slug === '' && $ref === '') return ['status' => 'error', 'msg' => 'give a slug and/or chapter — a code alone would dismiss every finding of that kind'];
+    if ($reason === '') return ['status' => 'error', 'msg' => 'a reason is required'];
+    q("DELETE FROM continuity_exemptions WHERE book_id=? AND code=? AND slug=? AND chapter=?", [$book_id, $code, $slug, $ref]);
+    q("INSERT INTO continuity_exemptions (book_id, code, slug, chapter, reason, created_by) VALUES (?,?,?,?,?,?)",
+      [$book_id, $code, $slug, $ref, $reason, function_exists('current_user_id') ? current_user_id() : null]);
+    return ['status' => 'ok', 'msg' => "dismissed $code" . ($slug ? " for $slug" : '') . ($ref ? " in chapter $ref" : '')];
+}
+function get_exemptions($book_id) {
+    ensure_continuity();
+    return all("SELECT code, slug, chapter, reason, created_at FROM continuity_exemptions WHERE book_id=? ORDER BY code, slug, chapter", [$book_id]);
+}
+function delete_exemption($book_id, $code, $slug, $chapter) {
+    ensure_continuity();
+    return q("DELETE FROM continuity_exemptions WHERE book_id=? AND code=? AND slug=? AND chapter=?",
+             [$book_id, (string)$code, ledger_slug($slug), (string)ch_ref($chapter)])->rowCount() > 0;
+}
+const PROMISE_GAP_DEFAULT = 3;    // story-skills' Chekhov gap
+const QUESTION_GAP_DEFAULT = 12;
+/** How many later chapters a planted promise / open question may go unanswered before a warning. */
+function continuity_thresholds($book_id) {
+    ensure_continuity();
+    $r = one("SELECT promise_gap, question_gap FROM books WHERE id=?", [$book_id]) ?: [];
+    return ['promise_gap' => (int)($r['promise_gap'] ?? 0) ?: PROMISE_GAP_DEFAULT,
+            'question_gap' => (int)($r['question_gap'] ?? 0) ?: QUESTION_GAP_DEFAULT];
+}
+/** Set either threshold (1..200); 0 or '' restores the default. */
+function set_continuity_thresholds($book_id, $promise_gap = null, $question_gap = null) {
+    ensure_continuity();
+    foreach (['promise_gap' => $promise_gap, 'question_gap' => $question_gap] as $col => $v) {
+        if ($v === null) continue;
+        $n = (int)$v;
+        if ($n < 0 || $n > 200) return ['status' => 'error', 'msg' => "$col must be 1..200 (0 = default)"];
+        q("UPDATE books SET $col=? WHERE id=?", [$n ?: null, $book_id]);
+    }
+    return ['status' => 'ok', 'thresholds' => continuity_thresholds($book_id)];
 }
 
 /** Canonical chapter reference: "chapter-04" / "Ch. 4" / "04" -> "4", "3.5" stays,

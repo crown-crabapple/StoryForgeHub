@@ -445,3 +445,27 @@ CREATE TABLE IF NOT EXISTS knowledge_facts (
   updated_at     DATETIME     DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uniq_fact (book_id, character_slug, fact)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS state_events (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     VARCHAR(40)  NOT NULL,
+  slug        VARCHAR(80)  NOT NULL,
+  event       VARCHAR(12)  NOT NULL,                  -- died|revived|destroyed|lost|found|holder|location
+  chapter     VARCHAR(20)  NOT NULL,                  -- as of the end of this chapter
+  value       VARCHAR(80)  DEFAULT '',                -- holder / location slug
+  note        TEXT,
+  updated_by  INT          DEFAULT NULL,
+  updated_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_stev (book_id, slug, event, chapter)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS continuity_exemptions (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     VARCHAR(40)  NOT NULL,
+  code        VARCHAR(40)  NOT NULL,                  -- finding code (src/continuity_check.php)
+  slug        VARCHAR(80)  DEFAULT '',
+  chapter     VARCHAR(20)  DEFAULT '',
+  reason      TEXT,
+  created_by  INT          DEFAULT NULL,
+  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_exempt (book_id, code, slug, chapter)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- books.promise_gap / books.question_gap (INT, NULL = default 3 / 12) are added lazily by ensure_continuity().

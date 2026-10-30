@@ -322,3 +322,73 @@ class CodexTools:
             return self.api.delete_knowledge({"book": book, "character": character, "fact": fact})
         except ApiError as e:
             return self._refusal(e)
+
+    # ---- state events + deterministic continuity checks ----
+    def get_state_events(self, book: str, slug: Optional[str] = None) -> List[dict]:
+        return self.api.get_state_events(book, slug or None)
+
+    def record_state_events(self, book: str, events: List[dict]) -> dict:
+        """Upsert [{slug, event, chapter, value?, note?}]; all-or-nothing."""
+        if not events:
+            raise ValueError("events is required")
+        try:
+            return self.api.save_state_events({"book": book, "events": events})
+        except ApiError as e:
+            return self._refusal(e)
+
+    def delete_state_event(self, book: str, slug: str, event: str, chapter: str) -> dict:
+        if not all(str(v or "").strip() for v in (slug, event, chapter)):
+            raise ValueError("slug, event and chapter are required")
+        try:
+            return self.api.delete_state_event({"book": book, "slug": slug, "event": event, "chapter": str(chapter)})
+        except ApiError as e:
+            return self._refusal(e)
+
+    def continuity_check(self, book: str, chapter: Optional[str] = None,
+                         cast: Optional[List[dict]] = None) -> dict:
+        """Run the checks; with chapter (and optionally cast) the draft chapter
+        is checked as a candidate without saving anything."""
+        payload: Dict[str, Any] = {"book": book}
+        if chapter:
+            cand: Dict[str, Any] = {"chapter": str(chapter)}
+            if cast is not None:
+                cand["cast"] = [c if isinstance(c, dict) else {"slug": c} for c in cast]
+            payload["candidate"] = cand
+        elif cast is not None:
+            raise ValueError("cast needs a chapter")
+        try:
+            return self.api.continuity_check(payload)
+        except ApiError as e:
+            return self._refusal(e)
+
+    def dismiss_finding(self, book: str, code: str, reason: str,
+                        slug: str = "", chapter: str = "") -> dict:
+        if not (code or "").strip() or not (reason or "").strip():
+            raise ValueError("code and reason are required")
+        try:
+            return self.api.save_exemption({"book": book, "code": code, "slug": slug,
+                                            "chapter": str(chapter or ""), "reason": reason})
+        except ApiError as e:
+            return self._refusal(e)
+
+    def restore_finding(self, book: str, code: str, slug: str = "", chapter: str = "") -> dict:
+        if not (code or "").strip():
+            raise ValueError("code is required")
+        try:
+            return self.api.delete_exemption({"book": book, "code": code, "slug": slug, "chapter": str(chapter or "")})
+        except ApiError as e:
+            return self._refusal(e)
+
+    def set_continuity_thresholds(self, book: str, promise_gap: Optional[int] = None,
+                                  question_gap: Optional[int] = None) -> dict:
+        payload: Dict[str, Any] = {"book": book}
+        if promise_gap is not None:
+            payload["promise_gap"] = int(promise_gap)
+        if question_gap is not None:
+            payload["question_gap"] = int(question_gap)
+        if len(payload) == 1:
+            raise ValueError("give promise_gap and/or question_gap")
+        try:
+            return self.api.set_continuity_settings(payload)
+        except ApiError as e:
+            return self._refusal(e)
