@@ -81,7 +81,7 @@ foreach ($docs as $n => $path) {
         if (strpos($section, 'known to specific') !== false && $marked && (int)$learned !== $n) { $restated++; continue; }
         $text = trim(preg_replace('/\s*\((?:learned\s+)?(?:in\s+)?(?:chapter|ch\.?)\s*\d+\)\s*$/i', '', $text));
         $text = preg_replace('/^knows\s+/i', '', $text);
-        $fid = substr(ledger_slug($text), 0, 80);
+        $fid = ledger_slug($text);
         if ($fid === '') continue;
         foreach ($who as $slug) {
             $key = "$slug|$fid";

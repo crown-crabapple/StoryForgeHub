@@ -32,6 +32,7 @@ q("INSERT INTO progressions (book_id,chapter,type,what,related_csv,sort_order) V
 /* ---- chapter references ---- */
 check('ch_ref normalises the usual spellings', ch_ref('chapter-04') === '4' && ch_ref('Ch. 4') === '4' && ch_ref('04') === '4' && ch_ref(4) === '4');
 check('ch_ref keeps half chapters and named ends', ch_ref('3.5') === '3.5' && ch_ref('Prologue') === 'prologue' && ch_ref('epilogue') === 'epilogue');
+check('a long slug never ends in a hyphen', ledger_slug(str_repeat('a', 79) . ' b c') === str_repeat('a', 79));
 check('slugs drop apostrophes', ledger_slug("The Ferryman's Debt") === 'the-ferrymans-debt' && ledger_slug('Vale’s compass') === 'vales-compass');
 check('ch_ref: blank is blank, junk is null', ch_ref('') === '' && ch_ref('soon') === null);
 check('ch_ord sorts prologue < 2 < 10 < epilogue', ch_ord('prologue') < ch_ord('2') && ch_ord('2') < ch_ord('10') && ch_ord('10') < ch_ord('epilogue'));

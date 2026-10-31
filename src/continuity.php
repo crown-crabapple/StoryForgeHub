@@ -173,7 +173,7 @@ function ledger_slug($s) {
     $s = strtolower(trim((string)$s));
     $s = preg_replace("/['’]/u", '', $s);   // "ferryman's" -> ferrymans, not ferryman-s
     $s = preg_replace('/[^a-z0-9]+/', '-', $s);
-    return substr(trim($s, '-'), 0, 80);
+    return trim(substr(trim($s, '-'), 0, 80), '-');   // trim again: the cut may land on a hyphen
 }
 function csv_slugs($v) {
     $list = is_array($v) ? $v : explode(',', (string)$v);
