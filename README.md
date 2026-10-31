@@ -92,6 +92,9 @@ The DB is canonical (Track A), so there is nothing to sync. What replaces it:
   attributed revision (who, and through which door). Chapters get a history panel in
   the editor; entries get a **History** panel with one-click restore (a restore is a
   new save on top, never a rewind).
+- **Knowledge backfill (once per book):** `php bin/import_knowledge.php --book <id>` parses the
+  existing `state/chapter-NN/knowledge` Workspace docs into the continuity knowledge ledger (dry
+  run; add `--apply` to record). Load `/etc/codex/codex.env` first, as for the other `bin/` scripts.
 - **Nightly export:** `bin/export.php --dir <target>` renders every book back to
   canonical Markdown folders (entries, chapters, notes, meta, progressions, sources,
   `book.json`) — the layout imports cleanly again. `deploy/backup.sh` tars one next to
