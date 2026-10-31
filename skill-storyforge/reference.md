@@ -107,7 +107,12 @@ Promise status: `planned | planted | paid-off | dropped | abandoned`
 (default from the chapters). Question status: `open | resolved | dropped |
 abandoned`; for a question `planted_in` = introduced, `payoff_in` = resolved.
 Cast is keyed to the chapter file, so renumbering keeps it. A knowledge fact
-with no `learned_in` was known before the story.
+with no `learned_in` was known before the story. A fact's id (`fact`) is a
+kebab slug of at most 80 characters, derived from `knows` when omitted; to
+update or delete a fact, use the id `codex_knowledge_at` returns. Imported
+facts (`bin/import_knowledge.php`, run by the author on the server) carry ids
+derived the same way, so re-recording the same `knows` text updates rather
+than duplicates.
 State events hold as of the END of their chapter (revived in 9 → may appear
 in 9). A death or loss counts once its chapter is drafted.
 

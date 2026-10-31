@@ -85,7 +85,12 @@ Structured story state the Workspace prose can't check:
 - **Knowledge** — `codex_record_knowledge` for what each character learned in
   the chapter (`learned_in`); `codex_knowledge_at(book, character, at=N)`
   before writing a scene, so a POV character never acts on what they don't
-  know yet.
+  know yet. Record what a character *knows*, not beliefs or guesses. Facts
+  from chapters written before the ledgers may come from the author's
+  one-time import of the `state/chapter-NN/knowledge` docs; if
+  `codex_knowledge_at` is empty for a book that has those docs, ask the
+  author to run that import (`bin/import_knowledge.php`) rather than
+  re-typing the history fact by fact.
 Slugs are bible entry slugs; an unknown slug saves with a warning — create the
 entry or a task rather than inventing canon.
 - **State events** — after a chapter, `codex_record_state_events` for deaths
