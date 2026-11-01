@@ -5,7 +5,7 @@
  *   - "Link here" only appears when the caller allows it (edit role)
  *   - clicking a mention in the rich editor pins the card and leaves the
  *     Markdown byte-identical (no more silent click-to-wikilink)
- *   - "Link here" is the one explicit way to mint [[slug]]
+ *   - "Link here" is the one explicit way to mint [[slug|Text]]
  *   - the reader page's <a class="mention"> pins instead of navigating
  *
  *   cd editor && npm test
@@ -126,14 +126,28 @@ test('editor: clicking a mention pins the card and does NOT change the Markdown'
   ed.destroy()
 })
 
-test('editor: "Link here" turns exactly that mention into [[slug]]', () => {
+test('editor: "Link here" turns exactly that mention into [[slug|Text]]', () => {
   const { ed, mount } = makeEditor('Then The Wall fell, and Aria ran.')
   card.attachCodexCard(mount, { selector: '.cm-mention', meta: META, db: DB, book: 'echo', canLink: true,
     onLink: (el, slug) => card.linkMention(ed, el, slug) })
   click(mount.querySelector('.cm-mention[data-slug="wall"]'))
   cardEl().querySelector('.mc-link').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }))
-  assert.equal(codex.serializeCodex(ed), 'Then [[wall]] fell, and Aria ran.')
+  assert.equal(codex.serializeCodex(ed), 'Then [[wall|The Wall]] fell, and Aria ran.')
+  assert.equal(mount.querySelector('.cm-wikilink').textContent, 'The Wall', 'visible text unchanged')
   assert.ok(!card.isOpen(), 'card closes after linking')
+  ed.destroy()
+})
+
+test('editor: Link here on an alias keeps the alias as the label', () => {
+  const { ed, mount } = makeEditor('The Warden waits.')
+  card.attachCodexCard(mount, { selector: '.cm-mention', meta: META, db: DB, book: 'echo', canLink: true,
+    onLink: (el, slug) => card.linkMention(ed, el, slug) })
+  click(mount.querySelector('.cm-mention'))
+  cardEl().querySelector('.mc-link').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }))
+  const md = codex.serializeCodex(ed)
+  assert.equal(md, '[[aria|The Warden]] waits.')
+  ed.commands.setContent(md)
+  assert.equal(codex.serializeCodex(ed), md, 'new link round-trips byte-stable')
   ed.destroy()
 })
 

@@ -8,7 +8,7 @@
  * Content: type badge, name, aliases, key fields, a short excerpt, up to three
  * related entries, and mention counts. Actions: Open (entry page) and, only
  * when the caller allows it, Link here — the old click-to-wikilink behavior,
- * now an explicit button. Peek waits for the Phase 6 side panel.
+ * now an explicit button that keeps the visible text ([[slug|Text]]). Peek waits for the Phase 6 side panel.
  *
  * The card never touches the document by itself: the only write is the
  * caller's onLink, which runs on an explicit button press.
@@ -97,9 +97,10 @@ export function cardHTML(slug, opts) {
   return h
 }
 
-/** "Link here": replace one highlighted mention with a [[slug]] node — the
- *  pre-Phase-1 click behavior, now only on an explicit button press. Refuses
- *  (no-op) if the highlight no longer matches the document. */
+/** "Link here": replace one highlighted mention with a [[slug|Text]] node, so
+ *  the visible text stays what the writer wrote (plain [[slug]] when the text
+ *  IS the slug, or can't sit inside a wiki-link). Only on an explicit button
+ *  press; refuses (no-op) if the highlight no longer matches the document. */
 export function linkMention(editor, el, slug) {
   const view = editor.view
   if (!el || !el.isConnected || !view.dom.contains(el)) return false
@@ -108,7 +109,8 @@ export function linkMention(editor, el, slug) {
   const to = from + text.length
   if (to <= from || view.state.doc.textBetween(from, to) !== text) return false
   const wl = view.state.schema.nodes.codexWikilink
-  view.dispatch(view.state.tr.replaceWith(from, to, wl.create({ target: slug })))
+  const target = (text === slug || /[[\]|\n]/.test(text)) ? slug : slug + '|' + text
+  view.dispatch(view.state.tr.replaceWith(from, to, wl.create({ target })))
   view.focus()
   return true
 }

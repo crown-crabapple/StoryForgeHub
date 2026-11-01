@@ -67,7 +67,8 @@ round-trip.
   submit assembles the Codex markdown into `#md-out` for the normal
   `entry_save` POST. Live mentions (P5) highlight recognized names; hovering
   or clicking one opens the Codex card (`src/codex-card.js`), whose
-  **Link here** button inserts a WikiLink **node**. A bare click never edits.
+  **Link here** button inserts a `[[slug|Text]]` WikiLink **node** (visible
+  text unchanged). A bare click never edits.
 - **Chapter** (`#chapter-wys` + `#chapter-md`) — Track C2. The textarea stays
   the buffer of record: the rich view **writes through** on every update and
   fires `input`, so the Phase 15 tooling (autosave, style check, scene rail,

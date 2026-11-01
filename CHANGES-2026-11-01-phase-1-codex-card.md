@@ -12,7 +12,9 @@ mentions. Clicking prose never edits it: linking is an explicit button.
   - Content: type badge, name, detail, aliases, up to 4 key fields, a ~200-char excerpt,
     up to 3 related entries (linked), and counts ("N in this chapter · N in manuscript").
   - Actions: **Open →** (entry page) and **Link here** (edit role only). Link here turns
-    that one highlight into a `[[slug]]` node and refuses if the highlight is stale.
+    that one highlight into a `[[slug|Text]]` node, so the visible words stay the same
+    (plain `[[slug]]` only if the text is the slug itself). It refuses if the highlight
+    is stale.
     **Peek** is not rendered until the Phase 6 side panel exists.
   - On the reader, a plain click pins instead of navigating. Ctrl/⌘/Shift/middle-click
     still open the entry as before.
@@ -40,12 +42,12 @@ mentions. Clicking prose never edits it: linking is an explicit button.
   - `entry_edit`, `note_page` (edit), `workspace_doc` (edit): `__scene` now carries the
     card data, so the card works there too and clicking no longer rewrites those either.
 - Tests: `tests/php/codex_card_test.php` (14 checks), `editor/test/codex-card.test.mjs`
-  (10 tests).
+  (11 tests).
 - `editor/README.md`: describes the new click behavior and the new source files.
 
 No new POST actions, so the action whitelist and `book_gate()` are unchanged. Nothing
-writes to `chapters.body` except Link here, which inserts the same `[[slug]]` the old
-click did. Highlights stay ProseMirror decorations.
+writes to `chapters.body` except Link here, which inserts a `[[slug|Text]]` wiki-link
+(existing dialect syntax). Highlights stay ProseMirror decorations.
 
 ## Migration
 None. No schema change.
@@ -65,8 +67,8 @@ server.
 2. **Edit prose** on the same chapter (rich mode).
    - Click a dashed-underlined name. The card pins and the status still says **Saved**
      (nothing changed).
-   - Press **Link here**. That one name becomes a `[[slug]]` chip and the status changes to
-     Unsaved. Toggle to Markdown to see `[[slug]]` in the buffer.
+   - Press **Link here**. That one name becomes a chip showing the same words, and the
+     status changes to Unsaved. Toggle to Markdown to see `[[slug|Name as written]]`.
    - Type anywhere while a card is pinned: the card closes.
 3. Sign in as a **viewer** on that book and open `chapter_edit` by URL. The card works
    but has no Link here button.
@@ -74,16 +76,16 @@ server.
    mode). Same card, same behavior.
 5. Give an entry an Overview containing `</script><b>x</b>` and open a chapter that
    mentions it. The card shows the text literally and the page is intact.
-6. `cd editor && npm test` (28 pass) and `php tests/php/codex_card_test.php`.
+6. `cd editor && npm test` (29 pass) and `php tests/php/codex_card_test.php`.
 
 ## Behavior notes
 - The **manuscript count comes from the mentions index**, which is rebuilt by **Reindex
   mentions**, `bin/reindex.php`, or a diagnostics run, not on every chapter save. It can
   lag. The "in this chapter" count is computed live with the same algorithm as the
   scene rail.
-- **Link here keeps the old target**: it inserts `[[slug]]`, so an alias such as
-  "The Warden" becomes a chip showing the slug. That matches the pre-Phase-1 click.
-  `[[slug|The Warden]]` would preserve the visible text; left for a decision.
+- **Link here keeps the visible text**: an alias such as "The Warden" becomes
+  `[[aria|The Warden]]`, not `[[aria]]` (the pre-Phase-1 click inserted the bare slug,
+  which changed what the reader sees).
 - The card attaches to the rich view only. Raw-Markdown mode has no highlights and so no
   card, as before.
 
