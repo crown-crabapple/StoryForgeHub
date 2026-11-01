@@ -378,4 +378,94 @@ CREATE TABLE IF NOT EXISTS editing_locks (
   KEY k_edit_lock_ch (chapter_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- workspace_docs — the per-book Workspace (Claude-Book planning layer): plan,
+-- style, development proposals, state/chapter-NN snapshots, chapter log.
+-- path is the Claude-Book relpath without .md. Lazy-migrated (ensure_workspace).
+CREATE TABLE IF NOT EXISTS workspace_docs (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     VARCHAR(40)  NOT NULL,
+  path        VARCHAR(255) NOT NULL,                  -- e.g. plan | development/world/region-cut | state/chapter-05/situation
+  title       VARCHAR(255) DEFAULT '',
+  body        MEDIUMTEXT,
+  locked      INT          DEFAULT 0,                 -- 1 = refuses writes (finished chapter state)
+  updated_by  INT          DEFAULT NULL,
+  updated_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_wsdoc (book_id, path)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS workspace_revisions (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     VARCHAR(40)  NOT NULL,
+  path        VARCHAR(255) NOT NULL,
+  body        MEDIUMTEXT,
+  body_hash   VARCHAR(40)  DEFAULT '',
+  kind        VARCHAR(10)  DEFAULT 'save',            -- save|delete
+  saved_by    INT          DEFAULT NULL,
+  saved_via   VARCHAR(10)  DEFAULT '',                -- web|api|cli
+  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  KEY k_wsrev (book_id, path)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 SET foreign_key_checks = 1;
+
+-- Continuity ledgers (src/continuity.php, lazy-created by ensure_continuity()).
+-- Chapter refs in story_ledger / knowledge_facts are normalised chapter numbers
+-- ("4", "3.5", "prologue"); chapter_cast is keyed by chapters.file.
+CREATE TABLE IF NOT EXISTS story_ledger (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  book_id        VARCHAR(40)  NOT NULL,
+  kind           VARCHAR(10)  NOT NULL,                -- promise|question
+  slug           VARCHAR(80)  NOT NULL,
+  title          VARCHAR(255) DEFAULT '',
+  status         VARCHAR(20)  DEFAULT '',              -- planned|planted|paid-off|dropped|abandoned / open|resolved|dropped|abandoned
+  planted_in     VARCHAR(20)  DEFAULT '',              -- question: introduced
+  payoff_in      VARCHAR(20)  DEFAULT '',              -- question: resolved
+  characters_csv TEXT,
+  notes          TEXT,
+  updated_by     INT          DEFAULT NULL,
+  updated_at     DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_ledger (book_id, slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS chapter_cast (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  book_id      VARCHAR(40)  NOT NULL,
+  chapter_file VARCHAR(255) NOT NULL,
+  slug         VARCHAR(80)  NOT NULL,
+  role         VARCHAR(12)  NOT NULL DEFAULT 'appears', -- pov|appears|mentioned
+  sort_order   INT          DEFAULT 0,
+  UNIQUE KEY uniq_cast (book_id, chapter_file, slug)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS knowledge_facts (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  book_id        VARCHAR(40)  NOT NULL,
+  character_slug VARCHAR(80)  NOT NULL,
+  fact           VARCHAR(80)  NOT NULL,
+  knows          TEXT,
+  learned_in     VARCHAR(20)  DEFAULT '',              -- '' = known before the story
+  updated_by     INT          DEFAULT NULL,
+  updated_at     DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_fact (book_id, character_slug, fact)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS state_events (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     VARCHAR(40)  NOT NULL,
+  slug        VARCHAR(80)  NOT NULL,
+  event       VARCHAR(12)  NOT NULL,                  -- died|revived|destroyed|lost|found|holder|location
+  chapter     VARCHAR(20)  NOT NULL,                  -- as of the end of this chapter
+  value       VARCHAR(80)  DEFAULT '',                -- holder / location slug
+  note        TEXT,
+  updated_by  INT          DEFAULT NULL,
+  updated_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_stev (book_id, slug, event, chapter)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+CREATE TABLE IF NOT EXISTS continuity_exemptions (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     VARCHAR(40)  NOT NULL,
+  code        VARCHAR(40)  NOT NULL,                  -- finding code (src/continuity_check.php)
+  slug        VARCHAR(80)  DEFAULT '',
+  chapter     VARCHAR(20)  DEFAULT '',
+  reason      TEXT,
+  created_by  INT          DEFAULT NULL,
+  created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_exempt (book_id, code, slug, chapter)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- books.promise_gap / books.question_gap (INT, NULL = default 3 / 12) are added lazily by ensure_continuity().

@@ -9,9 +9,11 @@
  *      checks, so the MCP can reach exactly the books that user could.
  */
 require_once dirname(__DIR__) . '/src/repo.php';  // src/ lives above the docroot
+require_once dirname(__DIR__) . '/src/oauth.php'; // OAuth access tokens (Track B3)
 header('Content-Type: application/json; charset=utf-8');
 
 $CFG = cfg();
+$GLOBALS['__save_via'] = 'api';   // A1: revision attribution — this door is the API/MCP
 function out($data, $code = 200) { http_response_code($code); echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); exit; }
 
 /* ---- auth: service token OR per-user token ---- */
@@ -22,6 +24,8 @@ if ($svc !== '' && $svc !== 'CHANGE_ME_TO_A_LONG_RANDOM_STRING' && hash_equals($
     $IS_SERVICE = true;                         // shared service token — unscoped
 } elseif ($u = user_for_api_token((string)$hdr)) {
     act_as_user($u);                            // per-user token — scoped to that user
+} elseif ($u = user_for_oauth_token((string)$hdr)) {
+    act_as_user($u);                            // OAuth access token (B3) — same scoping
 } else {
     out(['error' => 'unauthorized'], 401);
 }
@@ -43,7 +47,7 @@ switch ($action) {
 case 'ping':
     out(['ok' => true, 'app' => "Stephen's Codex", 'time' => date('c'), 'books' => count(get_books())]);
 
-case 'push':            // folder -> web   body: {books:[{folder,files:{relpath:content}}]}
+case 'push':            // bulk Markdown write   body: {books:[{folder,files:{relpath:content}}]}
     if (!$body || !isset($body['books'])) out(['error' => 'expected {books:[...]}'], 400);
     if (!$IS_SERVICE) {
         // A per-user token may only push to existing books it can edit; creating
@@ -56,9 +60,302 @@ case 'push':            // folder -> web   body: {books:[{folder,files:{relpath:
     }
     out(['ok' => true, 'report' => push_files($body)]);
 
-case 'pull':            // web -> folder   ?book=ID   (get_book(s) is already scoped)
-    if (!$IS_SERVICE && isset($_GET['book'])) require_cap($_GET['book'], 'view');
-    out(['ok' => true] + pull_files($_GET['book'] ?? null));
+/* ---- granular object actions (standalone plan, Track A3 — the MCP surface) ---- */
+
+case 'chapter':         // ?book=ID&id=N | ?book=ID&file=ch01.md  → metadata + body
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $c = chapter_struct($bookParam, $_GET['id'] ?? null, $_GET['file'] ?? null);
+    if (!$c) out(['error' => 'chapter not found'], 404);
+    out(['ok' => true, 'chapter' => $c]);
+
+case 'entries':         // ?book=ID[&db=characters]  → entry summaries, no bodies
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $list = [];
+    foreach (get_entries($bookParam, $_GET['db'] ?? null) as $r) {
+        $list[] = ['db' => $r['db_key'], 'slug' => $r['slug'], 'name' => $r['name'],
+                   'status' => $r['status'], 'type' => $r['type'], 'detail' => $r['detail']];
+    }
+    out(['ok' => true, 'entries' => $list]);
+
+case 'search':          // ?q=...&book=ID&limit=25  → entries/chapters/notes with snippets
+    $q = trim((string)($_GET['q'] ?? ''));
+    if ($q === '') out(['error' => 'q is required'], 400);
+    $bookParam = $_GET['book'] ?? null;
+    if ($bookParam) {
+        if (!$IS_SERVICE) require_cap($bookParam, 'view');
+        $ids = [$bookParam];
+    } else {
+        $ids = scoped_ids();                     // the caller's books (all, for service)
+    }
+    out(['ok' => true, 'hits' => search_codex($ids, $q, (int)($_GET['limit'] ?? 25))]);
+
+case 'diagnostics':     // ?book=ID&id=N  → the Smart-editing prose analysis
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $d = get_chapter_diagnostics($bookParam, (int)($_GET['id'] ?? 0));
+    if (!$d) out(['error' => 'chapter not found'], 404);
+    $c = $d['chapter'];
+    out(['ok' => true, 'diagnostics' => [
+        'chapter' => ['id' => (int)$c['id'], 'num' => $c['num'], 'title' => $c['title'], 'file' => $c['file']],
+        'data' => $d['data'], 'cached' => !empty($d['cached'])]]);
+
+case 'save_chapter':    // POST {book, id?|file?, markdown, base_hash?} — the A3 write
+    if (!$body || !isset($body['markdown'])) out(['error' => 'expected {book, id|file, markdown, base_hash?}'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    $c = chapter_struct($bookParam, $body['id'] ?? null, $body['file'] ?? null);
+    if (!$c) {
+        // No such chapter: create it (needs a filename; never clobbers — the name is deduped).
+        $fn = basename(str_replace('\\', '/', (string)($body['file'] ?? '')));
+        if ($fn === '') out(['error' => 'chapter not found — pass file to create a new one'], 404);
+        $r = import_chapter_md($bookParam, $fn, (string)$body['markdown']);
+        if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+        log_activity($bookParam, 'chapter_create', $r['file']);
+        $cur = chapter_struct($bookParam, $r['id']);
+        unset($cur['body']);
+        out(['ok' => true, 'created' => true, 'chapter' => $cur]);
+    }
+    $base = (string)($body['base_hash'] ?? '');
+    if ($base === '')
+        out(['error' => 'base_hash is required to update an existing chapter — read it first (action=chapter) and pass its body_hash back',
+             'current_hash' => $c['body_hash']], 400);
+    $r = write_chapter_file($bookParam, (int)$c['id'], (string)$body['markdown'], $base);
+    if ($r['status'] === 'conflict') {
+        // The refusal carries everything needed to merge and retry (A3/B2 contract).
+        $cur = chapter_struct($bookParam, (int)$c['id']);
+        out(['error' => 'conflict', 'msg' => $r['msg'],
+             'current_hash' => $cur['body_hash'], 'current_body' => $cur['body']], 409);
+    }
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, 'chapter_save', $c['file']);
+    $cur = chapter_struct($bookParam, (int)$c['id']);
+    unset($cur['body']);
+    out(['ok' => true, 'msg' => $r['msg'], 'chapter' => $cur]);
+
+case 'chapter_create':  // POST {book, title, num?} — a titled empty chapter (ch-NN-title.md)
+    if (!$body || trim((string)($body['title'] ?? '')) === '') out(['error' => 'expected {book,title,num?}'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    $r = create_chapter($bookParam, (string)$body['title'], (string)($body['num'] ?? ''));
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, 'chapter_create', $r['file']);
+    $cur = chapter_struct($bookParam, $r['id']);
+    unset($cur['body']);
+    out(['ok' => true, 'chapter' => $cur]);
+
+/* ---- workspace docs (plan, style, story state, chapter log) ---- */
+
+case 'docs':            // ?book=ID[&prefix=state/chapter-05]  → doc list, no bodies
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $list = [];
+    foreach (get_workspace_docs($bookParam, $_GET['prefix'] ?? '') as $d)
+        $list[] = ['path' => $d['path'], 'title' => $d['title'], 'locked' => (bool)$d['locked'],
+                   'words' => $d['words'], 'body_hash' => $d['body_hash'], 'updated_at' => $d['updated_at']];
+    out(['ok' => true, 'latest_state' => ws_latest_state_chapter($bookParam), 'docs' => $list]);
+
+case 'doc':             // ?book=ID&path=plan  → body + body_hash (state/current/* resolves)
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $d = get_workspace_doc($bookParam, (string)($_GET['path'] ?? ''));
+    if (!$d) out(['error' => 'doc not found'], 404);
+    out(['ok' => true, 'doc' => ['path' => $d['path'], 'requested' => $d['requested'], 'title' => $d['title'],
+        'locked' => (bool)$d['locked'], 'updated_at' => $d['updated_at'], 'body' => $d['body'], 'body_hash' => $d['body_hash']]]);
+
+case 'save_doc':        // POST {book, path, markdown, base_hash?, title?} — create, or update with the hash you read
+case 'append_doc':      // POST {book, path, markdown} — add to the end (creates if missing)
+    if (!$body || !isset($body['markdown']) || empty($body['path'])) out(['error' => 'expected {book, path, markdown, ...}'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    $r = $action === 'append_doc'
+        ? append_workspace_doc($bookParam, $body['path'], (string)$body['markdown'])
+        : save_workspace_doc($bookParam, $body['path'], (string)$body['markdown'], $body['title'] ?? null, (string)($body['base_hash'] ?? ''));
+    if ($r['status'] === 'conflict' || $r['status'] === 'locked') {
+        $cur = get_workspace_doc($bookParam, $r['path'] ?? $body['path']);
+        out(['error' => $r['status'], 'msg' => $r['msg'],
+             'current_hash' => $cur['body_hash'] ?? '', 'current_body' => $cur['body'] ?? ''], $r['status'] === 'locked' ? 423 : 409);
+    }
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['path']);
+    $cur = get_workspace_doc($bookParam, $r['path']);
+    out(['ok' => true, 'msg' => $r['msg'], 'created' => !empty($r['created']),
+         'doc' => ['path' => $cur['path'], 'title' => $cur['title'], 'body_hash' => $cur['body_hash']]]);
+
+case 'lock_docs':       // POST {book, path, locked?=true} — path may be a folder (state/chapter-05); unlocking is owner-only
+    if (!$body || empty($body['path'])) out(['error' => 'expected {book, path, locked?}'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    $lock = !array_key_exists('locked', $body) || !empty($body['locked']);
+    if (!$IS_SERVICE) require_cap($bookParam, $lock ? 'edit' : 'manage');
+    $n = set_workspace_lock($bookParam, $body['path'], $lock);
+    log_activity($bookParam, $lock ? 'doc_lock' : 'doc_unlock', ws_norm_path($body['path']) . ' (' . $n . ')');
+    out(['ok' => true, 'locked' => $lock, 'changed' => $n]);
+
+/* ---- continuity: promise/question ledger, chapter cast, character knowledge ---- */
+
+case 'ledger':          // ?book=ID[&kind=promise|question][&status=planted]
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    out(['ok' => true, 'items' => get_ledger($bookParam, $_GET['kind'] ?? null, $_GET['status'] ?? null)]);
+
+case 'ledger_save':     // POST {book, slug?|title, kind?, status?, planted_in?, payoff_in?, characters?, notes?} — merge by slug
+case 'ledger_delete':   // POST {book, slug}
+    if (!$body) out(['error' => 'expected JSON body'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    if ($action === 'ledger_delete') {
+        if (!delete_ledger_item($bookParam, $body['slug'] ?? '')) out(['error' => 'ledger item not found'], 404);
+        log_activity($bookParam, $action, (string)$body['slug']);
+        out(['ok' => true]);
+    }
+    $r = save_ledger_item($bookParam, $body);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['item']['slug']);
+    unset($r['status']);
+    out(['ok' => true] + $r);
+
+case 'cast':            // ?book=ID[&chapter=4|file][&slug=aria]  → one chapter's cast, a slug's chapters, or every chapter's cast
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    if (!empty($_GET['slug'])) out(['ok' => true, 'slug' => ledger_slug($_GET['slug']), 'chapters' => get_slug_appearances($bookParam, $_GET['slug'])]);
+    if (!empty($_GET['chapter'])) {
+        $ch = find_chapter_ref($bookParam, $_GET['chapter']);
+        if (!$ch) out(['error' => 'chapter not found'], 404);
+        out(['ok' => true, 'chapter' => ['file' => $ch['file'], 'num' => $ch['num'], 'title' => $ch['title']], 'cast' => get_chapter_cast($bookParam, $ch['file'])]);
+    }
+    out(['ok' => true, 'cast' => get_chapter_cast($bookParam)]);
+
+case 'cast_set':        // POST {book, chapter (number or file), cast:[{slug, role: pov|appears|mentioned}]} — replaces the chapter's cast
+    if (!$body || !isset($body['cast'])) out(['error' => 'expected {book, chapter, cast:[...]}'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    $ch = find_chapter_ref($bookParam, $body['chapter'] ?? '');
+    if (!$ch) out(['error' => 'chapter not found'], 404);
+    $r = set_chapter_cast($bookParam, $ch['file'], $body['cast']);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $ch['file']);
+    unset($r['status']);
+    out(['ok' => true, 'chapter' => ['file' => $ch['file'], 'num' => $ch['num']]] + $r);
+
+case 'knowledge':       // ?book=ID&character=aria[&at=12]  → facts known (by chapter 12) + arc beats
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam || empty($_GET['character'])) out(['error' => 'book and character are required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $k = knowledge_at($bookParam, $_GET['character'], $_GET['at'] ?? '');
+    if ($k === null) out(['error' => 'at must be a chapter number'], 400);
+    out(['ok' => true] + $k);
+
+case 'knowledge_save':  // POST {book, facts:[{character, knows, learned_in?, fact?}]}
+case 'knowledge_delete': // POST {book, character, fact}
+    if (!$body) out(['error' => 'expected JSON body'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    if ($action === 'knowledge_delete') {
+        if (!delete_knowledge($bookParam, $body['character'] ?? '', $body['fact'] ?? '')) out(['error' => 'fact not found'], 404);
+        log_activity($bookParam, $action, ($body['character'] ?? '') . '/' . ($body['fact'] ?? ''));
+        out(['ok' => true]);
+    }
+    $r = save_knowledge($bookParam, $body['facts'] ?? null);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['msg']);
+    unset($r['status']);
+    out(['ok' => true] + $r);
+
+case 'state_events':    // ?book=ID[&slug=aria]  → deaths/revivals, object destroyed/lost/found/holder/location, in story order
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    out(['ok' => true, 'events' => get_state_events($bookParam, !empty($_GET['slug']) ? $_GET['slug'] : null)]);
+
+case 'state_events_save':   // POST {book, events:[{slug, event, chapter, value?, note?}]}
+case 'state_event_delete':  // POST {book, slug, event, chapter}
+    if (!$body) out(['error' => 'expected JSON body'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    if ($action === 'state_event_delete') {
+        if (!delete_state_event($bookParam, $body['slug'] ?? '', $body['event'] ?? '', $body['chapter'] ?? '')) out(['error' => 'event not found'], 404);
+        log_activity($bookParam, $action, ($body['slug'] ?? '') . ' ' . ($body['event'] ?? ''));
+        out(['ok' => true]);
+    }
+    $r = save_state_events($bookParam, $body['events'] ?? null);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['msg']);
+    unset($r['status']);
+    out(['ok' => true] + $r);
+
+case 'continuity_check':    // GET ?book=ID, or POST {book, candidate?:{chapter, cast?}} — read-only, saves nothing
+    $bookParam = (string)($body['book'] ?? ($_GET['book'] ?? ''));
+    if (!$bookParam || !get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    $r = continuity_check($bookParam, $body['candidate'] ?? null);
+    if (isset($r['error'])) out(['error' => $r['error']], 400);
+    out(['ok' => true] + $r);
+
+case 'exemptions':          // ?book=ID → dismissed-finding rules
+    $bookParam = $_GET['book'] ?? '';
+    if (!$bookParam) out(['error' => 'book is required'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'view');
+    out(['ok' => true, 'exemptions' => get_exemptions($bookParam)]);
+
+case 'exemption_save':      // POST {book, code, slug?, chapter?, reason}
+case 'exemption_delete':    // POST {book, code, slug?, chapter?}
+case 'continuity_settings': // POST {book, promise_gap?, question_gap?} (0 = default)
+    if (!$body) out(['error' => 'expected JSON body'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, $action === 'continuity_settings' ? 'manage' : 'edit');
+    if ($action === 'exemption_delete') {
+        if (!delete_exemption($bookParam, $body['code'] ?? '', $body['slug'] ?? '', $body['chapter'] ?? '')) out(['error' => 'exemption not found'], 404);
+        log_activity($bookParam, $action, (string)($body['code'] ?? ''));
+        out(['ok' => true]);
+    }
+    $r = $action === 'exemption_save'
+        ? save_exemption($bookParam, $body['code'] ?? '', $body['slug'] ?? '', $body['chapter'] ?? '', $body['reason'] ?? '')
+        : set_continuity_thresholds($bookParam, $body['promise_gap'] ?? null, $body['question_gap'] ?? null);
+    if ($r['status'] !== 'ok') out(['error' => $r['msg']], 400);
+    log_activity($bookParam, $action, $r['msg'] ?? '');
+    unset($r['status']);
+    out(['ok' => true] + $r);
+
+case 'task_create':     // POST {book,title,body?,for_claude?,priority?}
+    if (!$body || trim((string)($body['title'] ?? '')) === '') out(['error' => 'expected {book,title,...}'], 400);
+    $bookParam = (string)($body['book'] ?? '');
+    if (!get_book($bookParam)) out(['error' => 'unknown book'], 400);
+    if (!$IS_SERVICE) require_cap($bookParam, 'edit');
+    $id = save_task(['book_id' => $bookParam, 'title' => trim((string)$body['title']),
+                     'body' => (string)($body['body'] ?? ''), 'status' => 'todo',
+                     'for_claude' => !empty($body['for_claude']),
+                     'priority' => in_array($body['priority'] ?? 'med', ['low','med','high'], true) ? $body['priority'] : 'med']);
+    out(['ok' => true, 'task' => get_task($id)]);
+
+case 'task_update':     // POST {id, status?|result?|title?|body?}  (merge patch)
+    if (!$body || empty($body['id'])) out(['error' => 'expected {id,...}'], 400);
+    $t = get_task((int)$body['id']);
+    if (!$t) out(['error' => 'task not found'], 404);
+    if (!$IS_SERVICE) require_cap($t['book_id'], 'edit');
+    if (isset($body['status']) && !in_array($body['status'], ['todo','doing','done'], true))
+        out(['error' => 'status must be todo|doing|done'], 400);
+    $patch = array_intersect_key($body, array_flip(['status','result','title','body']));
+    if (!$patch) out(['error' => 'nothing to update'], 400);
+    if (isset($patch['title']) && trim((string)$patch['title']) === '') out(['error' => 'title cannot be empty'], 400);
+    save_task(array_merge($t, $patch, ['id' => (int)$t['id']]));
+    out(['ok' => true, 'task' => get_task((int)$t['id'])]);
 
 case 'tasks':           // ?book=ID&for_claude=1&status=todo
     $filters = [];
@@ -120,5 +417,5 @@ case 'import':          // load a canonical snapshot — global op, admin/servic
     out(['ok' => true, 'books' => count($body['books'])]);
 
 default:
-    out(['error' => 'unknown action', 'actions' => ['ping','push','pull','tasks','apply','writing-log','export','import']], 400);
+    out(['error' => 'unknown action', 'actions' => ['ping','push','chapter','save_chapter','chapter_create','entries','search','diagnostics','docs','doc','save_doc','append_doc','lock_docs','tasks','task_create','task_update','apply','writing-log','export','import']], 400);
 }

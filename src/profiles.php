@@ -41,6 +41,7 @@ const PROFILES = [
         'dbKeys' => null,        // null => DB_KEYS (the legacy fiction set, unchanged)
         'databases' => null,     // null => DBMETA (the legacy fiction meta, unchanged)
         'fieldTemplates' => [],  // fiction prefills no extra fields (byte-for-byte legacy stub)
+        'continuity' => true,    // promise/question ledger, cast, knowledge, continuity checks
         'bands' => ['actSingular'=>'Act', 'actPlural'=>'Acts', 'sceneSingular'=>'Scene', 'scenePlural'=>'Scenes'],
         'diagnostics' => ['usage'=>true, 'patterns'=>true, 'dialogue'=>true,
                           'readability'=>false, 'citations'=>false, 'jargon'=>false, 'repetition'=>false, 'promises'=>false],
@@ -102,6 +103,7 @@ const PROFILES = [
     ],
 
     'memoir' => [
+        'continuity' => true,    // a memoir is a narrative too: cast, knowledge, promises
         'label' => 'Memoir',
         'desc'  => 'Narrative non-fiction — real people, places, and themes.',
         'references' => true,
@@ -136,6 +138,8 @@ function profile_desc($p)  { return PROFILES[normalize_profile($p)]['desc'] ?? '
 /** Whether this profile uses the Sources & citations engine / References view
  *  (Phase 12). Fiction does not; the non-fiction family does. */
 function profile_has_references($p) { return !empty(PROFILES[normalize_profile($p)]['references']); }
+/** Whether this profile shows the Continuity view (ledger, cast, knowledge, checks). */
+function profile_has_continuity($p) { return !empty(PROFILES[normalize_profile($p)]['continuity']); }
 /** Whether this profile surfaces the self-help Exercises / Workbook view (Phase 13). */
 function profile_has_exercises($p) { return !empty(PROFILES[normalize_profile($p)]['exercises']); }
 /** Label bundle for the threads tracker — self-help reframes it as reader promises
