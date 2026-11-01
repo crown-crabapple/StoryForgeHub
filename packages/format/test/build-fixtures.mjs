@@ -725,7 +725,7 @@ function buildSaltOrchard() {
   }));
 
   // ---- contradiction note (plain note, no front matter)
-  files.set('CONTRADICTION.md', [
+  files.set('contradiction.md', [
     '# Intentional continuity contradiction (for M05)',
     '',
     'This book contains one deliberate fact conflict. The validator does NOT detect it;',

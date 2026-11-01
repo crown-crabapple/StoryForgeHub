@@ -9,10 +9,10 @@
     "sf-validate": "bin/sf-validate.mjs"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test \"test/*.test.mjs\""
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "yaml": "2.9.1"

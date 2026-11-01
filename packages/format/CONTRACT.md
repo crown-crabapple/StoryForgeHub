@@ -96,7 +96,7 @@ Required by TEST-STRATEGY.md:
 - One planning doc (`planning/plan.md`).
 - Unicode prose: accented Latin, em dash, curly quotes, one non-Latin script line, one emoji.
 - HTML comments: `<!-- note: … -->`, one `<!-- sf:anchor … -->` pair, one opaque comment.
-- A deliberate **continuity contradiction** for M05 (the validator does NOT detect it): codex says Maren's eyes are grey; one scene says green. Documented in `fixtures/valid/salt-orchard/CONTRADICTION.md` (a plain note, no front matter).
+- A deliberate **continuity contradiction** for M05 (the validator does NOT detect it): codex says Maren's eyes are grey; one scene says green. Documented in `fixtures/valid/salt-orchard/contradiction.md` (a plain note, no front matter).
 - One `x-` field and one variant scene.
 - Expected result: **zero diagnostics**. `expected.json` holds the full ordered scene ID list and timeline.
 

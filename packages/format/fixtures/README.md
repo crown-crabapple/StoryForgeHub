@@ -16,7 +16,7 @@ The bytes in this folder are exact (`.gitattributes` marks `packages/format/fixt
 
 ### Intentional contradiction in `salt-orchard`
 
-The codex says Maren's eyes are grey; one scene says green. This is deliberate, it is a test input for the M05 continuity engine, and the validator must NOT report it. See `valid/salt-orchard/CONTRADICTION.md`. Do not "fix" it.
+The codex says Maren's eyes are grey; one scene says green. This is deliberate, it is a test input for the M05 continuity engine, and the validator must NOT report it. See `valid/salt-orchard/contradiction.md`. Do not "fix" it.
 
 ## `invalid/`
 
