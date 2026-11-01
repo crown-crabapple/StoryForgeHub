@@ -81,6 +81,41 @@ CREATE TABLE IF NOT EXISTS chapters (
   KEY k_book (book_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Acts group chapters in the Grid (app-only). Mirrors ensure_structure() in src/repo.php.
+CREATE TABLE IF NOT EXISTS acts (
+  id         INT AUTO_INCREMENT PRIMARY KEY,
+  book_id    VARCHAR(40) NOT NULL,
+  title      VARCHAR(255) DEFAULT '',
+  subtitle   VARCHAR(255) DEFAULT '',
+  sort_order INT DEFAULT 0,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Scenes are derived from chapters.body on every save (md_split_scenes); the
+-- prose stays canonical. label/summary/seq/pov_slug/subtitle are app-only and
+-- follow a scene across edits: reconcile_scenes matches old rows to new scenes
+-- by content (body_hash, then anchor_head/anchor_tail similarity, then ordinal).
+-- Mirrors ensure_structure() in src/repo.php.
+CREATE TABLE IF NOT EXISTS scenes (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  book_id     VARCHAR(40) NOT NULL,
+  chapter_id  INT NOT NULL,
+  ordinal     INT DEFAULT 1,
+  title       VARCHAR(255) DEFAULT '',
+  word_count  INT DEFAULT 0,
+  body_hash   VARCHAR(40) DEFAULT '',
+  label       VARCHAR(40) DEFAULT '',
+  summary     TEXT,
+  note        TEXT,                                -- <!-- author notes --> lifted out of the prose
+  seq         INT DEFAULT NULL,                    -- planning-only display order
+  pov_slug    VARCHAR(160) DEFAULT '',             -- a Characters entry slug
+  subtitle    VARCHAR(255) DEFAULT '',
+  anchor_head VARCHAR(255) DEFAULT '',             -- first ~200 chars of prose (matching only)
+  anchor_tail VARCHAR(255) DEFAULT '',             -- last ~200 chars of prose (matching only)
+  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY k_scenes_ch (chapter_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE IF NOT EXISTS progressions (
   id          INT AUTO_INCREMENT PRIMARY KEY,
   book_id     VARCHAR(40) NOT NULL,

@@ -504,6 +504,11 @@ function ensure_structure() {
     try { db()->exec("ALTER TABLE chapters ADD COLUMN grid_seq INT DEFAULT NULL"); } catch (Exception $e) {}  // app-only manual order for the Grid; survives sync
     try { db()->exec("ALTER TABLE scenes ADD COLUMN note TEXT"); } catch (Exception $e) {}   // author notes (<!-- ... -->) lifted out of prose
     try { db()->exec("ALTER TABLE scenes ADD COLUMN seq INT DEFAULT NULL"); } catch (Exception $e) {}  // app-only planning order; does NOT change prose
+    // UI plan Phase 2: scene metadata + content-matched identity
+    try { db()->exec("ALTER TABLE scenes ADD COLUMN pov_slug VARCHAR(160) DEFAULT ''"); } catch (Exception $e) {}  // a Characters entry slug
+    try { db()->exec("ALTER TABLE scenes ADD COLUMN subtitle VARCHAR(255) DEFAULT ''"); } catch (Exception $e) {}
+    try { db()->exec("ALTER TABLE scenes ADD COLUMN anchor_head VARCHAR(255) DEFAULT ''"); } catch (Exception $e) {}  // first ~200 chars of prose (matching only)
+    try { db()->exec("ALTER TABLE scenes ADD COLUMN anchor_tail VARCHAR(255) DEFAULT ''"); } catch (Exception $e) {}  // last ~200 chars of prose (matching only)
     try { db()->exec("CREATE INDEX k_scenes_ch ON scenes (chapter_id)"); } catch (Exception $e) {}
 }
 function get_acts($book_id) { ensure_structure(); return all("SELECT * FROM acts WHERE book_id=? ORDER BY sort_order, id", [$book_id]); }
@@ -569,23 +574,88 @@ function reorder_scenes($book_id, $chapter_id, array $ids) {
         q("UPDATE scenes SET seq=? WHERE id=? AND chapter_id=? AND book_id=?", [$seq++, $sid, (int)$chapter_id, $book_id]);
     }
 }
-/** Reconcile a chapter's scenes from its body. Delete + reinsert, preserving the
- *  app-only label/summary by ordinal (the stable key for now). Returns count. */
+/** The first and last ~200 characters of a scene's prose (whitespace
+ *  collapsed) — what reconcile_scenes compares to recognise a scene after edits. */
+function scene_anchors($body) {
+    $t = trim(preg_replace('/\s+/u', ' ', (string)$body));
+    $n = mb_strlen($t);
+    return [mb_substr($t, 0, 200), $n > 200 ? mb_substr($t, $n - 200) : $t];
+}
+/** 0..1 similarity of two anchor strings. */
+function scene_anchor_similarity($a, $b) {
+    $a = (string)$a; $b = (string)$b;
+    if ($a === '' || $b === '') return 0.0;
+    if ($a === $b) return 1.0;
+    similar_text($a, $b, $pct);
+    return $pct / 100;
+}
+const SCENE_MATCH_MIN = 0.5;   // average head/tail similarity needed to call two scenes "the same"
+
+/** Reconcile a chapter's scenes from its body (UI plan Phase 2: identity by
+ *  content, not position). Old rows are matched to the new split in three passes:
+ *    1. identical content (body hash), copies paired in order — untouched,
+ *       moved, or shifted scenes;
+ *    2. best head/tail similarity >= SCENE_MATCH_MIN — edited scenes;
+ *    3. same ordinal among what's left — e.g. a scene rewritten wholesale.
+ *  Matched rows are UPDATEd in place (ids stay stable, so app-only label /
+ *  summary / POV / subtitle / seq follow the scene); unmatched old rows are
+ *  deleted, unmatched new scenes inserted bare. Prose is never touched.
+ *  Returns the scene count. */
 function reconcile_scenes($book_id, $chapter_id, $body) {
     ensure_structure();
-    $scenes = md_split_scenes($body);
-    $prev = [];
-    foreach (all("SELECT ordinal,label,summary,seq FROM scenes WHERE chapter_id=?", [$chapter_id]) as $r) $prev[(int)$r['ordinal']] = $r;
-    q("DELETE FROM scenes WHERE chapter_id=?", [$chapter_id]);
-    foreach ($scenes as $s) {
-        $o = (int)$s['ordinal'];
+    $new = [];
+    foreach (md_split_scenes($body) as $s) {
         $note = $s['note'] ?? '';
-        $seq = (isset($prev[$o]['seq']) && $prev[$o]['seq'] !== null && $prev[$o]['seq'] !== '') ? (int)$prev[$o]['seq'] : null;
-        q("INSERT INTO scenes (book_id,chapter_id,ordinal,title,word_count,body_hash,label,summary,note,seq) VALUES (?,?,?,?,?,?,?,?,?,?)",
-          [$book_id, (int)$chapter_id, $o, $s['title'], (int)$s['wordCount'], md5($s['body'] . "\x00" . $note),
-           $prev[$o]['label'] ?? '', $prev[$o]['summary'] ?? '', $note, $seq]);
+        list($h, $t) = scene_anchors($s['body']);
+        $new[] = $s + ['hash' => md5($s['body'] . "\x00" . $note), 'head' => $h, 'tail' => $t, 'noteText' => $note];
     }
-    return count($scenes);
+    $old = all("SELECT id,ordinal,body_hash,anchor_head,anchor_tail FROM scenes WHERE chapter_id=? ORDER BY ordinal, id", [(int)$chapter_id]);
+    $match = [];      // new index => old index
+    $taken = [];      // old index => true
+    // 1. identical content; identical copies pair up in order (a scene inserted
+    //    before two duplicates must not swap them)
+    $oldByHash = [];
+    foreach ($old as $oi => $o) $oldByHash[$o['body_hash']][] = $oi;
+    foreach ($new as $ni => $n) {
+        if (empty($oldByHash[$n['hash']])) continue;
+        $oi = array_shift($oldByHash[$n['hash']]);
+        $match[$ni] = $oi; $taken[$oi] = true;
+    }
+    // 2. similarity of opening + closing text, best pairs first
+    $pairs = [];
+    foreach ($new as $ni => $n) {
+        if (isset($match[$ni])) continue;
+        foreach ($old as $oi => $o) {
+            if (isset($taken[$oi])) continue;
+            $sc = (scene_anchor_similarity($o['anchor_head'], $n['head']) + scene_anchor_similarity($o['anchor_tail'], $n['tail'])) / 2;
+            if ($sc >= SCENE_MATCH_MIN) $pairs[] = [$sc, abs((int)$o['ordinal'] - $n['ordinal']), $ni, $oi];
+        }
+    }
+    usort($pairs, function ($a, $b) { return [$b[0], $a[1]] <=> [$a[0], $b[1]]; });
+    foreach ($pairs as $p) {
+        list(, , $ni, $oi) = $p;
+        if (isset($match[$ni]) || isset($taken[$oi])) continue;
+        $match[$ni] = $oi; $taken[$oi] = true;
+    }
+    // 3. ordinal fallback among the leftovers
+    foreach ($new as $ni => $n) {
+        if (isset($match[$ni])) continue;
+        foreach ($old as $oi => $o) {
+            if (!isset($taken[$oi]) && (int)$o['ordinal'] === $n['ordinal']) { $match[$ni] = $oi; $taken[$oi] = true; break; }
+        }
+    }
+    foreach ($old as $oi => $o) if (!isset($taken[$oi])) q("DELETE FROM scenes WHERE id=?", [(int)$o['id']]);
+    foreach ($new as $ni => $n) {
+        $vals = [$n['ordinal'], $n['title'], (int)$n['wordCount'], $n['hash'], $n['noteText'], $n['head'], $n['tail']];
+        if (isset($match[$ni])) {
+            q("UPDATE scenes SET ordinal=?,title=?,word_count=?,body_hash=?,note=?,anchor_head=?,anchor_tail=? WHERE id=?",
+              array_merge($vals, [(int)$old[$match[$ni]]['id']]));
+        } else {
+            q("INSERT INTO scenes (ordinal,title,word_count,body_hash,note,anchor_head,anchor_tail,book_id,chapter_id,label,summary,pov_slug,subtitle) VALUES (?,?,?,?,?,?,?,?,?,'','','','')",
+              array_merge($vals, [$book_id, (int)$chapter_id]));
+        }
+    }
+    return count($new);
 }
 /** Scenes for a chapter, lazily backfilled from the chapter body on first view
  *  so already-imported chapters get scenes without waiting for a re-sync. */
@@ -603,12 +673,65 @@ function get_scenes($chapter_id) {
 }
 /** Set an app-only scene label (Phase 1). Scoped by book_id so a stray id can't
  *  touch another book's scenes. Empty string clears the label. Preserved across
- *  re-imports by reconcile_scenes (matched on ordinal). */
+ *  re-imports by reconcile_scenes (matched on content since UI plan Phase 2). */
 function set_scene_label($scene_id, $book_id, $label) {
     ensure_structure();
     $allowed = array_merge([''], SCENE_LABELS);
     if (!in_array((string)$label, $allowed, true)) return;
     q("UPDATE scenes SET label=? WHERE id=? AND book_id=?", [(string)$label, (int)$scene_id, $book_id]);
+}
+/** UI plan Phase 2: save a scene's app-only metadata (any subset of summary,
+ *  label, pov_slug, subtitle). Book-scoped; the label must be a SCENE_LABELS
+ *  value and the POV a Characters entry of the same book (or empty). Prose is
+ *  never touched. Returns ['ok'=>true,'scene'=>row] or ['ok'=>false,'error'=>…]. */
+function save_scene_meta($scene_id, $book_id, array $f) {
+    ensure_structure();
+    $row = one("SELECT * FROM scenes WHERE id=? AND book_id=?", [(int)$scene_id, (string)$book_id]);
+    if (!$row) return ['ok'=>false, 'error'=>'Scene not found — the chapter may have changed. Reload the page.'];
+    $set = []; $args = [];
+    if (array_key_exists('summary', $f)) {
+        $v = trim(str_replace("\r", '', (string)$f['summary']));
+        if (mb_strlen($v) > 4000) return ['ok'=>false, 'error'=>'Summary is too long (4,000 characters max).'];
+        $set[] = 'summary=?'; $args[] = $v;
+    }
+    if (array_key_exists('label', $f)) {
+        $v = (string)$f['label'];
+        if (!in_array($v, array_merge([''], SCENE_LABELS), true)) return ['ok'=>false, 'error'=>'Unknown label.'];
+        $set[] = 'label=?'; $args[] = $v;
+    }
+    if (array_key_exists('pov_slug', $f)) {
+        $v = trim((string)$f['pov_slug']);
+        if ($v !== '' && !val("SELECT id FROM entries WHERE book_id=? AND db_key='characters' AND slug=?", [(string)$book_id, $v]))
+            return ['ok'=>false, 'error'=>'POV must be a character in this book.'];
+        $set[] = 'pov_slug=?'; $args[] = $v;
+    }
+    if (array_key_exists('subtitle', $f)) {
+        $v = trim(preg_replace('/\s+/u', ' ', (string)$f['subtitle']));
+        if (mb_strlen($v) > 255) return ['ok'=>false, 'error'=>'Subtitle is too long (255 characters max).'];
+        $set[] = 'subtitle=?'; $args[] = $v;
+    }
+    if ($set) q("UPDATE scenes SET ".implode(',', $set)." WHERE id=? AND book_id=?", array_merge($args, [(int)$scene_id, (string)$book_id]));
+    return ['ok'=>true, 'scene'=>one("SELECT id,summary,label,pov_slug,subtitle FROM scenes WHERE id=?", [(int)$scene_id])];
+}
+/** UI plan Phase 2: per-scene Codex mentions for a chapter body, computed live
+ *  with the same matcher as the mentions index (scan_mentions over each scene's
+ *  prose, comments already lifted out by md_split_scenes). Also returns a short
+ *  plain-text preview for cards without a summary.
+ *  [ordinal => ['chips'=>[slug=>count, …] (most first), 'preview'=>str]]. */
+function scene_grid_data($chapter_body, $targets) {
+    $out = [];
+    foreach (md_split_scenes($chapter_body) as $s) {
+        $hits = scan_mentions($s['body'], $targets);
+        uksort($hits, function ($a, $b) use ($hits) { return [$hits[$b], $a] <=> [$hits[$a], $b]; });   // most first, then slug
+        $plain = preg_replace('/^\s*#{1,6}\s+.*$/mu', '', (string)$s['body']);   // the scene's title heading
+        $plain = trim(preg_replace('/\s+/u', ' ', diag_plain_text($plain)));
+        if (mb_strlen($plain) > 160) {
+            $cut = mb_substr($plain, 0, 160); $sp = mb_strrpos($cut, ' ');
+            $plain = rtrim(($sp !== false && $sp > 100) ? mb_substr($cut, 0, $sp) : $cut, " ,;:—-") . '…';
+        }
+        $out[(int)$s['ordinal']] = ['chips' => $hits, 'preview' => $plain];
+    }
+    return $out;
 }
 /* ---- progressions: arcs & timeline (Phase 6) ----
  * when_label / when_order are APP-ONLY overrides for timeline placement. They are
