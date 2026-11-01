@@ -14,7 +14,7 @@
 #codex-prose p{margin:0 0 10px}
 #codex-prose ul,#codex-prose ol{margin:0 0 10px 22px}
 #codex-prose .ProseMirror p.is-editor-empty:first-child::before{content:attr(data-placeholder);color:var(--faint,#aaa);float:left;height:0;pointer-events:none}
-/* live mention highlight (Phase 5) — recognized names; click to link as [[slug]] */
+/* live mention highlight (Phase 5) — recognized names; click pins the Codex card */
 #codex-prose .cm-mention{border-bottom:1px dashed var(--accent,#5b7);cursor:pointer}
 #codex-prose .cm-mention:hover{background:color-mix(in srgb,var(--accent,#5b7) 14%,transparent)}
 
@@ -49,3 +49,21 @@ hr.cm-scene-break::after{content:'⁂';color:var(--muted,#9a927f);font-size:14px
 
 /* seatbelt notice on the tidy tier */
 .wys-notice{font-size:12px;color:var(--muted,#8a8378);margin:4px 0 8px}
+
+/* ---- Codex card (UI plan Phase 1) — extends .mention-card in style.css ---- */
+.codex-card{width:300px;font-size:12.5px;line-height:1.45;color:var(--ink,#2c2a26)}
+.codex-card.pinned{border-color:var(--accent,#5b54b8)}
+.codex-card .mc-k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--faint,#9a927f);margin-right:2px}
+.codex-card .mc-aliases{margin-bottom:6px;color:var(--muted,#6b6253)}
+.codex-card .mc-fields{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0 0 8px}
+.codex-card .mc-fields dt{color:var(--faint,#9a927f);font-size:11.5px}
+.codex-card .mc-fields dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.codex-card .mc-body{color:var(--muted,#6b6253);margin-bottom:8px}
+.codex-card .mc-rel{margin-bottom:6px}
+.codex-card .mc-rel a{color:var(--accent,#5b54b8);text-decoration:none}
+.codex-card .mc-rel a:hover{text-decoration:underline}
+.codex-card .mc-count{font-size:11.5px;color:var(--faint,#9a927f);font-variant-numeric:tabular-nums;margin-bottom:8px}
+.codex-card .mc-actions{display:flex;gap:10px;align-items:center;border-top:1px solid var(--line,#e4e0d8);padding-top:8px}
+.codex-card .mc-link{margin-left:auto;border:1px solid var(--line2,#ccc);background:none;border-radius:6px;padding:3px 9px;
+  font-family:inherit;font-size:12px;font-weight:500;line-height:1.2;color:var(--ink,#2c2a26);cursor:pointer}
+.codex-card .mc-link:hover{background:var(--accent-soft,#f6f3ee)}
