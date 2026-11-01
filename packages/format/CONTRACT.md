@@ -73,12 +73,14 @@ Diagnostics sort: by `file`, then `location` (natural order: `line 2` before `li
 2. **E206** is reported on the first scene (in §4.2 order) of each chapter whose act is lower than the previous chapter's act, location `act`. The "previous act" is the highest act seen so far.
 3. **E202 / E203 / E204 / E207 / E208 / E201** are reported on **every** file involved, at the field concerned (`series_number`, `slug`, `sequence`, `chapter` or `act`, `slug`, `id`).
 4. **pen_name**: checked only when `library.md` exists; an unknown pen-name slug → `E301` at `pen_name`.
-5. A file with a scene schema in the wrong chapter or act **folder** → one `W201` at `chapter` (or `act` if only the act folder is wrong). A codex entry whose folder is not `<type>s` → `W201` at `type`. A thread not under `planning/threads/` or an event not under `planning/timeline/` → `W201` at `schema`.
+5. A file with a scene schema in the wrong chapter or act **folder** → one `W201` at `chapter` (or `act` if only the act folder is wrong). A codex entry whose first folder under `codex/` is not its expected folder → `W201` at `type`. Expected folder: `characters`, `locations`, `factions`, `objects`, `lore` for the built-in types (spec §2); `<type>s` for custom types. Entries directly in `codex/` are not checked. A thread not under `planning/threads/`, an event not under `planning/timeline/`, or a scene outside `manuscript/` → `W201` at `schema`.
 6. **W202** applies to a scene filename prefix (location `sequence`), a `ch-NNN-` folder that holds a `chapter.md` (location `chapter`), and an `act-NN-` folder that holds an `act.md` (location `act`).
 7. A file that fails to parse (`E100`, `E101`, `E006`) gets no other diagnostics, and is not a link target.
 8. Unknown non-`x-` fields → `I401` at the field name, one per field.
 9. Body link scan skips fenced code blocks and inline code.
 10. Required-field checks use spec §11.1. Type checks: integers for `act`, `chapter`, `sequence`, `series_number`, `word_target`; number for `order`; lists for `characters`, `locations`, `plot_threads`, `events`, `aliases`, `previous_slugs`, `setup`, `payoff`, `scenes`, `tags`, `sources`, `links`, `genre`, `pen_names`; enum values as listed in the spec.
+11. **Locations fixed during build:** whole-file diagnostics (`E100`, `E101`, `W101`, `W203`, `W204`) use `""`. `E006` uses `schema`. `W302` uses `payoff`. Unresolved `[@cite]` in a body uses `line N`. A `variant_of` to a missing scene → `E301` at `variant_of`.
+12. Two diagnostics with the same (code, file, location) collapse to one, e.g. two broken links on one line.
 
 ## Fixtures
 
