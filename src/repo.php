@@ -1538,6 +1538,65 @@ function get_appearances($book_id, $slug) {
                 ORDER BY src_type DESC, src_label", [$book_id, $slug]);
 }
 
+/** Codex card data (UI plan Phase 1) for every entry in a book, keyed by slug:
+ *  name, db, type, detail, aliases, key fields, a ~200-char plain excerpt of the
+ *  prose, up to 3 related slugs (only ones that exist in this book), and the
+ *  manuscript mention total from the mentions index (`n` — as fresh as the last
+ *  reindex). Batched: a fixed handful of queries, not one per entry. */
+function build_codex_card_meta($book_id) {
+    $rows = all("SELECT id,slug,name,db_key,type,detail FROM entries WHERE book_id=? ORDER BY db_key, name", [$book_id]);
+    $out = []; $byId = [];
+    foreach ($rows as $r) {
+        $out[$r['slug']] = ['name'=>$r['name'], 'db'=>$r['db_key'], 'type'=>(string)$r['type'],
+            'detail'=>trim((string)($r['detail'] ?: $r['type'])),
+            'aliases'=>[], 'fields'=>[], 'body'=>'', 'related'=>[], 'n'=>0];
+        $byId[(int)$r['id']] = $r['slug'];
+    }
+    if (!$out) return [];
+    // labels that are bookkeeping, not character/place facts
+    $skip = ['slug'=>1, 'status'=>1, 'type'=>1, 'aliases'=>1, 'related'=>1, 'mention scan'=>1, 'index'=>1];
+    foreach (all("SELECT f.entry_id, f.label, f.value FROM entry_fields f JOIN entries e ON e.id=f.entry_id
+                  WHERE e.book_id=? ORDER BY f.entry_id, f.sort_order", [$book_id]) as $f) {
+        $slug = $byId[(int)$f['entry_id']] ?? null; if ($slug === null) continue;
+        $l = strtolower(trim($f['label'])); $v = trim((string)$f['value']);
+        if ($l === 'aliases') {
+            foreach (preg_split('/[,;]+/', $v) as $a) { $a = trim($a); if ($a !== '') $out[$slug]['aliases'][] = $a; }
+            continue;
+        }
+        if (isset($skip[$l]) || $v === '' || count($out[$slug]['fields']) >= 4) continue;
+        $out[$slug]['fields'][] = [trim($f['label']), $v];
+    }
+    $prose = [];
+    foreach (all("SELECT s.entry_id, s.body FROM entry_sections s JOIN entries e ON e.id=s.entry_id
+                  WHERE e.book_id=? ORDER BY s.entry_id, s.sort_order", [$book_id]) as $s) {
+        $id = (int)$s['entry_id'];
+        if (isset($prose[$id]) && mb_strlen($prose[$id]) > 400) continue;   // enough for the excerpt
+        $prose[$id] = ($prose[$id] ?? '') . ' ' . (string)$s['body'];
+    }
+    foreach ($prose as $id => $md) {
+        $slug = $byId[$id] ?? null; if ($slug === null) continue;
+        $t = preg_replace('/^\s*(?:[-+*]|\d+[.)])\s+/mu', '', (string)$md);   // list markers
+        $t = trim(preg_replace('/\s+/u', ' ', diag_plain_text($t)));
+        if (mb_strlen($t) > 200) {
+            $cut = mb_substr($t, 0, 200);
+            $sp = mb_strrpos($cut, ' ');
+            $t = rtrim(($sp !== false && $sp > 140) ? mb_substr($cut, 0, $sp) : $cut, " ,;:—-") . '…';
+        }
+        $out[$slug]['body'] = $t;
+    }
+    foreach (all("SELECT r.entry_id, r.target_slug FROM entry_relations r JOIN entries e ON e.id=r.entry_id
+                  WHERE e.book_id=? ORDER BY r.entry_id, r.sort_order", [$book_id]) as $r) {
+        $slug = $byId[(int)$r['entry_id']] ?? null; $to = trim((string)$r['target_slug']);
+        if ($slug === null || $to === $slug || !isset($out[$to])) continue;
+        if (count($out[$slug]['related']) < 3 && !in_array($to, $out[$slug]['related'], true)) $out[$slug]['related'][] = $to;
+    }
+    ensure_mentions();
+    foreach (all("SELECT entry_slug, SUM(cnt) AS n FROM mentions WHERE book_id=? AND src_type='chapter'
+                  GROUP BY entry_slug", [$book_id]) as $m)
+        if (isset($out[$m['entry_slug']])) $out[$m['entry_slug']]['n'] = (int)$m['n'];
+    return $out;
+}
+
 /* =================================== smart-editing diagnostics (Phase 7) ===
  * Three lexical analyzers over chapter prose, sharing one tokenizer. Findings are
  * descriptive, not provenance: "patterns to review" flags stylistic tells, NOT
