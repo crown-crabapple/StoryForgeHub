@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W201",
+      "file": "planning/threads-old/brass-key.md",
+      "location": "schema"
+    }
+  ]
+}

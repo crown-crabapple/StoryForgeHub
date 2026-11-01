@@ -156,8 +156,8 @@ const move = (files, from, to) => {
   files.set(to, files.get(from));
   files.delete(from);
 };
-function addThread(b, o = {}) {
-  const p = `${b.prefix}planning/threads/brass-key.md`;
+function addThread(b, o = {}, where = 'planning/threads/brass-key.md') {
+  const p = `${b.prefix}${where}`;
   b.files.set(p, {
     fm: {
       schema: 'storyforge.thread/v1',
@@ -403,6 +403,29 @@ bookCase('I402-cross-book', (b) => {
   return [D('I402', b.B, lineOf(b.files, b.B, '[[other-book:someone]]'))];
 });
 
+bookCase('W201-thread-folder', (b) => {
+  const p = addThread(b, {}, 'planning/threads-old/brass-key.md');
+  return [D('W201', p, 'schema')];
+});
+
+bookCase('W201-event-folder', (b, ids) => {
+  const p = 'planning/events/the-flood.md';
+  b.files.set(p, {
+    fm: { schema: 'storyforge.event/v1', id: ids('event'), slug: 'the-flood', title: 'The flood', order: 100 },
+    body: 'The sea wall fails.\n',
+  });
+  return [D('W201', p, 'schema')];
+});
+
+bookCase('W201-scene-outside-manuscript', (b, ids) => {
+  const p = 'planning/drafts/0010-stray.md';
+  b.files.set(p, {
+    fm: sceneFm(ids, { title: 'Stray', sequence: 30 }),
+    body: 'A scene saved in the wrong place.\n',
+  });
+  return [D('W201', p, 'schema')];
+});
+
 // ---- library cases: root is a library, books live under it
 function addBookTo(files, ids, prefix, slug, series_number) {
   const b = newBook(ids, { prefix, slug, series_number });
@@ -446,6 +469,23 @@ invalid['E203-duplicate-book-slug'] = () => {
     files,
     expected: [D('E203', 'book-a/book.md', 'slug'), D('E203', 'book-b/book.md', 'slug')],
   };
+};
+
+invalid['E301-unknown-pen-name'] = () => {
+  const ids = mkIds('B1');
+  const files = new Map();
+  files.set('library.md', {
+    fm: {
+      schema: 'storyforge.library/v1',
+      id: ids('lib'),
+      title: 'Synthetic Library',
+      pen_names: { block: ['  - name: R. Fenwick', '    slug: r-fenwick'] },
+    },
+    body: '',
+  });
+  const b = addBookTo(files, ids, 'only-book/', 'only-book');
+  files.get(b.BOOK).fm.pen_name = 'nobody';
+  return { files, expected: [D('E301', 'only-book/book.md', 'pen_name')] };
 };
 
 invalid['W101-too-deep'] = () => {

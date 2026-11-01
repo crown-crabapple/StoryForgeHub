@@ -15,6 +15,7 @@ const CONTRACT_CASES = [
   'E302-wrong-kind', 'W101-too-deep', 'W201-misfiled-scene', 'W201-entry-type-folder',
   'W202-prefix-mismatch', 'W203-bad-filename', 'W204-bom', 'W301-previous-slug',
   'W302-paid-no-payoff', 'W303-archived-target', 'I401-unknown-field', 'I402-cross-book',
+  'W201-thread-folder', 'W201-event-folder', 'W201-scene-outside-manuscript', 'E301-unknown-pen-name',
 ];
 
 test('invalid fixture set matches the contract case table', () => {
@@ -43,3 +44,22 @@ for (const name of CONTRACT_CASES) {
     }
   });
 }
+
+test('invalid/E006-future-schema: the v2 scene is listed as unsupported-schema and not ordered', async () => {
+  const book = (await validate(path.join(INVALID, 'E006-future-schema'))).books[0];
+  const b = 'manuscript/act-01-one/ch-001-one/0020-b.md';
+  const ex = book.excluded.find((e) => e.path === b);
+  assert.ok(ex, 'E006 scene must appear in excluded');
+  assert.equal(ex.reason, 'unsupported-schema');
+  assert.ok(!book.order.some((s) => s.path === b));
+});
+
+test('invalid/W201-scene-outside-manuscript: stray scene is excluded, not ordered', async () => {
+  const book = (await validate(path.join(INVALID, 'W201-scene-outside-manuscript'))).books[0];
+  const p = 'planning/drafts/0010-stray.md';
+  assert.ok(!book.order.some((s) => s.path === p), 'must not be in order');
+  assert.equal(book.order.length, 2);
+  const ex = book.excluded.find((e) => e.path === p);
+  assert.ok(ex, 'must appear in excluded');
+  assert.equal(ex.reason, 'outside-manuscript');
+});

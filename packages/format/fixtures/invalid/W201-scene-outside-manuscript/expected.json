@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W201",
+      "file": "planning/drafts/0010-stray.md",
+      "location": "schema"
+    }
+  ]
+}

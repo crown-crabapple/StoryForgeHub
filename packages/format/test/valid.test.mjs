@@ -58,7 +58,13 @@ test('valid/salt-orchard: chapter 0 prologue, acts, chapter labels', async () =>
   assert.deepEqual([...new Set(order.map((s) => s.act))], [1, 2]);
   assert.deepEqual([...new Set(order.map((s) => s.chapter))], [0, 1, 2, 3]);
   // the scene stored with CRLF line endings is read normally
-  assert.ok(order.some((s) => s.title === 'The Grafting'));
+  const graft = order.find((s) => s.title === 'The Grafting');
+  assert.ok(graft, 'CRLF scene must be parsed');
+  assert.equal(graft.sequence, 20);
+  assert.equal(graft.chapter, 2);
+  assert.equal(graft.act, 1);
+  assert.equal(graft.position, 5);
+  assert.equal(graft.id, readExpected(dirOf('salt-orchard')).order[4]);
 });
 
 test('valid/salt-orchard: timeline is chronological, narrative position follows book order', async () => {
