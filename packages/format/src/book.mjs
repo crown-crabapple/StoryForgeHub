@@ -6,6 +6,7 @@ import { analyzeScenes } from './scenes.mjs';
 import { resolveLinks } from './links.mjs';
 import { buildTimeline } from './timeline.mjs';
 import { loadDoc } from './load.mjs';
+import { checkPlacement } from './placement.mjs';
 import { checkFields } from './schema.mjs';
 
 /** @typedef {import('./load.mjs').Doc} Doc */
@@ -37,6 +38,7 @@ export async function validateBook({ rootDir, bookPath, series, add }) {
   const typed = docs.filter((d) => d.kind);
   for (const d of typed) checkFields(d, { inSeries: series !== null }, add);
   checkDuplicateSlugs(typed, add);
+  checkPlacement(typed, add);
   const { order, excluded, positions } = analyzeScenes(typed, bookPath, add);
   const { eventScenes } = await resolveLinks(typed, bookDir, add);
   const timeline = buildTimeline(typed, eventScenes, positions);
