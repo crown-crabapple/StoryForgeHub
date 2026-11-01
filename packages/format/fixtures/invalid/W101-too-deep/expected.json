@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W101",
+      "file": "shelf-a/shelf-b/shelf-c/book.md",
+      "location": ""
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "E208",
+      "file": "codex/objects/brass-key.md",
+      "location": "slug"
+    },
+    {
+      "code": "E208",
+      "file": "planning/threads/brass-key.md",
+      "location": "slug"
+    }
+  ]
+}

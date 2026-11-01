@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "I402",
+      "file": "manuscript/act-01-one/ch-001-one/0020-b.md",
+      "location": "line 11"
+    }
+  ]
+}

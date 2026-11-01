@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "E207",
+      "file": "manuscript/act-01-one/ch-001-one/chapter.md",
+      "location": "chapter"
+    },
+    {
+      "code": "E207",
+      "file": "manuscript/act-01-one/ch-001-extra/chapter.md",
+      "location": "chapter"
+    }
+  ]
+}

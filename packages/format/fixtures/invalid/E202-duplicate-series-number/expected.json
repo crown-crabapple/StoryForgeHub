@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "E202",
+      "file": "tidewater/book-a/book.md",
+      "location": "series_number"
+    },
+    {
+      "code": "E202",
+      "file": "tidewater/book-b/book.md",
+      "location": "series_number"
+    }
+  ]
+}

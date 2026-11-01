@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W201",
+      "file": "codex/characters/salt-orchard.md",
+      "location": "type"
+    }
+  ]
+}

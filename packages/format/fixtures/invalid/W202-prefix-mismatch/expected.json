@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W202",
+      "file": "manuscript/act-01-one/ch-001-one/0015-x.md",
+      "location": "sequence"
+    }
+  ]
+}

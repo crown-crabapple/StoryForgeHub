@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E103",
+      "file": "book.md",
+      "location": "cover"
+    }
+  ]
+}

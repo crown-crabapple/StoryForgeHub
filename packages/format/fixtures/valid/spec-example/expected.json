@@ -1,0 +1,45 @@
+{
+  "diagnostics": [
+    {
+      "code": "W201",
+      "file": "manuscript/act-01-low-water/ch-001-the-drowned-rows/0010-ferry.md",
+      "location": "chapter"
+    },
+    {
+      "code": "I402",
+      "file": "manuscript/act-01-low-water/ch-001-the-drowned-rows/0015-the-key.md",
+      "location": "line 18"
+    },
+    {
+      "code": "W301",
+      "file": "manuscript/act-01-low-water/ch-001-the-drowned-rows/0015-the-key.md",
+      "location": "line 18"
+    },
+    {
+      "code": "W202",
+      "file": "manuscript/act-01-low-water/ch-001-the-drowned-rows/0015-the-key.md",
+      "location": "sequence"
+    }
+  ],
+  "order": [
+    "scene_01JQ971HFE865V215DE1CTEWH0",
+    "scene_01JQ9AVNH9DN65R6PPG2X7R5JQ",
+    "scene_01JQ9C42EJ5E6RHXQAQPDH4AFA",
+    "scene_01JQ9XRHEM3E2MSH4DMDZSX9G8",
+    "scene_01JQ9FGVSQE8Z5379AV4RRXG07",
+    "scene_01JQ9HN7JVAX0GB6KC9QA0MZ17",
+    "scene_01JQ9QKF3F55Z488YAGVDCKSQW"
+  ],
+  "excluded": [
+    {
+      "id": "scene_01JQ9W7FE4N1EE043E42N4FHZD",
+      "path": "manuscript/act-01-low-water/ch-001-the-drowned-rows/0020-the-key-alt.md",
+      "reason": "variant"
+    },
+    {
+      "id": "scene_01JQ98YFYTC66VPVTX363SN6FC",
+      "path": "archive/manuscript/act-01-low-water/ch-002-cut/0020-cut-scene.md",
+      "reason": "archived"
+    }
+  ]
+}

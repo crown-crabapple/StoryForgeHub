@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W302",
+      "file": "planning/threads/brass-key.md",
+      "location": "payoff"
+    }
+  ]
+}

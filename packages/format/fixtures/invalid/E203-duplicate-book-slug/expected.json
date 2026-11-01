@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "E203",
+      "file": "book-a/book.md",
+      "location": "slug"
+    },
+    {
+      "code": "E203",
+      "file": "book-b/book.md",
+      "location": "slug"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "E204",
+      "file": "manuscript/act-01-one/ch-001-one/0010-a.md",
+      "location": "sequence"
+    },
+    {
+      "code": "E204",
+      "file": "manuscript/act-01-one/ch-001-one/0010-b.md",
+      "location": "sequence"
+    }
+  ]
+}
