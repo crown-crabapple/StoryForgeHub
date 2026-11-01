@@ -1099,6 +1099,8 @@ case 'entry_edit':
         // neutralize "<" as < (covers </script> and <!-- breakout). JSON.parse restores both.
         $mtJson = str_replace('<', '\\u003c', json_encode($mt, JSON_UNESCAPED_UNICODE));
         echo '<script type="application/json" id="codex-mention-targets">'.$mtJson.'</script>';
+        echo scene_script(['book'=>$book['id'],'meta'=>build_codex_card_meta($book['id']),
+                           'db'=>codex_db_colors($book['profile'] ?? 'fiction'),'canLink'=>user_can($book['id'], 'edit')]);
     }
     echo '<div class="toolbar"><button class="btn primary">Save</button><a class="btn" href="'.url(['p'=>'entry','book'=>$book['id'],'db'=>$db,'slug'=>$slug]).'">Cancel</a></div></form>';
     echo '<form method="post" onsubmit="return confirm(\'Delete this entry?\')" style="margin-top:18px"><input type="hidden" name="action" value="entry_delete"><input type="hidden" name="book" value="'.e($book['id']).'"><input type="hidden" name="db" value="'.e($db).'"><input type="hidden" name="slug" value="'.e($slug).'"><button class="btn danger sm">Delete entry</button></form>';
@@ -1461,12 +1463,10 @@ case 'chapter':
         }
         // data for the client-side tally: targets (longest-first), entity map, db colours
         if (function_exists('build_mention_targets')) {
-            $emeta = []; $dbcolor = [];
-            foreach (all("SELECT slug,name,db_key,detail,type FROM entries WHERE book_id=?", [$book['id']]) as $r)
-                $emeta[$r['slug']] = ['name'=>$r['name'],'db'=>$r['db_key'],'detail'=>trim((string)($r['detail'] ?: $r['type']))];
-            foreach (dbmeta_for($book['profile'] ?? 'fiction') as $k => $m) $dbcolor[$k] = ['label'=>$m['singular'] ?? $k, 'color'=>$m['hue'] ?? '#888'];
             $tg = array_map(function($t){ return ['phrase'=>$t['phrase'],'slug'=>$t['slug']]; }, build_mention_targets($book['id']));
-            echo '<script>window.__scene='.json_encode(['book'=>$book['id'],'targets'=>$tg,'meta'=>$emeta,'db'=>$dbcolor], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).';</script>';
+            // UI plan Phase 1: meta carries the Codex card's data; the card itself is editor/src/codex-card.js
+            echo scene_script(['book'=>$book['id'],'targets'=>$tg,'meta'=>build_codex_card_meta($book['id']),
+                               'db'=>codex_db_colors($book['profile'] ?? 'fiction'),'canLink'=>false]);
             echo <<<'JS'
 <script>(function(){
   var S=window.__scene; if(!S) return;
@@ -1496,29 +1496,11 @@ case 'chapter':
   }
   window.__sceneRender=render;   // exposed so the editor (9a) can recompute on input
   render();
-
-  // --- Phase 9a: hover card on a Codex mention ---
-  var card=null, hideT=null;
-  function esch(s){ return String(s==null?'':s).replace(/[&<>]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[m]; }); }
-  function ensureCard(){ if(card) return card; card=document.createElement('div'); card.className='mention-card'; card.style.display='none'; document.body.appendChild(card); return card; }
-  function showCard(a){
-    var slug=a.getAttribute('data-slug'); if(!slug) return; var me=S.meta[slug]; if(!me) return;
-    var d=S.db[me.db]||{}; var c=ensureCard();
-    c.innerHTML='<div class="mc-h"><span class="mc-dot" style="background:'+(d.color||'#888')+'"></span><span class="mc-name">'+esch(me.name)+'</span><span class="mc-badge" style="color:'+(d.color||'#888')+';border-color:'+(d.color||'#888')+'55">'+esch((d.label||'').toString())+'</span></div>'
-            +(me.detail?'<div class="mc-detail">'+esch(me.detail)+'</div>':'')
-            +'<a class="mc-open" href="'+a.getAttribute('href')+'">Open entry →</a>';
-    var r=a.getBoundingClientRect(); c.style.display='block';
-    var top=r.bottom+window.scrollY+6, left=r.left+window.scrollX;
-    left=Math.min(left, window.scrollX+document.documentElement.clientWidth-c.offsetWidth-12);
-    c.style.top=top+'px'; c.style.left=Math.max(8,left)+'px';
-  }
-  function hideCard(){ if(card) card.style.display='none'; }
-  body.addEventListener('mouseover',function(e){ var a=e.target.closest&&e.target.closest('a.mention'); if(a){ clearTimeout(hideT); showCard(a); } });
-  body.addEventListener('mouseout',function(e){ var a=e.target.closest&&e.target.closest('a.mention'); if(a){ hideT=setTimeout(hideCard,160); } });
-  document.addEventListener('mouseover',function(e){ if(card&&e.target.closest&&e.target.closest('.mention-card')) clearTimeout(hideT); });
-  document.addEventListener('mouseout',function(e){ if(card&&e.target.closest&&e.target.closest('.mention-card')) hideT=setTimeout(hideCard,160); });
 })();</script>
 JS;
+            // the Codex card (hover/pin on a mention) lives in the editor bundle
+            $ev = @filemtime(__DIR__ . '/assets/app/editor.js') ?: time();
+            echo '<link rel="stylesheet" href="assets/app/editor.css?v='.$ev.'"><script src="assets/app/editor.js?v='.$ev.'" defer></script>';
         }
     }
 
@@ -1752,20 +1734,18 @@ CSS;
     echo '</div></form>';
 
     // Floating "add to dictionary" button (created by JS) needs the endpoint + book
-    $emeta = []; $dbcolor = [];
-    foreach (all("SELECT slug,name,db_key FROM entries WHERE book_id=?", [$book['id']]) as $r) $emeta[$r['slug']] = ['name'=>$r['name'],'db'=>$r['db_key']];
-    foreach (dbmeta_for($book['profile'] ?? 'fiction') as $k => $m) $dbcolor[$k] = ['label'=>$m['singular'] ?? $k, 'color'=>$m['hue'] ?? '#888'];
     $tg = function_exists('build_mention_targets')
         ? array_map(function($t){ return ['phrase'=>$t['phrase'],'slug'=>$t['slug']]; }, build_mention_targets($book['id']))
         : [];
     $edcfg = [
         'book' => $book['id'], 'cid' => (int)$c['id'], 'base' => $cbase,
-        'targets' => $tg, 'meta' => $emeta, 'db' => $dbcolor,
         'dict' => array_values($dictWords),
         'revs' => array_map(function($r){ return ['id'=>(int)$r['id'],'words'=>(int)$r['word_count'],'at'=>substr((string)$r['created_at'],0,16)]; }, $revs),
         'draftBody' => $recoverDraft ? md_body_norm($recoverDraft['body']) : null,
     ];
-    echo '<script>window.__scene='.json_encode(['book'=>$book['id'],'targets'=>$tg,'meta'=>$emeta,'db'=>$dbcolor], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).';</script>';
+    // meta = Codex card data (UI plan Phase 1); canLink shows the card's "Link here"
+    echo scene_script(['book'=>$book['id'],'targets'=>$tg,'meta'=>build_codex_card_meta($book['id']),
+                       'db'=>codex_db_colors($book['profile'] ?? 'fiction'),'canLink'=>user_can($book['id'], 'edit')]);
     echo '<script>window.__ed='.json_encode($edcfg, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).';</script>';
 
     // Scene rail (Phase 9e) — recount live as you type
@@ -2490,7 +2470,8 @@ case 'note_page':
         $tg = function_exists('build_mention_targets')
             ? array_map(function($t){ return ['phrase'=>$t['phrase'],'slug'=>$t['slug']]; }, build_mention_targets($book['id']))
             : [];
-        echo '<script>window.__scene='.json_encode(['book'=>$book['id'],'targets'=>$tg], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).';</script>';
+        echo scene_script(['book'=>$book['id'],'targets'=>$tg,'meta'=>build_codex_card_meta($book['id']),
+                           'db'=>codex_db_colors($book['profile'] ?? 'fiction'),'canLink'=>user_can($book['id'], 'edit')]);
         $ev = @filemtime(__DIR__ . '/assets/app/editor.js') ?: time();
         echo '<link rel="stylesheet" href="assets/app/editor.css?v='.$ev.'"><script src="assets/app/editor.js?v='.$ev.'" defer></script>';
     } else {
@@ -2608,7 +2589,8 @@ case 'workspace_doc':
         $tg = function_exists('build_mention_targets')
             ? array_map(function($t){ return ['phrase'=>$t['phrase'],'slug'=>$t['slug']]; }, build_mention_targets($bid))
             : [];
-        echo '<script>window.__scene='.json_encode(['book'=>$bid,'targets'=>$tg], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES).';</script>';
+        echo scene_script(['book'=>$bid,'targets'=>$tg,'meta'=>build_codex_card_meta($bid),
+                           'db'=>codex_db_colors($book['profile'] ?? 'fiction'),'canLink'=>user_can($bid, 'edit')]);
         $ev = @filemtime(__DIR__ . '/assets/app/editor.js') ?: time();
         echo '<link rel="stylesheet" href="assets/app/editor.css?v='.$ev.'"><script src="assets/app/editor.js?v='.$ev.'" defer></script>';
         break;
