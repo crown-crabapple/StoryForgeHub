@@ -175,7 +175,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       if (!cancelled) setDiscarded(list);
     });
 
-    const unregister = bridge.register({ sceneId: scene.id, caretLine: () => (viewRef.current ? caretLine(viewRef.current.state) : null), flush: () => ctl.flush() });
+    const unregister = bridge.register({ sceneId: scene.id, caretLine: () => (viewRef.current ? caretLine(viewRef.current.state) : null), flush: () => ctl.flush(), isConflict: () => ctl.snapshot().state === 'conflict' });
     const onPageHide = () => ctl.mirrorForUnload();
     const onBeforeUnload = (e) => {
       ctl.mirrorForUnload();

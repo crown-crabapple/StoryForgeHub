@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useEditorBridge } from '../editor/bridge.jsx';
 import { RawEditorDialog } from '../editor/RawEditor.jsx';
 import { useNavigate } from '../router.jsx';
+import { RepairDialog } from '../RepairDialog.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { useWrites } from '../shell/writes.jsx';
+import { MoveDialog } from './MoveDialog.jsx';
 import { PreviewDialog } from './PreviewDialog.jsx';
 import { bookUrl, explainFailure, pathsOf, send, slugify } from './helpers.js';
 
@@ -86,9 +88,12 @@ const sceneName = (s) => s.title || 'Untitled scene';
  * Returns `start(command)` and `ui` (the dialogs and the toast, rendered once next to the tree).
  * Every write goes through a dry run and the Preview, except a scene's rename-without-file-rename and its
  * status, which are single-line edits: those apply at once and offer Undo in the toast.
- * @param {{ book: any, activeId?: string | null, onChanged?: (info: any) => void }} p
+ * `move(scene, target)` (drag and drop, Alt+Up/Down, the Move... dialog) flushes the open editor, asks the server for a dry run, and
+ * applies at once when only the moved scene's file changes (toast with Undo = restore of the operation) or opens the Preview when neighbours are
+ * renumbered. `onMoved(sceneId, target)` runs after a move was written.
+ * @param {{ book: any, activeId?: string | null, onChanged?: (info: any) => void, onMoved?: (sceneId: string, target: any) => void }} p
  */
-export function useStructure({ book, activeId = null, onChanged }) {
+export function useStructure({ book, activeId = null, onChanged, onMoved }) {
   const { track } = useWrites();
   const navigate = useNavigate();
   const bridge = useEditorBridge();
@@ -97,6 +102,9 @@ export function useStructure({ book, activeId = null, onChanged }) {
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
+  const [moveDialog, setMoveDialog] = useState(null);
+  const [repairing, setRepairing] = useState(false);
+  const moving = useRef(false);
   const bookId = book.id;
   const timer = useRef(null);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -117,7 +125,10 @@ export function useStructure({ book, activeId = null, onChanged }) {
   async function applyNow(cmd) {
     const { status, json } = await write(cmd.url, cmd.body);
     if (status === 200 || status === 201) {
-      showToast({ message: cmd.done, opId: cmd.undoable ? (json?.opId ?? null) : null });
+      showToast({
+        message: cmd.done,
+        opId: cmd.undoable ? (json?.opId ?? null) : null,
+      });
       onChanged?.(json);
       cmd.after?.(json);
       return { ok: true };
@@ -176,6 +187,90 @@ export function useStructure({ book, activeId = null, onChanged }) {
     setBusy(false);
     if (r.ok) setPreview(null);
     else setPreview({ ...preview, error: r.message });
+  }
+
+  /**
+   * Move one scene. Flushes the open editor first (J02) and refuses while the open scene is in conflict. A failure is returned as
+   * `{ error, repair? }` for the Move... dialog (`fromDialog`), else shown in the Preview dialog / a toast.
+   * @returns {Promise<{ ok: boolean, error?: string, repair?: boolean }>}
+   */
+  async function move(scene, target, { fromDialog = false, done } = {}) {
+    if (moving.current) return { ok: false, error: 'Another move is still in progress.' };
+    moving.current = true;
+    try {
+      const name = sceneName(scene);
+      const blocked = (message) => {
+        if (!fromDialog) showToast({ message });
+        return { ok: false, error: message };
+      };
+      const fail = (message, repair = false) => {
+        if (fromDialog) return { ok: false, error: message, repair };
+        setPreview({
+          title: `Move "${name}"`,
+          error: message,
+          changes: [],
+          extraAction: repair
+            ? {
+                label: 'Repair...',
+                run: () => {
+                  setPreview(null);
+                  setRepairing(true);
+                },
+              }
+            : null,
+        });
+        return { ok: false, error: message };
+      };
+      const open = bridge.current();
+      if (open) {
+        if (open.isConflict?.()) return blocked('Not moved: the open scene has a conflict with the file on disk. Resolve that first.');
+        const { saved } = await open.flush();
+        if (!saved) return blocked('Not moved: the open scene has changes that could not be saved yet. Resolve that first.');
+      }
+      const body = { chapter: target.chapter, act: target.act, after: target.after };
+      const url = sceneUrl(scene.id, '/move');
+      setBusy(true);
+      const dry = await write(url, { ...body, dryRun: true });
+      setBusy(false);
+      if (dry.status !== 200) {
+        if (dry.json?.code === 'REFUSED_INVALID_BOOK') {
+          return fail('Fix the problems first (Repair...). This book has errors in its manuscript files, so nothing is moved or renumbered for you.', true);
+        }
+        return fail(explainFailure(dry.status, dry.json));
+      }
+      const changes = dry.json?.changes ?? [];
+      if (changes.length === 0) {
+        showToast({ message: `"${name}" is already there.` });
+        return { ok: true };
+      }
+      // what is applied is exactly what was previewed: the server refuses (CONFLICT) if any of these files changed since
+      const expect = changes.filter((c) => c.from && c.before_sha256).map((c) => ({ path: c.from, sha256: c.before_sha256 }));
+      const cmd = {
+        url,
+        body: { ...body, expect },
+        done: done ?? `Moved "${name}".`,
+        undoable: true, // Undo = restore of the operation (exact paths, numbers and bytes)
+        after: () => onMoved?.(scene.id, target),
+      };
+      if (changes.length === 1 && changes[0].from === pathsOf(book, scene.path).bookRel) {
+        // only the moved scene's own file changes: no neighbour is renumbered, so no Preview
+        setBusy(true);
+        const r = await applyNow(cmd);
+        setBusy(false);
+        return r.ok ? { ok: true } : fail(r.message);
+      }
+      setMoveDialog(null);
+      setForm(null);
+      setPreview({
+        title: `Move "${name}"`,
+        changes,
+        notes: [{ heading: 'Neighbouring scenes are renumbered to make room. No scene text changes.', items: [] }],
+        cmd,
+      });
+      return { ok: true };
+    } finally {
+      moving.current = false;
+    }
   }
 
   async function undo() {
@@ -310,6 +405,30 @@ export function useStructure({ book, activeId = null, onChanged }) {
         });
         break;
       }
+      case 'move':
+        setMoveDialog({ scene: c.scene, error: null, repair: false });
+        break;
+      case 'tidy':
+        (async () => {
+          const plan = await fetch(bookUrl(bookId, '/repair/plan'), { headers: { accept: 'application/json' } }).then((r) => (r.ok ? r.json() : null), () => null);
+          if (!plan?.ok) {
+            showToast({ message: 'Could not check the file names. Try again.' });
+            return;
+          }
+          const actions = plan.actions.filter((a) => a.kind === 'rename');
+          if (actions.length === 0) {
+            showToast({ message: 'File names are already tidy.' });
+            return;
+          }
+          localPreview('Tidy file names', actions.map((a) => ({ from: a.from, to: a.to })), async () => {
+            const { status, json } = await write(bookUrl(bookId, '/repair'), { actions });
+            if (status !== 200) return { ok: false, message: explainFailure(status, json) };
+            showToast({ message: `Tidied ${actions.length === 1 ? '1 file name' : `${actions.length} file names`}.` });
+            onChanged?.(json);
+            return { ok: true };
+          });
+        })();
+        break;
       case 'rename-chapter':
         setForm({
           title: 'Rename chapter',
@@ -385,8 +504,36 @@ export function useStructure({ book, activeId = null, onChanged }) {
           }}
         />
       )}
+      {moveDialog && (
+        <MoveDialog
+          book={book}
+          scene={moveDialog.scene}
+          busy={busy}
+          error={moveDialog.error}
+          repair={moveDialog.repair}
+          onRepair={() => {
+            setMoveDialog(null);
+            setRepairing(true);
+          }}
+          onClose={() => setMoveDialog(null)}
+          onSubmit={async (target) => {
+            const r = await move(moveDialog.scene, target, { fromDialog: true });
+            if (r.ok) setMoveDialog(null);
+            else setMoveDialog((d) => (d ? { ...d, error: r.error, repair: Boolean(r.repair) } : d));
+          }}
+        />
+      )}
+      {repairing && (
+        <RepairDialog
+          books={[{ book_id: book.id, title: book.title ?? null, path: book.path ?? '' }]}
+          onClose={() => {
+            setRepairing(false);
+            onChanged?.();
+          }}
+        />
+      )}
       {toast && <Toast toast={toast} onUndo={undo} onDismiss={() => setToast(null)} />}
     </>
   );
-  return { start, ui };
+  return { start, ui, move };
 }

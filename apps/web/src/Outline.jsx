@@ -1,16 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from './router.jsx';
 import { BookIcon, ChevronDownIcon, FolderIcon } from './shell/icons.jsx';
 import { RowMenu } from './structure/RowMenu.jsx';
 import { actKey, chapterKey, readCollapsed, writeCollapsed } from './structure/collapse.js';
 import { STATUSES, actName, archivedName, archivedScenes, chapterName, povInitial, wordsOf } from './structure/helpers.js';
+import { dropTarget, halfOf, keyboardTarget } from './structure/move-target.js';
 import { useStructure } from './structure/useStructure.jsx';
+
+const EXPAND_MS = 600;
+const DRAG_TYPE = 'application/x-storyforge-scene';
+const findScene = (book, id) => book.acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes)).find((s) => s.id === id);
 
 const sceneHref = (bookId, sceneId) => `/books/${encodeURIComponent(bookId)}?scene=${encodeURIComponent(sceneId)}`;
 
 /** Up/Down move between scene links in the rail; Enter opens the focused link (native). Plain Tab works too. */
 function moveBetweenScenes(e) {
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return; // Alt+Up / Alt+Down move the scene (see Outline)
   const links = [...e.currentTarget.querySelectorAll('a[data-scene-link]')].filter((l) => l.getClientRects().length > 0);
   const at = links.indexOf(document.activeElement);
   if (at === -1) return;
@@ -65,11 +71,12 @@ function Toggle({ collapsed, onToggle, name, children }) {
   );
 }
 
-function SceneRow({ book, scene, next, activeId, chapterNode, act, start }) {
+function SceneRow({ book, scene, next, activeId, chapterNode, act, start, dropMark = null, dragging = false, onDragStart }) {
   const name = scene.title || 'Untitled scene';
   const items = [
     { label: 'Rename...', run: () => start({ type: 'rename-scene', scene }) },
     { label: 'Status', items: STATUSES.map((status) => ({ label: status, current: scene.status === status, run: () => start({ type: 'status', scene, status }) })) },
+    { label: 'Move...', run: () => start({ type: 'move', scene }) },
     { label: 'Add scene after', run: () => start({ type: 'add-scene', chapter: chapterNode.chapter, act, after: scene.id }) },
     { label: 'Split here...', run: () => start({ type: 'split', scene }) },
     { label: 'Merge with next', disabled: !next, run: () => start({ type: 'merge', scene, next }) },
@@ -77,9 +84,15 @@ function SceneRow({ book, scene, next, activeId, chapterNode, act, start }) {
     { label: 'Archive', run: () => start({ type: 'archive-scene', scene }) },
   ];
   return (
-    <li className="outline-scene-item">
+    <li
+      className={`outline-scene-item${dragging ? ' is-dragging' : ''}`}
+      data-scene-id={scene.id}
+      draggable="true"
+      onDragStart={onDragStart ? (e) => onDragStart(e, scene) : undefined}
+    >
+      {dropMark && <span className="drop-line" data-position={dropMark} aria-hidden="true" />}
       <StatusDot status={scene.status} />
-      <Link to={sceneHref(book.id, scene.id)} data-scene-link="" className="outline-row outline-scene" aria-current={scene.id === activeId ? 'page' : undefined}>
+      <Link to={sceneHref(book.id, scene.id)} data-scene-link="" draggable={false} className="outline-row outline-scene" aria-current={scene.id === activeId ? 'page' : undefined}>
         <span className="outline-label">{scene.title || <span className="muted">Untitled scene</span>}</span>
         {scene.problem && (
           <span className="badge badge-error" title={scene.problem.message}>
@@ -132,7 +145,153 @@ function ArchivedSection({ book, start }) {
  */
 export function Outline({ book, activeId = null, onChanged }) {
   const [collapsed, setCollapsed] = useState(() => readCollapsed(book.id));
-  const { start, ui } = useStructure({ book, activeId, onChanged });
+  const [dragId, setDragId] = useState(null);
+  const [drop, setDrop] = useState(null);
+  const [live, setLive] = useState('');
+  const root = useRef(null);
+  const dragRef = useRef(null);
+  const hover = useRef({ key: null, timer: null });
+  const focusAfter = useRef(null);
+
+  const setCollapsedKeys = (change) =>
+    setCollapsed((prev) => {
+      const next = change(new Set(prev));
+      writeCollapsed(book.id, next);
+      return next;
+    });
+
+  const { start, ui, move } = useStructure({
+    book,
+    activeId,
+    onChanged,
+    onMoved: (sceneId, target) => {
+      // the moved row keeps keyboard focus (its chapter and act are opened so it is visible)
+      focusAfter.current = { id: sceneId, book };
+      const name = findScene(book, sceneId)?.title || 'Untitled scene';
+      setLive(target.text ? `${target.text.replace(/^Move /, 'Moved ')}.` : `Moved ${name}.`);
+      setCollapsedKeys((keys) => {
+        keys.delete(chapterKey(target.chapter));
+        keys.delete(actKey(target.act));
+        return keys;
+      });
+    },
+  });
+
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (!pending || pending.book === book) return; // wait for the reloaded book: the row is a new element after a move
+    const id = pending.id;
+    const link = root.current?.querySelector(`[data-scene-id="${id}"] a[data-scene-link]`);
+    if (link && link.getClientRects().length > 0) {
+      link.focus();
+      focusAfter.current = null;
+    }
+  }, [book, collapsed]);
+
+  useEffect(() => () => clearTimeout(hover.current.timer), []);
+
+  const clearHover = () => {
+    clearTimeout(hover.current.timer);
+    hover.current = { key: null, timer: null };
+  };
+  const endDrag = () => {
+    clearHover();
+    dragRef.current = null;
+    setDragId(null);
+    setDrop(null);
+  };
+
+  function beginDrag(e, scene) {
+    e.dataTransfer.setData(DRAG_TYPE, scene.id);
+    e.dataTransfer.effectAllowed = 'move';
+    dragRef.current = scene.id;
+    setDragId(scene.id);
+    setLive(`Picked up ${scene.title || 'Untitled scene'}. Drag over a scene to place it before or after, or over a chapter to put it at the end.`);
+  }
+
+  /** What is under the pointer: a scene row (and which half) or a chapter row. */
+  function overOf(e) {
+    const el = e.target instanceof Element ? e.target : null;
+    const row = el?.closest('[data-scene-id]');
+    if (row) return { kind: 'scene', sceneId: row.dataset.sceneId, half: halfOf(e.clientY, row.getBoundingClientRect()) };
+    const ch = el?.closest('[data-chapter-row]');
+    if (ch) return { kind: 'chapter', chapter: Number(ch.dataset.chapterRow) };
+    return null;
+  }
+
+  /** A collapsed chapter (or act) opens after the pointer rests on its row for 600 ms. */
+  function hoverExpand(e) {
+    const el = e.target instanceof Element ? e.target : null;
+    const chapterRow = el?.closest('[data-chapter-row]');
+    const actRow = el?.closest('[data-act-row]');
+    let key = null;
+    if (chapterRow) key = chapterKey(Number(chapterRow.dataset.chapterRow));
+    else if (actRow) key = actKey(Number(actRow.dataset.actRow));
+    if (key === hover.current.key) return;
+    clearHover();
+    if (key === null) return;
+    hover.current.key = key;
+    hover.current.timer = setTimeout(() => {
+      setCollapsedKeys((keys) => {
+        keys.delete(key);
+        return keys;
+      });
+    }, EXPAND_MS);
+  }
+
+  function onDragOver(e) {
+    if (!dragRef.current) return;
+    hoverExpand(e);
+    const over = overOf(e);
+    const target = over ? dropTarget(book, dragRef.current, over) : null;
+    if (target && !target.noop) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    } else {
+      e.dataTransfer.dropEffect = 'none';
+    }
+    const same = (a, b) => (!a && !b) || (a && b && a.text === b.text && a.noop === b.noop);
+    setDrop((prev) => (same(prev, target) ? prev : target));
+    const text = target ? (target.noop ? 'Drop here to leave it where it is.' : `${target.text}.`) : '';
+    setLive((prev) => (prev === text ? prev : text));
+  }
+
+  function onDrop(e) {
+    const id = dragRef.current;
+    if (!id) return;
+    e.preventDefault();
+    const over = overOf(e);
+    const target = over ? dropTarget(book, id, over) : null;
+    endDrag();
+    const scene = findScene(book, id);
+    if (target && !target.noop && scene) void move(scene, target);
+  }
+
+  function onDragLeave(e) {
+    if (!root.current?.contains(e.relatedTarget)) {
+      clearHover();
+      setDrop(null);
+    }
+  }
+
+  /** Alt+Up / Alt+Down on a scene row: one slot up or down in book order. */
+  function onKeyDown(e) {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      const el = e.target instanceof Element ? e.target : null;
+      const row = el && !el.closest('[role="menu"]') ? el.closest('[data-scene-id]') : null;
+      if (row) {
+        e.preventDefault();
+        const scene = findScene(book, row.dataset.sceneId);
+        if (!scene) return;
+        const direction = e.key === 'ArrowUp' ? 'up' : 'down';
+        const target = keyboardTarget(book, scene.id, direction);
+        if (!target) setLive(`${scene.title || 'Untitled scene'} is already ${direction === 'up' ? 'first' : 'last'} in the book.`);
+        else void move(scene, target);
+        return;
+      }
+    }
+    moveBetweenScenes(e);
+  }
 
   const toggle = (key) =>
     setCollapsed((prev) => {
@@ -143,9 +302,17 @@ export function Outline({ book, activeId = null, onChanged }) {
       return next;
     });
 
+  const endTarget = drop && !drop.noop && drop.indicator.kind === 'end' ? drop.chapter : null;
+
   return (
-    <div className="outline" onKeyDown={moveBetweenScenes}>
-      <h2 className="rail-heading">{book.title ?? book.slug ?? book.id}</h2>
+    <div className="outline" ref={root} onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} onDragLeave={onDragLeave} onDragEnd={endDrag}>
+      <div className="rail-head">
+        <h2 className="rail-heading">{book.title ?? book.slug ?? book.id}</h2>
+        <RowMenu name={book.title ?? book.slug ?? book.id} items={[{ label: 'Tidy file names...', run: () => start({ type: 'tidy' }) }]} />
+      </div>
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="move-live">
+        {live}
+      </div>
       <ul className="outline-acts">
         {book.acts.map((act) => {
           const actCollapsed = collapsed.has(actKey(act.act));
@@ -153,7 +320,7 @@ export function Outline({ book, activeId = null, onChanged }) {
           const lastChapter = act.chapters[act.chapters.length - 1];
           return (
             <li key={act.act}>
-              <div className="outline-row outline-act">
+              <div className="outline-row outline-act" data-act-row={act.act}>
                 <Toggle collapsed={actCollapsed} onToggle={() => toggle(actKey(act.act))} name={aName}>
                   <FolderIcon width={15} height={15} />
                   <span className="outline-label" title={aName}>{aName}</span>
@@ -174,7 +341,11 @@ export function Outline({ book, activeId = null, onChanged }) {
                   const lastScene = ch.scenes[ch.scenes.length - 1];
                   return (
                     <li key={ch.chapter}>
-                      <div className="outline-row outline-chapter">
+                      <div
+                        className={`outline-row outline-chapter${endTarget === ch.chapter ? ' is-drop-target' : ''}`}
+                        data-chapter-row={ch.chapter}
+                        {...(endTarget === ch.chapter ? { 'data-drop': 'end' } : {})}
+                      >
                         <Toggle collapsed={chCollapsed} onToggle={() => toggle(chapterKey(ch.chapter))} name={cName}>
                           <BookIcon width={15} height={15} />
                           <span className="outline-stack">
@@ -204,7 +375,19 @@ export function Outline({ book, activeId = null, onChanged }) {
                       </div>
                       <ul hidden={chCollapsed}>
                         {ch.scenes.map((s, i) => (
-                          <SceneRow key={s.id} book={book} scene={s} next={ch.scenes[i + 1] ?? null} activeId={activeId} chapterNode={ch} act={act.act} start={start} />
+                          <SceneRow
+                            key={s.id}
+                            book={book}
+                            scene={s}
+                            next={ch.scenes[i + 1] ?? null}
+                            activeId={activeId}
+                            chapterNode={ch}
+                            act={act.act}
+                            start={start}
+                            dropMark={drop && !drop.noop && drop.indicator.sceneId === s.id ? drop.indicator.kind : null}
+                            dragging={dragId === s.id}
+                            onDragStart={beginDrag}
+                          />
                         ))}
                       </ul>
                     </li>

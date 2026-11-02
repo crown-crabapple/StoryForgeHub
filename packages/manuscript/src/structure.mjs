@@ -594,8 +594,11 @@ export function restoreOp(bookRoot, opId, args = {}) {
     }
     const recorded = Array.isArray(record?.changes) ? record.changes : [];
     if (recorded.length === 0) return fail('REFUSED_NOT_UNDOABLE', `${opId} changed no files`);
-    const touched = recorded.flatMap((c) => [c.from, c.to].filter((p, k, all) => p !== null && all.indexOf(p) === k));
-    if (recorded.some((c) => c.from === null) || new Set(touched).size !== touched.length) {
+    // A move that renumbers neighbours may write a file at a path another of its changes vacated (a chain); that is
+    // undone in the reverse order. Only a path read twice or written twice makes an operation not undoable.
+    const froms = recorded.map((c) => c.from);
+    const tos = recorded.map((c) => c.to);
+    if (recorded.some((c) => c.from === null) || new Set(froms).size !== froms.length || new Set(tos).size !== tos.length) {
       return fail('REFUSED_NOT_UNDOABLE', `${opId} created files or touched a file twice; it cannot be undone automatically`);
     }
     const changes = [];
@@ -604,7 +607,7 @@ export function restoreOp(bookRoot, opId, args = {}) {
       if (!now || sha256(now.bytes) !== c.after_sha256) {
         return fail('REFUSED_FILES_CHANGED', `${c.to} is not as ${opId} left it (it was changed or moved since), so the undo was not applied`, { file: c.to });
       }
-      if (c.from !== c.to && (await store.exists(c.from))) {
+      if (c.from !== c.to && !recorded.some((o) => o !== c && o.to === c.from) && (await store.exists(c.from))) {
         return fail('REFUSED_FILES_CHANGED', `${c.from} exists again, so the undo was not applied`, { file: c.from });
       }
       const old = await store.readTrash(opId, c.from);

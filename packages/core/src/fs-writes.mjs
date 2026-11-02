@@ -8,6 +8,7 @@ import {
   createChapter,
   insertScene,
   mergeScenes,
+  moveScene,
   renumberChapters,
   restoreOp,
   setActFields,
@@ -222,6 +223,27 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     },
 
     setSceneFields: (bookId, sceneId, args = {}) => structure(bookId, (b) => setSceneFields(b, sceneId, args ?? {})),
+    /**
+     * Move a scene. `expect: [{ path, sha256 }]` (book-relative paths) is the state the author saw: if any listed file
+     * differs now, nothing is written and the result is CONFLICT with `changed: [paths]`.
+     */
+    moveScene: (bookId, sceneId, args = {}) =>
+      structure(bookId, async (b) => {
+        const { expect, ...rest } = args ?? {};
+        if (expect !== undefined) {
+          if (!Array.isArray(expect) || expect.some((e) => !e || typeof e.path !== 'string' || typeof e.sha256 !== 'string')) {
+            return fail('REFUSED_BAD_ARGS', { message: 'expect must be a list of { path, sha256 }' });
+          }
+          const store = await openStore(b);
+          const changed = [];
+          for (const e of expect) {
+            const now = await store.read(e.path);
+            if (!now || now.sha256 !== e.sha256) changed.push(e.path);
+          }
+          if (changed.length) return fail('CONFLICT', { changed, message: `changed on disk since you looked: ${changed.join(', ')}` });
+        }
+        return moveScene(b, sceneId, rest);
+      }),
     splitScene: (bookId, sceneId, args = {}) => structure(bookId, (b) => splitScene(b, sceneId, args ?? {})),
     mergeScenes: (bookId, args = {}) => structure(bookId, (b) => mergeScenes(b, args?.first, args?.second, { dryRun: args?.dryRun })),
     createChapter: (bookId, args = {}) => structure(bookId, (b) => createChapter(b, args ?? {})),

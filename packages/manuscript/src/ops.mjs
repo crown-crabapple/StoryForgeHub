@@ -3,7 +3,7 @@ import path from 'node:path';
 import { openStore } from '@storyforge/store';
 import { loadBook, manuscriptErrors } from './book.mjs';
 import { commit, publicChanges } from './commit.mjs';
-import { hasSimpleField, setFields, yamlQuote } from './frontmatter.mjs';
+import { hasSimpleField, readSimpleLine, setFields, yamlQuote } from './frontmatter.mjs';
 import { makePathResolver, sceneFileName, sceneSlugOf } from './paths.mjs';
 import { placeInChapter } from './seq.mjs';
 import { newSceneId, SCENE_ID_RE, SLUG_RE } from './util.mjs';
@@ -185,6 +185,34 @@ export function insertScene(bookRoot, args = {}) {
 
 // ------------------------------------------------------------------ moveScene
 
+const ACT_DIR_RE = /^act-(\d+)(?:-|$)/;
+const CHAP_DIR_RE = /^ch-(\d+)(?:-|$)/;
+
+/**
+ * The act of a chapter that has no scenes: from the act.md (`act:`) or the folder number of the act folder that holds
+ * the chapter's chapter.md. Undefined if no such chapter folder exists.
+ */
+async function actOfSceneLessChapter(store, chapter) {
+  const dirs = async (rel) => (await store.list(rel)).filter((e) => e.isDirectory && !e.name.startsWith('.')).map((e) => e.name).sort();
+  const intLine = (bytes, key) => {
+    const v = readSimpleLine(bytes, key);
+    return v !== null && /^\d+$/.test(v) ? Number(v) : null;
+  };
+  for (const a of await dirs('manuscript')) {
+    for (const c of await dirs(`manuscript/${a}`)) {
+      const read = await store.read(`manuscript/${a}/${c}/chapter.md`);
+      const n = read ? intLine(read.bytes, 'chapter') : null;
+      if (n !== chapter) continue;
+      const actRead = await store.read(`manuscript/${a}/act.md`);
+      const fromMeta = actRead ? intLine(actRead.bytes, 'act') : null;
+      if (fromMeta !== null) return fromMeta;
+      const m = ACT_DIR_RE.exec(a);
+      if (m && CHAP_DIR_RE.test(c)) return Number(m[1]);
+    }
+  }
+  return undefined;
+}
+
 /**
  * @param {string} bookRoot
  * @param {string} sceneId
@@ -223,7 +251,7 @@ export function moveScene(bookRoot, sceneId, args = {}) {
 
     const list = lb.book.order.filter((s) => s.chapter === chapter && s.id !== sceneId);
     const sameChapter = scene.chapter === chapter;
-    const targetAct = act ?? list[0]?.act ?? (sameChapter ? scene.act : undefined);
+    const targetAct = act ?? list[0]?.act ?? (sameChapter ? scene.act : await actOfSceneLessChapter(store, chapter));
     if (targetAct === undefined) return fail('REFUSED_UNKNOWN_CHAPTER', `chapter ${chapter} has no scenes and no act was given`);
 
     const place = placeInChapter(list, after, sameChapter ? scene.sequence : null);
@@ -248,7 +276,12 @@ export function moveScene(bookRoot, sceneId, args = {}) {
     if ('unsimple' in r) return unsimpleResult(r.unsimple);
     const changes = [...nb.changes, ...(r.change ? [r.change] : [])];
 
-    return finish({
+    // where the scene was: the inverse move puts it back there
+    const origin = lb.book.order.filter((s) => s.chapter === scene.chapter);
+    const originAt = origin.findIndex((s) => s.id === sceneId);
+    const undo = { chapter: scene.chapter, act: scene.act, after: originAt > 0 ? origin[originAt - 1].id : null };
+
+    const res = await finish({
       bookRoot,
       store,
       lb,
@@ -256,8 +289,12 @@ export function moveScene(bookRoot, sceneId, args = {}) {
       args: { sceneId, ...args },
       changes,
       dryRun,
-      extra: { id: sceneId, path: to, sequence: nb.moverSequence },
+      withDiff: true,
+      extra: { id: sceneId, path: to, sequence: nb.moverSequence, undo },
     });
+    // the applied move reports its diffs too (same shape as the dry run), so the UI can show what was written
+    if (res.ok && !dryRun && res.changes.length === changes.length) res.changes = publicChanges(changes, { diff: true });
+    return res;
   });
 }
 

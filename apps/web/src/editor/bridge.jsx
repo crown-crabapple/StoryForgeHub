@@ -2,7 +2,7 @@
 // "Split here" asks the editor for its caret line and to save first; "Edit raw file" asks it to save first.
 import { createContext, useContext, useMemo, useRef } from 'react';
 
-/** @typedef {{ sceneId: string, caretLine: () => number | null, flush: () => Promise<{ saved: boolean }> }} EditorHandle */
+/** @typedef {{ sceneId: string, caretLine: () => number | null, flush: () => Promise<{ saved: boolean }>, isConflict?: () => boolean }} EditorHandle */
 
 const BridgeContext = createContext(null);
 const NONE = { current: () => null, register: () => () => {} };

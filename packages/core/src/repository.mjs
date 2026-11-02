@@ -128,6 +128,7 @@
  *   restoreScene(bookId: string, archivedPath: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { path?: string }>,
  *   setSceneFields(bookId: string, sceneId: string, args: { title?: string, status?: string, pov?: string, renameFile?: boolean, dryRun?: boolean }): Promise<StructureResult>,
+ *   moveScene(bookId: string, sceneId: string, args: { chapter: number, act?: number, after: string | null, dryRun?: boolean }): Promise<StructureResult & { undo?: { chapter: number, act: number, after: string | null } }>,
  *   splitScene(bookId: string, sceneId: string, args: { atLine: number, dryRun?: boolean }): Promise<StructureResult>,
  *   mergeScenes(bookId: string, args: { first: string, second: string, dryRun?: boolean }): Promise<StructureResult>,
  *   createChapter(bookId: string, args: { act?: number, after?: number | null, title: string, dryRun?: boolean }): Promise<StructureResult>,

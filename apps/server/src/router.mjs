@@ -207,6 +207,7 @@ export function matchWriteRoute(method, pathname) {
   // M03-J01 structure commands (all POST; `dryRun: true` in the body previews without writing)
   if (method === 'POST' && c === 'scenes' && d === 'merge' && e === undefined) return { route: 'scene-merge', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'fields') return { route: 'scene-fields', bookId: b, sceneId: d };
+  if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'move') return { route: 'scene-move', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'split') return { route: 'scene-split', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'chapters' && d === undefined) return { route: 'chapter-create', bookId: b };
   if (method === 'POST' && c === 'chapters' && d === 'renumber' && e === undefined) return { route: 'chapters-renumber', bookId: b };
@@ -344,6 +345,24 @@ async function handleStructure(repository, match, body) {
       const { title, status, pov, renameFile } = body;
       const r = await repository.setSceneFields(bookId, /** @type {string} */ (match.sceneId), { title, status, pov, renameFile: renameFile === true, dryRun });
       return respond(r, 200, structureBody);
+    }
+    case 'scene-move': {
+      // M03-J03: { chapter, act?, after: sceneId | null, dryRun? } -> { ok, code, changes, undo }
+      if (!Number.isInteger(body.chapter) || body.chapter < 0) return badRequest('expected { chapter: integer >= 0 }');
+      if (body.act !== undefined && (!Number.isInteger(body.act) || body.act < 0)) return badRequest('act must be an integer >= 0');
+      if (body.after === undefined || (body.after !== null && typeof body.after !== 'string')) return badRequest('after must be a scene id or null');
+      const r = await repository.moveScene(bookId, /** @type {string} */ (match.sceneId), {
+        chapter: body.chapter,
+        ...(body.act !== undefined ? { act: body.act } : {}),
+        after: body.after,
+        ...(body.expect !== undefined ? { expect: body.expect } : {}),
+        dryRun,
+      });
+      if (!r.ok && r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', code: 'CONFLICT', ...(r.changed ? { changed: r.changed } : {}), message: r.message ?? 'A file changed on disk since it was read; nothing was written.' } };
+      if (!r.ok && r.code === 'REFUSED_INVALID_BOOK') {
+        return { status: 409, body: { error: 'refused', code: r.code, message: r.message ?? 'book has manuscript errors', diagnostics: r.diagnostics ?? [] } };
+      }
+      return respond(r, 200, (x) => ({ ok: true, code: 'OK', ...(x.dryRun ? { dryRun: true } : {}), changes: x.changes ?? [], undo: x.undo ?? null, id: x.id, path: x.path, sequence: x.sequence, opId: x.opId ?? null }));
     }
     case 'scene-split': {
       if (!Number.isInteger(body.atLine)) return badRequest('expected { atLine: integer }');

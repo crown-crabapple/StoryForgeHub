@@ -21,6 +21,7 @@ export function explainFailure(status, json) {
   const detail = json?.message ? `${json.message}` : null;
   if (json?.code === 'NO_CHAPTER_GAP') return detail ?? 'There is no free chapter number there. Renumber the chapters first.';
   if (json?.code === 'REFUSED_INVALID_BOOK') return 'This book has errors in its manuscript files; fix them first (see Diagnostics).';
+  if (json?.code === 'CONFLICT') return 'A file changed on disk since it was read; nothing was written. Reload the page and try again.';
   if (json?.code === 'ROLLED_BACK') return `${detail ?? 'The change would have broken the book'}; nothing was changed.`;
   if (status === 404) return 'That item is not there any more. Reload the page.';
   return detail ?? `The change was not made (${json?.code ?? status}).`;
