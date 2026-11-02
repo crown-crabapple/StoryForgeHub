@@ -52,3 +52,22 @@ export async function postJson(url, body) {
   }
   return { status: res.status, json };
 }
+
+/**
+ * PUT JSON to a write route (the scene body and raw-file saves). Same write-guard header as postJson.
+ * @returns {Promise<{ status: number, json: any }>}
+ */
+export async function putJson(url, body) {
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', 'x-storyforge': '1', accept: 'application/json' },
+    body: JSON.stringify(body),
+  });
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    // no body
+  }
+  return { status: res.status, json };
+}

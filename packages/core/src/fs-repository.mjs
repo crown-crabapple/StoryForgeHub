@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { discover, escapesRoot, isFile, validate } from '@storyforge/format';
+import { discover, escapesRoot, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts } from '@storyforge/index';
 import { applyRepair, planRepair } from '@storyforge/manuscript';
 import { listTemplates } from '@storyforge/templates';
@@ -611,6 +611,29 @@ export function createFsRepository(libraryRoot, options = {}) {
 
     getMentions(bookId, { entryId, sceneId } = {}) {
       return manager.query(bookId, (x) => x.mentions({ entryId, sceneId }));
+    },
+
+    async getObjects(bookId, kinds) {
+      const wanted = Array.isArray(kinds) && kinds.length > 0 ? kinds : ['entry', 'thread', 'event'];
+      try {
+        const rows = await manager.query(bookId, (x) => x.objects(wanted));
+        if (rows === null) return null;
+        return rows;
+      } catch (e) {
+        if (/** @type {any} */ (e)?.code !== 'INDEX_NOT_READY') throw e;
+      }
+      // no usable index yet: read the files
+      const book = await bookById(bookId);
+      if (!book) return null;
+      const bookRoot = book.path === '' ? root : abs(book.path);
+      const out = [];
+      for (const rel of await walkMarkdown(bookRoot)) {
+        const { doc } = await loadDoc(path.join(bookRoot, ...rel.split('/')), rel, rel, noop);
+        if (!doc || doc.archived || !wanted.includes(doc.kind) || typeof doc.fm.id !== 'string') continue;
+        out.push({ id: doc.fm.id, kind: doc.kind, slug: str(doc.fm.slug), title: str(doc.fm.title) ?? str(doc.fm.name), type: str(doc.fm.type) });
+      }
+      const key = (o) => (o.title ?? '').toLowerCase();
+      return out.sort((a, b) => cmp(a.kind, b.kind) || cmp(key(a), key(b)) || cmp(a.id, b.id));
     },
 
     indexStatus: (bookId) => manager.status(bookId),

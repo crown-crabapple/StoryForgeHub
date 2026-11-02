@@ -39,3 +39,8 @@ export const BookIcon = (props) => (
     <path d="M22 5h-7a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h8z" />
   </svg>
 );
+export const DotIcon = (props) => (
+  <svg {...base} {...props}>
+    <circle cx="12" cy="12" r="4" />
+  </svg>
+);

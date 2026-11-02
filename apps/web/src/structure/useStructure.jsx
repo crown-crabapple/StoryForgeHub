@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useEditorBridge } from '../editor/bridge.jsx';
+import { RawEditorDialog } from '../editor/RawEditor.jsx';
 import { useNavigate } from '../router.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { useWrites } from '../shell/writes.jsx';
@@ -89,6 +91,8 @@ const sceneName = (s) => s.title || 'Untitled scene';
 export function useStructure({ book, activeId = null, onChanged }) {
   const { track } = useWrites();
   const navigate = useNavigate();
+  const bridge = useEditorBridge();
+  const [raw, setRaw] = useState(null);
   const [form, setForm] = useState(null);
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -225,7 +229,21 @@ export function useStructure({ book, activeId = null, onChanged }) {
             ),
         });
         break;
-      case 'split':
+      case 'split': {
+        const open = bridge.current();
+        const splitCmd = (atLine) => ({ title: `Split "${sceneName(c.scene)}"`, url: sceneUrl(c.scene.id, '/split'), body: { atLine }, done: 'Scene split.', after: toScene });
+        if (open && open.sceneId === c.scene.id && open.caretLine() !== null) {
+          // the scene is open in the editor: split at the caret line, after saving what was typed
+          (async () => {
+            const { saved } = await open.flush();
+            if (!saved) {
+              showToast({ message: 'Not split: the scene has changes that could not be saved yet. Resolve that first.' });
+              return;
+            }
+            await previewThenApply(splitCmd(open.caretLine()));
+          })();
+          break;
+        }
         setForm({
           title: 'Split scene',
           submit: 'Preview',
@@ -236,16 +254,27 @@ export function useStructure({ book, activeId = null, onChanged }) {
               type: 'number',
               initial: '2',
               required: true,
-              hint: 'A line of the scene text, counting from 1 (front matter does not count). Lines before it stay; this line and the rest become a new scene right after.',
+              hint: 'A line of the scene text, counting from 1 (front matter does not count). Lines before it stay; this line and the rest become a new scene right after. Open the scene to split at the cursor instead.',
             },
           ],
-          onSubmit: (v) =>
-            previewThenApply(
-              { title: `Split "${sceneName(c.scene)}"`, url: sceneUrl(c.scene.id, '/split'), body: { atLine: Number(v.atLine) }, done: 'Scene split.', after: toScene },
-              { stayInForm: true },
-            ),
+          onSubmit: (v) => previewThenApply(splitCmd(Number(v.atLine)), { stayInForm: true }),
         });
         break;
+      }
+      case 'raw-file': {
+        const open = bridge.current();
+        (async () => {
+          if (open && open.sceneId === c.scene.id) {
+            const { saved } = await open.flush();
+            if (!saved) {
+              showToast({ message: 'Not opened: the scene has changes that could not be saved yet. Resolve that first.' });
+              return;
+            }
+          }
+          setRaw(c.scene);
+        })();
+        break;
+      }
       case 'merge':
         previewThenApply({
           title: `Merge with "${sceneName(c.next)}"`,
@@ -345,6 +374,17 @@ export function useStructure({ book, activeId = null, onChanged }) {
     <>
       {form && <FormDialog key={form.title} form={form} busy={busy} onClose={() => setForm(null)} onSubmit={submitForm} />}
       {preview && <PreviewDialog preview={preview} busy={busy} onApply={apply} onCancel={() => setPreview(null)} />}
+      {raw && (
+        <RawEditorDialog
+          book={book}
+          scene={raw}
+          onClose={() => setRaw(null)}
+          onSaved={(info) => {
+            showToast({ message: 'Raw file saved.' });
+            onChanged?.(info);
+          }}
+        />
+      )}
       {toast && <Toast toast={toast} onUndo={undo} onDismiss={() => setToast(null)} />}
     </>
   );

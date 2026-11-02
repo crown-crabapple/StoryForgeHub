@@ -93,6 +93,16 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const raw = await repository.getRawFile(b, file);
       return raw ? { status: 200, body: raw } : NOT_FOUND;
     }
+    if (c === 'objects' && d === undefined) {
+      const kindsParam = params.get('kinds');
+      let kinds;
+      if (kindsParam !== null) {
+        kinds = kindsParam.split(',').map((k) => k.trim()).filter(Boolean);
+        if (kinds.length === 0 || kinds.some((k) => !OBJECT_KINDS.includes(k))) return badRequest(`kinds must be a comma-separated list of: ${OBJECT_KINDS.join(', ')}`);
+      }
+      const objects = await repository.getObjects(b, kinds);
+      return objects ? { status: 200, body: objects } : NOT_FOUND;
+    }
     if (c === 'scenes' && d !== undefined && rest.length === 0) {
       const scene = await repository.getScene(b, d);
       return scene ? { status: 200, body: scene } : NOT_FOUND;
@@ -131,6 +141,7 @@ async function handleCover(repository, bookId, params) {
   };
 }
 
+const OBJECT_KINDS = ['entry', 'thread', 'event'];
 const SEARCH_KINDS = ['scene', 'entry', 'thread', 'event', 'doc', 'research'];
 const badRequest = (message) => ({ status: 400, body: { error: 'bad_request', message } });
 
@@ -189,6 +200,7 @@ export function matchWriteRoute(method, pathname) {
   if (a !== 'books' || b === undefined || c === undefined) return null;
   if (method === 'POST' && c === 'repair' && d === undefined) return { route: 'repair', bookId: b };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'body') return { route: 'body', bookId: b, sceneId: d };
+  if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'raw') return { route: 'scene-raw', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d === undefined) return { route: 'create', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'archive') return { route: 'archive', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'archive' && d === 'restore' && e === undefined) return { route: 'restore', bookId: b };
@@ -276,6 +288,15 @@ export async function handleWrite(repository, match, body, state) {
     case 'body': {
       if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');
       const r = await repository.updateSceneBody(bookId, /** @type {string} */ (match.sceneId), body.body, { baseSha256: body.base_sha256 });
+      return respond(r, 200, (x) => ({ sha256: x.sha256 }));
+    }
+    case 'scene-raw': {
+      if (typeof body.content !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { content: string, base_sha256: string }');
+      const r = await repository.writeSceneRaw(bookId, /** @type {string} */ (match.sceneId), body.content, { baseSha256: body.base_sha256 });
+      if (!r.ok && r.code === 'ROLLED_BACK') {
+        // the edit would leave the book with new errors: nothing was kept
+        return { status: 422, body: { error: 'invalid', code: r.code, message: r.message ?? 'the change would introduce new errors', diagnostics: r.diagnostics ?? [] } };
+      }
       return respond(r, 200, (x) => ({ sha256: x.sha256 }));
     }
     case 'create': {

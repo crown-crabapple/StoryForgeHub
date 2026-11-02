@@ -142,6 +142,44 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       return fail(r.code, r.message ? { message: r.message } : {});
     },
 
+    /**
+     * Replace a scene's whole file (front matter and body) with `content`, only if the book has no new validation
+     * error afterwards (otherwise nothing is kept: ROLLED_BACK with the new diagnostics). Conflicts: CONFLICT.
+     */
+    async writeSceneRaw(bookId, sceneId, content, { baseSha256 } = {}) {
+      if (typeof content !== 'string') return fail('BAD_ARGS', { message: 'content must be a string' });
+      const found = await findBook(bookId);
+      const entry = found?.book.order.find((/** @type {any} */ s) => s.id === sceneId);
+      if (!found || !entry) return fail('NOT_FOUND');
+      const rel = toBookRel(found.book, entry.path);
+      if (rel === null) return fail('NOT_FOUND');
+      const { book, diagnostics: before } = found;
+      const store = await openStore(bookRootOf(book));
+      const known = new Set(before.filter((d) => d.severity === 'error').map(errKey));
+      const bytes = Buffer.from(content, 'utf8');
+      const r = await store.batch('writeSceneRaw', { bookId, path: toLibRel(book, rel) }, (tx) => tx.write(rel, bytes, { baseSha256 }), {
+        verify: async () => {
+          const after = (await validate(root)).diagnostics;
+          const fresh = after.filter((d) => d.severity === 'error' && !known.has(errKey(d)));
+          if (fresh.length) {
+            const err = new Error('the change would introduce new errors');
+            /** @type {any} */ (err).diagnostics = fresh;
+            throw err;
+          }
+        },
+      });
+      if (r.ok) {
+        if (reconcile) await reconcile(book.path);
+        else afterWrite(book.path);
+        return { ok: true, code: 'OK', sha256: r.value.sha256 };
+      }
+      if (r.code === 'CONFLICT') return conflict(r, bookId, sceneId);
+      if (r.code === 'ROLLED_BACK') {
+        return fail('ROLLED_BACK', { message: r.message, diagnostics: r.diagnostics ?? [], ...(r.rollbackErrors ? { rollbackErrors: r.rollbackErrors } : {}) });
+      }
+      return fail(r.code, r.message ? { message: r.message } : {});
+    },
+
     async createScene(bookId, args = {}) {
       const found = await findBook(bookId);
       if (!found) return fail('NOT_FOUND');

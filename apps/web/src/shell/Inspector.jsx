@@ -1,3 +1,4 @@
+import { nameIndex } from '../editor/names.js';
 import { sceneNotes } from '../prose.js';
 
 /** One inspector section: uppercase 12px muted heading, then content. @param {{ title: string, children: import('react').ReactNode }} props */
@@ -10,14 +11,16 @@ export function InspectorSection({ title, children }) {
   );
 }
 
-function Refs({ label, slugs }) {
+function Refs({ label, slugs, nameOf = (ref) => ref }) {
   if (!slugs || slugs.length === 0) return null;
   return (
     <div className="refs">
       <span className="refs-label">{label}</span>
       <ul>
         {slugs.map((slug) => (
-          <li key={slug}>{slug}</li>
+          <li key={slug} title={slug}>
+            {nameOf(slug)}
+          </li>
         ))}
       </ul>
     </div>
@@ -49,11 +52,13 @@ export function isForFile(diagnostic, book, scene) {
 }
 
 /**
- * Inspector for the open scene. Names are shown as the slugs the scene's front matter holds: there is no
- * Codex read route yet to resolve them.
- * @param {{ book: any, scene: any | null, diagnostics: { items: any[] | null, error: string | null, loading: boolean } }} props
+ * Inspector for the open scene. POV, characters, locations and threads show the entry name / thread title (from
+ * `objects`, the GET /api/books/:b/objects answer) with the slug in the tooltip; a slug nothing resolves is shown as it is.
+ * @param {{ book: any, scene: any | null, diagnostics: { items: any[] | null, error: string | null, loading: boolean },
+ *   objects?: { id: string, kind: string, slug: string | null, title: string | null }[] | null }} props
  */
-export function SceneInspector({ book, scene, diagnostics }) {
+export function SceneInspector({ book, scene, diagnostics, objects = null }) {
+  const { nameOf } = nameIndex(objects);
   const front = scene?.front_matter ?? {};
   const pov = scene?.pov ?? front.pov ?? null;
   const notes = scene && !scene.problem ? sceneNotes(scene.body ?? '') : [];
@@ -70,10 +75,10 @@ export function SceneInspector({ book, scene, diagnostics }) {
               <p className="muted">Nothing is linked to this scene yet.</p>
             ) : (
               <>
-                <Refs label="POV" slugs={pov ? [pov] : []} />
-                <Refs label="Characters" slugs={front.characters} />
-                <Refs label="Locations" slugs={front.locations} />
-                <Refs label="Plot threads" slugs={front.plot_threads} />
+                <Refs label="POV" slugs={pov ? [pov] : []} nameOf={nameOf} />
+                <Refs label="Characters" slugs={front.characters} nameOf={nameOf} />
+                <Refs label="Locations" slugs={front.locations} nameOf={nameOf} />
+                <Refs label="Plot threads" slugs={front.plot_threads} nameOf={nameOf} />
               </>
             )}
           </InspectorSection>

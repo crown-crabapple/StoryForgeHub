@@ -1535,3 +1535,324 @@ mark {
 .outline-chapter .outline-toggle svg {
   margin-top: 2px;
 }
+
+/* ---------- scene editor (M03-J02) ---------- */
+
+.editor-column {
+  --paper-pad: clamp(16px, 5vw, 72px);
+  width: 100%;
+  max-width: calc(var(--measure) + 2 * var(--paper-pad));
+  margin: 0 auto;
+}
+.editor-column .paper {
+  max-width: none;
+  margin: 0;
+}
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1);
+  margin: 0 0 var(--s3);
+  padding: 6px var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+.editor-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0 var(--s2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-2);
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--fs-13);
+  cursor: pointer;
+}
+.editor-tool:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.editor-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.editor-tool[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.editor-tool-text {
+  padding: 0 var(--s3);
+}
+.editor-toolbar-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--s1);
+  background: var(--border);
+}
+.editor-notice {
+  margin: 0 0 var(--s3);
+  padding: var(--s3) var(--s4);
+  background: color-mix(in srgb, var(--warning) 10%, var(--surface));
+  border: 1px solid var(--warning);
+  border-radius: var(--r-card);
+  font-family: var(--font-ui);
+  font-size: var(--fs-14);
+}
+.editor-notice-danger {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  border-color: var(--danger);
+}
+.editor-notice p {
+  margin: 0 0 var(--s2);
+}
+.editor-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.editor-offline,
+.editor-flash {
+  margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-13);
+}
+.editor-offline {
+  border-color: var(--warning);
+}
+.editor-surface {
+  min-height: 40vh;
+  margin: var(--s4) 0;
+}
+.editor-surface:focus-within {
+  outline: var(--focus);
+  outline-offset: 12px;
+  border-radius: 2px;
+}
+.editor-footer-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+}
+
+/* Markdown highlighting and decorations (text is never changed, only how it looks) */
+.cm-md-h1 {
+  font-size: 1.6em;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.cm-md-h2 {
+  font-size: 1.35em;
+  font-weight: 600;
+}
+.cm-md-h3 {
+  font-size: 1.15em;
+  font-weight: 600;
+}
+.cm-md-h4 {
+  font-weight: 600;
+}
+.cm-md-strong {
+  font-weight: 700;
+  color: var(--text);
+}
+.cm-md-em {
+  font-style: italic;
+}
+.cm-md-strike {
+  text-decoration: line-through;
+}
+.cm-md-code {
+  font-family: ui-monospace, Consolas, 'Courier New', monospace;
+  font-size: 0.9em;
+}
+.cm-md-quote {
+  color: var(--text-3);
+  font-style: italic;
+}
+.cm-md-link {
+  color: var(--text-3);
+}
+.cm-md-mark {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 400;
+}
+.sf-hide-marks .cm-md-mark,
+.sf-hide-marks .cm-wl-mark {
+  opacity: 0.12;
+}
+.cm-note,
+.cm-comment {
+  color: var(--muted);
+  font-style: italic;
+}
+.cm-note-label {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-style: normal;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  user-select: none;
+}
+.cm-wl-mark {
+  color: var(--muted);
+}
+.cm-wl-label {
+  color: var(--accent);
+  font-weight: 500;
+}
+.cm-cite {
+  color: var(--text-3);
+  border-bottom: 1px dotted var(--text-3);
+}
+.cm-scene-break {
+  color: var(--muted);
+  letter-spacing: 0.5em;
+  text-align: center;
+}
+
+/* link picker, discarded drafts */
+.link-picker {
+  width: min(520px, 100%);
+}
+.picker-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.picker-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.picker-item:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.picker-title {
+  font-weight: 600;
+}
+.discarded-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+/* conflict comparison */
+.compare {
+  margin-top: var(--s3);
+}
+.compare-summary {
+  margin: 0 0 var(--s2);
+}
+.compare-scroll {
+  max-height: 360px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: var(--fs-12);
+  line-height: 1.5;
+}
+.compare-table th {
+  position: sticky;
+  top: 0;
+  padding: var(--s1) var(--s2);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  text-align: left;
+}
+.compare-table td {
+  padding: 0 var(--s2);
+  vertical-align: top;
+}
+.compare-no {
+  width: 3.2em;
+  color: var(--muted);
+  text-align: right;
+}
+.compare-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+}
+.compare-change .compare-text,
+.compare-left-only .compare-text:nth-child(2) {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--text);
+}
+.compare-change .compare-text:nth-child(4),
+.compare-right-only .compare-text:nth-child(4) {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--text);
+}
+.compare-sign {
+  display: inline-block;
+  width: 1.2em;
+  font-weight: 700;
+}
+
+/* raw file editor */
+.raw-dialog {
+  width: min(900px, 100%);
+}
+.raw-warning {
+  margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--warning);
+  border-radius: var(--r-control);
+  color: var(--text-2);
+  font-size: var(--fs-13);
+}
+.raw-surface {
+  min-height: 280px;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 0 var(--s3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+.raw-surface:focus-within {
+  outline: var(--focus);
+  outline-offset: 2px;
+}

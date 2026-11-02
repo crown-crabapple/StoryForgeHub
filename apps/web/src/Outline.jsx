@@ -73,6 +73,7 @@ function SceneRow({ book, scene, next, activeId, chapterNode, act, start }) {
     { label: 'Add scene after', run: () => start({ type: 'add-scene', chapter: chapterNode.chapter, act, after: scene.id }) },
     { label: 'Split here...', run: () => start({ type: 'split', scene }) },
     { label: 'Merge with next', disabled: !next, run: () => start({ type: 'merge', scene, next }) },
+    { label: 'Edit raw file…', run: () => start({ type: 'raw-file', scene }) },
     { label: 'Archive', run: () => start({ type: 'archive-scene', scene }) },
   ];
   return (

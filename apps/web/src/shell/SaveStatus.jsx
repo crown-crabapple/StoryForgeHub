@@ -1,5 +1,5 @@
 import { useStatus } from '../status.jsx';
-import { AlertIcon, CheckIcon, LockIcon, SpinnerIcon } from './icons.jsx';
+import { AlertIcon, CheckIcon, DotIcon, LockIcon, SpinnerIcon } from './icons.jsx';
 import { deriveSave } from './save-state.js';
 import { useWrites } from './writes.jsx';
 
@@ -17,6 +17,22 @@ export function SaveStatusView({ view }) {
     case 'conflict':
       icon = <AlertIcon />;
       text = "Can't save — file changed outside";
+      break;
+    case 'dirty':
+      icon = <DotIcon />;
+      text = 'Unsaved changes';
+      break;
+    case 'offline':
+      icon = <AlertIcon />;
+      text = "Can't reach StoryForge — retrying";
+      break;
+    case 'changed-outside':
+      icon = <AlertIcon />;
+      text = 'Changed outside — choose what to keep';
+      break;
+    case 'error':
+      icon = <AlertIcon />;
+      text = "Couldn't save this scene";
       break;
     case 'readonly':
       icon = <LockIcon />;
@@ -40,7 +56,7 @@ export function SaveStatusView({ view }) {
 /** Connected indicator: writes made here plus the book's last reconcile time from /api/status. */
 export function SaveStatus({ bookId }) {
   const { status } = useStatus();
-  const { writes } = useWrites();
+  const { writes, editor } = useWrites();
   const lastReconciledAt = status?.books?.find((b) => b.book_id === bookId)?.last_reconciled_at ?? null;
-  return <SaveStatusView view={deriveSave({ bookId: bookId ?? null, writes, lastReconciledAt })} />;
+  return <SaveStatusView view={deriveSave({ bookId: bookId ?? null, writes, lastReconciledAt, editor })} />;
 }

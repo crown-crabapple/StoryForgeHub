@@ -119,6 +119,8 @@
  *   getDiagnostics(bookId?: string): Promise<Diagnostic[]>,
  *   updateSceneBody(bookId: string, sceneId: string, body: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { sha256?: string, current?: SceneDoc | null }>,
+ *   writeSceneRaw(bookId: string, sceneId: string, content: string, opts: { baseSha256: string }):
+ *     Promise<WriteResult & { sha256?: string, current?: SceneDoc | null }>,
  *   createScene(bookId: string, args: { chapter: number, act?: number, after: string | null, title: string, slug: string, body: string, dryRun?: boolean }):
  *     Promise<WriteResult & { id?: string, path?: string }>,
  *   archiveScene(bookId: string, sceneId: string, opts: { baseSha256: string }):
@@ -144,6 +146,7 @@
  *     Promise<{ book_id: string | null, id: string, kind: string, title: string, path: string | null, snippet: string }[]>,
  *   getBacklinks(bookId: string, id: string): Promise<any[] | null>,
  *   getMentions(bookId: string, opts?: { entryId?: string, sceneId?: string }): Promise<{ entry_id: string, scene_id: string, count: number }[] | null>,
+ *   getObjects(bookId: string, kinds?: string[]): Promise<{ id: string, kind: string, slug: string | null, title: string | null, type: string | null }[] | null>,
  *   indexStatus(bookId?: string): Promise<any>,
  *   rebuildIndex(bookId?: string): Promise<{ ok: boolean, code?: string, books: any[] }>,
  *   ensureIndexes(): Promise<{ ok: boolean, books: any[] }>,

@@ -148,6 +148,15 @@ export function makeQueries(db) {
       return all(`SELECT entry_id, scene_id, count FROM mentions${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY rowid`, ...params);
     },
 
+    /** Live (not archived) objects of the given kinds, for pickers: [{ id, kind, slug, title, type }], by kind then title. */
+    objects(kinds) {
+      if (!Array.isArray(kinds) || kinds.length === 0) return [];
+      return all(
+        `SELECT id, kind, slug, title, type FROM objects WHERE archived = 0 AND kind IN (${kinds.map(() => '?').join(', ')}) ORDER BY kind, title COLLATE NOCASE, id`,
+        ...kinds,
+      );
+    },
+
     diagnostics() {
       return all('SELECT code, severity, file, location, message FROM diagnostics ORDER BY rowid');
     },

@@ -2,14 +2,18 @@ import { useState } from 'react';
 import { postJson, useApi } from './api.js';
 import { ProseView } from './ProseView.jsx';
 import { Outline } from './Outline.jsx';
+import { EditorBridgeProvider, useEditorBridge } from './editor/bridge.jsx';
+import { SceneEditorPage } from './editor/SceneEditorPage.jsx';
 import { Link } from './router.jsx';
 import { SceneInspector } from './shell/Inspector.jsx';
 import { Workspace } from './shell/Workspace.jsx';
 import { useWrites } from './shell/writes.jsx';
 import { bookVersion, useStatus } from './status.jsx';
 
-function ArchiveButton({ bookId, scene }) {
+/** Archives the scene. If the scene is open in the editor it is saved first, and the file's current hash is used as the base. */
+export function ArchiveButton({ bookId, scene }) {
   const { track } = useWrites();
+  const bridge = useEditorBridge();
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
   async function archive() {
@@ -17,9 +21,18 @@ function ArchiveButton({ bookId, scene }) {
     setBusy(true);
     setMessage(null);
     try {
-      const { status } = await track(bookId, () =>
-        postJson(`/api/books/${encodeURIComponent(bookId)}/scenes/${encodeURIComponent(scene.id)}/archive`, { base_sha256: scene.sha256 }),
-      );
+      const open = bridge.current();
+      if (open && open.sceneId === scene.id) {
+        const { saved } = await open.flush();
+        if (!saved) {
+          setMessage('Not archived: the scene has changes that could not be saved yet.');
+          setBusy(false);
+          return;
+        }
+      }
+      const url = `/api/books/${encodeURIComponent(bookId)}/scenes/${encodeURIComponent(scene.id)}`;
+      const fresh = await fetch(url, { headers: { accept: 'application/json' } }).then((r) => (r.ok ? r.json() : null), () => null);
+      const { status } = await track(bookId, () => postJson(`${url}/archive`, { base_sha256: fresh?.sha256 ?? scene.sha256 }));
       if (status === 200) {
         window.location.assign(`/books/${encodeURIComponent(bookId)}`);
         return;
@@ -121,12 +134,12 @@ export { Outline };
 /** Three-column book page: outline rail, main column, inspector. `onChanged` runs after a structure command wrote. */
 export function BookLayout({ book, activeId, inspector, onChanged, children }) {
   return (
-    <>
+    <EditorBridgeProvider>
       <InvalidBanner book={book} />
       <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector}>
         {children}
       </Workspace>
-    </>
+    </EditorBridgeProvider>
   );
 }
 
@@ -141,6 +154,7 @@ export function BookView({ bookId, sceneId, file }) {
   const sceneUrl = showScene ? `/api/books/${encodeURIComponent(bookId)}/scenes/${encodeURIComponent(activeId)}` : null;
   const { data: scene, error: sceneError, loading: sceneLoading } = useApi(sceneUrl, version);
   const { data: items, error: diagError, loading: diagLoading } = useApi(book ? `/api/books/${encodeURIComponent(bookId)}/diagnostics` : null, version);
+  const { data: objects } = useApi(book ? `/api/books/${encodeURIComponent(bookId)}/objects?kinds=entry,thread,event` : null, version);
 
   if (loading) return <main id="main" tabIndex={-1} className="page muted">Loading...</main>;
   if (error) return <main id="main" tabIndex={-1} className="page error">{error}</main>;
@@ -169,14 +183,27 @@ export function BookView({ bookId, sceneId, file }) {
   } else if (sceneLoading) main = <p className="muted">Loading...</p>;
   else if (sceneError) main = <p className="error">{sceneError}</p>;
   else if (!scene) main = <p className="muted">Scene not found.</p>;
-  else main = <ScenePaper key={scene.id} book={book} scene={scene} chapterLabel={chapterLabel} />;
+  else if (scene.problem || scene.raw) main = <ScenePaper key={scene.id} book={book} scene={scene} chapterLabel={chapterLabel} />;
+  else {
+    main = (
+      <SceneEditorPage
+        key={scene.id}
+        book={book}
+        scene={scene}
+        chapterLabel={chapterLabel}
+        objects={objects}
+        footerExtra={<ArchiveButton bookId={book.id} scene={scene} />}
+        onStructureChanged={() => setBump((n) => n + 1)}
+      />
+    );
+  }
 
   return (
     <BookLayout
       book={book}
       activeId={file ? null : activeId}
       onChanged={() => setBump((n) => n + 1)}
-      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} />}
+      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} />}
     >
       {main}
     </BookLayout>
