@@ -16,7 +16,6 @@ after(closeAll);
 
 const SECRET = 'SECRET-OUTSIDE-BYTES';
 const base = `/api/books/${BOOK}/attachments`;
-const NOTE = 'research/tidal-ranges.md'; // exists in salt-orchard
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const PDF = Buffer.from('%PDF-1.4\n%fake\n');
 
