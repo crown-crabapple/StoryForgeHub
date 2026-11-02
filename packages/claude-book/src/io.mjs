@@ -101,6 +101,13 @@ export async function createSuggestionFiles(bookRoot, files) {
     if (!/^suggestions\/[^/]+(\/[^/]+)*\.md$/.test(f.rel)) throw new UsageError(`not a suggestion path: ${f.rel}`);
   }
   const store = await openStore(bookRoot);
+  // Names carry a one-second timestamp: a taken name gets -2, -3 … (f.rel is updated so callers print the real path).
+  const taken = new Set();
+  for (const f of files) {
+    const first = f.rel;
+    for (let n = 2; taken.has(f.rel) || (await store.exists(f.rel)); n++) f.rel = first.replace(/\.md$/, `-${n}.md`);
+    taken.add(f.rel);
+  }
   const r = await store.batch('claude-book.suggest', { files: files.map((f) => f.rel) }, async (tx) => {
     for (const f of files) await tx.create(f.rel, f.bytes);
   });
