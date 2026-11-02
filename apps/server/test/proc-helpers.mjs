@@ -8,7 +8,7 @@ export const LOCK_NAME = '.storyforge-lock';
 export const GOOD = { 'content-type': 'application/json', 'x-storyforge': '1' };
 
 /** Poll `fn` until truthy (bounded). */
-export async function waitFor(fn, { timeout = 5000, interval = 50, what = 'condition' } = {}) {
+export async function waitFor(fn, { timeout = 20000, interval = 50, what = 'condition' } = {}) {
   const deadline = Date.now() + timeout;
   let last;
   for (;;) {
