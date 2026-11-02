@@ -8,19 +8,19 @@ import { makePathResolver, sceneFileName, sceneSlugOf } from './paths.mjs';
 import { placeInChapter } from './seq.mjs';
 import { newSceneId, SCENE_ID_RE, SLUG_RE } from './util.mjs';
 
-const STATUSES = ['outline', 'drafting', 'revised', 'final'];
-const isInt = (v, min = 0) => Number.isInteger(v) && v >= min;
-const fail = (code, message, extra = {}) => ({ ok: false, code, changes: [], message, ...extra });
+export const STATUSES = ['outline', 'drafting', 'revised', 'final'];
+export const isInt = (v, min = 0) => Number.isInteger(v) && v >= min;
+export const fail = (code, message, extra = {}) => ({ ok: false, code, changes: [], message, ...extra });
 
 /** Bytes of a book file via the store; a missing file is an error (the caller just validated the book). */
-async function readBytes(store, rel) {
+export async function readBytes(store, rel) {
   const r = await store.read(rel);
   if (!r) throw new Error(`cannot read ${rel}`);
   return r.bytes;
 }
 
 /** Never throw on bad input: wrap every operation. */
-async function guarded(fn) {
+export async function guarded(fn) {
   try {
     return await fn();
   } catch (e) {
@@ -34,7 +34,7 @@ async function guarded(fn) {
  * @param {string} bookRoot
  * @param {{allowCodes?:string[], onInvalid?:(lb:any, errs:object[], store:any)=>Promise<object|null>}} [opts]
  */
-async function prepare(bookRoot, { allowCodes = [], onInvalid } = {}) {
+export async function prepare(bookRoot, { allowCodes = [], onInvalid } = {}) {
   const store = typeof bookRoot === 'string' && bookRoot !== '' ? await openStore(path.resolve(bookRoot)) : null;
   const lb = await loadBook(bookRoot);
   if ('error' in lb) return { result: fail(lb.error.code, lb.error.message) };
@@ -50,7 +50,7 @@ async function prepare(bookRoot, { allowCodes = [], onInvalid } = {}) {
  * Build a Change for a scene: apply front-matter edits, target path. Null if nothing changes.
  * @returns {Promise<{change:object|null} | {unsimple:{file:string, field:string}}>}
  */
-async function sceneChange(store, scene, edits, to) {
+export async function sceneChange(store, scene, edits, to) {
   const before = await readBytes(store, scene.path);
   const r = setFields(before, edits);
   if ('error' in r) return { unsimple: { file: scene.path, field: r.error.field } };
@@ -58,7 +58,7 @@ async function sceneChange(store, scene, edits, to) {
   return { change: { from: scene.path, to, content: r.buf, before } };
 }
 
-const unsimpleResult = ({ file, field }) =>
+export const unsimpleResult = ({ file, field }) =>
   fail('REFUSED_UNSIMPLE_FIELD', `${file}: front-matter line for "${field}" is not a simple "${field}: <integer>"`, { file, field });
 
 /** Reject targets that already exist (unless vacated by another change) or are claimed twice. */
@@ -76,10 +76,10 @@ async function checkPaths(store, changes) {
   return null;
 }
 
-async function finish({ bookRoot, store, lb, op, args, changes, dryRun, extra = {} }) {
+export async function finish({ bookRoot, store, lb, op, args, changes, dryRun, extra = {}, withDiff = false }) {
   const taken = await checkPaths(store, changes);
   if (taken) return taken;
-  if (dryRun) return { ok: true, code: 'OK', dryRun: true, changes: publicChanges(changes), ...extra };
+  if (dryRun) return { ok: true, code: 'OK', dryRun: true, changes: publicChanges(changes, { diff: withDiff }), ...extra };
   if (changes.length === 0) return { ok: true, code: 'OK', changes: [], ...extra };
   const res = await commit({ store, bookRoot, root: lb.root, op, args, changes, beforeDiagnostics: lb.diagnostics });
   return { ...res, ...extra };
@@ -103,7 +103,7 @@ async function renumberChanges(store, list, step) {
  * Neighbour changes for a placement. When no free integer exists the chapter is renumbered first
  * (10, 20, ...; mover excluded) and the mover then takes the midpoint of its new neighbours.
  */
-async function placementNeighbours(store, list, place) {
+export async function placementNeighbours(store, list, place) {
   if (!place.renumber) return { moverSequence: place.sequence, changes: [] };
   const changes = [];
   const renumbered = [];

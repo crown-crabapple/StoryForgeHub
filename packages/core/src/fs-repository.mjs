@@ -690,6 +690,26 @@ export function createFsRepository(libraryRoot, options = {}) {
       return book ? forBook(result.diagnostics, book.path) : [];
     },
   };
-  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p) }));
+  // Act titles come from act.md (the index only knows labels); the tree shows "label + title".
+  const getBookRaw = repository.getBook;
+  repository.getBook = async (bookId) => {
+    const detail = await getBookRaw(bookId);
+    if (!detail) return detail;
+    for (const act of detail.acts) {
+      const first = act.chapters[0]?.scenes[0]?.path;
+      const segs = typeof first === 'string' ? first.split('/') : [];
+      const at = segs.indexOf('manuscript');
+      let title = null;
+      if (at >= 0 && segs.length > at + 2) {
+        const inBook = segs.slice(0, at + 2).join('/');
+        const rel = detail.path && !inBook.startsWith(`${detail.path}/`) ? `${detail.path}/${inBook}` : inBook;
+        const fm = (await readParsed(abs(`${rel}/act.md`)))?.fm;
+        if (fm && fm.act === act.act) title = str(fm.title);
+      }
+      act.title = title;
+    }
+    return detail;
+  };
+  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }) }));
   return repository;
 }

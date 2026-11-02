@@ -2,7 +2,19 @@
 // @storyforge/store (the single writer) or @storyforge/manuscript (which uses the store).
 import path from 'node:path';
 import { validate } from '@storyforge/format';
-import { insertScene } from '@storyforge/manuscript';
+import {
+  archiveChapter,
+  createAct,
+  createChapter,
+  insertScene,
+  mergeScenes,
+  renumberChapters,
+  restoreOp,
+  setActFields,
+  setChapterFields,
+  setSceneFields,
+  splitScene,
+} from '@storyforge/manuscript';
 import { openStore } from '@storyforge/store';
 
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
@@ -32,9 +44,10 @@ const errKey = (d) => `${d.code}\0${d.file}\0${d.location}`;
 
 /**
  * @param {{ root: string, getScene: (bookId: string, sceneId: string) => Promise<any>,
- *           afterWrite?: (bookPath: string) => void }} deps  `afterWrite` runs after every successful change
+ *           afterWrite?: (bookPath: string) => void, reconcile?: (bookPath: string) => Promise<any> }} deps
+ *   `afterWrite` runs after every successful change; `reconcile` (structure commands) brings the book's index up to date before the call returns
  */
-export function createWriteMethods({ root, getScene, afterWrite = () => {} }) {
+export function createWriteMethods({ root, getScene, afterWrite = () => {}, reconcile }) {
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
   const toLibRel = (book, p) => (book.path === '' ? p : `${book.path}/${p}`);
   const toBookRel = (book, p) => (book.path === '' ? p : p.startsWith(`${book.path}/`) ? p.slice(book.path.length + 1) : null);
@@ -87,6 +100,25 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {} }) {
     return fail(r.code, r.message ? { message: r.message } : {});
   }
 
+  const NOT_FOUND_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_CHAPTER', 'REFUSED_UNKNOWN_ACT', 'REFUSED_UNKNOWN_OP'];
+
+  /**
+   * Run one @storyforge/manuscript structure command on a book. A real change reconciles the index before
+   * returning; unknown scene / chapter / act / op is NOT_FOUND. Change paths stay relative to the book root.
+   * @param {string} bookId @param {(bookRoot: string) => Promise<any>} run
+   */
+  async function structure(bookId, run) {
+    const found = await findBook(bookId);
+    if (!found) return fail('NOT_FOUND');
+    const r = await run(bookRootOf(found.book));
+    if (!r.ok) return NOT_FOUND_CODES.includes(r.code) ? fail('NOT_FOUND') : r;
+    if (!r.dryRun && r.changes.length > 0) {
+      if (reconcile) await reconcile(found.book.path);
+      else afterWrite(found.book.path);
+    }
+    return r;
+  }
+
   return {
     async updateSceneBody(bookId, sceneId, body, { baseSha256 } = {}) {
       if (typeof body !== 'string') return fail('BAD_ARGS', { message: 'body must be a string' });
@@ -113,10 +145,10 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {} }) {
     async createScene(bookId, args = {}) {
       const found = await findBook(bookId);
       if (!found) return fail('NOT_FOUND');
-      const { chapter, act, after, title, slug, body } = args ?? {};
-      const r = await insertScene(bookRootOf(found.book), { chapter, act, after, title, slug, body });
+      const { chapter, act, after, title, slug, body, dryRun } = args ?? {};
+      const r = await insertScene(bookRootOf(found.book), { chapter, act, after, title, slug, body, dryRun: dryRun === true });
       if (!r.ok) return r;
-      afterWrite(found.book.path);
+      if (!r.dryRun) afterWrite(found.book.path);
       return { ...r, path: toLibRel(found.book, r.path) };
     },
 
@@ -139,6 +171,17 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {} }) {
         call: (tx, rel) => tx.restore(rel, { baseSha256 }),
       });
     },
+
+    setSceneFields: (bookId, sceneId, args = {}) => structure(bookId, (b) => setSceneFields(b, sceneId, args ?? {})),
+    splitScene: (bookId, sceneId, args = {}) => structure(bookId, (b) => splitScene(b, sceneId, args ?? {})),
+    mergeScenes: (bookId, args = {}) => structure(bookId, (b) => mergeScenes(b, args?.first, args?.second, { dryRun: args?.dryRun })),
+    createChapter: (bookId, args = {}) => structure(bookId, (b) => createChapter(b, args ?? {})),
+    setChapterFields: (bookId, chapter, args = {}) => structure(bookId, (b) => setChapterFields(b, chapter, args ?? {})),
+    archiveChapter: (bookId, chapter, args = {}) => structure(bookId, (b) => archiveChapter(b, chapter, args ?? {})),
+    renumberChapters: (bookId, args = {}) => structure(bookId, (b) => renumberChapters(b, args ?? {})),
+    createAct: (bookId, args = {}) => structure(bookId, (b) => createAct(b, args ?? {})),
+    setActFields: (bookId, act, args = {}) => structure(bookId, (b) => setActFields(b, act, args ?? {})),
+    restoreOp: (bookId, opId, args = {}) => structure(bookId, (b) => restoreOp(b, opId, args ?? {})),
 
     async recover() {
       const result = await validate(root);

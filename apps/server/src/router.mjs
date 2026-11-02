@@ -174,7 +174,7 @@ async function fromIndex(read) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, bookId?: string, sceneId?: string } | null}
+ * @returns {{ route: string, bookId?: string, sceneId?: string, n?: string, opId?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
@@ -192,6 +192,17 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'scenes' && d === undefined) return { route: 'create', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'archive') return { route: 'archive', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'archive' && d === 'restore' && e === undefined) return { route: 'restore', bookId: b };
+  // M03-J01 structure commands (all POST; `dryRun: true` in the body previews without writing)
+  if (method === 'POST' && c === 'scenes' && d === 'merge' && e === undefined) return { route: 'scene-merge', bookId: b };
+  if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'fields') return { route: 'scene-fields', bookId: b, sceneId: d };
+  if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'split') return { route: 'scene-split', bookId: b, sceneId: d };
+  if (method === 'POST' && c === 'chapters' && d === undefined) return { route: 'chapter-create', bookId: b };
+  if (method === 'POST' && c === 'chapters' && d === 'renumber' && e === undefined) return { route: 'chapters-renumber', bookId: b };
+  if (method === 'POST' && c === 'chapters' && d !== undefined && e === 'fields') return { route: 'chapter-fields', bookId: b, n: d };
+  if (method === 'POST' && c === 'chapters' && d !== undefined && e === 'archive') return { route: 'chapter-archive', bookId: b, n: d };
+  if (method === 'POST' && c === 'acts' && d === undefined) return { route: 'act-create', bookId: b };
+  if (method === 'POST' && c === 'acts' && d !== undefined && e === 'fields') return { route: 'act-fields', bookId: b, n: d };
+  if (method === 'POST' && c === 'ops' && d !== undefined && e === 'restore') return { route: 'op-restore', bookId: b, opId: d };
   return null;
 }
 
@@ -203,13 +214,13 @@ function respond(r, okStatus, okBody) {
   if (r.code === 'NOT_FOUND') return NOT_FOUND;
   if (r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', current: r.current ?? null } };
   const detail = { code: r.code, ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
-  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION'].includes(r.code);
+  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE'].includes(r.code);
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
 }
 
 /**
  * @param {FileRepository} repository
- * @param {{ route: string, bookId?: string, sceneId?: string }} match from matchWriteRoute
+ * @param {{ route: string, bookId?: string, sceneId?: string, n?: string, opId?: string }} match from matchWriteRoute
  * @param {unknown} body parsed JSON request body
  * @param {ApiState} [state] updated by POST /api/recover
  * @returns {Promise<ApiResult>}
@@ -269,8 +280,10 @@ export async function handleWrite(repository, match, body, state) {
     }
     case 'create': {
       const { chapter, act, after, title, slug, body: text } = body;
-      const r = await repository.createScene(bookId, { chapter, act, after, title, slug, body: text });
-      return respond(r, 201, (x) => ({ id: x.id, path: x.path }));
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const dryRun = body.dryRun === true;
+      const r = await repository.createScene(bookId, { chapter, act, after, title, slug, body: text, dryRun });
+      return dryRun ? respond(r, 200, structureBody) : respond(r, 201, (x) => ({ id: x.id, path: x.path }));
     }
     case 'archive': {
       if (typeof body.base_sha256 !== 'string') return badRequest('expected { base_sha256: string }');
@@ -281,6 +294,77 @@ export async function handleWrite(repository, match, body, state) {
       if (typeof body.path !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { path: string, base_sha256: string }');
       const r = await repository.restoreScene(bookId, body.path, { baseSha256: body.base_sha256 });
       return respond(r, 200, (x) => ({ path: x.path }));
+    }
+    default:
+      return handleStructure(repository, match, body);
+  }
+}
+
+/** A chapter / act number from a URL segment (digits only), or null. */
+const numberOf = (n) => (typeof n === 'string' && /^\d+$/.test(n) ? Number(n) : null);
+
+/** Body of a successful structure command: everything the command reported, without the code. */
+const structureBody = (x) => {
+  return { ...x, ok: true, code: undefined };
+};
+
+/**
+ * POST structure commands (M03-J01). `dryRun: true` previews: { ok, changes: [{ from, to, before_sha256, after_sha256, diff }] }.
+ * @param {FileRepository} repository @param {{ route: string, bookId?: string, sceneId?: string, n?: string, opId?: string }} match @param {Record<string, any>} body
+ */
+async function handleStructure(repository, match, body) {
+  const bookId = /** @type {string} */ (match.bookId);
+  if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+  const dryRun = body.dryRun === true;
+  const created = dryRun ? 200 : 201;
+  const num = numberOf(match.n);
+  switch (match.route) {
+    case 'scene-fields': {
+      const { title, status, pov, renameFile } = body;
+      const r = await repository.setSceneFields(bookId, /** @type {string} */ (match.sceneId), { title, status, pov, renameFile: renameFile === true, dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'scene-split': {
+      if (!Number.isInteger(body.atLine)) return badRequest('expected { atLine: integer }');
+      const r = await repository.splitScene(bookId, /** @type {string} */ (match.sceneId), { atLine: body.atLine, dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'scene-merge': {
+      if (typeof body.first !== 'string' || typeof body.second !== 'string') return badRequest('expected { first: string, second: string }');
+      const r = await repository.mergeScenes(bookId, { first: body.first, second: body.second, dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'chapter-create': {
+      const { act, after, title } = body;
+      const r = await repository.createChapter(bookId, { act, after, title, dryRun });
+      return respond(r, created, structureBody);
+    }
+    case 'chapter-fields': {
+      if (num === null) return NOT_FOUND;
+      const r = await repository.setChapterFields(bookId, num, { title: body.title, label: body.label, dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'chapter-archive': {
+      if (num === null) return NOT_FOUND;
+      const r = await repository.archiveChapter(bookId, num, { dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'chapters-renumber': {
+      const r = await repository.renumberChapters(bookId, { step: body.step, dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'act-create': {
+      const r = await repository.createAct(bookId, { title: body.title, dryRun });
+      return respond(r, created, structureBody);
+    }
+    case 'act-fields': {
+      if (num === null) return NOT_FOUND;
+      const r = await repository.setActFields(bookId, num, { title: body.title, dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'op-restore': {
+      const r = await repository.restoreOp(bookId, /** @type {string} */ (match.opId), { dryRun });
+      return respond(r, 200, structureBody);
     }
     default:
       return NOT_FOUND;

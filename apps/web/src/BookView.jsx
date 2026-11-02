@@ -1,77 +1,12 @@
 import { useState } from 'react';
 import { postJson, useApi } from './api.js';
 import { ProseView } from './ProseView.jsx';
+import { Outline } from './Outline.jsx';
 import { Link } from './router.jsx';
 import { SceneInspector } from './shell/Inspector.jsx';
-import { BookIcon, FolderIcon } from './shell/icons.jsx';
 import { Workspace } from './shell/Workspace.jsx';
 import { useWrites } from './shell/writes.jsx';
 import { bookVersion, useStatus } from './status.jsx';
-
-const sceneHref = (bookId, sceneId) => `/books/${encodeURIComponent(bookId)}?scene=${encodeURIComponent(sceneId)}`;
-
-/** Up/Down move between scene links in the rail; Enter opens the focused link (native). Plain Tab works too. */
-function moveBetweenScenes(e) {
-  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-  const links = [...e.currentTarget.querySelectorAll('a[data-scene-link]')];
-  const at = links.indexOf(document.activeElement);
-  if (at === -1) return;
-  const next = links[at + (e.key === 'ArrowDown' ? 1 : -1)];
-  if (next) {
-    e.preventDefault();
-    next.focus();
-  }
-}
-
-/** The manuscript outline: act, chapter, scenes with word counts. */
-export function Outline({ book, activeId }) {
-  return (
-    <div className="outline" onKeyDown={moveBetweenScenes}>
-      <h2 className="rail-heading">{book.title ?? book.slug ?? book.id}</h2>
-      <ul className="outline-acts">
-        {book.acts.map((act) => (
-          <li key={act.act}>
-            <span className="outline-row outline-act">
-              <FolderIcon width={15} height={15} />
-              <span className="outline-label">{act.label}</span>
-            </span>
-            <ul>
-              {act.chapters.map((ch) => (
-                <li key={ch.chapter}>
-                  <span className="outline-row outline-chapter">
-                    <BookIcon width={15} height={15} />
-                    <span className="outline-label">{ch.title ? `${ch.label}: ${ch.title}` : ch.label}</span>
-                    <span className="outline-words">{ch.scenes.reduce((n, s) => n + s.word_count, 0)}w</span>
-                  </span>
-                  <ul>
-                    {ch.scenes.map((s) => (
-                      <li key={s.id}>
-                        <Link
-                          to={sceneHref(book.id, s.id)}
-                          data-scene-link=""
-                          className="outline-row outline-scene"
-                          aria-current={s.id === activeId ? 'page' : undefined}
-                        >
-                          <span className="outline-label">{s.title}</span>
-                          {s.problem && (
-                            <span className="badge badge-error" title={s.problem.message}>
-                              can't be read
-                            </span>
-                          )}
-                          <span className="outline-words">{s.word_count}w</span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 function ArchiveButton({ bookId, scene }) {
   const { track } = useWrites();
@@ -181,12 +116,14 @@ export function InvalidBanner({ book }) {
   );
 }
 
-/** Three-column book page: outline rail, main column, inspector. Presentational. */
-export function BookLayout({ book, activeId, inspector, children }) {
+export { Outline };
+
+/** Three-column book page: outline rail, main column, inspector. `onChanged` runs after a structure command wrote. */
+export function BookLayout({ book, activeId, inspector, onChanged, children }) {
   return (
     <>
       <InvalidBanner book={book} />
-      <Workspace rail={<Outline book={book} activeId={activeId} />} inspector={inspector}>
+      <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector}>
         {children}
       </Workspace>
     </>
@@ -195,7 +132,8 @@ export function BookLayout({ book, activeId, inspector, children }) {
 
 export function BookView({ bookId, sceneId, file }) {
   const { status } = useStatus();
-  const version = bookVersion(status, bookId);
+  const [bump, setBump] = useState(0);
+  const version = `${bookVersion(status, bookId)}|${bump}`;
   const { data: book, error, loading } = useApi(`/api/books/${encodeURIComponent(bookId)}`, version);
   const allScenes = book ? book.acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes)) : [];
   const activeId = sceneId && allScenes.some((s) => s.id === sceneId) ? sceneId : (allScenes[0]?.id ?? null);
@@ -237,6 +175,7 @@ export function BookView({ bookId, sceneId, file }) {
     <BookLayout
       book={book}
       activeId={file ? null : activeId}
+      onChanged={() => setBump((n) => n + 1)}
       inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} />}
     >
       {main}

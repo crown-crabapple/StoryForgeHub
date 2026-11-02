@@ -67,7 +67,7 @@
  */
 
 /**
- * @typedef {{ act: number, label: string, chapters: ChapterNode[] }} ActNode
+ * @typedef {{ act: number, label: string, title?: string | null, chapters: ChapterNode[] }} ActNode  `title` comes from act.md (null if none).
  */
 
 /**
@@ -99,6 +99,12 @@
  */
 
 /**
+ * @typedef {WriteResult & { dryRun?: boolean, opId?: string, changes?: { from: string | null, to: string, before_sha256: string | null, after_sha256: string, diff?: string }[], [extra: string]: any }} StructureResult
+ *   M03-J01 structure commands (see @storyforge/manuscript). `dryRun: true` writes nothing and returns `changes` with a unified `diff` each;
+ *   paths are relative to the book root. Unknown scene / chapter / act / op is NOT_FOUND.
+ */
+
+/**
  * @typedef {{ slug: string, title: string | null, status: string | null, book_ids: string[] }} SeriesInfo
  * @typedef {{ root: string, title: string | null, diagnostics: Diagnostic[], series: SeriesInfo[] }} LibraryInfo
  */
@@ -113,12 +119,22 @@
  *   getDiagnostics(bookId?: string): Promise<Diagnostic[]>,
  *   updateSceneBody(bookId: string, sceneId: string, body: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { sha256?: string, current?: SceneDoc | null }>,
- *   createScene(bookId: string, args: { chapter: number, act?: number, after: string | null, title: string, slug: string, body: string }):
+ *   createScene(bookId: string, args: { chapter: number, act?: number, after: string | null, title: string, slug: string, body: string, dryRun?: boolean }):
  *     Promise<WriteResult & { id?: string, path?: string }>,
  *   archiveScene(bookId: string, sceneId: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { path?: string, current?: SceneDoc | null }>,
  *   restoreScene(bookId: string, archivedPath: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { path?: string }>,
+ *   setSceneFields(bookId: string, sceneId: string, args: { title?: string, status?: string, pov?: string, renameFile?: boolean, dryRun?: boolean }): Promise<StructureResult>,
+ *   splitScene(bookId: string, sceneId: string, args: { atLine: number, dryRun?: boolean }): Promise<StructureResult>,
+ *   mergeScenes(bookId: string, args: { first: string, second: string, dryRun?: boolean }): Promise<StructureResult>,
+ *   createChapter(bookId: string, args: { act?: number, after?: number | null, title: string, dryRun?: boolean }): Promise<StructureResult>,
+ *   setChapterFields(bookId: string, chapter: number, args: { title?: string, label?: string, dryRun?: boolean }): Promise<StructureResult>,
+ *   archiveChapter(bookId: string, chapter: number, args?: { dryRun?: boolean }): Promise<StructureResult>,
+ *   renumberChapters(bookId: string, args?: { step?: number, dryRun?: boolean }): Promise<StructureResult>,
+ *   createAct(bookId: string, args: { title: string, dryRun?: boolean }): Promise<StructureResult>,
+ *   setActFields(bookId: string, act: number, args: { title: string, dryRun?: boolean }): Promise<StructureResult>,
+ *   restoreOp(bookId: string, opId: string, args?: { dryRun?: boolean }): Promise<StructureResult>,
  *   recover(): Promise<RecoverReport>,
  *   root: string,
  *   listTemplates(): Promise<{ name: string, title: string, description: string, beats: string[], acts: number, chapters: number, scenes: number }[]>,

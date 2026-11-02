@@ -1174,3 +1174,296 @@ mark {
 .recent-missing {
   color: var(--text-3);
 }
+
+/* ---------- manuscript tree: structure commands (M03-J01) ---------- */
+
+.outline-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.outline-toggle:hover {
+  color: var(--text);
+}
+.chevron {
+  flex: 0 0 auto;
+  transition: transform 0.12s;
+}
+.chevron-closed {
+  transform: rotate(-90deg);
+}
+.outline-act,
+.outline-chapter {
+  gap: var(--s2);
+}
+.outline-act .outline-toggle,
+.outline-chapter .outline-toggle {
+  gap: 8px;
+}
+.outline-scene-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 40px;
+}
+.outline-scene-item .outline-scene {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 8px;
+  padding-left: 6px;
+}
+.status {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+/* Four lightness steps on the dark surface: a ring, then three fills from dim to bright. */
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--text-3);
+  background: transparent;
+  box-sizing: border-box;
+}
+.status-dot[data-status='drafting'] {
+  background: var(--muted);
+  border-color: var(--muted);
+}
+.status-dot[data-status='revised'] {
+  background: var(--text-2);
+  border-color: var(--text-2);
+}
+.status-dot[data-status='final'] {
+  background: var(--text);
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.status-dot[data-status='none'] {
+  border-style: dotted;
+}
+.pov-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+}
+.row-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+.row-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 var(--s1);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-control);
+  color: var(--text-3);
+  font: inherit;
+  cursor: pointer;
+}
+.row-menu-button:hover,
+.row-menu-button[aria-expanded='true'] {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.row-menu-list {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 20;
+  min-width: 180px;
+  margin: 2px 0 0;
+  padding: var(--s1);
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+.row-submenu {
+  margin: 0;
+  padding: 0 0 0 var(--s3);
+  list-style: none;
+}
+.row-menu-list button {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--s3);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-13);
+  text-align: left;
+  cursor: pointer;
+}
+.row-menu-list button:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.row-menu-list button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.row-menu-list button[aria-checked='true'] {
+  color: var(--accent);
+}
+.outline-archived {
+  margin-top: var(--s4);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--divider);
+}
+.outline-archived-toggle {
+  width: 100%;
+  padding: 0 10px;
+  color: var(--text-3);
+  font-size: var(--fs-13);
+}
+.outline-archived-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.outline-archived-item {
+  color: var(--text-3);
+  padding-left: 28px;
+}
+.row-button {
+  min-height: 28px;
+  padding: 0 var(--s3);
+  font-size: var(--fs-12);
+}
+
+/* ---------- preview dialog, forms, diffs, toast ---------- */
+
+.preview-dialog {
+  width: min(820px, 100%);
+}
+.preview-files {
+  margin: var(--s3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.preview-file {
+  margin-bottom: var(--s4);
+}
+.preview-file-head code {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.diff {
+  max-height: 260px;
+  margin: var(--s2) 0 0;
+  padding: var(--s2) var(--s3);
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: var(--fs-12);
+  line-height: 1.5;
+  white-space: pre;
+}
+.diff-line {
+  display: block;
+}
+.diff-add {
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--text);
+}
+.diff-del {
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  color: var(--text);
+}
+.diff-hunk,
+.diff-meta {
+  color: var(--text-3);
+}
+.diff-ctx {
+  color: var(--text-3);
+}
+.preview-notes {
+  margin-top: var(--s3);
+  padding: var(--s3);
+  border: 1px solid var(--warning);
+  border-radius: var(--r-control);
+}
+.preview-notes p {
+  margin: 0 0 var(--s2);
+}
+.form-row {
+  margin-bottom: var(--s3);
+}
+.form-row label {
+  display: block;
+}
+.form-check label {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.form-label {
+  display: block;
+  margin-bottom: var(--s1);
+  color: var(--text-3);
+  font-size: var(--fs-13);
+}
+.form-row input[type='text'],
+.form-row input[type='number'] {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--s3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-input);
+  color: var(--text);
+  font: inherit;
+}
+.form-hint {
+  margin: var(--s1) 0 0;
+  font-size: var(--fs-13);
+}
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--s6);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  max-width: min(640px, calc(100vw - 2 * var(--s4)));
+  padding: var(--s3) var(--s4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  transform: translateX(-50%);
+}
+.toast-button {
+  min-height: 32px;
+  padding: 0 var(--s3);
+}

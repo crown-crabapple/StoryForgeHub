@@ -1,6 +1,7 @@
 // Applies a list of changes through the single writer (@storyforge/store): one batch = one opId,
 // one journal entry, one trash folder; post-validation and rollback (contract rules 3, 4, 6).
 import { loadBook, newErrors } from './book.mjs';
+import { unifiedDiff } from './diff.mjs';
 import { sha256 } from './util.mjs';
 
 /** Test seam: `afterWrite(book, changes)` runs after files are written, before verification. */
@@ -11,13 +12,14 @@ export const __testHooks = { afterWrite: undefined };
  *   from === null: file created; from === to: edited in place; otherwise moved (and maybe edited).
  */
 
-/** Public shape of a change. */
-export function publicChanges(changes) {
+/** Public shape of a change; `diff: true` adds a unified diff string per file (dry-run previews). */
+export function publicChanges(changes, { diff = false } = {}) {
   return changes.map((c) => ({
     from: c.from,
     to: c.to,
     before_sha256: c.before ? sha256(c.before) : null,
     after_sha256: sha256(c.content),
+    ...(diff ? { diff: unifiedDiff(c.from, c.to, c.before ? c.before.toString('utf8') : '', c.content.toString('utf8')) } : {}),
   }));
 }
 

@@ -15,7 +15,7 @@ import { OP_ID_RE, archiveJournal, listJournal, makeOpId, writeJournal } from '.
 import { withRootLock } from './lock.mjs';
 import { isOwn, markOwn } from './ownwrites.mjs';
 import { recoverRoot, settleEntry } from './recover.mjs';
-import { copyToTrash, moveToTrash } from './trash.mjs';
+import { copyToTrash, moveToTrash, trashPath } from './trash.mjs';
 
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
 
@@ -283,6 +283,12 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
     async exists(rel) {
       const r = normRel(rel);
       return r && !(await escapesRoot(root, r)) ? (await kindOf(absOf(root, r))) !== null : false;
+    },
+    /** Bytes of a trashed copy (`.storyforge/trash/<opId>/<rel>`, `rel` may be 'op.json'), or null (read-only helper). */
+    async readTrash(opId, rel) {
+      if (typeof opId !== 'string' || !OP_ID_RE.test(opId)) return null;
+      const r = normRel(rel);
+      return r ? readOrNull(trashPath(root, opId, r)) : null;
     },
     /** Entries of a folder, or [] (read-only helper). `rel` '' is the root. */
     async list(rel = '') {
