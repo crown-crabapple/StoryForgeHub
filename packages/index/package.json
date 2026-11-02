@@ -6,7 +6,7 @@
   "type": "module",
   "exports": "./src/index.mjs",
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --import ../../scripts/test-isolate-config.mjs --test \"test/*.test.mjs\""
   },
   "engines": {
     "node": ">=22"
