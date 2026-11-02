@@ -690,24 +690,52 @@ export function createFsRepository(libraryRoot, options = {}) {
       return book ? forBook(result.diagnostics, book.path) : [];
     },
   };
-  // Act titles come from act.md (the index only knows labels); the tree shows "label + title".
+  // Act titles and scene-less acts / chapters come from act.md / chapter.md (FORMAT-v1 4.5: metadata without
+  // scenes is shown empty). Added here, after either read path, so the index and the files agree.
   const getBookRaw = repository.getBook;
   repository.getBook = async (bookId) => {
     const detail = await getBookRaw(bookId);
     if (!detail) return detail;
-    for (const act of detail.acts) {
-      const first = act.chapters[0]?.scenes[0]?.path;
-      const segs = typeof first === 'string' ? first.split('/') : [];
-      const at = segs.indexOf('manuscript');
-      let title = null;
-      if (at >= 0 && segs.length > at + 2) {
-        const inBook = segs.slice(0, at + 2).join('/');
-        const rel = detail.path && !inBook.startsWith(`${detail.path}/`) ? `${detail.path}/${inBook}` : inBook;
-        const fm = (await readParsed(abs(`${rel}/act.md`)))?.fm;
-        if (fm && fm.act === act.act) title = str(fm.title);
+    const manuscript = detail.path ? `${detail.path}/manuscript` : 'manuscript';
+    const metaActs = new Map();
+    /** @type {{ n: number, act: number | null, label: string | null, title: string | null }[]} */
+    const metaChapters = [];
+    const dirs = async (rel) => {
+      try {
+        return (await readdir(abs(rel), { withFileTypes: true })).filter((e) => e.isDirectory() && !e.name.startsWith('.')).map((e) => e.name).sort();
+      } catch {
+        return [];
       }
-      act.title = title;
+    };
+    for (const a of await dirs(manuscript)) {
+      const actFm = (await readParsed(abs(`${manuscript}/${a}/act.md`)))?.fm;
+      const folderAct = /^act-(\d+)(?:-|$)/.exec(a);
+      const actNum = Number.isInteger(actFm?.act) && actFm.act >= 0 ? actFm.act : folderAct ? Number(folderAct[1]) : null;
+      if (actFm && Number.isInteger(actFm.act) && actFm.act >= 0 && !metaActs.has(actFm.act)) metaActs.set(actFm.act, str(actFm.title));
+      for (const c of await dirs(`${manuscript}/${a}`)) {
+        const fm = (await readParsed(abs(`${manuscript}/${a}/${c}/chapter.md`)))?.fm;
+        if (fm && Number.isInteger(fm.chapter) && fm.chapter >= 0 && !metaChapters.some((m) => m.n === fm.chapter)) {
+          metaChapters.push({ n: fm.chapter, act: actNum, label: str(fm.label) || null, title: str(fm.title) });
+        }
+      }
     }
+    const actLabel = (n) => (n === 0 ? 'Front Matter' : `Act ${n}`);
+    const chapterLabel = (n) => (n === 0 ? 'Prologue' : `Chapter ${n}`);
+    for (const [n, title] of metaActs) {
+      if (!detail.acts.some((a) => a.act === n)) detail.acts.push({ act: n, label: actLabel(n), chapters: [], title });
+    }
+    for (const act of detail.acts) act.title = metaActs.get(act.act) ?? null;
+    for (const m of metaChapters) {
+      if (detail.acts.some((a) => a.chapters.some((c) => c.chapter === m.n)) || m.act === null) continue;
+      let act = detail.acts.find((a) => a.act === m.act);
+      if (!act) {
+        act = { act: m.act, label: actLabel(m.act), chapters: [], title: metaActs.get(m.act) ?? null };
+        detail.acts.push(act);
+      }
+      act.chapters.push({ chapter: m.n, label: m.label ?? chapterLabel(m.n), title: m.title, scenes: [] });
+    }
+    detail.acts.sort((a, b) => a.act - b.act);
+    for (const act of detail.acts) act.chapters.sort((a, b) => a.chapter - b.chapter);
     return detail;
   };
   Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }) }));

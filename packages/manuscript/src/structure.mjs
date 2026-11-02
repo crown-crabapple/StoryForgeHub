@@ -401,10 +401,11 @@ export function setActFields(bookRoot, act, args = {}) {
 
 const splitKeepLines = (text) => text.match(/[^\n]*\n|[^\n]+/g) ?? [];
 
-/** Is the start of line `atLine` (1-based) inside a fenced code block or an HTML comment? */
+/** Is the start of line `atLine` (1-based) inside a fenced code block, an HTML comment or an sf:anchor range? */
 function insideFenceOrComment(lines, atLine) {
   let fence = null;
   let comment = false;
+  let anchors = 0;
   for (let i = 0; i < atLine - 1; i++) {
     const text = lines[i].replace(/\r?\n$/, '');
     if (!comment && fence) {
@@ -418,6 +419,9 @@ function insideFenceOrComment(lines, atLine) {
         fence = { ch: m[1][0], len: m[1].length };
         continue;
       }
+    }
+    if (!comment) {
+      for (const m of text.matchAll(/<!--\s*(\/?)sf:anchor\b[^>]*?-->/g)) anchors = m[1] ? Math.max(0, anchors - 1) : anchors + 1;
     }
     let pos = 0;
     for (;;) {
@@ -434,7 +438,7 @@ function insideFenceOrComment(lines, atLine) {
       }
     }
   }
-  return fence !== null || comment;
+  return fence !== null || comment || anchors > 0;
 }
 
 /**
@@ -457,7 +461,7 @@ export function splitScene(bookRoot, sceneId, args = {}) {
     const lines = splitKeepLines(before.toString('latin1').slice(doc.bodyStart));
     if (atLine > lines.length) return fail('REFUSED_BAD_ARGS', `atLine ${atLine} is past the end of the body (${lines.length} lines)`);
     if (insideFenceOrComment(lines, atLine)) {
-      return fail('BAD_SPLIT_POINT', `line ${atLine} is inside a fenced code block or an HTML comment`, { atLine });
+      return fail('BAD_SPLIT_POINT', `line ${atLine} is inside a fenced code block, an HTML comment or an sf:anchor range`, { atLine });
     }
     const body1 = lines.slice(0, atLine - 1).join('');
     const body2 = lines.slice(atLine - 1).join('');

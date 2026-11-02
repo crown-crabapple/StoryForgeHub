@@ -212,6 +212,9 @@ export function Outline({ book, activeId = null, onChanged }) {
           );
         })}
       </ul>
+      <button type="button" className="btn row-button outline-new-act" onClick={() => start({ type: 'new-act' })}>
+        New act
+      </button>
       <ArchivedSection book={book} start={start} />
       {ui}
     </div>

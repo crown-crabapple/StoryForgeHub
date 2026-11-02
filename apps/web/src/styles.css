@@ -1467,3 +1467,7 @@ mark {
   min-height: 32px;
   padding: 0 var(--s3);
 }
+
+.outline-new-act {
+  margin: var(--s3) 0 0 10px;
+}

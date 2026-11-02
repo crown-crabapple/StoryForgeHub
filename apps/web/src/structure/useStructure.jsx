@@ -320,6 +320,14 @@ export function useStructure({ book, activeId = null, onChanged }) {
       case 'renumber':
         previewThenApply({ title: 'Renumber chapters', url: bookUrl(bookId, '/chapters/renumber'), body: { step: 1 }, done: 'Chapters renumbered.', undoable: true });
         break;
+      case 'new-act':
+        setForm({
+          title: 'New act',
+          submit: 'Preview',
+          fields: [{ name: 'title', label: 'Act title', initial: '', required: true }],
+          onSubmit: (v) => previewThenApply({ title: 'New act', url: bookUrl(bookId, '/acts'), body: { title: v.title.trim() }, done: 'Act added.' }, { stayInForm: true }),
+        });
+        break;
       case 'rename-act':
         setForm({
           title: 'Rename act',
