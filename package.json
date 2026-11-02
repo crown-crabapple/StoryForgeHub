@@ -1,0 +1,27 @@
+{
+  "name": "storyforge-v2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge v2 - Markdown-first novel studio",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @storyforge/web",
+    "lint": "eslint .",
+    "test": "npm test --workspaces --if-present",
+    "start": "node scripts/start.mjs",
+    "dev": "npm run dev -w @storyforge/web"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.13.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0"
+  }
+}

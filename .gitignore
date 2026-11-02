@@ -1,3 +1,4 @@
 node_modules/
 .storyforge/
 !packages/format/fixtures/**/.storyforge/
+dist/

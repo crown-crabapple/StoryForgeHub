@@ -1,0 +1,17 @@
+{
+  "name": "@storyforge/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge local read-only JSON API and static file server",
+  "type": "module",
+  "exports": "./src/server.mjs",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@storyforge/core": "0.1.0"
+  }
+}
