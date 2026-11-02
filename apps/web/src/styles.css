@@ -3576,3 +3576,231 @@ label.form-check {
 .tl-title-button:hover {
   text-decoration: underline;
 }
+
+/* ---------- continuity (M05-J02) ---------- */
+
+.cm-continuity {
+  text-decoration: underline dotted var(--warning);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: help;
+}
+.btn-small {
+  min-height: 28px;
+  padding: 0 var(--s2);
+  font-size: var(--fs-13);
+}
+.cf-cards {
+  margin: 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.cf-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-card);
+}
+.cf-card[data-severity='error'] {
+  border-color: var(--danger);
+}
+.cf-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+}
+.cf-card-title {
+  flex: 1 1 100%;
+  font-size: var(--fs-13);
+}
+.cf-sev-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+}
+.cf-sev {
+  color: var(--text-3);
+  font-size: var(--fs-12);
+}
+.cf-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.cf-dot[data-severity='error'] {
+  background: var(--danger);
+}
+.cf-dot[data-severity='warning'] {
+  background: var(--warning);
+}
+.cf-dot[data-severity='info'] {
+  background: var(--text-3);
+}
+.cf-message {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cf-sources {
+  overflow-wrap: anywhere;
+}
+.cf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: var(--s2) 0;
+}
+.cf-both {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+.cf-both-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (max-width: 900px) {
+  .cf-both {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.cf-panel {
+  min-width: 0;
+  padding: var(--s3);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-card);
+}
+.cf-panel h3 {
+  margin: 0;
+  font-size: var(--fs-14);
+}
+.cf-panel-where {
+  margin: var(--s1) 0 var(--s2);
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+.cf-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-prose);
+  font-size: var(--fs-13);
+  line-height: 1.5;
+}
+.cf-line {
+  display: flex;
+  gap: var(--s2);
+  padding: 1px var(--s1);
+  color: var(--text-3);
+}
+.cf-line-evidence {
+  color: var(--text);
+  background: var(--surface-2);
+  border-left: 2px solid var(--accent);
+}
+.cf-line-n {
+  flex: 0 0 2.5ch;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.cf-line-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cf-evidence {
+  background: var(--accent-soft);
+  color: var(--text);
+  border-bottom: 1px solid var(--accent);
+}
+.cf-side-title {
+  margin-top: var(--s4);
+}
+.cf-subject select {
+  width: 100%;
+  min-height: 36px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  font: inherit;
+}
+.cf .codex-cat {
+  width: 100%;
+  background: none;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cf-advice {
+  margin: 0;
+  font-size: var(--fs-13);
+}
+.cf-row {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cf-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.cf-detail h2,
+.cf-detail h3 {
+  margin: 0;
+}
+.cf-detail h3 {
+  color: var(--muted);
+  font-size: var(--fs-12);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cf-detail-kind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s1);
+  font-size: var(--fs-13);
+}
+.cf-rule {
+  font-size: var(--fs-13);
+}
+.cf-fingerprint {
+  margin: 0;
+  font-size: var(--fs-12);
+}
+.cf-source-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  font-size: var(--fs-13);
+}
+.cf-source-label {
+  overflow-wrap: anywhere;
+}
+.cf-rationale {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.cf-stale-row {
+  cursor: default;
+}

@@ -5,6 +5,7 @@ export const PROJECT_TABS = [
   { key: 'manuscript', label: 'Manuscript', path: '' },
   { key: 'codex', label: 'Codex', path: '/codex' },
   { key: 'timeline', label: 'Timeline', path: '/timeline' },
+  { key: 'continuity', label: 'Continuity', path: '/continuity' },
   { key: 'places', label: 'Places', path: '/places' },
   { key: 'notes', label: 'Notes', path: '/notes' },
 ];

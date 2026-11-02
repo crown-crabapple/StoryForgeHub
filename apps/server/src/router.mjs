@@ -90,6 +90,15 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const continuity = await repository.getContinuity(b);
       return continuity ? { status: 200, body: continuity } : NOT_FOUND;
     }
+    // M05-J02: the lines around a finding's evidence ("Show both"): ?file=<book-relative>&line=N&radius=3 (radius at most 10)
+    if (c === 'continuity' && d === 'context' && e === undefined) {
+      const line = params.get('line');
+      const radius = params.get('radius');
+      const r = await repository.getContinuityContext(b, { file: params.get('file') ?? undefined, line: line === null ? undefined : /^[0-9]+$/.test(line) ? Number(line) : NaN, ...(radius === null ? {} : { radius: /^[0-9]+$/.test(radius) ? Number(radius) : NaN }) });
+      if (r.ok) return { status: 200, body: { lines: r.lines } };
+      if (r.code === 'NOT_FOUND') return NOT_FOUND;
+      return { status: 400, body: { error: 'bad_request', code: r.code, message: r.message } };
+    }
     if (c === 'repair' && d === 'plan' && e === undefined) {
       const plan = await repository.planRepair(b);
       return plan ? { status: 200, body: plan } : NOT_FOUND;
@@ -374,6 +383,9 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'notes' && d !== undefined && e === 'archive') return { route: 'note-archive', bookId: b, noteId: d };
   if (method === 'POST' && c === 'notes' && d !== undefined && e === 'restore') return { route: 'note-restore', bookId: b, noteId: d };
   if (method === 'PUT' && c === 'notes' && d !== undefined && e === 'body') return { route: 'note-body', bookId: b, noteId: d };
+  // M05-J02 continuity exceptions
+  if (method === 'POST' && c === 'continuity' && d === 'exceptions' && e === undefined) return { route: 'continuity-exception-create', bookId: b };
+  if (method === 'DELETE' && c === 'continuity' && d === 'exceptions' && e !== undefined && f === undefined) return { route: 'continuity-exception-archive', bookId: b, slug: e };
   if (method === 'POST' && c === 'attachments' && d === undefined) return { route: 'attachment-upload', bookId: b };
   return null;
 }
@@ -388,6 +400,14 @@ function respond(r, okStatus, okBody) {
   const detail = { code: r.code, ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
   const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE', 'SLUG_TAKEN', 'TYPE_EXISTS', 'CITE_KEY_TAKEN'].includes(r.code);
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
+}
+
+/** Like respond(), with the continuity refusals named by their codes: 404 FINDING_NOT_FOUND, 409 ALREADY_EXCEPTED, 400 RATIONALE_REQUIRED. */
+function respondContinuity(r, okStatus, okBody) {
+  if (r.ok) return { status: okStatus, body: okBody(r) };
+  const named = { FINDING_NOT_FOUND: 404, ALREADY_EXCEPTED: 409, RATIONALE_REQUIRED: 400 };
+  if (named[r.code]) return { status: named[r.code], body: { error: r.code, code: r.code, message: r.message } };
+  return respond(r, okStatus, okBody);
 }
 
 /**
@@ -705,6 +725,18 @@ async function handleStructure(repository, match, body) {
       if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
       const r = await repository.restoreNote(bookId, /** @type {string} */ (match.noteId), { dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
+    }
+    // ---- M05-J02 continuity exceptions: the only files these routes write are planning/continuity/<slug>.md (archive/ when removed)
+    case 'continuity-exception-create': {
+      for (const k of ['fingerprint', 'rationale', 'title']) if (body[k] !== undefined && typeof body[k] !== 'string') return badRequest(`${k} must be a string`);
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.createContinuityException(bookId, { fingerprint: body.fingerprint, rationale: body.rationale, title: body.title, dryRun: body.dryRun === true });
+      return respondContinuity(r, body.dryRun === true ? 200 : 201, (x) => (x.dryRun ? { ok: true, dryRun: true, file: x.file, slug: x.slug, text: x.text, changes: x.changes } : { ok: true, file: x.file, slug: x.slug, opId: x.opId ?? null, undo: x.undo ?? null }));
+    }
+    case 'continuity-exception-archive': {
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.archiveContinuityException(bookId, /** @type {string} */ (match.slug), { dryRun: body.dryRun === true });
+      return respondContinuity(r, 200, (x) => (x.dryRun ? { ok: true, dryRun: true, archived: x.archived, changes: x.changes } : { ok: true, archived: x.archived, opId: x.opId ?? null, undo: x.undo ?? null }));
     }
     case 'op-restore': {
       const r = await repository.restoreOp(bookId, /** @type {string} */ (match.opId), { dryRun });

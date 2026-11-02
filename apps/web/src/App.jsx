@@ -2,6 +2,7 @@ import { Link, useLocation } from './router.jsx';
 import { LibraryView } from './LibraryView.jsx';
 import { BookView } from './BookView.jsx';
 import { CodexView } from './codex/CodexView.jsx';
+import { ContinuityView } from './continuity/ContinuityView.jsx';
 import { NotesView } from './notes/NotesView.jsx';
 import { TimelineView } from './timeline/TimelineView.jsx';
 import { useApi } from './api.js';
@@ -66,6 +67,7 @@ function Routes() {
     bookId = route.bookId;
     tab = route.tab;
     if (route.tab === 'timeline') view = <TimelineView bookId={route.bookId} search={search} />;
+    else if (route.tab === 'continuity') view = <ContinuityView bookId={route.bookId} search={search} />;
     else if (route.tab === 'notes') view = <NotesView bookId={route.bookId} search={search} />;
     else view = <CodexView bookId={route.bookId} search={search} places={route.tab === 'places'} />;
   } else {

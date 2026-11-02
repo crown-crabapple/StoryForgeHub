@@ -18,8 +18,8 @@ export function publicChanges(changes, { diff = false } = {}) {
     from: c.from,
     to: c.to,
     before_sha256: c.before ? sha256(c.before) : null,
-    after_sha256: sha256(c.content),
-    ...(diff ? { diff: unifiedDiff(c.from, c.to, c.before ? c.before.toString('utf8') : '', c.content.toString('utf8')) } : {}),
+    after_sha256: c.content ? sha256(c.content) : null,
+    ...(diff ? { diff: unifiedDiff(c.from, c.to ?? c.from, c.before ? c.before.toString('utf8') : '', c.content ? c.content.toString('utf8') : '') } : {}),
   }));
 }
 
@@ -56,7 +56,8 @@ export async function commit({ store, bookRoot, op, args, changes, beforeDiagnos
     async (tx) => {
       for (const c of ordered) {
         let r;
-        if (c.from === null) r = await tx.create(c.to, c.content);
+        if (c.to === null) r = await tx.remove(c.from, { baseSha256: sha256(c.before) }); // a removal (Undo of a created exception file)
+        else if (c.from === null) r = await tx.create(c.to, c.content);
         else if (c.from === c.to) r = await tx.write(c.to, c.content, { baseSha256: sha256(c.before) });
         else r = await tx.move(c.from, c.to, { baseSha256: sha256(c.before), bytes: c.content });
         if (!r.ok) return r;

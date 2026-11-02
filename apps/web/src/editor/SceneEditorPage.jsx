@@ -15,6 +15,7 @@ import { useEditorBridge } from './bridge.jsx';
 import { caretLine, detectLineEnding, loadBuffer, normaliseLineEndings, normalisePreview, serialise } from './buffer.js';
 import { authorNote, bold, insertLink, italic, sceneBreak } from './commands.js';
 import { ConflictPanel } from './ConflictPanel.jsx';
+import { continuityMarks, setContinuityMarks } from './continuity-marks.js';
 import { createDraftStore, draftKey } from './draft-store.js';
 import { decoratedMarkdown, marksExtension, setMarks } from './extensions.js';
 import { focusExtensions } from './focus-extensions.js';
@@ -203,6 +204,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         ...defaultKeymap,
       ]),
       decoratedMarkdown(),
+      continuityMarks(),
       marksExtension(readShowMarks()),
       placeholder('Start writing…'),
       // pasted text takes the file's own line ending, so a CRLF scene never gains a bare LF
@@ -271,6 +273,19 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         if (!v) return;
         const line = v.state.doc.line(Math.min(Math.max(1, n), v.state.doc.lines));
         v.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
+        v.focus();
+      },
+      // M05-J02: the continuity underline is a decoration only; selecting a range moves the selection, never the text
+      setContinuityMarks(marks) {
+        viewRef.current?.dispatch({ effects: setContinuityMarks.of(marks) });
+      },
+      selectRange(n, from, to) {
+        const v = viewRef.current;
+        if (!v) return;
+        const line = v.state.doc.line(Math.min(Math.max(1, n), v.state.doc.lines));
+        const a = Math.min(line.from + from, line.to);
+        const b = Math.min(line.from + to, line.to);
+        v.dispatch({ selection: { anchor: a, head: Math.max(a, b) }, effects: EditorView.scrollIntoView(a, { y: 'center' }) });
         v.focus();
       },
       baseSha: () => ctl.snapshot().baseSha256,

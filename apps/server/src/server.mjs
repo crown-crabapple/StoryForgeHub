@@ -121,7 +121,8 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         if (read.tooLarge) return sendJson(res, 413, { error: 'too_large' });
         let parsed;
         try {
-          parsed = JSON.parse(read.buffer.toString('utf8'));
+          const text = read.buffer.toString('utf8');
+          parsed = req.method === 'DELETE' && text.trim() === '' ? {} : JSON.parse(text); // a DELETE may carry no body
         } catch {
           return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
         }

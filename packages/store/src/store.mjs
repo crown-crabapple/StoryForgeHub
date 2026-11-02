@@ -138,6 +138,22 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
           changes.push({ from, to, before_sha256: before, after_sha256: sha256(content) });
           return { ok: true, code: 'OK', sha256: sha256(content), path: to };
         },
+        /** Remove a file (it moves into the trash, so the operation can be undone). `baseSha256` is required: the file as the caller saw it. */
+        async remove(rel, { baseSha256 } = {}) {
+          if (failure) return failure;
+          const r = normRel(rel);
+          if (!r || (await escapesRoot(root, r))) return refuse(fail('OUTSIDE_ROOT'));
+          if (baseSha256 === undefined) return refuse(fail('BAD_ARGS', { message: 'baseSha256 is required' }));
+          const v = await view(r);
+          if (v.dir || v.bytes === null) return refuse(fail('NOT_FOUND'));
+          const bad = checkBase(v, baseSha256);
+          if (bad) return refuse(bad);
+          const before = sha256(v.bytes);
+          v.bytes = null;
+          v.group ??= changes.length;
+          changes.push({ from: r, to: null, before_sha256: before, after_sha256: null });
+          return { ok: true, code: 'OK', sha256: null, path: r };
+        },
         archive(rel, { baseSha256 } = {}) {
           const r = normRel(rel);
           if (!r) return Promise.resolve(refuse(fail('OUTSIDE_ROOT')));

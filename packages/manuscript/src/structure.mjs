@@ -598,9 +598,11 @@ export function restoreOp(bookRoot, opId, args = {}) {
     if (recorded.length === 0) return fail('REFUSED_NOT_UNDOABLE', `${opId} changed no files`);
     // A move that renumbers neighbours may write a file at a path another of its changes vacated (a chain); that is
     // undone in the reverse order. Only a path read twice or written twice makes an operation not undoable.
-    const froms = recorded.map((c) => c.from);
+    // The one exception (M05-J02): a continuity exception file the app created can be undone by removing it again (it goes to the trash).
+    const creationsOk = record?.op === 'createContinuityException';
+    const froms = recorded.map((c) => c.from).filter((f) => f !== null);
     const tos = recorded.map((c) => c.to);
-    if (recorded.some((c) => c.from === null) || new Set(froms).size !== froms.length || new Set(tos).size !== tos.length) {
+    if ((!creationsOk && recorded.some((c) => c.from === null)) || new Set(froms).size !== froms.length || new Set(tos).size !== tos.length) {
       return fail('REFUSED_NOT_UNDOABLE', `${opId} created files or touched a file twice; it cannot be undone automatically`);
     }
     const changes = [];
@@ -608,6 +610,10 @@ export function restoreOp(bookRoot, opId, args = {}) {
       const now = await store.read(c.to);
       if (!now || sha256(now.bytes) !== c.after_sha256) {
         return fail('REFUSED_FILES_CHANGED', `${c.to} is not as ${opId} left it (it was changed or moved since), so the undo was not applied`, { file: c.to });
+      }
+      if (c.from === null) {
+        changes.push({ from: c.to, to: null, content: null, before: now.bytes }); // undo of a creation: remove the file
+        continue;
       }
       if (c.from !== c.to && !recorded.some((o) => o !== c && o.to === c.from) && (await store.exists(c.from))) {
         return fail('REFUSED_FILES_CHANGED', `${c.from} exists again, so the undo was not applied`, { file: c.from });

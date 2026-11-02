@@ -37,6 +37,7 @@ import {
 } from '@storyforge/manuscript';
 import { countWords } from '@storyforge/index';
 import { openStore } from '@storyforge/store';
+import { createContinuityExceptionMethods } from './continuity-exceptions.mjs';
 import { createSnapshotTracker, planRetention, splitRevision } from './revisions.mjs';
 import { localDate } from './writing-log.mjs';
 import { wordDelta } from './word-delta.mjs';
@@ -506,6 +507,9 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       if (rel === null) return fail('NOT_FOUND');
       return structure(bookId, (b) => restoreEvent(b, rel, args ?? {}));
     },
+    // ---- M05-J02: continuity exceptions (planning/continuity/<slug>.md, through the store) and the context lines of a finding
+    ...createContinuityExceptionMethods({ root, afterWrite, reconcile, now }),
+
     createNote: (bookId, args = {}) => structure(bookId, (b) => createNote(b, args ?? {})),
     setNoteFields: (bookId, id, args = {}) => structure(bookId, (b) => setNoteFields(b, id, args ?? {})),
     archiveNote: (bookId, id, args = {}) => structure(bookId, (b) => archiveNote(b, id, args ?? {})),
