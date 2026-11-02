@@ -1471,3 +1471,67 @@ mark {
 .outline-new-act {
   margin: var(--s3) 0 0 10px;
 }
+
+/* ---------- rail rows: the label gets the width that is left (fix for one-letter-per-line labels) ---------- */
+
+.outline-act,
+.outline-chapter {
+  flex-wrap: wrap;
+  column-gap: var(--s1);
+  padding-right: var(--s1);
+}
+.outline-chapter {
+  padding-left: var(--s3);
+}
+.outline-act .outline-toggle,
+.outline-chapter .outline-toggle {
+  flex: 1 1 6rem;
+  min-width: calc(44px + 8ch);
+}
+.outline-toggle .outline-label {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.outline-act .outline-words,
+.outline-chapter .outline-words {
+  flex: none;
+  margin-left: auto;
+}
+.outline-act .row-menu,
+.outline-chapter .row-menu,
+.outline-chapter > .row-menu-button,
+.row-menu-button {
+  flex: none;
+}
+.outline-act .row-menu-button,
+.outline-chapter .row-menu-button {
+  min-width: 24px;
+}
+.outline-chapter {
+  flex-wrap: nowrap;
+}
+.outline-stack {
+  flex: 1 1 auto;
+  min-width: 8ch;
+  display: flex;
+  flex-direction: column;
+}
+.outline-stack .outline-words {
+  margin-left: 0;
+}
+.outline-chapter .outline-toggle {
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: flex-start;
+  padding-top: 6px;
+  padding-bottom: 4px;
+}
+.outline-chapter .outline-toggle svg {
+  margin-top: 2px;
+}

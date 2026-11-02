@@ -155,7 +155,7 @@ export function Outline({ book, activeId = null, onChanged }) {
               <div className="outline-row outline-act">
                 <Toggle collapsed={actCollapsed} onToggle={() => toggle(actKey(act.act))} name={aName}>
                   <FolderIcon width={15} height={15} />
-                  <span className="outline-label">{aName}</span>
+                  <span className="outline-label" title={aName}>{aName}</span>
                 </Toggle>
                 <span className="outline-words">{wordsOf(act.chapters.flatMap((c) => c.scenes))}w</span>
                 <RowMenu
@@ -176,11 +176,13 @@ export function Outline({ book, activeId = null, onChanged }) {
                       <div className="outline-row outline-chapter">
                         <Toggle collapsed={chCollapsed} onToggle={() => toggle(chapterKey(ch.chapter))} name={cName}>
                           <BookIcon width={15} height={15} />
-                          <span className="outline-label">{cName}</span>
+                          <span className="outline-stack">
+                            <span className="outline-label" title={cName}>{cName}</span>
+                            <span className="outline-words">
+                              {ch.scenes.length} {ch.scenes.length === 1 ? 'scene' : 'scenes'}, {wordsOf(ch.scenes)}w
+                            </span>
+                          </span>
                         </Toggle>
-                        <span className="outline-words">
-                          {ch.scenes.length} {ch.scenes.length === 1 ? 'scene' : 'scenes'}, {wordsOf(ch.scenes)}w
-                        </span>
                         <button
                           type="button"
                           className="row-menu-button"
