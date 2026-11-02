@@ -1,16 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { validate } from '../src/index.mjs';
 import { VALID, listDirs, readExpected, keyOf } from './helpers.mjs';
 
 const dirOf = (n) => path.join(VALID, n);
 
-test('valid fixture folders are exactly salt-orchard, library, spec-example', () => {
-  assert.deepEqual(listDirs(VALID), ['library', 'salt-orchard', 'spec-example']);
+test('valid fixture folders are exactly covers, library, salt-orchard, spec-example', () => {
+  assert.deepEqual(listDirs(VALID), ['covers', 'library', 'salt-orchard', 'spec-example']);
 });
 
-for (const name of ['salt-orchard', 'library', 'spec-example']) {
+for (const name of ['salt-orchard', 'library', 'spec-example', 'covers']) {
   test(`valid/${name}: diagnostics equal expected`, async () => {
     const expected = readExpected(dirOf(name));
     const result = await validate(dirOf(name));
@@ -104,4 +106,48 @@ test('valid/spec-example: .storyforge decoy is ignored and only variant/archived
   const book = (await validate(dirOf('spec-example'))).books[0];
   assert.equal(book.order.length, 7);
   assert.ok(book.excluded.every((e) => ['variant', 'archived'].includes(e.reason)));
+});
+
+test('valid/covers: six books, series membership, one synthetic PNG <= 20 KB', async () => {
+  const result = await validate(dirOf('covers'));
+  assert.deepEqual(result.books.map((b) => b.slug).sort(), [
+    'first-light', 'lost-cover', 'north-road', 'old-draft', 'second-light', 'svg-cover',
+  ]);
+  const bySlug = Object.fromEntries(result.books.map((b) => [b.slug, b]));
+  assert.equal(bySlug['first-light'].series, 'harbour-lights');
+  assert.equal(bySlug['second-light'].series, 'harbour-lights');
+  assert.equal(bySlug['north-road'].series, null);
+  const png = fs.readFileSync(path.join(dirOf('covers'), 'harbour-lights/first-light/assets/cover.png'));
+  assert.deepEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  assert.ok(png.length <= 20 * 1024);
+  assert.ok(!fs.existsSync(path.join(dirOf('covers'), 'lost-cover/assets/missing.png')));
+  const svg = fs.readFileSync(path.join(dirOf('covers'), 'svg-cover/assets/cover.svg'), 'utf8');
+  assert.match(svg, /^<svg /);
+});
+
+function copyWithColor(value) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-color-'));
+  fs.cpSync(dirOf('covers'), tmp, { recursive: true });
+  const f = path.join(tmp, 'north-road', 'book.md');
+  fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('profile: fiction', `profile: fiction\ncover_color: ${value}`));
+  return tmp;
+}
+
+test('book.md cover_color "#3A5F7D" is valid', async () => {
+  const tmp = copyWithColor('"#3A5F7D"');
+  try {
+    assert.deepEqual((await validate(tmp)).diagnostics, []);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('book.md cover_color: red -> E102 at cover_color', async () => {
+  const tmp = copyWithColor('red');
+  try {
+    const diags = (await validate(tmp)).diagnostics;
+    assert.deepEqual(diags.map(keyOf), ['E102 | north-road/book.md | cover_color']);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });
