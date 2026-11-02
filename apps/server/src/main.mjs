@@ -7,7 +7,10 @@
 //   node apps/server/src/main.mjs export --library <path> --book <slug> --format markdown|docx|epub|pdf --out <file> [--force]
 //   node apps/server/src/main.mjs backup --library <path> --book <slug> --out <file.zip> [--provenance] [--force]
 //   node apps/server/src/main.mjs restore --from <file.zip> --to <new or empty folder>
-//   node apps/server/src/main.mjs import-legacy --dump <dir> [--book <legacy slug>]... --dry-run [--report <file.md>] [--json <file.json>]   print what importing a legacy dump would create (read-only; the import itself is M06-J02)
+//   node apps/server/src/main.mjs import-legacy --dump <dir> [--book <legacy slug>]... --dry-run [--report <file.md>] [--json <file.json>]   print what importing a legacy dump would create (read-only)
+//   node apps/server/src/main.mjs import-legacy --dump <dir> [--book <legacy slug>]... --into <new library folder> [--report <file.md>] [--json <file.json>]   import into a NEW folder, validate, reconcile against the dump (M06-J02)
+//   node apps/server/src/main.mjs import-legacy --dump <dir> --reconcile <library folder> [--report <file.md>] [--json <file.json>]   check an imported library against the dump (read-only)
+//   node apps/server/src/main.mjs import-legacy --compare <library A> <library B>   are two imports byte-identical? (read-only)
 //   node apps/server/src/main.mjs receipts verify --library <path> --book <slug> [--json]   check the provenance receipts (read-only; exit 1 on integrity problems)
 // Exit codes: 0 ok, 1 failed / needs hand repair / continuity errors found, 2 usage or cannot open the library, 3 another instance holds the library.
 import path from 'node:path';
@@ -38,7 +41,7 @@ if (argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') {
 }
 if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, import-legacy, export, backup or restore; --help lists them all)`, 2);
 
-// import-legacy --dry-run reads a legacy dump and prints a plan: no library, no lock, no server
+// import-legacy reads a legacy dump (and writes only a NEW folder with --into): no library config, no lock, no server
 if (command === 'import-legacy') process.exit(await runLegacyCommand(argv.slice(1)));
 
 // receipts verify is read-only too: no lock, no server

@@ -1,5 +1,5 @@
 // The owner-readable reconciliation report (Markdown) and its JSON form. Only ids, paths, slugs, counts and hashes: never manuscript or entry text.
-const cell = (s) => String(s).replace(/\|/g, '\|').replace(/\n/g, ' ');
+const cell = (s) => String(s).replaceAll('|', '\\|').replaceAll('\n', ' ');
 
 /** @param {{ dump: { sha256: string }, library: string, books: any[], unexplained: number }} rec */
 export function renderReconciliation(rec) {
