@@ -71,6 +71,30 @@ export default [
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
+  // node:sqlite belongs to the index package alone (its tests may open the database to check tables).
+  // Uses no-restricted-syntax so it is not overridden by the per-folder no-restricted-imports blocks.
+  {
+    files: ['**/*.{mjs,js,jsx}'],
+    ignores: ['packages/index/src/**', 'packages/index/test/**'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "ImportDeclaration[source.value=/^(node:)?sqlite$/]",
+          message: 'node:sqlite is only for packages/index/src. Use @storyforge/index.',
+        },
+        {
+          selector: "ImportExpression[source.value=/^(node:)?sqlite$/]",
+          message: 'node:sqlite is only for packages/index/src. Use @storyforge/index.',
+        },
+        {
+          selector: "CallExpression[callee.name='require'][arguments.0.value=/^(node:)?sqlite$/]",
+          message: 'node:sqlite is only for packages/index/src. Use @storyforge/index.',
+        },
+      ],
+    },
+  },
+
   // M00 packages predate this config and are frozen in this job; relax the rules they trip.
   {
     files: ['packages/format/**/*.mjs', 'packages/manuscript/**/*.mjs'],

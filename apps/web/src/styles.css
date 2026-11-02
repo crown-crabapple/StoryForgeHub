@@ -72,6 +72,10 @@ h4 {
 }
 
 .topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: relative;
   padding: 10px 20px;
   background: var(--surface);
   border-bottom: 1px solid var(--divider);
@@ -192,4 +196,74 @@ h4 {
 .recover-banner ul {
   margin: 0.25rem 0 0;
   padding-left: 1.25rem;
+}
+
+.search {
+  position: relative;
+  flex: 0 1 360px;
+  margin-left: auto;
+}
+.search input {
+  width: 100%;
+  padding: 4px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: inherit;
+}
+.search-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(560px, 90vw);
+  max-height: 70vh;
+  overflow: auto;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  z-index: 10;
+}
+.search-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.search-hit {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.search-hit:last-child {
+  border-bottom: 0;
+}
+.search-snippet {
+  font-size: 13px;
+}
+mark {
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.index-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.dot-fresh {
+  background: #5fb878;
+}
+.dot-building {
+  background: var(--accent);
+}
+.dot-stale,
+.dot-error {
+  background: #e5736b;
 }

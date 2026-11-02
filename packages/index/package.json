@@ -1,0 +1,17 @@
+{
+  "name": "@storyforge/index",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge rebuildable SQLite projection (FTS5 search, links, mentions) derived from the Markdown files",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@storyforge/format": "0.1.0"
+  }
+}

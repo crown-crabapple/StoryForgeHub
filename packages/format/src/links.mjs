@@ -7,14 +7,14 @@ import { escapesRoot } from './schema.mjs';
 
 /** @typedef {import('./load.mjs').Doc} Doc */
 
-const ENTRY = ['entry'];
-const NAMED = ['entry', 'thread', 'event'];
+export const ENTRY = ['entry'];
+export const NAMED = ['entry', 'thread', 'event'];
 
 /**
  * Front-matter reference fields per kind: field, kinds a target may have (null = any), scalar or list.
  * @type {Record<string, {field:string, kinds:string[]|null, list:boolean}[]>}
  */
-const REFERENCES = {
+export const REFERENCES = {
   scene: [
     { field: 'pov', kinds: ENTRY, list: false },
     { field: 'characters', kinds: ENTRY, list: true },
@@ -37,9 +37,9 @@ const REFERENCES = {
   research: [{ field: 'links', kinds: null, list: true }],
 };
 
-const WIKI_RE = /\[\[([^\]\n]+?)\]\]/g;
-const CITE_RE = /\[@([^\]\s]+)\](?!\()/g;
-const MDLINK_RE = /(!?)\[([^\]\n]*)\]\(([^)\n]+)\)/g;
+export const WIKI_RE = /\[\[([^\]\n]+?)\]\]/g;
+export const CITE_RE = /\[@([^\]\s]+)\](?!\()/g;
+export const MDLINK_RE = /(!?)\[([^\]\n]*)\]\(([^)\n]+)\)/g;
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const INLINE_CODE_RE = /(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g;
 

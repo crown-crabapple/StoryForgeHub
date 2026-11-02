@@ -57,7 +57,10 @@ export function createServer({ repository, webRoot, recoverReport }) {
       const port = address && typeof address === 'object' ? address.port : 0;
       if (!isRequestAllowed(req, port)) return sendJson(res, 403, { error: 'forbidden' });
 
-      const pathname = (req.url ?? '/').split('?')[0].split('#')[0];
+      const target = (req.url ?? '/').split('#')[0];
+      const queryAt = target.indexOf('?');
+      const pathname = queryAt < 0 ? target : target.slice(0, queryAt);
+      const queryString = queryAt < 0 ? '' : target.slice(queryAt + 1);
       if (req.method !== 'GET') {
         const match = matchWriteRoute(req.method ?? '', pathname);
         if (!match) return sendJson(res, 405, { error: 'read_only' });
@@ -74,7 +77,7 @@ export function createServer({ repository, webRoot, recoverReport }) {
         return sendJson(res, status, body);
       }
       if (isApiPath(pathname)) {
-        const { status, body } = await handleApi(repository, pathname, state);
+        const { status, body } = await handleApi(repository, pathname, state, new URLSearchParams(queryString));
         return sendJson(res, status, body);
       }
       const file = await serveStatic(webRoot, pathname);

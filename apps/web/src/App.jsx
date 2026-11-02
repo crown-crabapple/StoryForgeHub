@@ -2,6 +2,8 @@ import { Link, useLocation } from './router.jsx';
 import { LibraryView } from './LibraryView.jsx';
 import { BookView } from './BookView.jsx';
 import { useApi } from './api.js';
+import { SearchBox } from './SearchBox.jsx';
+import { IndexStatus } from './IndexStatus.jsx';
 
 /** Shown when the startup recovery pass rolled an interrupted save back or needs the author's eyes. */
 function RecoverBanner() {
@@ -66,6 +68,8 @@ export function App() {
         <Link to="/" className="brand">
           StoryForge
         </Link>
+        <SearchBox />
+        <IndexStatus />
       </header>
       <RecoverBanner />
       {view}

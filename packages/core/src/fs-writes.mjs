@@ -31,9 +31,10 @@ export function frontMatterEnd(buf) {
 const errKey = (d) => `${d.code}\0${d.file}\0${d.location}`;
 
 /**
- * @param {{ root: string, getScene: (bookId: string, sceneId: string) => Promise<any> }} deps
+ * @param {{ root: string, getScene: (bookId: string, sceneId: string) => Promise<any>,
+ *           afterWrite?: (bookPath: string) => void }} deps  `afterWrite` runs after every successful change
  */
-export function createWriteMethods({ root, getScene }) {
+export function createWriteMethods({ root, getScene, afterWrite = () => {} }) {
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
   const toLibRel = (book, p) => (book.path === '' ? p : `${book.path}/${p}`);
   const toBookRel = (book, p) => (book.path === '' ? p : p.startsWith(`${book.path}/`) ? p.slice(book.path.length + 1) : null);
@@ -75,7 +76,10 @@ export function createWriteMethods({ root, getScene }) {
         }
       },
     });
-    if (r.ok) return { ok: true, code: 'OK', path: toLibRel(book, r.value.path), sha256: r.value.sha256 };
+    if (r.ok) {
+      afterWrite(book.path);
+      return { ok: true, code: 'OK', path: toLibRel(book, r.value.path), sha256: r.value.sha256 };
+    }
     if (r.code === 'CONFLICT') return conflict(r, bookId, sceneId);
     if (r.code === 'ROLLED_BACK') {
       return fail('ROLLED_BACK', { message: r.message, diagnostics: r.diagnostics ?? [], ...(r.rollbackErrors ? { rollbackErrors: r.rollbackErrors } : {}) });
@@ -98,7 +102,10 @@ export function createWriteMethods({ root, getScene }) {
       if (end < 0) return fail('NOT_A_SCENE', { message: 'front matter is not terminated' });
       const next = Buffer.concat([cur.bytes.subarray(0, end), Buffer.from(body, 'utf8')]);
       const r = await store.write(rel, next, { baseSha256 });
-      if (r.ok) return { ok: true, code: 'OK', sha256: r.sha256 };
+      if (r.ok) {
+        afterWrite(found.book.path);
+        return { ok: true, code: 'OK', sha256: r.sha256 };
+      }
       if (r.code === 'CONFLICT') return conflict(r, bookId, sceneId);
       return fail(r.code, r.message ? { message: r.message } : {});
     },
@@ -109,6 +116,7 @@ export function createWriteMethods({ root, getScene }) {
       const { chapter, act, after, title, slug, body } = args ?? {};
       const r = await insertScene(bookRootOf(found.book), { chapter, act, after, title, slug, body });
       if (!r.ok) return r;
+      afterWrite(found.book.path);
       return { ...r, path: toLibRel(found.book, r.path) };
     },
 

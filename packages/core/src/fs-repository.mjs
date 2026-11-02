@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { validate } from '@storyforge/format';
+import { createIndexManager } from './index-manager.mjs';
 import { createWriteMethods } from './fs-writes.mjs';
 import { countWords } from './word-count.mjs';
 
@@ -69,6 +70,7 @@ const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  */
 export function createFsRepository(libraryRoot) {
   const root = path.resolve(libraryRoot);
+  const manager = createIndexManager(root);
   /** @param {string} rel */
   const abs = (rel) => path.join(root, ...rel.split('/').filter(Boolean));
 
@@ -144,6 +146,43 @@ export function createFsRepository(libraryRoot) {
     return cmp(a.title ?? '', b.title ?? '');
   }
 
+  /** Every book's summary from its fresh index, or null if any book has to be answered from the files. */
+  async function listFromIndex() {
+    let paths;
+    try {
+      paths = await manager.bookPaths();
+    } catch {
+      return null;
+    }
+    const hits = await Promise.all(paths.map((p) => manager.tryRead(p, (_q, s) => s)));
+    if (hits.some((h) => h === null)) return null;
+    return hits
+      .map((h) => /** @type {{ value: BookSummary }} */ (h).value)
+      .filter((b) => b.id)
+      .sort(compareBooks);
+  }
+
+  /** @param {any} q index queries @param {BookSummary} summary @param {string} bookPath */
+  function bookDetailFromIndex(q, summary, bookPath) {
+    const prefix = bookPath === '' ? '' : `${bookPath}/`;
+    /** @type {BookDetail['acts']} */
+    const acts = [];
+    for (const c of q.chapters()) {
+      let act = acts.find((a) => a.act === c.act);
+      if (!act) {
+        act = { act: c.act, label: c.act_label, chapters: [] };
+        acts.push(act);
+      }
+      act.chapters.push({ chapter: c.chapter, label: c.label, title: c.title, scenes: [] });
+    }
+    for (const s of q.scenes()) {
+      const act = /** @type {any} */ (acts.find((a) => a.act === s.act));
+      act.chapters.find((/** @type {any} */ c) => c.chapter === s.chapter).scenes.push({ ...s, path: prefix + s.path });
+    }
+    const excluded = q.excluded().map((/** @type {any} */ e) => ({ ...e, path: prefix + e.path }));
+    return { ...summary, acts, excluded };
+  }
+
   /** @type {FileRepository} */
   const repository = {
     async libraryInfo() {
@@ -153,18 +192,27 @@ export function createFsRepository(libraryRoot) {
     },
 
     async listBooks() {
+      const indexed = await listFromIndex();
+      if (indexed) return indexed;
       const result = await validate(root);
       const books = result.books.filter((/** @type {any} */ b) => b.id);
       const out = await Promise.all(
         books.map(async (/** @type {any} */ b) => summarise(b, result.diagnostics, await loadScenes(b.order))),
       );
+      for (const b of out) manager.warm(b.path, b.id);
       return out.sort(compareBooks);
     },
 
     async getBook(bookId) {
+      const known = manager.knownPath(bookId);
+      if (known !== undefined) {
+        const hit = await manager.tryRead(known, (q, s) => (s.id === bookId ? bookDetailFromIndex(q, s, known) : null));
+        if (hit && hit.value) return hit.value;
+      }
       const result = await validate(root);
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
       if (!book) return null;
+      manager.warm(book.path, book.id);
       const scenes = await loadScenes(book.order);
       const summary = await summarise(book, result.diagnostics, scenes);
 
@@ -203,6 +251,22 @@ export function createFsRepository(libraryRoot) {
       return { ...summary, front_matter: fm, body, sha256 };
     },
 
+    async search(q, { bookId, kinds, limit } = {}) {
+      return typeof q === 'string' ? manager.search(q, { bookId, kinds, limit }) : [];
+    },
+
+    getBacklinks(bookId, id) {
+      return manager.query(bookId, (x, prefix) => x.backlinks(id).map((/** @type {any} */ b) => ({ ...b, src_path: prefix + b.src_path })));
+    },
+
+    getMentions(bookId, { entryId, sceneId } = {}) {
+      return manager.query(bookId, (x) => x.mentions({ entryId, sceneId }));
+    },
+
+    indexStatus: (bookId) => manager.status(bookId),
+    rebuildIndex: (bookId) => manager.rebuild(bookId),
+    ensureIndexes: () => manager.ensure(),
+
     async getDiagnostics(bookId) {
       const result = await validate(root);
       if (bookId === undefined) return result.diagnostics;
@@ -210,6 +274,6 @@ export function createFsRepository(libraryRoot) {
       return book ? forBook(result.diagnostics, book.path) : [];
     },
   };
-  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s) }));
+  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p) }));
   return repository;
 }

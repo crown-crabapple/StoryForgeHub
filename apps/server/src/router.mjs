@@ -29,9 +29,10 @@ export function isApiPath(pathname) {
  * @param {FileRepository} repository
  * @param {string} pathname raw (still percent-encoded) URL path
  * @param {ApiState} [state]
+ * @param {URLSearchParams} [params] the query string
  * @returns {Promise<ApiResult>}
  */
-export async function handleApi(repository, pathname, state) {
+export async function handleApi(repository, pathname, state, params = new URLSearchParams()) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
   if (parts.some((p) => p === null)) return NOT_FOUND;
   const [api, a, b, c, d, ...rest] = /** @type {string[]} */ (parts);
@@ -43,6 +44,10 @@ export async function handleApi(repository, pathname, state) {
   }
   if (a === 'recover' && b === 'last' && c === undefined) {
     return { status: 200, body: state?.lastRecover ?? { completed: [], rolledBack: [], needsAttention: [] } };
+  }
+  if (a === 'search' && b === undefined) return handleSearch(repository, params);
+  if (a === 'index' && b === 'status' && c === undefined) {
+    return { status: 200, body: await repository.indexStatus() };
   }
   if (a === 'library' && b === undefined) {
     return { status: 200, body: await repository.libraryInfo() };
@@ -60,8 +65,55 @@ export async function handleApi(repository, pathname, state) {
       const scene = await repository.getScene(b, d);
       return scene ? { status: 200, body: scene } : NOT_FOUND;
     }
+    if (c === 'backlinks' && d !== undefined) {
+      return fromIndex(() => repository.getBacklinks(b, d));
+    }
+    if (c === 'mentions' && d === undefined) {
+      const entry = params.get('entry');
+      const scene = params.get('scene');
+      return fromIndex(() =>
+        repository.getMentions(b, { ...(entry !== null ? { entryId: entry } : {}), ...(scene !== null ? { sceneId: scene } : {}) }),
+      );
+    }
   }
   return NOT_FOUND;
+}
+
+const SEARCH_KINDS = ['scene', 'entry', 'thread', 'event', 'doc', 'research'];
+const badRequest = (message) => ({ status: 400, body: { error: 'bad_request', message } });
+
+/** GET /api/search?q=&book=&kinds=scene,entry&limit= @param {FileRepository} repository @param {URLSearchParams} params */
+async function handleSearch(repository, params) {
+  const q = params.get('q');
+  if (q === null || q.trim() === '' || q.length > 200) return badRequest('q is required and must be 1 to 200 characters');
+  const kindsParam = params.get('kinds');
+  let kinds;
+  if (kindsParam !== null) {
+    kinds = kindsParam.split(',').map((k) => k.trim()).filter(Boolean);
+    if (kinds.length === 0 || kinds.some((k) => !SEARCH_KINDS.includes(k))) {
+      return badRequest(`kinds must be a comma-separated list of: ${SEARCH_KINDS.join(', ')}`);
+    }
+  }
+  let limit;
+  const limitParam = params.get('limit');
+  if (limitParam !== null) {
+    if (!/^[0-9]+$/.test(limitParam) || Number(limitParam) < 1 || Number(limitParam) > 100) return badRequest('limit must be an integer from 1 to 100');
+    limit = Number(limitParam);
+  }
+  const bookId = params.get('book');
+  const hits = await repository.search(q, { ...(bookId !== null ? { bookId } : {}), ...(kinds ? { kinds } : {}), ...(limit !== undefined ? { limit } : {}) });
+  return { status: 200, body: hits };
+}
+
+/** Index-backed reads: null means unknown book (404); no usable index yet means 503 (a rebuild has started). */
+async function fromIndex(read) {
+  try {
+    const value = await read();
+    return value === null ? NOT_FOUND : { status: 200, body: value };
+  } catch (e) {
+    if (/** @type {any} */ (e)?.code === 'INDEX_NOT_READY') return { status: 503, body: { error: 'index_not_ready' } };
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------- write routes
@@ -78,6 +130,7 @@ export function matchWriteRoute(method, pathname) {
   const [, a, b, c, d, e, ...rest] = /** @type {string[]} */ (parts);
   if (rest.length > 0) return null;
   if (method === 'POST' && a === 'recover' && b === undefined) return { route: 'recover' };
+  if (method === 'POST' && a === 'index' && b === 'rebuild' && c === undefined) return { route: 'index-rebuild' };
   if (a !== 'books' || b === undefined || c === undefined) return null;
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'body') return { route: 'body', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d === undefined) return { route: 'create', bookId: b };
@@ -87,7 +140,6 @@ export function matchWriteRoute(method, pathname) {
 }
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
-const badRequest = (message) => ({ status: 400, body: { error: 'bad_request', message } });
 
 /** Map a core write result to an HTTP result. @param {any} r @param {number} okStatus @param {(r: any) => unknown} okBody */
 function respond(r, okStatus, okBody) {
@@ -114,6 +166,12 @@ export async function handleWrite(repository, match, body, state) {
       const report = await repository.recover();
       if (state) state.lastRecover = report;
       return { status: 200, body: report };
+    }
+    case 'index-rebuild': {
+      if (body.book !== undefined && typeof body.book !== 'string') return badRequest('book must be a string');
+      const r = await repository.rebuildIndex(body.book);
+      if (r.code === 'NOT_FOUND') return NOT_FOUND;
+      return { status: 200, body: r };
     }
     case 'body': {
       if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');

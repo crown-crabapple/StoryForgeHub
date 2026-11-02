@@ -103,7 +103,16 @@
  *   restoreScene(bookId: string, archivedPath: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { path?: string }>,
  *   recover(): Promise<RecoverReport>,
+ *   search(q: string, opts?: { bookId?: string, kinds?: string[], limit?: number }):
+ *     Promise<{ book_id: string | null, id: string, kind: string, title: string, path: string | null, snippet: string }[]>,
+ *   getBacklinks(bookId: string, id: string): Promise<any[] | null>,
+ *   getMentions(bookId: string, opts?: { entryId?: string, sceneId?: string }): Promise<{ entry_id: string, scene_id: string, count: number }[] | null>,
+ *   indexStatus(bookId?: string): Promise<any>,
+ *   rebuildIndex(bookId?: string): Promise<{ ok: boolean, code?: string, books: any[] }>,
+ *   ensureIndexes(): Promise<{ ok: boolean, books: any[] }>,
  * }} FileRepository
+ *   The index methods read the per-book SQLite index (see @storyforge/index); `getBacklinks` and `getMentions`
+ *   return null for an unknown book and throw an error with code INDEX_NOT_READY while no index is readable.
  */
 
 export {};

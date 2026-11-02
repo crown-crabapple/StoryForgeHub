@@ -83,3 +83,11 @@ export async function validate(rootDir) {
   books.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   return { diagnostics: collector.sorted(), books };
 }
+
+// Building blocks for derived projections (@storyforge/index). Re-exports only; behaviour unchanged.
+export { loadDoc } from './load.mjs';
+export { discover } from './library.mjs';
+export { isFile, walkMarkdown } from './fs.mjs';
+export { proseLines, REFERENCES, NAMED, WIKI_RE, CITE_RE, MDLINK_RE } from './links.mjs';
+export { ID_PREFIX_RE } from './ids.mjs';
+export { escapesRoot } from './schema.mjs';

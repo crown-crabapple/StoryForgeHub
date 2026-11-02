@@ -40,4 +40,12 @@ server.listen(config.port, config.host, () => {
   const addr = server.address();
   const port = addr && typeof addr === 'object' ? addr.port : config.port;
   process.stdout.write(`StoryForge serving ${config.libraryRoot}\nhttp://${config.host}:${port}/\n`);
+  // Indexes are built after the server is up; reads answer from the files until they are ready.
+  repository.ensureIndexes().then(
+    (r) => {
+      const failed = r.books.filter((b) => !b.ok);
+      if (failed.length) process.stderr.write(`storyforge: index build failed for ${failed.map((b) => b.path || '.').join(', ')}\n`);
+    },
+    (e) => process.stderr.write(`storyforge: index build failed: ${e instanceof Error ? e.message : e}\n`),
+  );
 });
