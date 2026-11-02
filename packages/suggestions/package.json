@@ -1,0 +1,17 @@
+{
+  "name": "@storyforge/suggestions",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge suggestion documents: deterministic line diff, hunk split, parse, apply and decide (pure, no filesystem)",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  }
+}

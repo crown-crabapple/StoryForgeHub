@@ -126,6 +126,12 @@ export default [
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
+  // packages/suggestions (M05-J06): pure; builds, parses and applies suggestion text. No filesystem access.
+  {
+    files: ['packages/suggestions/src/**/*.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
+  },
+
   // packages/ai: no direct filesystem access; settings go through the store's user-config functions.
   {
     files: ['packages/ai/src/**/*.mjs'],
