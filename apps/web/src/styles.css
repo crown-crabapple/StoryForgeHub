@@ -1561,7 +1561,6 @@ mark {
 .editor-column {
   --paper-pad: clamp(16px, 5vw, 72px);
   width: 100%;
-  max-width: calc(var(--measure) + 2 * var(--paper-pad));
   margin: 0 auto;
 }
 .editor-column .paper {
