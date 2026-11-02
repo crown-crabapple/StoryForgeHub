@@ -40,7 +40,7 @@ export function EntryPreview({ bookId, entryRef, id }) {
   );
 }
 
-function LinkItem({ bookId, item }) {
+function LinkItem({ bookId, item, actions = null }) {
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
@@ -54,6 +54,7 @@ function LinkItem({ bookId, item }) {
           Open in Codex
         </Link>
       )}
+      {actions}
       {open && <EntryPreview bookId={bookId} entryRef={item.ref} id={id} />}
     </li>
   );
@@ -62,9 +63,10 @@ function LinkItem({ bookId, item }) {
 /**
  * "In this scene": the characters, locations and threads of the front matter and every [[link]] of the body, each once; a link that
  * only the body makes is tagged "mentioned". Each is a button that opens an entry preview.
- * @param {{ bookId: string, front: Record<string, any> | null | undefined, body: string, objects?: any[] | null }} props
+ * `threadActions(item)` (M04-J03) may return extra controls for an item, such as "Mark this scene as setup / development / payoff" under a plot thread.
+ * @param {{ bookId: string, front: Record<string, any> | null | undefined, body: string, objects?: any[] | null, threadActions?: ((item: any) => import('react').ReactNode) | null }} props
  */
-export function LinkedEntries({ bookId, front, body, objects = null }) {
+export function LinkedEntries({ bookId, front, body, objects = null, threadActions = null }) {
   const items = sceneLinkItems(front, body, objects);
   return (
     <InspectorSection title="In this scene">
@@ -79,7 +81,7 @@ export function LinkedEntries({ bookId, front, body, objects = null }) {
               <span className="refs-label">{g.title}</span>
               <ul>
                 {list.map((item) => (
-                  <LinkItem key={item.key} bookId={bookId} item={item} />
+                  <LinkItem key={item.key} bookId={bookId} item={item} actions={threadActions ? threadActions(item) : null} />
                 ))}
               </ul>
             </div>

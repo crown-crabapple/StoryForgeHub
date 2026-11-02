@@ -4,7 +4,9 @@ import { ProseView } from './ProseView.jsx';
 import { Outline } from './Outline.jsx';
 import { EditorBridgeProvider, useEditorBridge } from './editor/bridge.jsx';
 import { SceneEditorPage } from './editor/SceneEditorPage.jsx';
-import { Link } from './router.jsx';
+import { parseView } from './planning/model.js';
+import { PlanningWorkspace, ViewSwitch } from './planning/PlanningWorkspace.jsx';
+import { Link, useLocation } from './router.jsx';
 import { SceneInspector } from './shell/Inspector.jsx';
 import { Workspace } from './shell/Workspace.jsx';
 import { useWrites } from './shell/writes.jsx';
@@ -148,6 +150,8 @@ export function BookLayout({ book, activeId, inspector, onChanged, children }) {
 
 export function BookView({ bookId, sceneId, file }) {
   const { status } = useStatus();
+  const { search } = useLocation();
+  const { view, mode, thread: threadId } = parseView(search);
   const [bump, setBump] = useState(0);
   const version = `${bookVersion(status, bookId)}|${bump}`;
   const { data: book, error, loading } = useApi(`/api/books/${encodeURIComponent(bookId)}`, version);
@@ -158,6 +162,8 @@ export function BookView({ bookId, sceneId, file }) {
   const { data: scene, error: sceneError, loading: sceneLoading } = useApi(sceneUrl, version);
   const { data: items, error: diagError, loading: diagLoading } = useApi(book ? `/api/books/${encodeURIComponent(bookId)}/diagnostics` : null, version);
   const { data: objects } = useApi(book ? `/api/books/${encodeURIComponent(bookId)}/objects?kinds=entry,thread,event` : null, version);
+  // M04-J03: the threads with their scene lists and the scenes' summaries (the Board, Outline, Threads and Matrix views and the rail's thread marks)
+  const { data: planning } = useApi(book ? `/api/books/${encodeURIComponent(bookId)}/threads` : null, version);
 
   if (loading) return <main id="main" tabIndex={-1} className="page muted">Loading...</main>;
   if (error) return <main id="main" tabIndex={-1} className="page error">{error}</main>;
@@ -169,6 +175,27 @@ export function BookView({ bookId, sceneId, file }) {
           <Link to="/">Back to the library</Link>
         </p>
       </main>
+    );
+  }
+  const onChanged = () => setBump((n) => n + 1);
+  if (view !== 'write' && !file) {
+    return (
+      <PlanningWorkspace
+        book={book}
+        planning={planning ?? null}
+        objects={objects}
+        view={view}
+        mode={mode}
+        threadId={threadId}
+        version={version}
+        onChanged={onChanged}
+        fallbackInspector={<SceneInspector book={book} scene={null} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} onChanged={onChanged} />}
+        render={({ main, inspector }) => (
+          <BookLayout book={book} activeId={null} onChanged={onChanged} inspector={inspector}>
+            {main}
+          </BookLayout>
+        )}
+      />
     );
   }
   const chapter = book.acts.flatMap((a) => a.chapters).find((c) => c.scenes.some((s) => s.id === activeId));
@@ -206,8 +233,9 @@ export function BookView({ bookId, sceneId, file }) {
       book={book}
       activeId={file ? null : activeId}
       onChanged={() => setBump((n) => n + 1)}
-      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} onChanged={() => setBump((n) => n + 1)} />}
+      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} planning={planning ?? null} onChanged={() => setBump((n) => n + 1)} />}
     >
+      {!file && <ViewSwitch bookId={book.id} view="write" scene={activeId} />}
       {main}
     </BookLayout>
   );

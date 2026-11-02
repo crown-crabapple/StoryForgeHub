@@ -91,6 +91,8 @@ const sceneName = (s) => s.title || 'Untitled scene';
  * `move(scene, target)` (drag and drop, Alt+Up/Down, the Move... dialog) flushes the open editor, asks the server for a dry run, and
  * applies at once when only the moved scene's file changes (toast with Undo = restore of the operation) or opens the Preview when neighbours are
  * renumbered. `onMoved(sceneId, target)` runs after a move was written.
+ * `apply(cmd)` and `preview(cmd, { stayInForm })` are the same two paths for any other write command `{ title, url, body, done, undoable?, after? }` (the
+ * Board, Outline and Threads views use them): `apply` writes at once and offers Undo; `preview` shows the dry-run diff first.
  * @param {{ book: any, activeId?: string | null, onChanged?: (info: any) => void, onMoved?: (sceneId: string, target: any) => void }} p
  */
 export function useStructure({ book, activeId = null, onChanged, onMoved }) {
@@ -535,5 +537,5 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
       {toast && <Toast toast={toast} onUndo={undo} onDismiss={() => setToast(null)} />}
     </>
   );
-  return { start, ui, move };
+  return { start, ui, move, apply: applyNow, preview: previewThenApply, showToast };
 }
