@@ -5,4 +5,4 @@ export { __faults } from './faults.mjs';
 export { createTree } from './tree.mjs';
 export { readUserConfig, userConfigDir, writeUserConfig } from './userconfig.mjs';
 export { escapesRoot } from './contain.mjs';
-export { writeNewTree, writeOutFile } from './foreign-files.mjs';
+export { writeNewTree, writeOutFile, writeWorkFile, replaceWorkDir } from './foreign-files.mjs';

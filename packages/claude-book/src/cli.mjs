@@ -46,7 +46,7 @@ function chapterOf(v) {
  * Write adapter-manifest.json (contract section 2). sources = every canonical file the book read pulled in.
  * @param {WorkDir} work @param {import('./model.mjs').Model} model @param {string} command @param {number|null} chapter
  */
-function writeManifest(work, model, command, chapter) {
+async function writeManifest(work, model, command, chapter) {
   const sources = [...model.docs]
     .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0))
     .map((d) => ({ path: d.file, sha256: sha256File(path.join(model.root, ...d.rel.split('/'))) }));
@@ -59,8 +59,7 @@ function writeManifest(work, model, command, chapter) {
     generated: [...work.written],
     sources,
   };
-  work.ensure();
-  work.write('adapter-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+  await work.write('adapter-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
   work.written.pop(); // the manifest does not list itself
 }
 
@@ -87,14 +86,14 @@ export async function run(argv, io = {}) {
     const workId = opts['work-id'] ?? String(model.bookDoc.fm.slug ?? '');
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(workId)) throw new UsageError(`invalid --work-id "${workId}" (letters, digits, . _ - only)`);
     const work = new WorkDir(path.join(framework, '.work', workId));
-    work.ensure();
 
     if (command === 'context') {
       const n = chapterOf(opts.chapter);
       const { files } = await buildPack(model, n);
-      work.resetContext();
-      for (const [rel, text] of files) work.write(rel, text);
-      writeManifest(work, model, command, n);
+      const ctxFiles = new Map([...files].filter(([rel]) => rel.startsWith('context/')));
+      await work.replaceContext(ctxFiles);
+      for (const [rel, text] of files) if (!ctxFiles.has(rel)) await work.write(rel, text);
+      await writeManifest(work, model, command, n);
       out(`context pack for chapter ${pad2(n)}: ${files.size} files under ${work.dir}\n`);
       for (const rel of work.written) out(`  ${rel}\n`);
       return 0;
@@ -116,12 +115,12 @@ export async function run(argv, io = {}) {
         stem = `chapter-${pad2(n)}`;
       }
       const candidateRel = `candidate/${stem}-candidate.md`;
-      work.write(candidateRel, `${joinScenes(model, scenes)}\n`);
+      await work.write(candidateRel, `${joinScenes(model, scenes)}\n`);
       const { min, max } = wordRange(model);
       const r = runStyleChecker({ framework, python: opts.python ?? 'python', candidatePath: work.abs(candidateRel), chapter: n, min, max });
       const reportRel = `reports/${stem}-style-tech-report.md`;
-      work.copyIn(r.report, reportRel);
-      writeManifest(work, model, command, n);
+      await work.copyIn(r.report, reportRel);
+      await writeManifest(work, model, command, n);
       out(`${r.verdictLine || r.verdict}\nreport: ${work.abs(reportRel)}\n`);
       return 0;
     }
@@ -130,8 +129,8 @@ export async function run(argv, io = {}) {
     const n = chapterOf(opts.chapter);
     if (model.chapterScenes(n).length === 0) throw new UsageError(`chapter ${n} has no scenes in this book`);
     const rel = `reports/chapter-${pad2(n)}-review-request.md`;
-    work.write(rel, renderReviewRequest({ framework, workId, chapter: n }));
-    writeManifest(work, model, command, n);
+    await work.write(rel, renderReviewRequest({ framework, workId, chapter: n }));
+    await writeManifest(work, model, command, n);
     out(`review request: ${work.abs(rel)}\n`);
     return 0;
   } catch (e) {

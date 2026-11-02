@@ -70,3 +70,37 @@ export async function writeOutFile(file, bytes, { force = false } = {}) {
   }
   return { ok: true };
 }
+
+/**
+ * Write one file (replacing any existing one), creating its folders. For derived files outside every book, such as the Claude-Book adapter's
+ * work folder; the caller has already checked that `file` lies inside the folder it owns.
+ * @param {string} file @param {Buffer | string} bytes
+ * @returns {Promise<void>}
+ */
+export async function writeWorkFile(file, bytes) {
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeSynced(file, Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes, 'utf8'));
+}
+
+/**
+ * Replace the folder `dir` with a new one holding exactly the files `produce()` yields: the new tree is written beside it and swapped in,
+ * and the old folder (if any) is removed. `produce` yields [relative path, bytes] pairs the caller has already made safe. The caller owns
+ * `dir` (a derived, rebuilt folder); nothing else is touched.
+ * @param {string} dir @param {Iterable<[string, Buffer | string]>} files
+ * @returns {Promise<void>}
+ */
+export async function replaceWorkDir(dir, files) {
+  const target = path.resolve(dir);
+  const parent = path.dirname(target);
+  await mkdir(parent, { recursive: true });
+  const temp = path.join(parent, `.${path.basename(target)}.new-${crypto.randomBytes(6).toString('hex')}`);
+  try {
+    await mkdir(temp);
+    for (const [rel, bytes] of files) await writeWorkFile(path.join(temp, ...rel.split('/')), bytes);
+    await rm(target, { recursive: true, force: true });
+    await rename(temp, target);
+  } catch (e) {
+    await rm(temp, { recursive: true, force: true }).catch(() => {});
+    throw e;
+  }
+}

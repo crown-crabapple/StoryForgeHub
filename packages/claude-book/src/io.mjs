@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { replaceWorkDir, writeWorkFile } from '@storyforge/store';
 
 /** Thrown for usage and I/O problems; the CLI maps it to exit code 2. */
 export class UsageError extends Error {}
@@ -58,30 +59,30 @@ export class WorkDir {
     return target;
   }
 
-  ensure() {
-    fs.mkdirSync(this.dir, { recursive: true });
-  }
-
-  /** Replace <work>/context/ entirely. The only delete the adapter performs. */
-  resetContext() {
-    const ctx = this.abs('context');
-    fs.rmSync(ctx, { recursive: true, force: true });
-    fs.mkdirSync(ctx, { recursive: true });
+  /**
+   * Replace <work>/context/ entirely with `files` (paths relative to <work>/, all under context/).
+   * @param {Map<string, string>} files
+   */
+  async replaceContext(files) {
+    const entries = [];
+    for (const [rel, text] of files) {
+      this.abs(rel);
+      if (!rel.startsWith('context/')) throw new UsageError(`not a context file: ${rel}`);
+      entries.push([rel.slice('context/'.length), text]);
+      this.written.push(rel);
+    }
+    await replaceWorkDir(this.abs('context'), entries);
   }
 
   /** @param {string} rel @param {string} text */
-  write(rel, text) {
-    const target = this.abs(rel);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.writeFileSync(target, text);
+  async write(rel, text) {
+    await writeWorkFile(this.abs(rel), text);
     this.written.push(rel);
   }
 
   /** Copy a file into the work folder. @param {string} from absolute source @param {string} rel */
-  copyIn(from, rel) {
-    const target = this.abs(rel);
-    fs.mkdirSync(path.dirname(target), { recursive: true });
-    fs.copyFileSync(from, target);
+  async copyIn(from, rel) {
+    await writeWorkFile(this.abs(rel), fs.readFileSync(from));
     this.written.push(rel);
   }
 }
