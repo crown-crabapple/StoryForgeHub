@@ -41,7 +41,7 @@ export function bodyLinkRefs(body) {
  * @param {Record<string, any> | null | undefined} front
  * @param {string} body
  * @param {{ id: string, kind: string, slug: string | null, title: string | null, type?: string | null }[] | null | undefined} objects
- * @returns {{ key: string, ref: string, name: string, group: 'characters' | 'locations' | 'threads' | 'other', mentioned: boolean }[]}
+ * @returns {{ key: string, id: string | null, kind: string | null, ref: string, name: string, group: 'characters' | 'locations' | 'threads' | 'other', mentioned: boolean }[]}
  */
 export function sceneLinkItems(front, body, objects) {
   const byRef = new Map();
@@ -58,7 +58,7 @@ export function sceneLinkItems(front, body, objects) {
     const o = find(ref);
     const key = o?.id ?? ref;
     if (items.has(key)) return;
-    items.set(key, { key, ref: o?.slug ?? o?.id ?? ref, name: (typeof o?.title === 'string' && o.title !== '' ? o.title : null) ?? ref, group: group ?? groupOf(o), mentioned });
+    items.set(key, { key, id: o?.id ?? null, kind: o?.kind ?? null, ref: o?.slug ?? o?.id ?? ref, name: (typeof o?.title === 'string' && o.title !== '' ? o.title : null) ?? ref, group: group ?? groupOf(o), mentioned });
   };
   for (const [field, group] of FRONT_FIELDS) {
     const list = front?.[field];

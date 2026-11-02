@@ -39,7 +39,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   const [api, a, b, c, d, e, f, ...rest] = /** @type {string[]} */ (parts);
   if (api !== 'api' || rest.length > 0) return NOT_FOUND;
   // only the revisions routes (scenes/:s/revisions[/:file]) are longer than five segments
-  if (e !== undefined && !(a === 'books' && c === 'scenes' && d !== undefined && e === 'revisions')) return NOT_FOUND;
+  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image')))) return NOT_FOUND;
 
   if (a === 'health' && b === undefined) {
     const info = await repository.libraryInfo();
@@ -130,6 +130,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const entry = await repository.getEntry(b, d);
       return entry ? { status: 200, body: entry } : NOT_FOUND;
     }
+    if (c === 'entries' && d !== undefined && e === 'image' && f === undefined) return handleEntryImage(repository, b, d, params);
     if (c === 'graph' && d === undefined) {
       const kindsParam = params.get('kinds');
       let kinds;
@@ -144,6 +145,10 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'codex' && d === 'types' && e === undefined) {
       const types = await repository.getCodexTypes(b);
       return types ? { status: 200, body: types } : NOT_FOUND;
+    }
+    if (c === 'codex' && d === 'entries' && e === undefined) {
+      const list = await repository.listCodexEntries(b);
+      return list ? { status: 200, body: list } : NOT_FOUND;
     }
     if (c === 'backlinks' && d !== undefined) {
       return fromIndex(() => repository.getBacklinks(b, d));
@@ -172,6 +177,26 @@ async function handleCover(repository, bookId, params) {
       bytes: cover.bytes,
       headers: {
         'content-type': cover.contentType,
+        'x-content-type-options': 'nosniff',
+        'cache-control': current ? 'private, max-age=31536000, immutable' : 'no-cache',
+      },
+    },
+  };
+}
+
+/** GET /api/books/:b/entries/:id/image[?v=<sha8>]: the image bytes of an entry's `image` field (only a supported image under assets/). */
+async function handleEntryImage(repository, bookId, ref, params) {
+  const image = await repository.getEntryImage(bookId, ref);
+  if (!image) return NOT_FOUND;
+  if ('error' in image) return { status: 404, body: { error: 'too_large' } };
+  const current = params.get('v') === image.sha256.slice(0, 8);
+  return {
+    status: 200,
+    body: null,
+    raw: {
+      bytes: image.bytes,
+      headers: {
+        'content-type': image.contentType,
         'x-content-type-options': 'nosniff',
         'cache-control': current ? 'private, max-age=31536000, immutable' : 'no-cache',
       },
@@ -224,7 +249,7 @@ async function fromIndex(read) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, bookId?: string, sceneId?: string, n?: string, opId?: string, file?: string } | null}
+ * @returns {{ route: string, bookId?: string, sceneId?: string, entryId?: string, n?: string, opId?: string, file?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
@@ -261,6 +286,15 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'acts' && d === undefined) return { route: 'act-create', bookId: b };
   if (method === 'POST' && c === 'acts' && d !== undefined && e === 'fields') return { route: 'act-fields', bookId: b, n: d };
   if (method === 'POST' && c === 'ops' && d !== undefined && e === 'restore') return { route: 'op-restore', bookId: b, opId: d };
+  // M04-J02 Codex entries and types
+  if (method === 'POST' && c === 'entries' && d === undefined) return { route: 'entry-create', bookId: b };
+  if (method === 'POST' && c === 'entries' && d === 'restore' && e === undefined) return { route: 'entry-restore', bookId: b };
+  if (method === 'POST' && c === 'entries' && d !== undefined && e === 'fields') return { route: 'entry-fields', bookId: b, entryId: d };
+  if (method === 'POST' && c === 'entries' && d !== undefined && e === 'slug') return { route: 'entry-slug', bookId: b, entryId: d };
+  if (method === 'POST' && c === 'entries' && d !== undefined && e === 'archive') return { route: 'entry-archive', bookId: b, entryId: d };
+  if (method === 'POST' && c === 'entries' && d !== undefined && e === 'restore') return { route: 'entry-restore', bookId: b, entryId: d };
+  if (method === 'PUT' && c === 'entries' && d !== undefined && e === 'body') return { route: 'entry-body', bookId: b, entryId: d };
+  if (method === 'POST' && c === 'codex' && d === 'types' && e === undefined) return { route: 'codex-type-create', bookId: b };
   return null;
 }
 
@@ -272,13 +306,13 @@ function respond(r, okStatus, okBody) {
   if (r.code === 'NOT_FOUND') return NOT_FOUND;
   if (r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', current: r.current ?? null } };
   const detail = { code: r.code, ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
-  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE'].includes(r.code);
+  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE', 'SLUG_TAKEN', 'TYPE_EXISTS'].includes(r.code);
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
 }
 
 /**
  * @param {FileRepository} repository
- * @param {{ route: string, bookId?: string, sceneId?: string, n?: string, opId?: string, file?: string }} match from matchWriteRoute
+ * @param {{ route: string, bookId?: string, sceneId?: string, entryId?: string, n?: string, opId?: string, file?: string }} match from matchWriteRoute
  * @param {unknown} body parsed JSON request body
  * @param {ApiState} [state] updated by POST /api/recover
  * @returns {Promise<ApiResult>}
@@ -335,6 +369,11 @@ export async function handleWrite(repository, match, body, state) {
       if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');
       const r = await repository.updateSceneBody(bookId, /** @type {string} */ (match.sceneId), body.body, { baseSha256: body.base_sha256 });
       return respond(r, 200, (x) => ({ sha256: x.sha256, words: x.words ?? { added: 0, removed: 0 } }));
+    }
+    case 'entry-body': {
+      if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');
+      const r = await repository.updateEntryBody(bookId, /** @type {string} */ (match.entryId), body.body, { baseSha256: body.base_sha256 });
+      return respond(r, 200, (x) => ({ sha256: x.sha256, words: { added: 0, removed: 0 } }));
     }
     case 'activity-session': {
       if (!Number.isInteger(body.minutes)) return badRequest('expected { minutes: integer >= 1 }');
@@ -473,6 +512,38 @@ async function handleStructure(repository, match, body) {
       if (num === null) return NOT_FOUND;
       const r = await repository.setActFields(bookId, num, { title: body.title, dryRun });
       return respond(r, 200, structureBody);
+    }
+    // ---- M04-J02 Codex. `base_sha256` (optional) is the file as the author saw it: a different file on disk is a 409.
+    case 'entry-create': {
+      const r = await repository.createEntry(bookId, { type: body.type, name: body.name, slug: body.slug, status: body.status, fields: body.fields, dryRun });
+      return respond(r, created, structureBody);
+    }
+    case 'entry-fields': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.setEntryFields(bookId, /** @type {string} */ (match.entryId), { name: body.name, status: body.status, role: body.role, aliases: body.aliases, fields: body.fields, related: body.related, dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
+    case 'entry-slug': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.changeEntrySlug(bookId, /** @type {string} */ (match.entryId), { slug: body.slug, dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
+    case 'entry-archive': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.archiveEntry(bookId, /** @type {string} */ (match.entryId), { dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
+    case 'entry-restore': {
+      // POST /entries/:id/restore, or POST /entries/restore with { path } (the archived file) or { id }
+      const ref = match.entryId ?? body.path ?? body.id;
+      if (typeof ref !== 'string' || ref === '') return badRequest('expected { path: string } or { id: string }');
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.restoreEntry(bookId, ref, { dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
+    case 'codex-type-create': {
+      const r = await repository.createCodexType(bookId, { type: body.type, name: body.name, plural: body.plural, fields: body.fields, dryRun });
+      return respond(r, created, structureBody);
     }
     case 'op-restore': {
       const r = await repository.restoreOp(bookId, /** @type {string} */ (match.opId), { dryRun });

@@ -1,19 +1,25 @@
 // FsRepository write methods. No filesystem access here: every change goes through
 // @storyforge/store (the single writer) or @storyforge/manuscript (which uses the store).
 import path from 'node:path';
-import { validate } from '@storyforge/format';
+import { extractDocs, validate } from '@storyforge/format';
 import {
   archiveChapter,
+  archiveEntry,
+  changeEntrySlug,
   createAct,
   createChapter,
+  createCodexType,
+  createEntry,
   editFrontMatterLine,
   insertScene,
   mergeScenes,
   moveScene,
   renumberChapters,
+  restoreEntry,
   restoreOp,
   setActFields,
   setChapterFields,
+  setEntryFields,
   setSceneFields,
   slugify,
   splitScene,
@@ -148,7 +154,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     return { ...r, path: toLibRel(found.book, r.path) };
   }
 
-  const NOT_FOUND_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_CHAPTER', 'REFUSED_UNKNOWN_ACT', 'REFUSED_UNKNOWN_OP'];
+  const NOT_FOUND_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_CHAPTER', 'REFUSED_UNKNOWN_ACT', 'REFUSED_UNKNOWN_OP', 'REFUSED_UNKNOWN_ENTRY'];
 
   /**
    * Run one @storyforge/manuscript structure command on a book. A real change reconciles the index before
@@ -430,6 +436,51 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     createAct: (bookId, args = {}) => structure(bookId, (b) => createAct(b, args ?? {})),
     setActFields: (bookId, act, args = {}) => structure(bookId, (b) => setActFields(b, act, args ?? {})),
     restoreOp: (bookId, opId, args = {}) => structure(bookId, (b) => restoreOp(b, opId, args ?? {})),
+
+    // ---- M04-J02: Codex entries and types (canonical files only; dryRun previews with diffs)
+    createEntry: (bookId, args = {}) => structure(bookId, (b) => createEntry(b, args ?? {})),
+    setEntryFields: (bookId, ref, args = {}) => structure(bookId, (b) => setEntryFields(b, ref, args ?? {})),
+    changeEntrySlug: (bookId, ref, args = {}) => structure(bookId, (b) => changeEntrySlug(b, ref, args ?? {})),
+    archiveEntry: (bookId, ref, args = {}) => structure(bookId, (b) => archiveEntry(b, ref, args ?? {})),
+    /** `ref`: an archived entry's id or slug, or its archived path (library-relative, archive/codex/...). */
+    async restoreEntry(bookId, ref, args = {}) {
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const rel = typeof ref === 'string' && ref.includes('/') ? toBookRel(found.book, ref) : ref;
+      if (rel === null) return fail('NOT_FOUND');
+      return structure(bookId, (b) => restoreEntry(b, rel, args ?? {}));
+    },
+    createCodexType: (bookId, args = {}) => structure(bookId, (b) => createCodexType(b, args ?? {})),
+
+    /**
+     * Replace the body of a live entry (the text after its front matter), keeping the front matter bytes. Same conflict rule as a scene
+     * body: baseSha256 must be the file the author saw, else CONFLICT with current: { sha256, body }. ref is the entry id or slug.
+     */
+    async updateEntryBody(bookId, ref, body, { baseSha256 } = {}) {
+      if (typeof body !== 'string') return fail('BAD_ARGS', { message: 'body must be a string' });
+      const found = await findBook(bookId);
+      if (!found || typeof ref !== 'string') return fail('NOT_FOUND');
+      const result = await validate(root);
+      const doc = extractDocs(result, found.book.path).find((d) => d.kind === 'entry' && !d.archived && (d.fm.id === ref || d.fm.slug === ref));
+      if (!doc) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book));
+      const cur = await store.read(doc.rel);
+      if (!cur) return fail('NOT_FOUND');
+      const end = frontMatterEnd(cur.bytes);
+      if (end < 0) return fail('NOT_AN_ENTRY', { message: 'front matter is not terminated' });
+      const next = Buffer.concat([cur.bytes.subarray(0, end), Buffer.from(body, 'utf8')]);
+      const r = await store.write(doc.rel, next, { baseSha256 });
+      if (r.ok) {
+        afterWrite(found.book.path);
+        return { ok: true, code: 'OK', sha256: r.sha256 };
+      }
+      if (r.code === 'CONFLICT') {
+        const now = r.current?.bytes ?? cur.bytes;
+        const e = frontMatterEnd(now);
+        return fail('CONFLICT', { current: { sha256: r.current?.sha256 ?? cur.sha256, body: now.subarray(e < 0 ? 0 : e).toString('utf8') } });
+      }
+      return fail(r.code, r.message ? { message: r.message } : {});
+    },
 
     async recover() {
       const result = await validate(root);

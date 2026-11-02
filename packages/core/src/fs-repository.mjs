@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { discover, escapesRoot, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
+import { discover, escapesRoot, extractDocs, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts, buildGraph, subGraph } from '@storyforge/index';
 import { applyRepair, planRepair } from '@storyforge/manuscript';
 import { listTemplates } from '@storyforge/templates';
@@ -137,13 +137,18 @@ function plainText(md) {
     .trim();
 }
 
-/** The `##` sections of an entry body: [{ heading, text }] with plain text of at most 600 characters. @param {string} body */
-export function entrySections(body) {
-  /** @type {{ heading: string, text: string }[]} */
+/** The `##` sections of an entry body: [{ heading, text }] with plain text of at most 600 characters (`markdown: true` adds the raw section text as `markdown`, up to 6000). @param {string} body @param {{ markdown?: boolean }} [opts] */
+export function entrySections(body, { markdown = false } = {}) {
+  /** @type {{ heading: string, text: string, markdown?: string }[]} */
   const out = [];
   /** @type {{ heading: string, lines: string[] } | null} */
   let cur = null;
   let fence = null;
+  const section = (c) => ({
+    heading: c.heading,
+    text: plainText(c.lines.join('\n')).slice(0, 600),
+    ...(markdown ? { markdown: c.lines.join('\n').replace(/\r$/gm, '').trim().slice(0, 6000) } : {}),
+  });
   for (const line of body.split('\n')) {
     const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
     if (fence) {
@@ -156,11 +161,11 @@ export function entrySections(body) {
     }
     const h = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t#]*\r?$/.exec(line);
     if (h && h[1].length <= 2) {
-      if (cur && cur.heading !== null) out.push({ heading: cur.heading, text: plainText(cur.lines.join('\n')).slice(0, 600) });
+      if (cur && cur.heading !== null) out.push(section(cur));
       cur = h[1].length === 2 ? { heading: plainText(h[2]), lines: [] } : null;
     } else if (cur) cur.lines.push(line);
   }
-  if (cur) out.push({ heading: cur.heading, text: plainText(cur.lines.join('\n')).slice(0, 600) });
+  if (cur) out.push(section(cur));
   return out;
 }
 
@@ -484,7 +489,7 @@ export function createFsRepository(libraryRoot, options = {}) {
 
   /** The book (as validate() sees it) with this id, or null. */
   /** The graph and the scene order of a book: from the index when it is readable, else from the files. Null for an unknown book. */
-  async function graphOf(bookId) {
+  async function graphOf(bookId, known) {
     try {
       const hit = await manager.query(bookId, (x) => ({ graph: x.graph(), scenes: x.scenes() }));
       if (hit === null) return null;
@@ -492,7 +497,7 @@ export function createFsRepository(libraryRoot, options = {}) {
     } catch (e) {
       if (/** @type {any} */ (e)?.code !== 'INDEX_NOT_READY') throw e;
     }
-    const result = await validate(root);
+    const result = known ?? (await validate(root));
     const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
     if (!book) return null;
     return {
@@ -854,9 +859,13 @@ export function createFsRepository(libraryRoot, options = {}) {
           }
           appearsIn.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'explicit' ? -1 : 1) || a.position - b.position);
         }
+        const file = await readParsed(path.join(bookRoot, ...rel.split('/')));
         return {
           id,
           slug: str(doc.fm.slug),
+          path: doc.file,
+          sha256: file?.sha256 ?? null,
+          body: file?.body ?? doc.body,
           name: str(doc.fm.name),
           type: str(doc.fm.type),
           status: str(doc.fm.status),
@@ -867,6 +876,93 @@ export function createFsRepository(libraryRoot, options = {}) {
         };
       }
       return null;
+    },
+
+    /**
+     * Every codex entry of the book (archived ones too, flagged), for the Codex page: cards and inspector in one answer. Read from the
+     * files (the graph from the index when it is readable, else from the files), so the answer is the same with or without an index.
+     * { entries: [{ id, slug, type, name, status, role, aliases, fields, image, image_url, first_appearance, path, archived, updated_at,
+     *   sections: [{ heading, text, markdown }], appears_in: [{ scene_id, title, position, rel, kind }], related: [{ id, name, as, direction }],
+     *   problems: [{ code, severity, location, message }] }], chapters: [{ chapter, label, scene_ids }] } or null for an unknown book.
+     * `appears_in` has one row per scene (explicit when any explicit edge exists), explicit first, then manuscript order.
+     */
+    async listCodexEntries(bookId) {
+      const result = await validate(root);
+      const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
+      if (!book) return null;
+      const g = await graphOf(bookId, result);
+      const scenes = new Map(book.order.map((/** @type {any} */ s) => [s.id, s]));
+      const nameOf = new Map((g?.graph.nodes ?? []).map((n) => [n.id, n.name]));
+      const edges = g?.graph.edges ?? [];
+      const chapters = [];
+      for (const s of book.order) {
+        let c = chapters.find((x) => x.chapter === s.chapter);
+        if (!c) chapters.push((c = { chapter: s.chapter, label: s.chapter_label, scene_ids: [] }));
+        c.scene_ids.push(s.id);
+      }
+      chapters.sort((a, b) => a.chapter - b.chapter);
+      const entries = [];
+      for (const doc of extractDocs(result, book.path)) {
+        if (doc.kind !== 'entry' || typeof doc.fm.id !== 'string') continue;
+        const id = doc.fm.id;
+        /** @type {Map<string, any>} */
+        const byScene = new Map();
+        const related = [];
+        if (!doc.archived) {
+          for (const e of edges) {
+            const scene = e.to === id ? scenes.get(e.from) : null;
+            if (scene) {
+              const row = byScene.get(scene.id) ?? { scene_id: scene.id, title: scene.title, position: scene.position, rel: e.rel, kind: e.kind };
+              if (e.kind === 'explicit' && row.kind !== 'explicit') Object.assign(row, { rel: e.rel, kind: 'explicit' });
+              byScene.set(scene.id, row);
+            }
+            if (e.rel !== 'related') continue;
+            if (e.from === id) related.push({ id: e.to, name: nameOf.get(e.to) ?? null, as: e.label ?? null, direction: 'out' });
+            else if (e.to === id) related.push({ id: e.from, name: nameOf.get(e.from) ?? null, as: e.label ?? null, direction: 'in' });
+          }
+        }
+        const appearsIn = [...byScene.values()].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'explicit' ? -1 : 1) || a.position - b.position);
+        const image = str(doc.fm.image);
+        const c = await resolveCover(book.path, image);
+        const st = await stat(abs(doc.file)).catch(() => null);
+        entries.push({
+          id,
+          slug: str(doc.fm.slug),
+          type: str(doc.fm.type),
+          name: str(doc.fm.name),
+          status: str(doc.fm.status),
+          role: str(doc.fm.role),
+          aliases: Array.isArray(doc.fm.aliases) ? doc.fm.aliases.filter((a) => typeof a === 'string') : [],
+          fields: doc.fm.fields && typeof doc.fm.fields === 'object' && !Array.isArray(doc.fm.fields) ? doc.fm.fields : {},
+          image,
+          image_url: c.state === 'image' ? `/api/books/${encodeURIComponent(bookId)}/entries/${encodeURIComponent(id)}/image?v=${(await coverSha(c)).slice(0, 8)}` : null,
+          first_appearance: str(doc.fm.first_appearance),
+          path: doc.file,
+          archived: doc.archived,
+          updated_at: st ? new Date(st.mtimeMs).toISOString() : null,
+          sections: entrySections(doc.body, { markdown: true }),
+          appears_in: appearsIn,
+          related,
+          problems: result.diagnostics.filter((d) => d.file === doc.file && (d.severity === 'error' || d.severity === 'warning')).map((d) => ({ code: d.code, severity: d.severity, location: d.location, message: d.message })),
+        });
+      }
+      entries.sort((a, b) => cmp((a.name ?? '').toLowerCase(), (b.name ?? '').toLowerCase()) || cmp(a.id, b.id));
+      return { entries, chapters };
+    },
+
+    /** The image an entry's `image` field points at (only a supported image under assets/ is ever served), like getCover. Null if there is none; `{ error: 'too_large' }` for an image over the size cap (as for covers). */
+    async getEntryImage(bookId, ref) {
+      const result = await validate(root);
+      const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
+      if (!book || typeof ref !== 'string') return null;
+      const doc = extractDocs(result, book.path).find((d) => d.kind === 'entry' && (d.fm.id === ref || (!d.archived && d.fm.slug === ref)));
+      if (!doc) return null;
+      const c = await resolveCover(book.path, str(doc.fm.image));
+      if (c.state === 'image') return readCover(c);
+      // same rule as the cover: a supported image over the size cap is reported as too_large
+      const image = str(doc.fm.image);
+      const big = c.state === 'unsupported' && image !== null && COVER_TYPES[path.posix.extname(image.replace(/\\/g, '/')).toLowerCase()];
+      return big ? await oversized(book.path, image) : null;
     },
 
     async getDiagnostics(bookId) {

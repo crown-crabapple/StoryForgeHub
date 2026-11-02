@@ -57,11 +57,13 @@ function InfoDialog({ title, children, onClose, actions }) {
 
 /**
  * @param {{ book: any, scene: any, chapterLabel?: string | null, objects?: any[] | null, footerExtra?: import('react').ReactNode,
- *   onStructureChanged?: (info?: any) => void }} props
+ *   onStructureChanged?: (info?: any) => void, resource?: { url: string, label: string, meta: string[] } }} props
+ *   `resource` makes the same editor edit something else with a body: a Codex entry (`scene` is then `{ id, title, body, sha256 }`, `url` is
+ *   GET /entries/:id, saved with PUT <url>/body). `label` names the text area, `meta` replaces the meta line under the title.
  *   Render with `key={scene.id}`: one editor (and one save controller) per open scene. `scene` is the GET scene answer; when its
  *   `sha256` changes later (the book was reconciled) the editor asks the server whether the file changed outside.
  */
-export function SceneEditorPage({ book, scene, chapterLabel = null, objects = null, footerExtra = null, onStructureChanged }) {
+export function SceneEditorPage({ book, scene, chapterLabel = null, objects = null, footerExtra = null, onStructureChanged, resource = undefined }) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
   const ctlRef = useRef(null);
@@ -77,6 +79,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const focusCompartment = useRef(new Compartment());
   const liveTimer = useRef(null);
   const key = draftKey(book.id, scene.id);
+  const isEntry = Boolean(resource);
 
   const [snap, setSnap] = useState(null);
   const [words, setWords] = useState(() => countWords(scene.body ?? ''));
@@ -146,6 +149,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       sceneId: scene.id,
       text: fileText,
       sha256: scene.sha256 ?? null,
+      resourceUrl: resource?.url,
       drafts,
       onChange: setSnap,
       onSaved: (words) => writingRef.current.applySaved(words),
@@ -174,7 +178,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       placeholder('Start writing…'),
       // pasted text takes the file's own line ending, so a CRLF scene never gains a bare LF
       EditorView.clipboardInputFilter.of((text, state) => text.replace(/\r\n|\r|\n/g, state.lineBreak)),
-      EditorView.contentAttributes.of({ 'aria-label': 'Scene text', spellcheck: 'true' }),
+      EditorView.contentAttributes.of({ 'aria-label': resource?.label ?? 'Scene text', spellcheck: 'true' }),
       EditorView.contentAttributes.compute([EditorState.readOnly], (state) => (state.facet(EditorState.readOnly) ? { 'aria-readonly': 'true' } : {})),
       focusCompartment.current.of(focusExtensions({ typewriter: false, dim: false })),
       EditorView.updateListener.of((u) => {
@@ -291,12 +295,12 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         applyText(r.text, { keepLine: true });
         flash('Updated from disk');
         // the text changed outside and the buffer was clean: keep a copy of what is on disk now, so it can be found again
-        if (r.text !== before) {
+        if (r.text !== before && !isEntry) {
           void send(bookUrl(book.id, `/scenes/${encodeURIComponent(scene.id)}/revisions`), { reason: 'external' }).then(() => writingRef.current.bumpRevisions());
         }
       }
     });
-  }, [scene.sha256, applyText, flash, book.id, scene.id]);
+  }, [scene.sha256, applyText, flash, book.id, scene.id, isEntry]);
 
   // ---- a conflict must be seen: it ends focus mode
   const conflicted = snap?.state === 'conflict';
@@ -416,7 +420,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const state = snap?.state ?? 'clean';
   const mixed = lineKind === 'mixed';
   const pov = scene.pov ? names.nameOf(scene.pov) : null;
-  const meta = [chapterLabel, scene.status ?? 'no status', pov ? `POV ${pov}` : null, `${words} ${words === 1 ? 'word' : 'words'}`].filter(Boolean);
+  const meta = resource ? [...resource.meta, `${words} ${words === 1 ? 'word' : 'words'}`] : [chapterLabel, scene.status ?? 'no status', pov ? `POV ${pov}` : null, `${words} ${words === 1 ? 'word' : 'words'}`].filter(Boolean);
   const preview = mixed ? normalisePreview(snap?.text ?? scene.body ?? '') : null;
 
   return (
@@ -479,7 +483,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
           onCheckDisk={() => ctlRef.current?.checkDisk()}
           onKeepMine={() => setDialog('keep-mine')}
           onUseFile={useFile}
-          onSaveCopy={saveCopy}
+          onSaveCopy={resource ? undefined : saveCopy}
         />
       )}
       {state === 'error' && snap?.error && (

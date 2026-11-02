@@ -1,5 +1,7 @@
 import { useId, useState } from 'react';
 import { useApi } from '../api.js';
+import { codexHref } from '../codex/model.js';
+import { Link } from '../router.jsx';
 import { InspectorSection } from '../shell/InspectorSection.jsx';
 import { LINK_GROUPS, sceneLinkItems } from './scene-context.js';
 
@@ -47,6 +49,11 @@ function LinkItem({ bookId, item }) {
         <span>{item.name}</span>
       </button>
       {item.mentioned && <span className="tag">mentioned</span>}
+      {item.kind === 'entry' && item.id && (
+        <Link to={codexHref(bookId, { entry: item.id })} className="link-codex">
+          Open in Codex
+        </Link>
+      )}
       {open && <EntryPreview bookId={bookId} entryRef={item.ref} id={id} />}
     </li>
   );

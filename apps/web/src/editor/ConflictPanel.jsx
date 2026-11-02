@@ -69,7 +69,7 @@ export function CompareView({ mine, theirs, leftLabel = 'Your text', rightLabel 
 /**
  * The banner shown when the scene changed outside the editor. Nothing is merged: the author picks one of four things.
  * @param {{ snapshot: import('./save-controller.js').SaveSnapshot, title: string, onCheckDisk: () => any,
- *   onKeepMine: () => void, onUseFile: () => Promise<void>, onSaveCopy: () => Promise<{ ok: boolean, message?: string }> }} props
+ *   onKeepMine: () => void, onUseFile: () => Promise<void>, onSaveCopy?: () => Promise<{ ok: boolean, message?: string }> }} props
  */
 export function ConflictPanel({ snapshot, title, onCheckDisk, onKeepMine, onUseFile, onSaveCopy }) {
   const [comparing, setComparing] = useState(false);
@@ -112,9 +112,11 @@ export function ConflictPanel({ snapshot, title, onCheckDisk, onKeepMine, onUseF
         <button type="button" className="btn" disabled={busy} onClick={() => guard(onUseFile)}>
           Use the file's version
         </button>
-        <button type="button" className="btn" disabled={busy} onClick={() => guard(onSaveCopy)}>
-          Save mine as a copy
-        </button>
+        {onSaveCopy && (
+          <button type="button" className="btn" disabled={busy} onClick={() => guard(onSaveCopy)}>
+            Save mine as a copy
+          </button>
+        )}
       </div>
       {error && <p className="error">{error}</p>}
       {comparing && (theirs === null ? <p className="muted">Reading the file…</p> : <CompareView mine={snapshot.text} theirs={theirs} />)}

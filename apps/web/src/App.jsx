@@ -1,6 +1,7 @@
 import { Link, useLocation } from './router.jsx';
 import { LibraryView } from './LibraryView.jsx';
 import { BookView } from './BookView.jsx';
+import { CodexView } from './codex/CodexView.jsx';
 import { PlaceholderView } from './PlaceholderView.jsx';
 import { useApi } from './api.js';
 import { parseRoute } from './routes.js';
@@ -63,7 +64,7 @@ function Routes() {
   } else if (route.name === 'tab') {
     bookId = route.bookId;
     tab = route.tab;
-    view = <PlaceholderView bookId={route.bookId} tab={route.tab} />;
+    view = route.tab === 'codex' ? <CodexView bookId={route.bookId} search={search} /> : <PlaceholderView bookId={route.bookId} tab={route.tab} />;
   } else {
     view = (
       <main id="main" tabIndex={-1} className="page">

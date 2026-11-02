@@ -37,7 +37,7 @@ const quiet = (p) => {
 
 /**
  * @param {{
- *   bookId: string, sceneId: string, text: string, sha256: string | null,
+ *   bookId: string, sceneId: string, text: string, sha256: string | null, resourceUrl?: string,
  *   fetch?: typeof fetch, drafts?: DraftStore | null, timers?: Timers, now?: () => number,
  *   onChange?: (snapshot: SaveSnapshot) => void,
  *   onSaved?: (words: { added: number, removed: number } | null) => void,
@@ -52,7 +52,8 @@ export function createSaveController(options) {
   const timers = options.timers ?? { setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms), clearTimeout: (id) => globalThis.clearTimeout(id) };
   const now = options.now ?? (() => Date.now());
   const key = `${bookId}/${sceneId}`;
-  const sceneUrl = `/api/books/${encodeURIComponent(bookId)}/scenes/${encodeURIComponent(sceneId)}`;
+  // the document being saved: a scene by default; an entry's body passes its own URL (PUT <url>/body, GET <url>)
+  const sceneUrl = options.resourceUrl ?? `/api/books/${encodeURIComponent(bookId)}/scenes/${encodeURIComponent(sceneId)}`;
 
   /** @type {SaveSnapshot} */
   const s = {

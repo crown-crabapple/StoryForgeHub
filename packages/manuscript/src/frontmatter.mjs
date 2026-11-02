@@ -91,6 +91,16 @@ export function formatYamlString(value) {
   return `"${value.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
 }
 
+/**
+ * Like formatYamlString, but a phrase of letters, digits, spaces and . , ' ( ) _ - that starts with a letter stays plain
+ * ("Maren Hollis", "Port Aldine"): the way the spec's examples are written. `flow`: the text goes inside [a, b], so no comma.
+ * @param {string} value @param {{ flow?: boolean }} [opts]
+ */
+export function formatYamlText(value, { flow = false } = {}) {
+  const plain = /^[A-Za-z][A-Za-z0-9 .,'()_-]*$/.test(value) && value === value.trim() && !RESERVED.has(value.toLowerCase()) && !(flow && value.includes(','));
+  return plain ? value : `"${value.replace(/[\\"]/g, (c) => '\\' + c)}"`;
+}
+
 /** Lines of a region as { start, end, text, eol } (text without its terminator). */
 function regionLines(region) {
   const out = [];
@@ -138,10 +148,11 @@ function isSimpleScalar(v, next) {
  * @param {string} key
  * @param {string} value the new string (no control characters or line breaks)
  * @param {{anchors?: string[], integer?: boolean}} [opts] anchor keys to insert after when `key` is absent (defaults: title after id, status after sequence, pov after status);
- *   `integer: true` writes `value` (digits, no leading zero) as a plain YAML integer instead of a string
+ *   `integer: true` writes `value` (digits, no leading zero) as a plain YAML integer instead of a string;
+ *   `plain: true` leaves a simple phrase unquoted (formatYamlText)
  * @returns {{ok: true, code: 'OK', buf: Buffer, bytes: Buffer, changed: boolean} | {ok: false, code: string, field: string, message: string, error: {code: string, field: string, message: string}}}
  */
-export function editFrontMatterLine(bytes, key, value, { anchors, integer = false } = {}) {
+export function editFrontMatterLine(bytes, key, value, { anchors, integer = false, plain = false } = {}) {
   const refuse = (code, message) => ({ ok: false, code, field: key, message, error: { code, field: key, message } });
   if (typeof key !== 'string' || !KEY_RE.test(key)) return refuse('REFUSED_BAD_ARGS', 'key is not a plain YAML key');
   if (typeof value !== 'string' || CONTROL_RE.test(value)) return refuse('REFUSED_BAD_ARGS', 'value must be a string without control characters or line breaks');
@@ -153,7 +164,7 @@ export function editFrontMatterLine(bytes, key, value, { anchors, integer = fals
   const region = s.slice(range.start, range.end);
   const lines = regionLines(region);
   const keyed = (k) => lines.map((l, i) => ({ l, i })).filter(({ l }) => l.text.startsWith(`${k}:`));
-  const newText = `${key}: ${integer ? value : formatYamlString(value)}`;
+  const newText = `${key}: ${integer ? value : plain ? formatYamlText(value) : formatYamlString(value)}`;
   const asLatin1 = (t) => Buffer.from(t, 'utf8').toString('latin1');
   const rebuild = (nextRegion) => Buffer.from(s.slice(0, range.start) + nextRegion + s.slice(range.end), 'latin1');
 
