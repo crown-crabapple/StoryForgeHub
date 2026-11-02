@@ -101,26 +101,25 @@ async function renumberChanges(root, list, step) {
 }
 
 /**
- * Neighbour changes for a placement. With renumber, every scene of the chapter gets 10*(k+1) and
- * the mover takes its slot; otherwise neighbours are untouched.
+ * Neighbour changes for a placement. When no free integer exists the chapter is renumbered first
+ * (10, 20, ...; mover excluded) and the mover then takes the midpoint of its new neighbours.
  */
 async function placementNeighbours(root, list, place) {
   if (!place.renumber) return { moverSequence: place.sequence, changes: [] };
   const changes = [];
-  let moverSequence = null;
-  let k = 0;
-  for (let i = 0; i <= list.length; i++) {
-    if (i === place.index) moverSequence = 10 * ++k;
-    if (i === list.length) break;
+  const renumbered = [];
+  for (let i = 0; i < list.length; i++) {
     const s = list[i];
-    const seq = 10 * ++k;
+    const seq = 10 * (i + 1);
+    renumbered.push({ id: s.id, sequence: seq });
     if (seq === s.sequence) continue;
     const to = `${path.posix.dirname(s.path)}/${sceneFileName(seq, sceneSlugOf(s.path))}`;
     const r = await sceneChange(root, s, { sequence: seq }, to);
     if ('unsimple' in r) return { unsimple: r.unsimple };
     if (r.change) changes.push(r.change);
   }
-  return { moverSequence, changes };
+  const again = placeInChapter(renumbered, place.index > 0 ? list[place.index - 1].id : null);
+  return { moverSequence: again.sequence, changes };
 }
 
 // ---------------------------------------------------------------- insertScene
