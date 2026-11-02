@@ -1,0 +1,19 @@
+{"id":1,"entry_id":1,"label":"Species","value":"Human","sort_order":0}
+{"id":2,"entry_id":1,"label":"Age","value":"34","sort_order":1}
+{"id":3,"entry_id":1,"label":"Eyes","value":"Grey","sort_order":2}
+{"id":4,"entry_id":1,"label":"Home","value":"[[port-aldine]]","sort_order":3}
+{"id":5,"entry_id":1,"label":"First Appearance","value":"Chapter 1","sort_order":4}
+{"id":6,"entry_id":2,"label":"Species","value":"Human","sort_order":0}
+{"id":7,"entry_id":2,"label":"Age","value":"71","sort_order":1}
+{"id":8,"entry_id":3,"label":"Species","value":"Human","sort_order":0}
+{"id":9,"entry_id":3,"label":"Occupation","value":"Harbour clerk","sort_order":1}
+{"id":11,"entry_id":5,"label":"Scale","value":"Estate","sort_order":0}
+{"id":12,"entry_id":6,"label":"Scale","value":"Town","sort_order":0}
+{"id":13,"entry_id":7,"label":"Kind","value":"Guild","sort_order":0}
+{"id":14,"entry_id":8,"label":"Class","value":"Artifact","sort_order":0}
+{"id":15,"entry_id":8,"label":"Material","value":"Brass","sort_order":1}
+{"id":16,"entry_id":9,"label":"Domain","value":"Custom","sort_order":0}
+{"id":17,"entry_id":10,"label":"Domain","value":"Proverb","sort_order":0}
+{"id":18,"entry_id":4,"label":"Species","value":"Human","sort_order":0}
+{"id":19,"entry_id":4,"label":"Age","value":"50","sort_order":1}
+{"id":20,"entry_id":11,"label":"Domain","value":"Botany","sort_order":0}

@@ -1,0 +1,3 @@
+{"id":120,"book_id":"edge-book","kind":"promise","slug":"the-bell","title":"Who rang the bell","status":"planted","planted_in":"1","payoff_in":"","characters_csv":"mara,stranger","notes":"Pay off in act two.","updated_by":1,"updated_at":"2026-02-01 08:00:00"}
+{"id":121,"book_id":"edge-book","kind":"question","slug":"lost-promise","title":"A promise to a missing chapter","status":"open","planted_in":"42","payoff_in":"","characters_csv":"","notes":"Chapter 42 does not exist.","updated_by":1,"updated_at":"2026-02-01 08:00:00"}
+{"id":122,"book_id":"edge-book","kind":"promise","slug":"harbour","title":"Same slug as the harbour","status":"strange","planted_in":"","payoff_in":"","characters_csv":"","notes":"","updated_by":1,"updated_at":"2026-02-01 08:00:00"}

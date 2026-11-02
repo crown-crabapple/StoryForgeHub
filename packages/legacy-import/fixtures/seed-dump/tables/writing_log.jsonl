@@ -1,0 +1,3 @@
+{"id":1,"book_id":"salt-orchard","log_date":"2026-01-03","words_added":640,"total_words":640,"chapters":"1","minutes":55,"mood":"steady","note":"Good first morning.","source":"manual","created_at":"2026-01-05 09:01:00"}
+{"id":2,"book_id":"salt-orchard","log_date":"2026-01-03","words_added":210,"total_words":850,"chapters":"1","minutes":20,"mood":"","note":"","source":"manual","created_at":"2026-01-05 09:02:00"}
+{"id":3,"book_id":"salt-orchard","log_date":"2026-01-04","words_added":-80,"total_words":770,"chapters":"2","minutes":35,"mood":"","note":"","source":"claude","created_at":"2026-01-05 09:03:00"}

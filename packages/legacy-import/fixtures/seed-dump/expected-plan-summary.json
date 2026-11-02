@@ -1,0 +1,294 @@
+{
+  "summary": {
+    "tables": {
+      "acts": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "api_tokens": {
+        "rows": 0,
+        "by_disposition": {},
+        "not_dumped": 0,
+        "skipped": "server-only"
+      },
+      "book_activity": {
+        "rows": 1,
+        "by_disposition": {
+          "server-only": 1
+        }
+      },
+      "book_members": {
+        "rows": 3,
+        "by_disposition": {
+          "server-only": 3
+        }
+      },
+      "books": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "canvas_cards": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "canvas_links": {
+        "rows": 1,
+        "by_disposition": {
+          "converted": 1
+        }
+      },
+      "captures": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "chapter_cast": {
+        "rows": 5,
+        "by_disposition": {
+          "converted": 5
+        }
+      },
+      "chapter_notes": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "chapter_revisions": {
+        "rows": 7,
+        "by_disposition": {
+          "history": 7
+        }
+      },
+      "chapters": {
+        "rows": 7,
+        "by_disposition": {
+          "converted": 7
+        }
+      },
+      "claim_sources": {
+        "rows": 1,
+        "by_disposition": {
+          "derived": 1
+        }
+      },
+      "continuity_exemptions": {
+        "rows": 1,
+        "by_disposition": {
+          "converted": 1
+        }
+      },
+      "dictionary_terms": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "editing_locks": {
+        "rows": 0,
+        "by_disposition": {}
+      },
+      "entries": {
+        "rows": 11,
+        "by_disposition": {
+          "converted": 11
+        }
+      },
+      "entry_fields": {
+        "rows": 19,
+        "by_disposition": {
+          "merged": 19
+        }
+      },
+      "entry_relations": {
+        "rows": 8,
+        "by_disposition": {
+          "merged": 8
+        }
+      },
+      "entry_revisions": {
+        "rows": 12,
+        "by_disposition": {
+          "history": 12
+        }
+      },
+      "entry_sections": {
+        "rows": 14,
+        "by_disposition": {
+          "merged": 14
+        }
+      },
+      "exercises": {
+        "rows": 0,
+        "by_disposition": {}
+      },
+      "invites": {
+        "rows": 0,
+        "by_disposition": {},
+        "not_dumped": 0,
+        "skipped": "server-only"
+      },
+      "knowledge_facts": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "mentions": {
+        "rows": 0,
+        "by_disposition": {}
+      },
+      "meta_pages": {
+        "rows": 1,
+        "by_disposition": {
+          "converted": 1
+        }
+      },
+      "note_pages": {
+        "rows": 1,
+        "by_disposition": {
+          "converted": 1
+        }
+      },
+      "oauth_clients": {
+        "rows": 0,
+        "by_disposition": {},
+        "not_dumped": 0,
+        "skipped": "server-only"
+      },
+      "oauth_codes": {
+        "rows": 0,
+        "by_disposition": {},
+        "not_dumped": 0,
+        "skipped": "server-only"
+      },
+      "oauth_grants": {
+        "rows": 0,
+        "by_disposition": {},
+        "not_dumped": 0,
+        "skipped": "server-only"
+      },
+      "password_resets": {
+        "rows": 0,
+        "by_disposition": {},
+        "not_dumped": 0,
+        "skipped": "server-only"
+      },
+      "progressions": {
+        "rows": 4,
+        "by_disposition": {
+          "converted": 4
+        }
+      },
+      "prose_analysis": {
+        "rows": 0,
+        "by_disposition": {}
+      },
+      "scenes": {
+        "rows": 11,
+        "by_disposition": {
+          "derived": 8,
+          "merged": 3
+        }
+      },
+      "sources": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "state_events": {
+        "rows": 4,
+        "by_disposition": {
+          "converted": 4
+        }
+      },
+      "story_ledger": {
+        "rows": 3,
+        "by_disposition": {
+          "converted": 3
+        }
+      },
+      "sync_state": {
+        "rows": 0,
+        "by_disposition": {}
+      },
+      "task_steps": {
+        "rows": 2,
+        "by_disposition": {
+          "merged": 2
+        }
+      },
+      "tasks": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "threads": {
+        "rows": 2,
+        "by_disposition": {
+          "derived": 2
+        }
+      },
+      "users": {
+        "rows": 2,
+        "by_disposition": {
+          "server-only": 2
+        }
+      },
+      "vision_items": {
+        "rows": 2,
+        "by_disposition": {
+          "converted": 2
+        }
+      },
+      "workspace_docs": {
+        "rows": 4,
+        "by_disposition": {
+          "converted": 4
+        }
+      },
+      "workspace_revisions": {
+        "rows": 5,
+        "by_disposition": {
+          "history": 5
+        }
+      },
+      "writing_log": {
+        "rows": 3,
+        "by_disposition": {
+          "converted": 3
+        }
+      }
+    },
+    "files": 85,
+    "coverage": 1
+  },
+  "issue_codes": [
+    "chapter-archived",
+    "chapter-without-act",
+    "scenes-cache-dropped",
+    "series-not-modelled",
+    "slug-collision",
+    "unknown-link"
+  ],
+  "issue_counts": {
+    "chapter-archived": 1,
+    "chapter-without-act": 1,
+    "scenes-cache-dropped": 1,
+    "series-not-modelled": 1,
+    "slug-collision": 2,
+    "unknown-link": 1
+  },
+  "validation_errors": [],
+  "validation_warnings": [],
+  "tree_sha256": "6309f624910f54085b3c7f77c3c7d06fdf5c90e16a50109535674044c15d67d6"
+}
