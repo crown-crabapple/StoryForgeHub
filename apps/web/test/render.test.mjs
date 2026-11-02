@@ -227,15 +227,17 @@ test('book view: a file that cannot be read is shown raw, exactly as on disk', (
   assert.doesNotMatch(html, /prose-link/);
 });
 
-test('library page: honest "Start something new", no controls that do nothing', () => {
+test('library page: Start something new has exactly two real buttons and nothing else interactive', () => {
   const html = text(render(h(m.LibraryPage, { books: [{ id: 'b', title: 'Book', slug: 'book', status: 'drafting', scene_count: 1, word_count: 10, error_count: 0, warning_count: 0 }], error: null, loading: false })));
   assert.match(html, /<h1>Library<\/h1>/);
   assert.match(html, /Start something new/);
-  assert.match(html, /Creating and opening books arrives in the next update\./);
-  // M02-J02 adds real filter buttons to the page; the Start section itself must still have no controls.
+  // M02-J02 adds real filter buttons to the page; M02-J03 adds exactly two buttons to the Start section itself.
   const start = html.match(/<section aria-labelledby="start-heading"[\s\S]*?<\/section>/);
   assert.ok(start, 'Start something new section present');
-  assert.doesNotMatch(start[0], /<(button|a|input|select)\b/);
+  const buttons = [...start[0].matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((b) => b[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
+  assert.deepEqual(buttons, ['New book\u2026', 'Open folder\u2026']);
+  assert.doesNotMatch(start[0], /<(a|input|select|textarea)\b/);
+  assert.doesNotMatch(start[0], /arrives in the next update/);
 });
 
 test('placeholder tabs: a real page with one h1 that says what it will hold and that it arrives in M04', () => {

@@ -108,6 +108,9 @@ test('GET diagnostics', async () => {
 test('non-GET methods -> 405 read_only', async () => {
   for (const method of ['POST', 'PUT', 'DELETE', 'PATCH']) {
     for (const p of ['/api/books', `/api/books/${BOOK}`, `/api/books/${BOOK}/scenes/${SCENE}`, '/', '/a.js']) {
+      // M02-J03: POST /api/books creates a book. It is a guarded write route (403 without the guard headers,
+      // refusal bodies checked in m02-gate.test.mjs), so it is no longer a 405.
+      if (method === 'POST' && p === '/api/books') continue;
       const r = await request(port, method, p);
       assert.equal(r.status, 405, `${method} ${p}`);
       assert.deepEqual(r.json, { error: 'read_only' }, `${method} ${p}`);
