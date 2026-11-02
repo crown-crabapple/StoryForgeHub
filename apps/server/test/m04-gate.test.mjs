@@ -14,7 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import YAML from 'yaml';
 import { validate } from '../../../packages/format/src/index.mjs';
-import { FIXTURES, copyFixture, request } from './helpers.mjs';
+import { FIXTURES, request } from './helpers.mjs';
 import { GOOD, killAll, startServer, waitFor } from './proc-helpers.mjs';
 
 after(killAll);
