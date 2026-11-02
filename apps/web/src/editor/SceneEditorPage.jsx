@@ -329,9 +329,9 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   // ---- mixed line endings
   const normalise = async () => {
     const ctl = ctlRef.current;
-    const view = viewRef.current;
-    if (!ctl || !view) return;
-    const text = serialise(view.state);
+    if (!ctl) return;
+    // the file's own text (the read-only buffer has already turned every ending into a plain line break)
+    const text = ctl.snapshot().text;
     const { target } = normalisePreview(text);
     const next = normaliseLineEndings(text, target);
     setDialog(null);

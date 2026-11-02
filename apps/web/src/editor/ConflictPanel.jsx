@@ -14,6 +14,12 @@ export function CompareView({ mine, theirs }) {
       <div className="compare-scroll" tabIndex={0}>
         <table className="compare-table">
           <caption className="sr-only">Line by line comparison</caption>
+          <colgroup>
+            <col className="compare-col-no" />
+            <col />
+            <col className="compare-col-no" />
+            <col />
+          </colgroup>
           <thead>
             <tr>
               <th scope="col" colSpan={2}>

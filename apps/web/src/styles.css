@@ -1805,6 +1805,9 @@ mark {
   padding: 0 var(--s2);
   vertical-align: top;
 }
+.compare-col-no {
+  width: 3.4em;
+}
 .compare-no {
   width: 3.2em;
   color: var(--muted);
