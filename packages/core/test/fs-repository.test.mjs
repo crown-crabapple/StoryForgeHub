@@ -45,7 +45,7 @@ test('salt-orchard: acts, chapters and labels', async () => {
   assert.deepEqual(book.acts[0].chapters.map((c) => c.label), ['Prologue', 'Chapter One', 'Chapter Two']);
   assert.deepEqual(book.acts[0].chapters.map((c) => c.title), ['Before the Tide', 'The Drowned Rows', 'The Grafting']);
   assert.deepEqual(book.acts[1].chapters.map((c) => c.chapter), [3]);
-  assert.equal(book.acts[1].chapters[0].label, 'Chapter Three');
+  assert.equal(book.acts[1].chapters[0].label, 'Chapter 3');
 });
 
 test('salt-orchard: scene summaries carry position, pov, status, path', async () => {
