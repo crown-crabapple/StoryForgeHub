@@ -156,6 +156,9 @@ export function PlanningWorkspace({ book, planning, objects = null, view, mode =
 
   const main = (
     <>
+      <h1 className="sr-only">
+        {book.title ?? book.slug ?? 'Book'}: {VIEWS.find((v) => v.key === view)?.label ?? view}
+      </h1>
       <ViewSwitch bookId={bookId} view={view} mode={mode} />
       {planning === null ? <p className="muted">Loading...</p> : body}
       {structure.ui}

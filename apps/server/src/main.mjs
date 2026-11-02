@@ -1,5 +1,6 @@
 // CLI entry:
-//   node apps/server/src/main.mjs --library <path> [--port <n>]        serve the library
+//   node apps/server/src/main.mjs [--library <path>] [--port <n>] [--open]   serve the library (without --library: the last one used, else a StoryForge folder in the home folder)
+//   node apps/server/src/main.mjs --help                                lists every command and flag (help.mjs)
 //   node apps/server/src/main.mjs rebuild --library <path>             rebuild every book's index
 //   node apps/server/src/main.mjs repair --library <path> [--apply]    print the repair plan; write only with --apply
 //   node apps/server/src/main.mjs continuity --library <path> [--book <slug>] [--json]   print continuity findings (read-only, no lock)
@@ -10,8 +11,10 @@
 // Exit codes: 0 ok, 1 failed / needs hand repair / continuity errors found, 2 usage or cannot open the library, 3 another instance holds the library.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ConfigError, LOCK_FILE, acquireLock, createFsRepository, createLibraryHost, loadConfig, releaseLock, releaseLockSync, updateLock } from '@storyforge/core';
+import { ConfigError, LOCK_FILE, acquireLock, createFsRepository, createLibraryHost, releaseLock, releaseLockSync, resolveConfig, updateLock, writeNewTree } from '@storyforge/core';
 import { FILE_COMMANDS, runFileCommand } from './export-cli.mjs';
+import { HELP } from './help.mjs';
+import { openBrowser } from './open-browser.mjs';
 import { runReceiptsCommand } from './receipts-cli.mjs';
 import { createServer } from './server.mjs';
 
@@ -27,7 +30,11 @@ function fail(message, code) {
   process.exit(code);
 }
 
-if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, export, backup or restore)`, 2);
+if ((argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') && command !== 'import-legacy') {
+  process.stdout.write(HELP);
+  process.exit(0);
+}
+if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, export, backup or restore; --help lists them all)`, 2);
 
 // receipts verify is read-only too: no lock, no server
 if (command === 'receipts') process.exit(await runReceiptsCommand(argv.slice(1)));
@@ -37,7 +44,7 @@ if (FILE_COMMANDS.includes(command)) process.exit(await runFileCommand(command, 
 
 let config;
 try {
-  config = loadConfig({ argv: argv.slice(command === argv[0] ? 1 : 0), env: process.env });
+  config = await resolveConfig({ argv: argv.slice(command === argv[0] ? 1 : 0), env: process.env, fallback: command === 'serve' ? 'default' : 'none' });
 } catch (e) {
   if (e instanceof ConfigError) fail(e.message, e.exitCode);
   throw e;
@@ -215,6 +222,13 @@ function printPlans(plans) {
 }
 
 async function runServer() {
+  if (config.source === 'default') {
+    // first run: no --library, no variable, no library used before. A StoryForge folder in the home folder holds the first books; Open folder... in the Library switches.
+    await writeNewTree(config.libraryRoot, () => []).catch((e) => fail(`cannot create the library folder ${config.libraryRoot}: ${e.message} (pass --library <path> or set STORYFORGE_LIBRARY)`, 2));
+    process.stdout.write(`No library chosen yet: using ${config.libraryRoot} (pass --library <path> or use Open folder... in the Library to use another).\n`);
+  } else if (config.source === 'recent') {
+    process.stdout.write(`Using the library you used last: ${config.libraryRoot}\n`);
+  }
   const lock = await takeLock(config.port);
 
   const repository = createFsRepository(config.libraryRoot);
@@ -261,6 +275,7 @@ async function runServer() {
     // the lock names the port we really got, and does so before anyone is told we are up
     if (port !== config.port) await updateLock(lockPath, { port }).catch(() => {});
     process.stdout.write(`StoryForge serving ${config.libraryRoot}\nhttp://${config.host}:${port}/\n`);
+    if (argv.includes('--open') && !(await openBrowser(`http://${config.host}:${port}/`))) process.stderr.write(`storyforge: could not open a browser; open http://${config.host}:${port}/ yourself\n`);
     // Indexes are built after the server is up; reads answer from the files until they are ready.
     host?.repository.ensureIndexes().then(
       (r) => {

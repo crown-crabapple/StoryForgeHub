@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dialog } from '../shell/Dialog.jsx';
+import { ToastFrame } from '../shell/ToastStack.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { slugify } from '../structure/helpers.js';
 import { acknowledgeRequest, archiveExceptionRequest, explainContinuityFailure, sendRequest, undoOpRequest } from './requests.js';
@@ -70,7 +71,7 @@ export function AcknowledgeDialog({ finding, busy = false, error = null, onSubmi
 /** The message under a finished write, with Undo when there is something to undo. */
 export function Toast({ toast, onUndo, onDismiss }) {
   return (
-    <div className="toast" role="status">
+    <ToastFrame>
       <span>{toast.message}</span>
       {toast.undo && (
         <button type="button" className="btn toast-button" onClick={onUndo}>
@@ -80,7 +81,7 @@ export function Toast({ toast, onUndo, onDismiss }) {
       <button type="button" className="btn toast-button" onClick={onDismiss}>
         Dismiss
       </button>
-    </div>
+    </ToastFrame>
   );
 }
 

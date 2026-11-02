@@ -392,7 +392,8 @@ mark {
   }
 }
 
-@media (max-width: 759px) {
+/* below 900px the rail folds behind the Chapters button and everything is one column (M06-J03: no horizontal page scroll at 1024x768 or narrower) */
+@media (max-width: 899px) {
   .topbar,
   .project-nav,
   .banner {
@@ -1463,6 +1464,25 @@ mark {
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
   transform: translateX(-50%);
 }
+/* all toasts go into one live region (shell/ToastStack.jsx), so they stack instead of overlapping */
+.toast-stack {
+  position: fixed;
+  left: 50%;
+  bottom: var(--s6);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  max-width: min(640px, calc(100vw - 2 * var(--s4)));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.toast-stack .toast {
+  position: static;
+  transform: none;
+  pointer-events: auto;
+}
 .toast-button {
   min-height: 32px;
   padding: 0 var(--s3);
@@ -2190,13 +2210,25 @@ mark {
   opacity: 0.45;
   transition: opacity 0.15s ease;
 }
+/* Reduced motion (M06-J03): one block. Nothing in the app needs motion to be understood, so with the preference set nothing moves: the selectors that
+   animate today are named, and the universal rule keeps any future one quiet too (a11y-styles.test.mjs checks both). */
 @media (prefers-reduced-motion: reduce) {
   .cm-line.cm-dim,
   .goal-bar-fill,
   .thin-bar-fill,
-  .focus-strip {
+  .focus-strip,
+  .chevron,
+  .skeleton .cover,
+  .skeleton-line {
     transition: none;
     animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -2619,7 +2651,7 @@ mark {
     border-top: 1px solid var(--divider);
   }
 }
-@media (max-width: 760px) {
+@media (max-width: 899px) {
   .codex {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3579,8 +3611,10 @@ label.form-check {
 
 /* ---------- optional AI workshop (M05-J04) ---------- */
 
-.topbar-link {
+.topbar-nav {
   margin-left: auto;
+}
+.topbar-link {
   color: var(--text-2);
 }
 .ai-header-button {
@@ -4092,7 +4126,7 @@ label.form-check {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-.sg-side h4 {
+.sg-side h3 {
   margin: 0;
   color: var(--text-3);
   font-size: var(--fs-12);

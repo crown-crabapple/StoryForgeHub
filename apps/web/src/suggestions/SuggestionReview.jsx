@@ -31,11 +31,11 @@ export function HunkView({ hunk, newFile = false, busy = false, handlers = {} })
       </div>
       <div className="sg-sides">
         <div className="sg-side" role="group" aria-label="Original">
-          <h4>Original</h4>
+          <h3>Original</h3>
           {hunk.originalLines.length === 0 ? <p className="muted">{newFile ? '(the file does not exist yet)' : '(nothing)'}</p> : <Words parts={sides.before} />}
         </div>
         <div className="sg-side" role="group" aria-label="Proposed">
-          <h4>Proposed</h4>
+          <h3>Proposed</h3>
           <Words parts={sides.after} />
         </div>
       </div>

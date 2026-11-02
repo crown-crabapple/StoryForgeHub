@@ -98,3 +98,92 @@ for (const accentHex of ACCENTS) {
     assert.ok(diff >= 10, `L* difference ${diff.toFixed(1)}`);
   });
 }
+
+// ---- M06-J03: every colour pair the stylesheet actually uses (the M02 pairs above are the token reference; these are the rules) ----------------------------------------
+// A pair is a rule that sets `color` and a background from tokens (var(--x)); a text colour on its own is checked on the two surfaces pages are drawn on.
+// Text needs 4.5:1; borders, rings, icons and fills need 3:1. Semi-transparent and color-mix() backgrounds are measured as the token over --bg.
+
+const CSS = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+/** Every rule { selector, decls } of the stylesheet, nested @media blocks flattened. */
+function rules(css) {
+  const out = [];
+  const stripped = css.replace(/@keyframes[^{]+\{(?:[^{}]*\{[^}]*\})*[^}]*\}/g, '');
+  for (const [, selector, body] of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (selector.trim().startsWith('@')) continue;
+    const decls = {};
+    for (const [, name, value] of body.matchAll(/([a-z-]+)\s*:\s*([^;]+);?/g)) decls[name] = value.trim();
+    out.push({ selector: selector.trim().replace(/\s+/g, ' '), decls });
+  }
+  return out;
+}
+const RULES = rules(CSS);
+const tokenOf = (value) => /^var\((--[\w-]+)\)$/.exec(value ?? '')?.[1] ?? null;
+const resolve = (name, vars = root) => {
+  const v = vars[name] ?? root[name];
+  return /^#[0-9A-Fa-f]{6}$/.test(v ?? '') ? rgb(v) : null;
+};
+/** A background colour of a declaration value as rgb, over --bg for translucent ones; null when it cannot be read. */
+function fillOf(value, vars) {
+  const t = tokenOf(value);
+  if (t) return resolve(t, vars);
+  const soft = /^var\((--[\w-]+-soft)\)$/.exec(value ?? '');
+  if (soft) return null;
+  const mix = /^color-mix\(in srgb,\s*var\((--[\w-]+)\)\s+(\d+)%,\s*var\((--[\w-]+)\)\)$/.exec(value ?? '');
+  if (mix) {
+    const a = resolve(mix[1], vars);
+    const b = resolve(mix[3], vars);
+    return a && b ? over(a, Number(mix[2]) / 100, b) : null;
+  }
+  return null;
+}
+const TEXT_TOKENS = ['--text', '--text-2', '--text-3', '--muted', '--accent', '--danger', '--warning', '--ok'];
+
+test('contrast (rules): the stylesheet is readable by this test (it finds the colour pairs it is meant to check)', () => {
+  const pairs = RULES.filter((r) => tokenOf(r.decls.color) && (r.decls.background || r.decls['background-color']));
+  assert.ok(RULES.length > 600, `rules found: ${RULES.length}`);
+  assert.ok(pairs.length >= 20, `rules with a text token on a background: ${pairs.length}`);
+});
+
+for (const accentHex of ACCENTS) {
+  const vars = { ...root, ...accents[accentHex] };
+  test(`contrast (rules) ${accentHex}: every rule that sets a text token on a background token is at least 4.5:1`, () => {
+    const bad = [];
+    let checked = 0;
+    for (const r of RULES) {
+      const fg = tokenOf(r.decls.color);
+      const bg = r.decls['background-color'] ?? r.decls.background;
+      if (!fg || !bg) continue;
+      const f = resolve(fg, vars);
+      const b = fillOf(bg, vars);
+      if (!f || !b) continue;
+      checked++;
+      const c = contrast(f, b);
+      if (c < 4.5) bad.push(`${r.selector}: ${fg} on ${bg} = ${c.toFixed(2)}`);
+    }
+    assert.ok(checked >= 15, `pairs checked: ${checked}`);
+    assert.deepEqual(bad, []);
+  });
+
+  test(`contrast (rules) ${accentHex}: every text token used on its own is at least 4.5:1 on --bg and --surface`, () => {
+    const used = new Set();
+    for (const r of RULES) {
+      const fg = tokenOf(r.decls.color);
+      if (fg && TEXT_TOKENS.includes(fg)) used.add(fg);
+    }
+    assert.ok(used.size >= 6, `text tokens in use: ${[...used]}`);
+    for (const t of used) for (const s of ['--bg', '--surface']) assert.ok(contrast(resolve(t, vars), resolve(s, vars)) >= 4.5, `${t} on ${s}`);
+  });
+}
+
+test('contrast (rules): borders that carry meaning (focus ring, input borders) are at least 3:1 on the surfaces', () => {
+  for (const accentHex of ACCENTS) {
+    const vars = { ...root, ...accents[accentHex] };
+    assert.equal(root['--focus'], '2px solid var(--accent)', 'the focus ring is the accent, 2px');
+    for (const s of SURFACES) assert.ok(contrast(resolve('--accent', vars), resolve(s, vars)) >= 3, `focus ring ${accentHex} on ${s}`);
+  }
+  // an input's edge: the border token against the surface it sits on is a 1px decoration (the text inside is what must be readable); the focus ring replaces it while typing
+  for (const r of RULES.filter((x) => /(^|,| )(input|select|textarea)\b/.test(x.selector) && x.decls['border-color'])) {
+    const t = tokenOf(r.decls['border-color']);
+    if (t === '--danger') for (const s of SURFACES) assert.ok(contrast(resolve(t), resolve(s)) >= 3, `${r.selector}: ${t} on ${s}`);
+  }
+});

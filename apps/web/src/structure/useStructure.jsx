@@ -4,6 +4,7 @@ import { RawEditorDialog } from '../editor/RawEditor.jsx';
 import { useNavigate } from '../router.jsx';
 import { RepairDialog } from '../RepairDialog.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
+import { ToastFrame } from '../shell/ToastStack.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { MoveDialog } from './MoveDialog.jsx';
 import { PreviewDialog } from './PreviewDialog.jsx';
@@ -67,7 +68,7 @@ function FormDialog({ form, onSubmit, onClose, busy }) {
 /** The message under a finished write; Undo is offered when the server kept a trash copy to restore from. */
 function Toast({ toast, onUndo, onDismiss }) {
   return (
-    <div className="toast" role="status">
+    <ToastFrame>
       <span>{toast.message}</span>
       {toast.opId && (
         <button type="button" className="btn toast-button" onClick={onUndo}>
@@ -77,7 +78,7 @@ function Toast({ toast, onUndo, onDismiss }) {
       <button type="button" className="btn toast-button" onClick={onDismiss}>
         Dismiss
       </button>
-    </div>
+    </ToastFrame>
   );
 }
 

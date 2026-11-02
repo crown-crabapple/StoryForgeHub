@@ -10,7 +10,9 @@ Markdown-first novel studio. Plan: `E:\StoryForgeHub\storyforge-v2-production-pl
 
 ## Run
 
-Needs Node 24 (see `.nvmrc`; `>=22` works).
+Easiest: `StoryForge.cmd` (Windows) or `./storyforge.sh` (macOS, Linux) installs on the first run, builds, starts and opens the browser. Full instructions, where your data lives and how to back up or remove StoryForge: `docs/install.md`. `node apps/server/src/main.mjs --help` lists every command and flag.
+
+By hand: needs Node 24 (see `.nvmrc`; `>=22` works).
 
 ```sh
 npm ci
@@ -18,7 +20,7 @@ npm run build
 npm start -- --library <path-to-library-or-book>
 ```
 
-Then open `http://127.0.0.1:4317/`. `--port <n>` or `STORYFORGE_PORT` changes the port; `STORYFORGE_LIBRARY` can replace `--library`. For UI work run the server as above and `npm run dev` (Vite proxies `/api` to port 4317).
+Then open `http://127.0.0.1:4317/`. `--port <n>` or `STORYFORGE_PORT` changes the port; `STORYFORGE_LIBRARY` can replace `--library`; with neither, StoryForge opens the library you used last (else a `StoryForge` folder in your home folder). `--open` opens the browser. For UI work run the server as above and `npm run dev` (Vite proxies `/api` to port 4317).
 
 `npm run lint` and `npm test` check the whole repo.
 

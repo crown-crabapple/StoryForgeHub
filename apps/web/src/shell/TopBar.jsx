@@ -22,9 +22,11 @@ export function TopBar({ books, bookId }) {
       <SaveStatus bookId={bookId && (books === null || current) ? bookId : null} />
       <SearchBox />
       <IndexStatus />
-      <Link to="/settings" className="topbar-link">
-        Settings
-      </Link>
+      <nav aria-label="Application" className="topbar-nav">
+        <Link to="/settings" className="topbar-link">
+          Settings
+        </Link>
+      </nav>
     </header>
   );
 }

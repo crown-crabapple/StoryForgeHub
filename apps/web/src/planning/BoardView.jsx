@@ -44,7 +44,7 @@ export function BoardCard({ bookId, card, dropMark = null, dragging = false, onD
         <Link to={sceneHref(bookId, card.id)} draggable={false} className="board-card-title" data-scene-link="">
           {card.title || <span className="muted">Untitled scene</span>}
         </Link>
-        {items.length > 0 && <RowMenu name={name} items={items} />}
+        {items.length > 0 && <RowMenu name={name} items={items} scope="board card" />}
       </div>
       <p className={card.summary === '' ? 'board-card-summary muted' : 'board-card-summary'}>{card.summary === '' ? 'No summary yet' : card.summary}</p>
       <div className="board-card-meta">

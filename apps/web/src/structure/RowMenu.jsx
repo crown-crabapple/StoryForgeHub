@@ -3,9 +3,10 @@ import { useEffect, useId, useRef, useState } from 'react';
 /**
  * The "More actions for <name>" button and its menu. Both are real buttons. Escape closes the menu and puts
  * focus back on the trigger; Up/Down move between items; clicking elsewhere closes it.
+ * `scope` tells two menus for the same thing apart when both are on the page (the rail row and the Board card of one scene): "More actions for Arrival (board card)".
  * `items`: [{ label, run } | { label, items: [{ label, run, current? }] } (a submenu) | { label, disabled }].
  */
-export function RowMenu({ name, items }) {
+export function RowMenu({ name, items, scope = null }) {
   const [open, setOpen] = useState(false);
   const [sub, setSub] = useState(null);
   const root = useRef(null);
@@ -65,7 +66,7 @@ export function RowMenu({ name, items }) {
         ref={trigger}
         type="button"
         className="row-menu-button"
-        aria-label={`More actions for ${name}`}
+        aria-label={`More actions for ${name}${scope ? ` (${scope})` : ''}`}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -74,7 +75,7 @@ export function RowMenu({ name, items }) {
         <span aria-hidden="true">...</span>
       </button>
       {open && (
-        <ul id={menuId} role="menu" aria-label={`Actions for ${name}`} className="row-menu-list">
+        <ul id={menuId} role="menu" aria-label={`Actions for ${name}${scope ? ` (${scope})` : ''}`} className="row-menu-list">
           {items.map((item) =>
             item.items ? (
               <li key={item.label} role="none">

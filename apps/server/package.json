@@ -6,7 +6,8 @@
   "type": "module",
   "exports": "./src/server.mjs",
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test \"test/*.test.mjs\"",
+    "test:large": "node --test --test-concurrency=1 --test-timeout=900000 \"test/*.large.mjs\""
   },
   "engines": {
     "node": ">=22"
