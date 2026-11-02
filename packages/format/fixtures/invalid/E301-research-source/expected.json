@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E301",
+      "file": "research/tide-notes.md",
+      "location": "sources[0]"
+    }
+  ]
+}

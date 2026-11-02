@@ -9,6 +9,7 @@ import { INVALID, listDirs, readExpected, keysOf, SEVERITY_BY_LETTER } from './h
 const CONTRACT_CASES = [
   'E006-future-schema', 'E100-bad-yaml', 'E100-unclosed-fence', 'E101-anchor', 'E101-tag',
   'E102-missing-field', 'E102-bad-id', 'E102-scalar-for-list', 'E102-bad-enum', 'E103-path-escape',
+  'E102-event-date', 'E103-absolute-link', 'E301-research-source',
   'E201-duplicate-id', 'E202-duplicate-series-number', 'E203-duplicate-book-slug',
   'E204-duplicate-sequence', 'E205-act-mismatch', 'E206-act-decreases', 'E207-duplicate-chapter-md',
   'E208-duplicate-slug', 'E301-broken-body-link', 'E301-broken-reference', 'E301-missing-cite',

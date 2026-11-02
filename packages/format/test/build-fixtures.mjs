@@ -246,6 +246,30 @@ bookCase('E103-path-escape', (b) => {
   return [D('E103', b.BOOK, 'cover')];
 });
 
+// ---- M04-J04
+bookCase('E102-event-date', (b, ids) => {
+  const p = 'planning/timeline/the-flood.md';
+  b.files.set(p, {
+    fm: { schema: 'storyforge.event/v1', id: ids('event'), slug: 'the-flood', title: 'The flood', order: 100, date: '2024-13-45' },
+    body: 'The sea wall fails.\n',
+  });
+  return [D('E102', p, 'date')];
+});
+
+bookCase('E103-absolute-link', (b) => {
+  b.files.get(b.B).body = 'See [the chart](/maps/coast.pdf) before the ferry.\n';
+  return [D('E103', b.B, lineOf(b.files, b.B, '/maps/coast.pdf'))];
+});
+
+bookCase('E301-research-source', (b, ids) => {
+  const p = 'research/tide-notes.md';
+  b.files.set(p, {
+    fm: { schema: 'storyforge.research/v1', id: ids('note'), title: 'Tide notes', sources: ['no-such-source'] },
+    body: 'Spring tides run high.\n',
+  });
+  return [D('E301', p, 'sources[0]')];
+});
+
 bookCase('E201-duplicate-id', (b) => {
   b.files.get(b.B).fm.id = b.files.get(b.A).fm.id;
   return [D('E201', b.A, 'id'), D('E201', b.B, 'id')];
