@@ -232,7 +232,10 @@ test('library page: honest "Start something new", no controls that do nothing', 
   assert.match(html, /<h1>Library<\/h1>/);
   assert.match(html, /Start something new/);
   assert.match(html, /Creating and opening books arrives in the next update\./);
-  assert.doesNotMatch(html, /<button/);
+  // M02-J02 adds real filter buttons to the page; the Start section itself must still have no controls.
+  const start = html.match(/<section aria-labelledby="start-heading"[\s\S]*?<\/section>/);
+  assert.ok(start, 'Start something new section present');
+  assert.doesNotMatch(start[0], /<(button|a|input|select)\b/);
 });
 
 test('placeholder tabs: a real page with one h1 that says what it will hold and that it arrives in M04', () => {
