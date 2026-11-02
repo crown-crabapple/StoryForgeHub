@@ -33,3 +33,26 @@ test('two saved edits, graceful stop, restart: the change is an author.edit rece
   assert.equal(chain.at(-1).fm.actor, 'author');
   assert.deepEqual(await checkChain(library, { [ARRIVAL]: final }), []);
 });
+
+test('an outside write right after a server save (no waiting) is external.change; our save stays author.edit', async () => {
+  const fsp = await import('node:fs/promises');
+  const path = await import('node:path');
+  const library = await freshLibrary();
+  const repo = createFsRepository(library, { watch: false, pollMs: 0 });
+  const scene = await repo.getScene(BOOK, ARRIVAL);
+  const r = await repo.updateSceneBody(BOOK, ARRIVAL, `${scene.body}\n\nOur own line.`, { baseSha256: scene.sha256 });
+  assert.equal(r.ok, true);
+  const file = path.join(library, ...ARRIVAL_PATH.split('/'));
+  const mine = await fsp.readFile(file, 'utf8');
+  await fsp.writeFile(file, `${mine}\nAn outside line.\n`); // inside the own-write suppression window
+  const f = await repo.flushReceipts(BOOK, ARRIVAL);
+  assert.equal(f.ok, true);
+  const chain = chainOf(await readReceipts(library), ARRIVAL);
+  assert.deepEqual(chain.map((x) => x.fm.operation), ['baseline', 'author.edit', 'external.change']);
+  assert.ok(chain[2].body.includes('An outside line.') && !chain[1].body.includes('An outside line.'));
+  const final = await readBytes(library, ARRIVAL_PATH);
+  assert.deepEqual(await checkChain(library, { [ARRIVAL]: final }), []);
+  const v = await repo.verifyReceipts(BOOK);
+  assert.equal(v.ok, true);
+  await repo.close();
+});

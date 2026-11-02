@@ -79,6 +79,9 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
   const pending = new Map();
   /** Scenes seen to differ from their last receipt when watching started (changed while StoryForge was closed): their next flush is an `external.change`. */
   const externalMarks = new Set();
+  /** The last bytes StoryForge itself wrote to a scene since its last receipt (key bookRoot|sceneId). Attribution does not depend on watcher timing: a flush compares
+   *  the file with these bytes, so an outside write right after one of our saves is still told apart from it. */
+  const ownBytes = new Map();
 
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
 
@@ -109,6 +112,8 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
     for (const { rel, receipt } of all) {
       if (receipt.target.id !== '') last.set(receipt.target.id, { rel, receipt, sha256: null });
     }
+    /** own-write records this session used up; put back when its batch is rolled back */
+    const consumedOwn = new Map();
     const putObject = async (bytes) => {
       const sha = hashOf(bytes);
       const rel = objectPath(sha);
@@ -122,6 +127,9 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
     const fileSha = async (entry) => entry.sha256 ?? (entry.sha256 = (await store.read(entry.rel))?.sha256 ?? '');
 
     const api = {
+      restoreOwn: () => {
+        for (const [k, v] of consumedOwn) ownBytes.set(k, v);
+      },
       has: (targetId) => last.has(targetId),
       last: (targetId) => last.get(targetId)?.receipt ?? null,
       all: () => all,
@@ -182,15 +190,30 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
        * (or `external.change` when `as` is 'external'). Returns what it wrote, or null when nothing differed.
        * @param {string} targetId @param {string} targetPath @param {Buffer} current @param {'author' | 'external'} [as]
        */
-      async ensureCurrent(targetId, targetPath, current, as = 'author') {
+      async ensureCurrent(targetId, targetPath, current, as = 'author', { author: forced = false } = {}) {
         const markKey = `${store.root}|${targetId}`;
         if (as === 'author' && externalMarks.has(markKey)) as = 'external';
         externalMarks.delete(markKey);
+        const own = forced ? null : ownBytes.get(markKey) ?? null;
+        if (!forced) {
+          ownBytes.delete(markKey);
+          if (own !== null) consumedOwn.set(markKey, own);
+        }
         const prev = last.get(targetId)?.receipt;
         const target = { id: targetId, path: targetPath };
         if (!prev) return { kind: 'baseline', entry: await api.add({ operation: 'baseline', actor: 'system', workflow: 'editor', target, before: EMPTY, noBeforeObject: true, after: current }) };
         if (prev.after_sha256 === hashOf(current)) return null;
         const before = await objectBytes(prev.after_sha256);
+        if (as === 'author' && !forced) {
+          const ownSha = own === null ? null : hashOf(own);
+          if (ownSha === null || ownSha === prev.after_sha256) as = 'external'; // nothing of ours since the last receipt: someone else wrote it
+          else if (ownSha !== hashOf(current)) {
+            // our save, then an outside write over it: two receipts in this batch
+            await api.add({ operation: 'author.edit', actor: 'author', workflow: 'editor', target, before, beforeSha: prev.after_sha256, after: own });
+            const entry = await api.add({ operation: 'external.change', actor: 'external', workflow: 'watcher', target, before: own, after: current });
+            return { kind: 'external', entry };
+          }
+        }
         const external = as === 'external';
         const entry = await api.add({
           operation: external ? 'external.change' : 'author.edit',
@@ -223,18 +246,27 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
     const before = await store.read(rel);
     const w = await store.write(rel, next, { baseSha256 });
     if (!w.ok || !before || before.sha256 !== baseSha256) return w;
+    /** @type {any} */
+    let used = null;
     await store
       .batch('receipt', { rel }, async (tx) => {
-        const s = await session(store, tx);
-        if (flushFirst || !s.has(sceneId) || externalMarks.has(`${store.root}|${sceneId}`)) await s.ensureCurrent(sceneId, rel, before.bytes, 'author');
+        const s = (used = await session(store, tx));
+        if (flushFirst || !s.has(sceneId) || externalMarks.has(`${store.root}|${sceneId}`)) await s.ensureCurrent(sceneId, rel, before.bytes, 'author', { author: !ownBytes.has(`${store.root}|${sceneId}`) });
         const prev = s.last(sceneId);
         if (prev && nowMs() - Date.parse(prev.at) >= FLUSH_AFTER_MS) {
-          await s.ensureCurrent(sceneId, rel, next, 'author');
+          await s.ensureCurrent(sceneId, rel, next, 'author', { author: true });
           pending.delete(`${store.root}|${sceneId}`);
-        } else pending.set(`${store.root}|${sceneId}`, { bookRoot: store.root, sceneId, rel });
+          ownBytes.delete(`${store.root}|${sceneId}`);
+        } else {
+          pending.set(`${store.root}|${sceneId}`, { bookRoot: store.root, sceneId, rel });
+          ownBytes.set(`${store.root}|${sceneId}`, next);
+        }
         return null;
       })
-      .catch(() => {});
+      .then((r) => {
+        if (!r.ok) used?.restoreOwn();
+      })
+      .catch(() => used?.restoreOwn());
     return w;
   }
 
@@ -252,16 +284,20 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
     let s;
     try {
       s = await session(store, tx);
-      if (flushFirst || !s.has(sceneId) || externalMarks.has(`${store.root}|${sceneId}`)) await s.ensureCurrent(sceneId, rel, cur.bytes, 'author');
+      if (flushFirst || !s.has(sceneId) || externalMarks.has(`${store.root}|${sceneId}`)) await s.ensureCurrent(sceneId, rel, cur.bytes, 'author', { author: !ownBytes.has(`${store.root}|${sceneId}`) });
     } catch {
       return w;
     }
     try {
       const prev = s.last(sceneId);
       if (prev && nowMs() - Date.parse(prev.at) >= FLUSH_AFTER_MS) {
-        await s.ensureCurrent(sceneId, rel, next, 'author');
+        await s.ensureCurrent(sceneId, rel, next, 'author', { author: true });
         pending.delete(`${store.root}|${sceneId}`);
-      } else pending.set(`${store.root}|${sceneId}`, { bookRoot: store.root, sceneId, rel });
+        ownBytes.delete(`${store.root}|${sceneId}`);
+      } else {
+        pending.set(`${store.root}|${sceneId}`, { bookRoot: store.root, sceneId, rel });
+        ownBytes.set(`${store.root}|${sceneId}`, next);
+      }
     } catch {
       // as above
     }
@@ -304,14 +340,19 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
   /** Flush one document's pending changes (baseline or author.edit) in a batch of its own. */
   async function flushDoc(store, targetId, rel, as = 'author') {
     let result = null;
+    /** @type {any} */
+    let s = null;
     const r = await store.batch('flushReceipts', { rel }, async (tx) => {
       const cur = await readIn(tx, rel);
       if (!cur) return null;
-      const s = await session(store, tx);
+      s = await session(store, tx);
       result = await s.ensureCurrent(targetId, rel, cur, as);
       return null;
     });
-    if (!r.ok) return r;
+    if (!r.ok) {
+      s?.restoreOwn();
+      return r;
+    }
     pending.delete(`${store.root}|${targetId}`);
     return { ok: true, code: 'OK', flushed: result !== null, baseline: result?.kind === 'baseline', receipt: result?.entry.receipt.id ?? null };
   }
