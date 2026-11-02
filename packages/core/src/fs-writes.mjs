@@ -10,6 +10,7 @@ import {
   createChapter,
   createCodexType,
   createEntry,
+  createThread,
   editFrontMatterLine,
   insertScene,
   mergeScenes,
@@ -21,6 +22,7 @@ import {
   setChapterFields,
   setEntryFields,
   setSceneFields,
+  setThreadFields,
   slugify,
   splitScene,
 } from '@storyforge/manuscript';
@@ -147,14 +149,14 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
   async function createSceneImpl(bookId, args = {}) {
     const found = await findBook(bookId);
     if (!found) return fail('NOT_FOUND');
-    const { chapter, act, after, title, slug, body, dryRun } = args ?? {};
-    const r = await insertScene(bookRootOf(found.book), { chapter, act, after, title, slug, body, dryRun: dryRun === true });
+    const { chapter, act, after, title, slug, body, status, summary, dryRun } = args ?? {};
+    const r = await insertScene(bookRootOf(found.book), { chapter, act, after, title, slug, body, ...(status !== undefined ? { status } : {}), ...(summary !== undefined ? { summary } : {}), dryRun: dryRun === true });
     if (!r.ok) return r;
     if (!r.dryRun) afterWrite(found.book.path);
     return { ...r, path: toLibRel(found.book, r.path) };
   }
 
-  const NOT_FOUND_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_CHAPTER', 'REFUSED_UNKNOWN_ACT', 'REFUSED_UNKNOWN_OP', 'REFUSED_UNKNOWN_ENTRY'];
+  const NOT_FOUND_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_CHAPTER', 'REFUSED_UNKNOWN_ACT', 'REFUSED_UNKNOWN_OP', 'REFUSED_UNKNOWN_ENTRY', 'REFUSED_UNKNOWN_THREAD'];
 
   /**
    * Run one @storyforge/manuscript structure command on a book. A real change reconciles the index before
@@ -451,6 +453,40 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       return structure(bookId, (b) => restoreEntry(b, rel, args ?? {}));
     },
     createCodexType: (bookId, args = {}) => structure(bookId, (b) => createCodexType(b, args ?? {})),
+
+    // ---- M04-J03: plot threads (canonical files only; dryRun previews with diffs)
+    createThread: (bookId, args = {}) => structure(bookId, (b) => createThread(b, args ?? {})),
+    setThreadFields: (bookId, ref, args = {}) => structure(bookId, (b) => setThreadFields(b, ref, args ?? {})),
+
+    /**
+     * Replace the body of a live thread (the text after its front matter), keeping the front matter bytes. Same conflict rule as an entry body:
+     * baseSha256 must be the file the author saw, else CONFLICT with current: { sha256, body }. ref is the thread id or slug.
+     */
+    async updateThreadBody(bookId, ref, body, { baseSha256 } = {}) {
+      if (typeof body !== 'string') return fail('BAD_ARGS', { message: 'body must be a string' });
+      const found = await findBook(bookId);
+      if (!found || typeof ref !== 'string') return fail('NOT_FOUND');
+      const result = await validate(root);
+      const doc = extractDocs(result, found.book.path).find((d) => d.kind === 'thread' && !d.archived && (d.fm.id === ref || d.fm.slug === ref));
+      if (!doc) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book));
+      const cur = await store.read(doc.rel);
+      if (!cur) return fail('NOT_FOUND');
+      const end = frontMatterEnd(cur.bytes);
+      if (end < 0) return fail('NOT_A_THREAD', { message: 'front matter is not terminated' });
+      const next = Buffer.concat([cur.bytes.subarray(0, end), Buffer.from(body, 'utf8')]);
+      const r = await store.write(doc.rel, next, { baseSha256 });
+      if (r.ok) {
+        afterWrite(found.book.path);
+        return { ok: true, code: 'OK', sha256: r.sha256 };
+      }
+      if (r.code === 'CONFLICT') {
+        const now = r.current?.bytes ?? cur.bytes;
+        const e = frontMatterEnd(now);
+        return fail('CONFLICT', { current: { sha256: r.current?.sha256 ?? cur.sha256, body: now.subarray(e < 0 ? 0 : e).toString('utf8') } });
+      }
+      return fail(r.code, r.message ? { message: r.message } : {});
+    },
 
     /**
      * Replace the body of a live entry (the text after its front matter), keeping the front matter bytes. Same conflict rule as a scene

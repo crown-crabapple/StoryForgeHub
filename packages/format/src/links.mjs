@@ -27,6 +27,7 @@ export const REFERENCES = {
   entry: [{ field: 'first_appearance', kinds: ['scene'], list: false }],
   thread: [
     { field: 'setup', kinds: ['scene'], list: true },
+    { field: 'develop', kinds: ['scene'], list: true },
     { field: 'payoff', kinds: ['scene'], list: true },
     { field: 'characters', kinds: ENTRY, list: true },
   ],
@@ -209,6 +210,12 @@ export async function resolveLinks(docs, bookDir, add) {
     }
     if (d.kind === 'thread' && fm.status === 'paid' && !(Array.isArray(fm.payoff) && fm.payoff.length > 0)) {
       add('W302', d.file, 'payoff', 'thread is paid but has no payoff');
+    }
+    if (d.kind === 'thread' && fm.status === 'planted' && !(Array.isArray(fm.setup) && fm.setup.length > 0)) {
+      add('W306', d.file, 'status', 'thread is planted but has no setup scenes');
+    }
+    if (d.kind === 'thread' && fm.status === 'developed' && !(Array.isArray(fm.develop) && fm.develop.length > 0)) {
+      add('W306', d.file, 'status', 'thread is developed but has no develop scenes');
     }
     if (d.kind === 'entry' && fm.fields && typeof fm.fields === 'object' && !Array.isArray(fm.fields)) {
       for (const [label, value] of Object.entries(fm.fields)) {

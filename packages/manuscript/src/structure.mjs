@@ -60,7 +60,7 @@ async function lineEdit(store, rel, edits, to = rel) {
   const before = await readBytes(store, rel);
   let buf = before;
   for (const e of edits) {
-    const r = editFrontMatterLine(buf, e.key, e.value, { anchors: e.anchors });
+    const r = editFrontMatterLine(buf, e.key, e.value, { anchors: e.anchors, plain: e.plain });
     if (!r.ok) {
       return { refusal: r.code === 'REFUSED_UNSIMPLE_FIELD' ? fail(r.code, `${rel}: ${r.message}`, { file: rel, field: r.field }) : fail(r.code, r.message) };
     }
@@ -81,18 +81,19 @@ const withNumber = (nums) => nums.filter((n) => Number.isInteger(n));
 // ------------------------------------------------------------------ setSceneFields
 
 /**
- * Single-line front-matter edits for title / status / pov; optionally also rename the file.
+ * Single-line front-matter edits for title / status / pov / summary; optionally also rename the file.
  * @param {string} bookRoot @param {string} sceneId
- * @param {{title?:string, status?:string, pov?:string, renameFile?:boolean, dryRun?:boolean}} args
+ * @param {{title?:string, status?:string, pov?:string, summary?:string, renameFile?:boolean, dryRun?:boolean}} args
  */
 export function setSceneFields(bookRoot, sceneId, args = {}) {
   return guarded(async () => {
-    const { title, status, pov, renameFile = false, dryRun = false } = args ?? {};
+    const { title, status, pov, summary, renameFile = false, dryRun = false } = args ?? {};
     if (typeof sceneId !== 'string') return fail('REFUSED_BAD_ARGS', 'sceneId must be a string');
-    if (title === undefined && status === undefined && pov === undefined && !renameFile) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+    if (title === undefined && status === undefined && pov === undefined && summary === undefined && !renameFile) return fail('REFUSED_BAD_ARGS', 'nothing to change');
     if (title !== undefined && (!isText(title) || title.length > 300)) return fail('REFUSED_BAD_ARGS', 'title must be a string without control characters (max 300)');
     if (status !== undefined && !STATUSES.includes(status)) return fail('REFUSED_BAD_ARGS', `status must be one of ${STATUSES.join(', ')}`);
     if (pov !== undefined && (typeof pov !== 'string' || !SLUG_RE.test(pov) || pov.length > 60)) return fail('REFUSED_BAD_ARGS', 'pov must be a codex slug');
+    if (summary !== undefined && (!isText(summary) || summary.length > 2000)) return fail('REFUSED_BAD_ARGS', 'summary must be a single line of text without line breaks (max 2000)');
     const prep = await prepare(bookRoot);
     if (prep.result) return prep.result;
     const { lb, store } = prep;
@@ -108,6 +109,7 @@ export function setSceneFields(bookRoot, sceneId, args = {}) {
     if (title !== undefined) edits.push({ key: 'title', value: title });
     if (status !== undefined) edits.push({ key: 'status', value: status });
     if (pov !== undefined) edits.push({ key: 'pov', value: pov });
+    if (summary !== undefined) edits.push({ key: 'summary', value: summary, anchors: ['pov', 'status'], plain: true });
     const r = await lineEdit(store, scene.path, edits, to);
     if (r.refusal) return r.refusal;
     return finish({
@@ -115,7 +117,7 @@ export function setSceneFields(bookRoot, sceneId, args = {}) {
       store,
       lb,
       op: 'setSceneFields',
-      args: { sceneId, title, status, pov, renameFile },
+      args: { sceneId, title, status, pov, summary, renameFile },
       changes: r.change ? [r.change] : [],
       dryRun,
       withDiff: true,

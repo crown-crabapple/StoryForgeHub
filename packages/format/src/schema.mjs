@@ -61,7 +61,8 @@ export const KINDS = {
     required: ['slug', 'title', 'kind', 'status'],
     fields: {
       slug: 'slug', title: 'str', kind: ['promise', 'question', 'mystery', 'subplot', 'arc'],
-      status: ['open', 'paid', 'abandoned'], setup: 'list', payoff: 'list', characters: 'list', previous_slugs: 'list',
+      status: ['planned', 'planted', 'developed', 'paid', 'dropped', 'unresolved', 'open', 'abandoned'],
+      setup: 'list', develop: 'list', payoff: 'list', characters: 'list', previous_slugs: 'list',
     },
   },
   event: {
@@ -99,7 +100,7 @@ export const KINDS = {
 
 /** List-valued reference fields whose items must be strings. */
 const STRING_LIST_FIELDS = new Set([
-  'characters', 'locations', 'plot_threads', 'events', 'setup', 'payoff', 'scenes', 'sources', 'links', 'fields',
+  'characters', 'locations', 'plot_threads', 'events', 'setup', 'develop', 'payoff', 'scenes', 'sources', 'links', 'fields',
 ]);
 
 /** @param {any} v */

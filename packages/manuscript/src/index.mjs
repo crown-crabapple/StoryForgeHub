@@ -13,6 +13,7 @@ export {
   restoreOp,
 } from './structure.mjs';
 export { createEntry, setEntryFields, changeEntrySlug, archiveEntry, restoreEntry, createCodexType, replaceFrontMatterBlock, entryFolder, ENTRY_STATUSES } from './codex.mjs';
+export { createThread, setThreadFields, THREAD_STATUSES, THREAD_KINDS, THREAD_LISTS } from './threads.mjs';
 export { editFrontMatterLine } from './frontmatter.mjs';
 export { unifiedDiff } from './diff.mjs';
 export { rebuildIndex, readIndex } from './indexfile.mjs';

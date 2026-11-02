@@ -131,6 +131,15 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       return entry ? { status: 200, body: entry } : NOT_FOUND;
     }
     if (c === 'entries' && d !== undefined && e === 'image' && f === undefined) return handleEntryImage(repository, b, d, params);
+    // M04-J03: threads with their scene lists and the scenes' planning fields; one thread with its text
+    if (c === 'threads' && d === undefined) {
+      const planning = await repository.listThreads(b);
+      return planning ? { status: 200, body: planning } : NOT_FOUND;
+    }
+    if (c === 'threads' && d !== undefined && e === undefined) {
+      const thread = await repository.getThread(b, d);
+      return thread ? { status: 200, body: thread } : NOT_FOUND;
+    }
     if (c === 'graph' && d === undefined) {
       const kindsParam = params.get('kinds');
       let kinds;
@@ -249,7 +258,7 @@ async function fromIndex(read) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, bookId?: string, sceneId?: string, entryId?: string, n?: string, opId?: string, file?: string } | null}
+ * @returns {{ route: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, n?: string, opId?: string, file?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
@@ -295,6 +304,10 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'entries' && d !== undefined && e === 'restore') return { route: 'entry-restore', bookId: b, entryId: d };
   if (method === 'PUT' && c === 'entries' && d !== undefined && e === 'body') return { route: 'entry-body', bookId: b, entryId: d };
   if (method === 'POST' && c === 'codex' && d === 'types' && e === undefined) return { route: 'codex-type-create', bookId: b };
+  // M04-J03 plot threads
+  if (method === 'POST' && c === 'threads' && d === undefined) return { route: 'thread-create', bookId: b };
+  if (method === 'POST' && c === 'threads' && d !== undefined && e === 'fields') return { route: 'thread-fields', bookId: b, threadId: d };
+  if (method === 'PUT' && c === 'threads' && d !== undefined && e === 'body') return { route: 'thread-body', bookId: b, threadId: d };
   return null;
 }
 
@@ -312,7 +325,7 @@ function respond(r, okStatus, okBody) {
 
 /**
  * @param {FileRepository} repository
- * @param {{ route: string, bookId?: string, sceneId?: string, entryId?: string, n?: string, opId?: string, file?: string }} match from matchWriteRoute
+ * @param {{ route: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, n?: string, opId?: string, file?: string }} match from matchWriteRoute
  * @param {unknown} body parsed JSON request body
  * @param {ApiState} [state] updated by POST /api/recover
  * @returns {Promise<ApiResult>}
@@ -375,6 +388,11 @@ export async function handleWrite(repository, match, body, state) {
       const r = await repository.updateEntryBody(bookId, /** @type {string} */ (match.entryId), body.body, { baseSha256: body.base_sha256 });
       return respond(r, 200, (x) => ({ sha256: x.sha256, words: { added: 0, removed: 0 } }));
     }
+    case 'thread-body': {
+      if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');
+      const r = await repository.updateThreadBody(bookId, /** @type {string} */ (match.threadId), body.body, { baseSha256: body.base_sha256 });
+      return respond(r, 200, (x) => ({ sha256: x.sha256, words: { added: 0, removed: 0 } }));
+    }
     case 'activity-session': {
       if (!Number.isInteger(body.minutes)) return badRequest('expected { minutes: integer >= 1 }');
       const r = await repository.recordSession(bookId, /** @type {number} */ (body.minutes));
@@ -412,10 +430,10 @@ export async function handleWrite(repository, match, body, state) {
       return respond(r, 200, (x) => ({ sha256: x.sha256 }));
     }
     case 'create': {
-      const { chapter, act, after, title, slug, body: text } = body;
+      const { chapter, act, after, title, slug, body: text, status, summary } = body;
       if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
       const dryRun = body.dryRun === true;
-      const r = await repository.createScene(bookId, { chapter, act, after, title, slug, body: text, dryRun });
+      const r = await repository.createScene(bookId, { chapter, act, after, title, slug, body: text, ...(status !== undefined ? { status } : {}), ...(summary !== undefined ? { summary } : {}), dryRun });
       return dryRun ? respond(r, 200, structureBody) : respond(r, 201, (x) => ({ id: x.id, path: x.path }));
     }
     case 'archive': {
@@ -453,8 +471,8 @@ async function handleStructure(repository, match, body) {
   const num = numberOf(match.n);
   switch (match.route) {
     case 'scene-fields': {
-      const { title, status, pov, renameFile } = body;
-      const r = await repository.setSceneFields(bookId, /** @type {string} */ (match.sceneId), { title, status, pov, renameFile: renameFile === true, dryRun });
+      const { title, status, pov, summary, renameFile } = body;
+      const r = await repository.setSceneFields(bookId, /** @type {string} */ (match.sceneId), { title, status, pov, summary, renameFile: renameFile === true, dryRun });
       return respond(r, 200, structureBody);
     }
     case 'scene-move': {
@@ -544,6 +562,16 @@ async function handleStructure(repository, match, body) {
     case 'codex-type-create': {
       const r = await repository.createCodexType(bookId, { type: body.type, name: body.name, plural: body.plural, fields: body.fields, dryRun });
       return respond(r, created, structureBody);
+    }
+    // ---- M04-J03 plot threads. `base_sha256` (optional) is the file as the author saw it: a different file on disk is a 409.
+    case 'thread-create': {
+      const r = await repository.createThread(bookId, { title: body.title, slug: body.slug, kind: body.kind, status: body.status, dryRun });
+      return respond(r, created, structureBody);
+    }
+    case 'thread-fields': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.setThreadFields(bookId, /** @type {string} */ (match.threadId), { status: body.status, setup: body.setup, develop: body.develop, payoff: body.payoff, characters: body.characters, add: body.add, remove: body.remove, dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
     }
     case 'op-restore': {
       const r = await repository.restoreOp(bookId, /** @type {string} */ (match.opId), { dryRun });

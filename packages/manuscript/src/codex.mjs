@@ -38,7 +38,7 @@ function formatScalar(v) {
   return null;
 }
 
-const flowList = (key, items) => [`${key}: [${items.map((i) => formatYamlText(i, { flow: true })).join(', ')}]`];
+export const flowList = (key, items) => [`${key}: [${items.map((i) => formatYamlText(i, { flow: true })).join(', ')}]`];
 
 /** Lines of `fields:` for [{ label, value }]. */
 const fieldsLines = (pairs) => (pairs.length === 0 ? ['fields: {}'] : ['fields:', ...pairs.map((p) => `  ${formatKey(p.label)}: ${formatScalar(p.value)}`)]);
@@ -134,7 +134,7 @@ export function replaceFrontMatterBlock(bytes, key, newLines, { after = [] } = {
 // ------------------------------------------------------------------ shared
 
 /** Open the store, validate the book. Codex commands do not need a clean manuscript: the post-write check refuses *new* errors. */
-async function prepareCodex(bookRoot) {
+export async function prepareCodex(bookRoot) {
   if (typeof bookRoot !== 'string' || bookRoot === '') return { result: fail('REFUSED_NOT_A_BOOK', 'bookRoot must be a path') };
   const root = path.resolve(bookRoot);
   const store = await openStore(root);
@@ -147,9 +147,9 @@ async function prepareCodex(bookRoot) {
 /** The live (or archived) entry document for an id or slug. */
 const findEntry = (docs, ref, archived) => docs.find((d) => d.kind === 'entry' && d.archived === archived && (d.fm.id === ref || d.fm.slug === ref || (archived && d.rel === ref))) ?? null;
 /** The author saw another version of the file than the one on disk: nothing is written. */
-const stale = (before, baseSha256, rel) => (typeof baseSha256 === 'string' && sha256(before) !== baseSha256 ? fail('CONFLICT', `${rel} changed on disk since it was read`, { file: rel }) : null);
+export const stale = (before, baseSha256, rel) => (typeof baseSha256 === 'string' && sha256(before) !== baseSha256 ? fail('CONFLICT', `${rel} changed on disk since it was read`, { file: rel }) : null);
 /** Is this slug used by a live entry, thread or event (other than `except`)? */
-const slugTaken = (docs, slug, except) => docs.some((d) => !d.archived && d !== except && ['entry', 'thread', 'event'].includes(d.kind) && d.fm.slug === slug);
+export const slugTaken = (docs, slug, except) => docs.some((d) => !d.archived && d !== except && ['entry', 'thread', 'event'].includes(d.kind) && d.fm.slug === slug);
 
 /** Fields as [{ label, value }] from an object or an ordered array of { label, value }; or an error string. */
 function normaliseFields(fields) {
@@ -322,7 +322,7 @@ export function setEntryFields(bookRoot, ref, args = {}) {
 }
 
 /** The front-matter interior of a document, latin1. */
-function frontOf(buf) {
+export function frontOf(buf) {
   const s = buf.toString('latin1');
   const range = frontMatterRange(s);
   return range ? s.slice(range.start, range.end) : '';

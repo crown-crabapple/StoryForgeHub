@@ -950,6 +950,61 @@ export function createFsRepository(libraryRoot, options = {}) {
       return { entries, chapters };
     },
 
+    /**
+     * Everything the Board, Outline, Threads and Matrix views draw, read from the files (the same answer with or without an index):
+     * { threads: [{ id, slug, title, kind, status, setup, develop, payoff, characters, path, sha256, previous_slugs, problems }],
+     *   scenes: [{ id, title, position, act, chapter, sequence, status, pov, summary, plot_threads, word_count, path, sha256 }] }.
+     * `setup`, `develop` and `payoff` hold the scene ids that resolve to a live scene, in file order; `plot_threads` of a scene holds the ids of the threads it
+     * names (by id, slug or previous slug; a name nothing resolves is left out). Scenes are in book order. Threads are by title. Null for an unknown book.
+     */
+    async listThreads(bookId) {
+      const result = await validate(root);
+      const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
+      if (!book) return null;
+      const loaded = await loadScenes(book.order);
+      const sceneIds = new Set(book.order.map((/** @type {any} */ s) => s.id));
+      const docs = extractDocs(result, book.path).filter((d) => d.kind === 'thread' && !d.archived && typeof d.fm.id === 'string');
+      const ids = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === 'string') : []);
+      const threads = [];
+      for (const doc of docs) {
+        const file = await readParsed(abs(doc.file));
+        threads.push({
+          id: doc.fm.id,
+          slug: str(doc.fm.slug),
+          title: str(doc.fm.title),
+          kind: str(doc.fm.kind),
+          status: str(doc.fm.status),
+          setup: ids(doc.fm.setup).filter((x) => sceneIds.has(x)),
+          develop: ids(doc.fm.develop).filter((x) => sceneIds.has(x)),
+          payoff: ids(doc.fm.payoff).filter((x) => sceneIds.has(x)),
+          characters: ids(doc.fm.characters),
+          previous_slugs: ids(doc.fm.previous_slugs),
+          path: doc.file,
+          sha256: file?.sha256 ?? null,
+          problems: result.diagnostics.filter((d) => d.file === doc.file && (d.severity === 'error' || d.severity === 'warning')).map((d) => ({ code: d.code, severity: d.severity, location: d.location, message: d.message })),
+        });
+      }
+      threads.sort((a, b) => cmp((a.title ?? '').toLowerCase(), (b.title ?? '').toLowerCase()) || cmp(a.id, b.id));
+      const threadOf = (ref) => threads.find((t) => t.id === ref || t.slug === ref) ?? threads.find((t) => t.previous_slugs.includes(ref)) ?? null;
+      const scenes = loaded.map(({ summary, fm, sha256 }) => ({
+        ...summary,
+        summary: str(fm.summary) ?? '',
+        plot_threads: [...new Set(ids(fm.plot_threads).map((ref) => threadOf(ref)?.id).filter((x) => typeof x === 'string'))],
+        sha256,
+      }));
+      return { threads, scenes };
+    },
+
+    /** One thread with its text: the thread of `listThreads` plus `body` (the text after the front matter, exactly as on disk). `ref` is the id or slug. Null if there is none. */
+    async getThread(bookId, ref) {
+      if (typeof ref !== 'string' || ref === '') return null;
+      const all = await repository.listThreads(bookId);
+      const thread = all?.threads.find((t) => t.id === ref || t.slug === ref);
+      if (!thread) return null;
+      const file = await readParsed(abs(thread.path));
+      return file ? { ...thread, body: file.body, sha256: file.sha256 } : null;
+    },
+
     /** The image an entry's `image` field points at (only a supported image under assets/ is ever served), like getCover. Null if there is none; `{ error: 'too_large' }` for an image over the size cap (as for covers). */
     async getEntryImage(bookId, ref) {
       const result = await validate(root);

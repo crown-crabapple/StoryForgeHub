@@ -121,13 +121,13 @@
  *     Promise<WriteResult & { sha256?: string, current?: SceneDoc | null }>,
  *   writeSceneRaw(bookId: string, sceneId: string, content: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { sha256?: string, current?: SceneDoc | null }>,
- *   createScene(bookId: string, args: { chapter: number, act?: number, after: string | null, title: string, slug: string, body: string, dryRun?: boolean }):
+ *   createScene(bookId: string, args: { chapter: number, act?: number, after: string | null, title: string, slug: string, body: string, status?: string, summary?: string, dryRun?: boolean }):
  *     Promise<WriteResult & { id?: string, path?: string }>,
  *   archiveScene(bookId: string, sceneId: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { path?: string, current?: SceneDoc | null }>,
  *   restoreScene(bookId: string, archivedPath: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { path?: string }>,
- *   setSceneFields(bookId: string, sceneId: string, args: { title?: string, status?: string, pov?: string, renameFile?: boolean, dryRun?: boolean }): Promise<StructureResult>,
+ *   setSceneFields(bookId: string, sceneId: string, args: { title?: string, status?: string, pov?: string, summary?: string, renameFile?: boolean, dryRun?: boolean }): Promise<StructureResult>,
  *   moveScene(bookId: string, sceneId: string, args: { chapter: number, act?: number, after: string | null, dryRun?: boolean }): Promise<StructureResult & { undo?: { chapter: number, act: number, after: string | null } }>,
  *   splitScene(bookId: string, sceneId: string, args: { atLine: number, dryRun?: boolean }): Promise<StructureResult>,
  *   mergeScenes(bookId: string, args: { first: string, second: string, dryRun?: boolean }): Promise<StructureResult>,
@@ -150,6 +150,12 @@
  *     appears_in: { scene_id: string, title: string, position: number, rel: string, kind: 'explicit' | 'inferred' }[],
  *     related: { id: string, name: string | null, as: string | null, direction: 'out' | 'in' }[] } | null>,
  *   listCodexEntries(bookId: string): Promise<{ entries: any[], chapters: { chapter: number, label: string }[] } | null>,
+ *   listThreads(bookId: string): Promise<{ threads: { id: string, slug: string | null, title: string | null, kind: string | null, status: string | null, setup: string[], develop: string[], payoff: string[], characters: string[], previous_slugs: string[], path: string, sha256: string | null, problems: any[] }[],
+ *     scenes: (SceneSummary & { summary: string, plot_threads: string[], sha256: string | null })[] } | null>,
+ *   getThread(bookId: string, ref: string): Promise<(Awaited<ReturnType<FileRepository['listThreads']>>['threads'][number] & { body: string }) | null>,
+ *   createThread(bookId: string, args: { title: string, slug?: string, kind?: string, status?: string, dryRun?: boolean }): Promise<StructureResult>,
+ *   setThreadFields(bookId: string, ref: string, args: { status?: string, setup?: string[], develop?: string[], payoff?: string[], characters?: string[], add?: Record<string, string[]>, remove?: Record<string, string[]>, dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
+ *   updateThreadBody(bookId: string, ref: string, body: string, opts: { baseSha256: string }): Promise<WriteResult & { sha256?: string, current?: { sha256: string, body: string } }>,
  *   getEntryImage(bookId: string, ref: string): Promise<{ bytes: Buffer, contentType: string, sha256: string } | null>,
  *   createEntry(bookId: string, args: { type: string, name: string, slug?: string, status?: string, fields?: any, dryRun?: boolean }): Promise<StructureResult>,
  *   setEntryFields(bookId: string, ref: string, args: { name?: string, status?: string, role?: string, aliases?: string[], fields?: any, related?: { to: string, as?: string }[], dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,

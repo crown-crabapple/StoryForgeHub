@@ -3,11 +3,12 @@ import path from 'node:path';
 import { openStore } from '@storyforge/store';
 import { loadBook, manuscriptErrors } from './book.mjs';
 import { commit, publicChanges } from './commit.mjs';
-import { hasSimpleField, readSimpleLine, setFields, yamlQuote } from './frontmatter.mjs';
+import { formatYamlText, hasSimpleField, readSimpleLine, setFields, yamlQuote } from './frontmatter.mjs';
 import { makePathResolver, sceneFileName, sceneSlugOf } from './paths.mjs';
 import { placeInChapter } from './seq.mjs';
 import { newSceneId, SCENE_ID_RE, SLUG_RE } from './util.mjs';
 
+const SUMMARY_BAD_RE = new RegExp(`[\x00-\x1f\x7f\x85${String.fromCharCode(0x2028, 0x2029)}]`);
 export const STATUSES = ['outline', 'drafting', 'revised', 'final'];
 export const isInt = (v, min = 0) => Number.isInteger(v) && v >= min;
 export const fail = (code, message, extra = {}) => ({ ok: false, code, changes: [], message, ...extra });
@@ -126,11 +127,11 @@ export async function placementNeighbours(store, list, place) {
 /**
  * @param {string} bookRoot
  * @param {{chapter:number, act?:number, after:string|null, title:string, slug:string, body:string,
- *          status?:string, id?:string, dryRun?:boolean}} args
+ *          status?:string, summary?:string, id?:string, dryRun?:boolean}} args
  */
 export function insertScene(bookRoot, args = {}) {
   return guarded(async () => {
-    const { chapter, act, after, title, slug, body, status = 'drafting', id, dryRun = false } = args ?? {};
+    const { chapter, act, after, title, slug, body, status = 'drafting', summary, id, dryRun = false } = args ?? {};
     if (!isInt(chapter)) return fail('REFUSED_BAD_ARGS', 'chapter must be an integer >= 0');
     if (act !== undefined && !isInt(act)) return fail('REFUSED_BAD_ARGS', 'act must be an integer >= 0');
     if (after === undefined || (after !== null && typeof after !== 'string')) {
@@ -142,6 +143,9 @@ export function insertScene(bookRoot, args = {}) {
     if (typeof slug !== 'string' || !SLUG_RE.test(slug) || slug.length > 60) return fail('REFUSED_BAD_ARGS', 'slug is not a valid slug');
     if (typeof body !== 'string') return fail('REFUSED_BAD_ARGS', 'body must be a string');
     if (!STATUSES.includes(status)) return fail('REFUSED_BAD_ARGS', `status must be one of ${STATUSES.join(', ')}`);
+    if (summary !== undefined && (typeof summary !== 'string' || SUMMARY_BAD_RE.test(summary) || summary.length > 2000)) {
+      return fail('REFUSED_BAD_ARGS', 'summary must be a single line of text without line breaks (max 2000)');
+    }
     if (id !== undefined && (typeof id !== 'string' || !SCENE_ID_RE.test(id))) return fail('REFUSED_BAD_ARGS', 'id is not a valid scene id');
 
     const prep = await prepare(bookRoot);
@@ -166,7 +170,7 @@ export function insertScene(bookRoot, args = {}) {
     const to = resolver.scenePath(sceneAct, chapter, nb.moverSequence, slug);
     const text =
       `---\nschema: storyforge.scene/v1\nid: ${newId}\ntitle: ${yamlQuote(title)}\nact: ${sceneAct}\n` +
-      `chapter: ${chapter}\nsequence: ${nb.moverSequence}\nstatus: ${status}\n---\n`;
+      `chapter: ${chapter}\nsequence: ${nb.moverSequence}\nstatus: ${status}\n${summary !== undefined && summary !== '' ? `summary: ${formatYamlText(summary)}\n` : ''}---\n`;
     const content = Buffer.concat([Buffer.from(text, 'utf8'), Buffer.from(body, 'utf8')]);
     const changes = [...nb.changes, { from: null, to, content, before: null }];
 
