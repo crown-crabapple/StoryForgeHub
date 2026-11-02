@@ -1,10 +1,12 @@
 import { Link, useLocation } from './router.jsx';
 import { LibraryView } from './LibraryView.jsx';
 import { BookView } from './BookView.jsx';
+import { PlaceholderView } from './PlaceholderView.jsx';
 import { useApi } from './api.js';
-import { SearchBox } from './SearchBox.jsx';
-import { IndexStatus } from './IndexStatus.jsx';
-import { StatusProvider } from './status.jsx';
+import { parseRoute } from './routes.js';
+import { AppShell } from './shell/AppShell.jsx';
+import { WritesProvider } from './shell/writes.jsx';
+import { StatusProvider, libraryVersion, useStatus } from './status.jsx';
 
 /** Shown when the startup recovery pass rolled an interrupted save back or needs the author's eyes. */
 function RecoverBanner() {
@@ -15,7 +17,7 @@ function RecoverBanner() {
   if (rolledBack.length === 0 && needsAttention.length === 0) return null;
   const label = (item) => `${item.op ?? 'operation'} ${item.opId}${item.files?.length ? ` (${item.files.join(', ')})` : ''}`;
   return (
-    <aside role="alert" className="recover-banner">
+    <aside role="alert" className="banner banner-warning">
       <strong>StoryForge recovered from an interrupted save.</strong>
       {rolledBack.length > 0 && (
         <>
@@ -44,18 +46,25 @@ function RecoverBanner() {
   );
 }
 
-export function App() {
+function Routes() {
   const { pathname, search } = useLocation();
-  const match = /^\/books\/([^/]+)\/?$/.exec(pathname);
+  const { status } = useStatus();
+  const { data: books } = useApi('/api/books', libraryVersion(status));
+  const route = parseRoute(pathname, search);
   let view;
-  if (pathname === '/' || pathname === '') view = <LibraryView />;
-  else if (match) {
-    const bookId = decodeURIComponent(match[1]);
-    const params = new URLSearchParams(search);
-    view = <BookView bookId={bookId} sceneId={params.get('scene')} file={params.get('file')} />;
+  let bookId = null;
+  let tab = 'manuscript';
+  if (route.name === 'library') view = <LibraryView />;
+  else if (route.name === 'book') {
+    bookId = route.bookId;
+    view = <BookView bookId={route.bookId} sceneId={route.sceneId} file={route.file} />;
+  } else if (route.name === 'tab') {
+    bookId = route.bookId;
+    tab = route.tab;
+    view = <PlaceholderView bookId={route.bookId} tab={route.tab} />;
   } else {
     view = (
-      <main className="page">
+      <main id="main" tabIndex={-1} className="page">
         <h1>Not found</h1>
         <p>
           <Link to="/">Back to the library</Link>
@@ -64,16 +73,18 @@ export function App() {
     );
   }
   return (
-    <StatusProvider>
-      <header className="topbar">
-        <Link to="/" className="brand">
-          StoryForge
-        </Link>
-        <SearchBox />
-        <IndexStatus />
-      </header>
-      <RecoverBanner />
+    <AppShell books={books} bookId={bookId} tab={tab} banner={<RecoverBanner />}>
       {view}
+    </AppShell>
+  );
+}
+
+export function App() {
+  return (
+    <StatusProvider>
+      <WritesProvider>
+        <Routes />
+      </WritesProvider>
     </StatusProvider>
   );
 }

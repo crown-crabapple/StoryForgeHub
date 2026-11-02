@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { postJson } from './api.js';
 import { RepairDialog } from './RepairDialog.jsx';
 import { Link } from './router.jsx';
+import { Dialog } from './shell/Dialog.jsx';
 import { useStatus, worstState } from './status.jsx';
 
 const LABEL = {
@@ -26,8 +27,8 @@ function StatusPanel({ status, onClose, onRepair, onRebuild, busy }) {
     ...recover.rolledBack.map((i) => ({ ...i, kind: 'rolled back' })),
   ];
   return (
-    <section className="status-panel" role="dialog" aria-label="Status">
-      <h3>Status</h3>
+    <Dialog label="Status" onClose={onClose} className="status-panel">
+      <h2>Status</h2>
       <p>
         <strong>Watching files:</strong> {watch.mode === 'watch' ? 'live' : 'checking every few seconds'}
         {watch.reason ? <span className="muted"> ({watch.reason})</span> : null}
@@ -36,7 +37,7 @@ function StatusPanel({ status, onClose, onRepair, onRebuild, busy }) {
           last change seen {time(watch.last_event_at)} · {watch.pending} waiting · pid {instance.pid}
         </span>
       </p>
-      <h4>Books</h4>
+      <h3>Books</h3>
       <ul className="status-books">
         {books.map((b) => (
           <li key={b.path || '.'}>
@@ -50,7 +51,7 @@ function StatusPanel({ status, onClose, onRepair, onRebuild, busy }) {
       </ul>
       {invalid.length > 0 && (
         <>
-          <h4>Files that can't be read</h4>
+          <h3>Files that can't be read</h3>
           <ul>
             {invalid.map((b) =>
               b.invalid_paths.map((file) => (
@@ -70,7 +71,7 @@ function StatusPanel({ status, onClose, onRepair, onRebuild, busy }) {
       )}
       {recovered.length > 0 && (
         <>
-          <h4>Interrupted saves</h4>
+          <h3>Interrupted saves</h3>
           <ul>
             {recovered.map((i) => (
               <li key={i.opId}>
@@ -82,17 +83,17 @@ function StatusPanel({ status, onClose, onRepair, onRebuild, busy }) {
         </>
       )}
       <p className="status-actions">
-        <button type="button" onClick={onRebuild} disabled={busy}>
+        <button type="button" className="btn" onClick={onRebuild} disabled={busy}>
           Rebuild index
         </button>{' '}
-        <button type="button" onClick={onRepair} disabled={busy}>
+        <button type="button" className="btn" onClick={onRepair} disabled={busy}>
           Repair…
         </button>{' '}
-        <button type="button" onClick={onClose}>
+        <button type="button" className="btn" onClick={onClose}>
           Close
         </button>
       </p>
-    </section>
+    </Dialog>
   );
 }
 
@@ -126,7 +127,7 @@ export function IndexStatus() {
         title={LABEL[shown]}
       >
         <span className={`dot dot-${shown}`} role="img" aria-label={LABEL[shown]} />
-        <span className="muted">{shown}</span>
+        <span className="secondary">{shown}</span>
       </button>
       {open && <StatusPanel status={status} onClose={() => setOpen(false)} onRepair={() => setRepairing(true)} onRebuild={rebuild} busy={busy} />}
       {repairing && (

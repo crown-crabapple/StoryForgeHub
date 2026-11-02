@@ -48,6 +48,14 @@ export default [
     },
   },
 
+  // apps/web tests run in Node (node:test, node:fs); they still must not reach into workspace packages.
+  {
+    files: ['apps/web/test/**/*.mjs'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [{ group: ['@storyforge/*'], message: 'The web app talks to the server over /api only.' }] }],
+    },
+  },
+
   // apps/server: routes go through the FileRepository; static.mjs is the one exception (reads only).
   // Tests are exempt: they copy fixtures to temp folders.
   {

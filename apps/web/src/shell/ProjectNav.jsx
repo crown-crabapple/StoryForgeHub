@@ -1,0 +1,19 @@
+import { Link } from '../router.jsx';
+import { PROJECT_TABS, tabHref } from '../routes.js';
+
+/** Manuscript · Codex · Timeline · Places · Notes, as real links. @param {{ bookId: string, active: string }} props */
+export function ProjectNav({ bookId, active }) {
+  return (
+    <nav aria-label="Project" className="project-nav">
+      <ul>
+        {PROJECT_TABS.map((t) => (
+          <li key={t.key}>
+            <Link to={tabHref(bookId, t.key)} className="project-tab" aria-current={t.key === active ? 'page' : undefined}>
+              {t.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}

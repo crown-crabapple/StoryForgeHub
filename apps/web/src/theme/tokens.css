@@ -1,0 +1,81 @@
+/* StoryForge design tokens (M02-J01). Contrast pairs are checked by test/contrast.test.mjs. */
+:root {
+  /* Surfaces */
+  --bg: #0E0E10;
+  --surface: #16161A;
+  --surface-2: #1C1C21; /* hover */
+  --divider: #26262C;
+  --border: #2A2A31;
+
+  /* Text. --muted is for labels on --bg and --surface only (4.22:1 on --border, so never there). */
+  --text: #ECECEF;
+  --text-2: #D4D4D8; /* prose */
+  --text-3: #A1A1AA; /* secondary */
+  --muted: #8B8B95; /* labels */
+
+  /* Accent (gold by default; see the [data-accent] overrides below) */
+  --accent: #E0A64B;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-ink: #141414; /* text on accent */
+
+  /* States: lighter or darker than the accent, so they never differ by hue alone */
+  --danger: #E8575C;
+  --warning: #F0C27A;
+  --ok: #6FCF8E;
+
+  /* Type */
+  --font-ui: 'Inter Variable', Inter, system-ui, sans-serif;
+  --font-prose: 'Literata Variable', Literata, Georgia, serif;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-15: 15px;
+  --fs-17: 17px;
+  --fs-h3: 22px;
+  --fs-h2: 28px;
+  --fs-h1: 30px;
+  --fs-prose: 18px;
+  --lh-prose: 1.7;
+  --measure: 72ch;
+
+  /* Space: 4px base */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 28px;
+  --s8: 32px;
+
+  /* Radius */
+  --r-control: 8px;
+  --r-input: 10px;
+  --r-card: 12px;
+
+  /* Focus: used on :focus-visible only */
+  --focus: 2px solid var(--accent);
+  --focus-offset: 2px;
+
+  /* Layout */
+  --rail: 260px;
+  --inspector: 340px;
+  --topbar: 56px;
+
+  color-scheme: dark;
+}
+
+/* The four reference accents. Choosing one is a setting in M07; this only makes it possible. */
+[data-accent='#E0A64B'] {
+  --accent: #E0A64B;
+}
+[data-accent='#E8743B'] {
+  --accent: #E8743B;
+  --danger: #FF9A9A; /* red-orange hues are close, so this accent pairs with a much lighter red */
+}
+[data-accent='#6FA8DC'] {
+  --accent: #6FA8DC;
+}
+[data-accent='#7FB685'] {
+  --accent: #7FB685;
+}

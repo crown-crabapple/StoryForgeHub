@@ -54,3 +54,8 @@ export function bookVersion(status, bookId) {
   const b = status?.books?.find((x) => x.book_id === bookId);
   return b ? `${b.index}|${b.last_reconciled_at ?? ''}|${(b.invalid_paths ?? []).join(',')}` : '';
 }
+
+/** A change signature for the whole library: when it differs, the list of books is worth fetching again. */
+export function libraryVersion(status) {
+  return (status?.books ?? []).map((b) => `${b.book_id}|${b.last_reconciled_at ?? ''}`).join(';');
+}

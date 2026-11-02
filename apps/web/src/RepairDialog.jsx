@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { postJson } from './api.js';
+import { Dialog } from './shell/Dialog.jsx';
+import { useWrites } from './shell/writes.jsx';
 
 const describe = (a) => (a.kind === 'rename' ? `Rename ${a.from} → ${a.to}` : `Renumber chapter ${a.chapter}`);
 
@@ -9,6 +11,7 @@ export function RepairDialog({ books, onClose }) {
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [results, setResults] = useState(null);
+  const { track } = useWrites();
 
   useEffect(() => {
     let stop = false;
@@ -36,7 +39,7 @@ export function RepairDialog({ books, onClose }) {
     const out = [];
     for (const { book, plan } of work) {
       try {
-        const { status, json } = await postJson(`/api/books/${encodeURIComponent(book.book_id)}/repair`, { actions: plan.actions });
+        const { status, json } = await track(book.book_id, () => postJson(`/api/books/${encodeURIComponent(book.book_id)}/repair`, { actions: plan.actions }));
         out.push({ book, ok: status === 200, text: status === 200 ? 'Repaired.' : `Not repaired: ${json?.message ?? json?.code ?? status}` });
       } catch {
         out.push({ book, ok: false, text: 'Not repaired: the server could not be reached.' });
@@ -47,15 +50,14 @@ export function RepairDialog({ books, onClose }) {
   }
 
   return (
-    <div className="dialog-backdrop">
-      <section className="dialog" role="dialog" aria-modal="true" aria-label="Repair">
-        <h3>Repair</h3>
+    <Dialog label="Repair" onClose={onClose}>
+        <h2>Repair</h2>
         {error && <p className="error">{error}</p>}
         {!plans && !error && <p className="muted">Looking at the books...</p>}
         {plans &&
           plans.map(({ book, plan }) => (
             <div key={book.book_id}>
-              <h4>{book.title ?? (book.path || 'Book')}</h4>
+              <h3>{book.title ?? (book.path || 'Book')}</h3>
               {plan.actions.length === 0 && plan.unrepairable.length === 0 && <p className="muted">Nothing to repair.</p>}
               {plan.actions.length > 0 && (
                 <ul>
@@ -86,14 +88,13 @@ export function RepairDialog({ books, onClose }) {
             </div>
           ))}
         <p className="status-actions">
-          <button type="button" onClick={apply} disabled={busy || work.length === 0 || results !== null}>
+          <button type="button" className="btn btn-primary" onClick={apply} disabled={busy || work.length === 0 || results !== null}>
             Apply
           </button>{' '}
-          <button type="button" onClick={onClose}>
+          <button type="button" className="btn" onClick={onClose}>
             {results ? 'Close' : 'Cancel'}
           </button>
         </p>
-      </section>
-    </div>
+      </Dialog>
   );
 }

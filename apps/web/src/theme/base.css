@@ -1,0 +1,83 @@
+/* Base styles: reset, body, headings, focus ring, skip link. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--fs-14);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: var(--focus);
+  outline-offset: var(--focus-offset);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+}
+h1 {
+  font-family: var(--font-prose);
+  font-size: var(--fs-h1);
+}
+
+.muted {
+  color: var(--muted);
+}
+.secondary {
+  color: var(--text-3);
+}
+.error {
+  color: var(--danger);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--s2);
+  top: var(--s2);
+  z-index: 100;
+  padding: var(--s2) var(--s4);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  border-radius: var(--r-control);
+  transform: translateY(-200%);
+}
+.skip-link:focus {
+  transform: none;
+  text-decoration: none;
+}
