@@ -26,6 +26,7 @@ import { nameIndex } from './names.js';
 import { ACCEPT, uploadAttachment } from '../notes/upload.js';
 import { CheckDialog } from '../suggestions/CheckReport.jsx';
 import { checkRequest, explainSuggestionFailure } from '../suggestions/model.js';
+import { flushOnLeave } from '../receipts/model.js';
 import { createSaveController, draftOffer } from './save-controller.js';
 import { EditorToolbar } from './Toolbar.jsx';
 import { countWords, describeCount, selectionWords } from './wordcount.js';
@@ -360,6 +361,18 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     if (snap) setEditor({ bookId: book.id, state: snap.state, savedAt: snap.savedAt });
   }, [snap, book.id, setEditor]);
   useEffect(() => () => setEditor(null), [setEditor]);
+
+  // Receipts (contract 2c): leaving this scene (another one opened, the editor closed) or hiding the page records the author's saved changes
+  useEffect(() => {
+    const bookId = book.id;
+    const sceneId = scene.id;
+    const onHide = () => flushOnLeave(bookId, sceneId, { keepalive: true });
+    window.addEventListener('pagehide', onHide);
+    return () => {
+      window.removeEventListener('pagehide', onHide);
+      flushOnLeave(bookId, sceneId);
+    };
+  }, [book.id, scene.id]);
 
   // ---- the file may have changed outside (the book was reconciled and the scene came back with another hash)
   useEffect(() => {

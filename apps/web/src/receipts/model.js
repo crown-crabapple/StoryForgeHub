@@ -155,3 +155,23 @@ export function readBlame(data) {
   }
   return out;
 }
+
+/**
+ * Contract 2(c): the scene is being left (another scene opened, the editor closed, the page hidden): record the author's saved changes as a receipt.
+ * Fire and forget: never throws, never waits. `keepalive` lets the request outlive a closing page.
+ * @param {string} bookId @param {string} sceneId @param {{ keepalive?: boolean, fetchImpl?: typeof fetch }} [opts]
+ */
+export function flushOnLeave(bookId, sceneId, { keepalive = false, fetchImpl = typeof fetch === 'function' ? fetch : undefined } = {}) {
+  const r = flushRequest(bookId, sceneId);
+  try {
+    const p = fetchImpl?.(r.url, {
+      method: r.method,
+      headers: { 'content-type': 'application/json', 'x-storyforge': '1', accept: 'application/json' },
+      body: JSON.stringify(r.body),
+      ...(keepalive ? { keepalive: true } : {}),
+    });
+    p?.catch?.(() => {});
+  } catch {
+    // a receipt never blocks navigation
+  }
+}

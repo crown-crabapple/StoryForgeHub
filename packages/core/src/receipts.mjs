@@ -76,7 +76,7 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
   /** AI proposals announced by the J04 `ai.proposal` event, waiting for the suggestion that follows (keyed bookId|sceneId). */
   const announced = new Map();
   /** Scenes the author saved since their last flush (an outside change event on these is not claimed as external). */
-  const pending = new Set();
+  const pending = new Map();
   /** Scenes seen to differ from their last receipt when watching started (changed while StoryForge was closed): their next flush is an `external.change`. */
   const externalMarks = new Set();
 
@@ -231,7 +231,7 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
         if (prev && nowMs() - Date.parse(prev.at) >= FLUSH_AFTER_MS) {
           await s.ensureCurrent(sceneId, rel, next, 'author');
           pending.delete(`${store.root}|${sceneId}`);
-        } else pending.add(`${store.root}|${sceneId}`);
+        } else pending.set(`${store.root}|${sceneId}`, { bookRoot: store.root, sceneId, rel });
         return null;
       })
       .catch(() => {});
@@ -261,7 +261,7 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
       if (prev && nowMs() - Date.parse(prev.at) >= FLUSH_AFTER_MS) {
         await s.ensureCurrent(sceneId, rel, next, 'author');
         pending.delete(`${store.root}|${sceneId}`);
-      } else pending.add(`${store.root}|${sceneId}`);
+      } else pending.set(`${store.root}|${sceneId}`, { bookRoot: store.root, sceneId, rel });
     } catch {
       // as above
     }
@@ -426,6 +426,25 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
       return flushDoc(ctx.store, sceneId, ctx.doc.rel);
     },
   };
+
+  /**
+   * Graceful shutdown: record every scene the author saved since its last receipt as an `author.edit`, so a restart does not mistake those saves for outside
+   * changes. Bounded by `timeoutMs`; errors are ignored (the next flush attributes what is left).
+   */
+  async function flushPending(timeoutMs = 5000) {
+    const work = (async () => {
+      for (const p of [...pending.values()]) {
+        try {
+          await flushDoc(await openStore(p.bookRoot, { recover: false }), p.sceneId, p.rel);
+        } catch {
+          // left for the next flush
+        }
+      }
+    })();
+    let timer;
+    await Promise.race([work, new Promise((r) => { timer = setTimeout(r, timeoutMs); })]);
+    clearTimeout(timer);
+  }
 
   // ------------------------------------------------------------------ the watcher's external changes
 
@@ -760,6 +779,7 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
     announced,
     pending,
     externalCheck,
+    flushPending,
     record,
     stageDecision,
     saveWithReceipts,
