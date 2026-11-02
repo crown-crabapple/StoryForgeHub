@@ -5,7 +5,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { copyFixture, makeFramework, run, read, put, exists, parseConcatenatedJson } from './helpers.mjs';
+import { copyFixture, makeFramework, run, read, put, parseConcatenatedJson } from './helpers.mjs';
 
 const CH1 = 'scene_01C7000000000000000000000F'; // Lamp Room (ch 1)
 const CH1B = 'scene_01C7000000000000000000000G'; // The Dock (ch 1)
@@ -47,16 +47,6 @@ before(() => {
 
 const ctx = (rel) => read(fw, `${WORK}/context/${rel}`);
 const events = () => parseConcatenatedJson(ctx('state-events.md'));
-
-/** Lines of `text` under the section whose heading matches `re`, up to the next heading. */
-function section(text, re) {
-  const lines = text.split('\n');
-  const start = lines.findIndex((l) => /^#{1,6} /.test(l) && re.test(l));
-  if (start < 0) return null;
-  const out = [];
-  for (let i = start + 1; i < lines.length && !/^#{1,6} /.test(lines[i]); i++) out.push(lines[i]);
-  return out.join('\n');
-}
 
 test('state-events.md holds state items before chapter 3 in the documented shape', () => {
   const ev = events();
@@ -103,17 +93,18 @@ test('knowledge files exist only for characters, not for objects or locations', 
 });
 
 test('state/current/characters.md: Cleo is dead, Ana is alive and at the market', () => {
-  const t = ctx('state/current/characters.md');
-  const lines = t.split('\n');
-  const cleo = lines.find((l) => /cleo/i.test(l) && /^\s*[-*]/.test(l));
-  assert.ok(cleo, 'a bullet about Cleo');
-  const dead = section(t, /dead/i);
-  assert.ok((dead && /cleo/i.test(dead)) || /dead|died/i.test(cleo), 'Cleo listed as dead');
-  const ana = lines.filter((l) => /ana/i.test(l) && /^\s*[-*]/.test(l)).join('\n');
-  assert.ok(/market/i.test(ana), 'Ana is at the market (latest location)');
-  assert.ok(!/lighthouse/i.test(ana), 'the earlier location is superseded');
-  assert.ok(!(dead && /ana/i.test(dead)), 'Ana is not dead');
-  assert.ok(!/dov/i.test(dead ?? ''), 'Dov dies later than chapter 2');
+  const blocks = ctx('state/current/characters.md').split(/^## /m).slice(1);
+  const about = (re) => {
+    const b = blocks.filter((x) => re.test(x));
+    assert.equal(b.length, 1, `exactly one block for ${re}`);
+    return b[0];
+  };
+  assert.match(about(/cleo/i), /dead|died/i, 'Cleo is dead');
+  const ana = about(/ana/i);
+  assert.doesNotMatch(ana, /dead|died/i, 'Ana is alive');
+  assert.match(ana, /market/i, 'Ana is at the market (latest location)');
+  assert.doesNotMatch(ana, /lighthouse/i, 'the earlier location is superseded');
+  assert.doesNotMatch(about(/dov/i), /dead|died/i, 'Dov dies later than chapter 2');
 });
 
 test('state/current/inventory.md: Cleo holds the brass bell', () => {
@@ -138,10 +129,4 @@ test('state/current/situation.md: derived header and at most the last five event
   assert.ok(bullets.length >= 1 && bullets.length <= 5, `${bullets.length} bullets`);
   assert.ok(bullets.some((l) => l.includes('Cleo rings the bell')), 'latest event is listed');
   assert.ok(!t.includes('Dov dies'));
-});
-
-test('templates headings are preserved in the derived state files', () => {
-  assert.match(ctx('state/current/characters.md'), /^## Dead/m);
-  assert.match(ctx('state/current/inventory.md'), /^## Holders/m);
-  assert.ok(exists(fw, `${WORK}/context/state/current/situation.md`));
 });
