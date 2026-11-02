@@ -1,12 +1,14 @@
 // FsRepository: the only core module that reads project files. Reads only; caches nothing.
 // Every change goes through fs-writes.mjs -> @storyforge/store.
 import { createHash } from 'node:crypto';
-import { readFile, realpath, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { discover, escapesRoot, validate } from '@storyforge/format';
+import { discover, escapesRoot, isFile, validate } from '@storyforge/format';
 import { bookFacts } from '@storyforge/index';
 import { applyRepair, planRepair } from '@storyforge/manuscript';
+import { listTemplates } from '@storyforge/templates';
+import { createBookMethod } from './create-book.mjs';
 import { createIndexManager } from './index-manager.mjs';
 import { createWatcher } from './watcher.mjs';
 import { createWriteMethods } from './fs-writes.mjs';
@@ -77,6 +79,49 @@ function isInside(dir, base) {
   return rel === '' || !(rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel));
 }
 
+/**
+ * Can this folder be opened as the library? Read-only checks, in the order of the M02-J03 contract:
+ * an absolute path to an existing folder (not inside a .storyforge/ folder) that is a book, or has a book
+ * within two levels. Failures are { ok: false, code: 'NOT_FOUND' | 'NOT_A_FOLDER' | 'NO_BOOKS', message }.
+ * @param {unknown} input
+ * @returns {Promise<{ ok: true, path: string } | { ok: false, code: 'NOT_FOUND' | 'NOT_A_FOLDER' | 'NO_BOOKS', message: string }>}
+ */
+export async function checkLibraryFolder(input) {
+  const bad = (code, message) => ({ ok: false, code, message });
+  const raw = typeof input === 'string' ? input.trim() : '';
+  if (raw === '' || !path.isAbsolute(raw)) {
+    return bad('NOT_FOUND', 'Type the full path of the folder, for example C:\\Books or /home/me/books.');
+  }
+  const p = path.resolve(raw);
+  if (p.split(path.sep).some((part) => part.toLowerCase() === '.storyforge')) {
+    return bad('NOT_A_FOLDER', 'That path is inside a StoryForge working folder. Choose the folder that holds your books.');
+  }
+  let st;
+  try {
+    st = await stat(p);
+  } catch {
+    return bad('NOT_FOUND', 'That folder was not found.');
+  }
+  if (!st.isDirectory()) return bad('NOT_A_FOLDER', 'That path is a file, not a folder.');
+  if (await isFile(path.join(p, 'book.md'))) return { ok: true, path: p };
+  try {
+    const found = await discover(p, (await isFile(path.join(p, 'series.md'))) ? 'series' : 'library', noop);
+    if (found.books.length > 0) return { ok: true, path: p };
+  } catch {
+    // an unreadable folder has no books we can use
+  }
+  return bad('NO_BOOKS', 'That folder has no books in it.');
+}
+
+/** True if `p` is an existing folder (used to flag recent libraries that have gone). @param {string} p */
+export async function folderExists(p) {
+  try {
+    return (await stat(p)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 /** Manuscript-structure errors (E1xx/E2xx under manuscript/), as the manuscript contract's rule 5 defines them. */
 const isStructureError = (d) => d.severity === 'error' && /^E[12]\d\d$/.test(d.code) && d.file.startsWith('manuscript/');
 const problemOf = (d) => ({ code: d.code, message: d.message });
@@ -99,6 +144,47 @@ export function createFsRepository(libraryRoot, options = {}) {
   const manager = createIndexManager(root);
   const watcher = createWatcher({ root, manager, options: { ...options, ...(options.watcher ?? {}) } });
   watcher.start();
+
+  /** The questions createBook asks about the library (reads only). @type {import('./create-book.mjs').CreateProbe} */
+  const createProbe = {
+    async libraryKind() {
+      if (await isFile(path.join(root, 'book.md'))) return 'book';
+      return (await isFile(path.join(root, 'series.md'))) ? 'series' : 'library';
+    },
+    async bookSlugs() {
+      return (await validate(root)).books.map((/** @type {any} */ b) => b.slug).filter((/** @type {unknown} */ x) => typeof x === 'string');
+    },
+    async penNameSlugs() {
+      const names = (await readParsed(path.join(root, 'library.md')))?.fm.pen_names;
+      return Array.isArray(names) ? names.map((n) => n?.slug).filter((x) => typeof x === 'string') : [];
+    },
+    async findSeries(seriesSlug) {
+      let entries;
+      try {
+        entries = (await readdir(root, { withFileTypes: true })).sort((a, b) => cmp(a.name, b.name));
+      } catch {
+        return null;
+      }
+      for (const e of entries) {
+        if (e.name.startsWith('.')) continue;
+        const dirAbs = path.join(root, e.name);
+        const isDir = e.isDirectory() || (e.isSymbolicLink() && (await stat(dirAbs).then((x) => x.isDirectory(), () => false)));
+        if (!isDir || (await readParsed(path.join(dirAbs, 'series.md')))?.fm.slug !== seriesSlug) continue;
+        const real = await realpath(dirAbs).then(async (r) => isInside(r, await realpath(root)), () => false);
+        const usedNumbers = [];
+        for (const b of (await discover(root, 'library', noop)).books) {
+          if (b.seriesPath !== e.name) continue;
+          const n = num((await readParsed(path.join(root, ...b.path.split('/'), 'book.md')))?.fm.series_number);
+          if (n !== null) usedNumbers.push(n);
+        }
+        return { dir: e.name, usedNumbers, real };
+      }
+      return null;
+    },
+    async exists(relDir) {
+      return lstat(abs(relDir)).then(() => true, () => false);
+    },
+  };
   /** @param {string} rel */
   const abs = (rel) => path.join(root, ...rel.split('/').filter(Boolean));
 
@@ -394,10 +480,15 @@ export function createFsRepository(libraryRoot, options = {}) {
 
   /** @type {FileRepository} */
   const repository = {
+    root,
+
     async libraryInfo() {
       const result = await validate(root);
       const lib = await readParsed(path.join(root, 'library.md'));
-      return { root, title: lib ? str(lib.fm.title) : null, diagnostics: result.diagnostics, series: await seriesList() };
+      const penNames = Array.isArray(lib?.fm.pen_names)
+        ? lib.fm.pen_names.filter((n) => typeof n?.slug === 'string').map((n) => ({ name: str(n.name) ?? n.slug, slug: n.slug }))
+        : [];
+      return { root, title: lib ? str(lib.fm.title) : null, diagnostics: result.diagnostics, series: await seriesList(), pen_names: penNames };
     },
 
     async getCover(bookId) {
@@ -573,6 +664,19 @@ export function createFsRepository(libraryRoot, options = {}) {
       if (r.ok) await manager.reconcile(book.path, 'repair', { full: true });
       return r;
     },
+
+    listTemplates: () => listTemplates(),
+
+    /** Create a book from a template: see create-book.mjs. Resolves with { ok, bookId, path } or { ok: false, code, field, message }. */
+    createBook: createBookMethod({
+      root,
+      probe: createProbe,
+      async afterCreate(bookPath, bookId) {
+        if (bookId) manager.learn(bookPath, bookId);
+        await manager.reconcile(bookPath, 'create');
+        await watcher.rescan();
+      },
+    }),
 
     async close() {
       await watcher.ready;

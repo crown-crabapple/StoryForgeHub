@@ -120,6 +120,10 @@
  *   restoreScene(bookId: string, archivedPath: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { path?: string }>,
  *   recover(): Promise<RecoverReport>,
+ *   root: string,
+ *   listTemplates(): Promise<{ name: string, title: string, description: string, beats: string[], acts: number, chapters: number, scenes: number }[]>,
+ *   createBook(input: { title: string, slug?: string, template: string, seriesSlug?: string, seriesNumber?: number, penName?: string }):
+ *     Promise<{ ok: true, bookId: string, path: string } | { ok: false, code: string, field: string | null, message: string, diagnostics?: any[] }>,
  *   search(q: string, opts?: { bookId?: string, kinds?: string[], limit?: number }):
  *     Promise<{ book_id: string | null, id: string, kind: string, title: string, path: string | null, snippet: string }[]>,
  *   getBacklinks(bookId: string, id: string): Promise<any[] | null>,

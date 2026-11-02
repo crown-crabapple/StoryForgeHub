@@ -1,10 +1,10 @@
 // Recovery: settle journal entries that are still `pending` (see the M01-J02 contract table).
 // Never deletes a file; writes a project file only to restore a trashed copy.
-import { copyFile, mkdir } from 'node:fs/promises';
+import { copyFile, mkdir, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { absOf, atomicWrite, kindOf, readOrNull, sha256 } from './atomic.mjs';
+import { absOf, atomicWrite, kindOf, moveFile, readOrNull, sha256 } from './atomic.mjs';
 import { listJournal, writeJournal } from './journal.mjs';
-import { moveAbsToTrash, trashPath } from './trash.mjs';
+import { moveAbsToTrash, trashDir, trashPath } from './trash.mjs';
 
 const diskSha = async (root, rel) => {
   const bytes = await readOrNull(absOf(root, rel));
@@ -73,6 +73,47 @@ export async function settleEntry(root, entry, { rollback = false } = {}) {
   return { outcome, files: entry.files.map((f) => f.rel) };
 }
 
+/** A staged folder goes to the trash (never deleted): trash/<name>/<sub>. */
+async function stagedToTrash(root, name, stagingAbs, sub) {
+  const dest = path.join(trashDir(root, name), sub);
+  await mkdir(path.dirname(dest), { recursive: true });
+  await moveFile(stagingAbs, dest);
+}
+
+/**
+ * Settle a pending createTree entry. A staged folder that is still there means the rename never happened:
+ * it goes to the trash. No staged folder but the target in place means the rename landed before the crash.
+ * @returns {Promise<{ outcome: 'completed'|'rolledBack', files: string[] }>}
+ */
+async function settleTree(root, entry) {
+  const staging = absOf(root, entry.tree.staging);
+  let outcome;
+  if ((await kindOf(staging)) === 'dir') {
+    await stagedToTrash(root, entry.opId, staging, 'staged');
+    outcome = 'rolledBack';
+  } else {
+    outcome = (await kindOf(absOf(root, entry.tree.target))) === 'dir' ? 'completed' : 'rolledBack';
+  }
+  await writeJournal(root, { ...entry, state: outcome, settled_at: new Date().toISOString() });
+  return { outcome, files: [entry.tree.target] };
+}
+
+/** Staging folders no journal entry accounts for (e.g. a crash before the entry was written) go to the trash. */
+async function sweepStaging(root, report) {
+  let names;
+  try {
+    names = await readdir(path.join(root, '.storyforge', 'staging'));
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    const abs = path.join(root, '.storyforge', 'staging', name);
+    if (name.startsWith('.') || (await kindOf(abs)) !== 'dir') continue;
+    await stagedToTrash(root, name, abs, 'staged');
+    report.rolledBack.push({ opId: name, op: 'createTree', files: [] });
+  }
+}
+
 /**
  * @param {string} root
  * @returns {Promise<{ completed: object[], rolledBack: object[], needsAttention: object[] }>}
@@ -87,13 +128,18 @@ export async function recoverRoot(root) {
     if (entry.state !== 'pending') continue;
     let r;
     try {
-      r = await settleEntry(root, entry);
+      r = entry.op === 'createTree' && entry.tree ? await settleTree(root, entry) : await settleEntry(root, entry);
     } catch (e) {
       r = { outcome: 'needsAttention', files: entry.files.map((f) => f.rel), reason: String(e?.message ?? e) };
     }
     const item = { opId: entry.opId, op: entry.op, files: r.files };
     if (r.outcome === 'needsAttention') report.needsAttention.push({ ...item, reason: r.reason });
     else report[r.outcome].push(item);
+  }
+  try {
+    await sweepStaging(root, report);
+  } catch (e) {
+    report.needsAttention.push({ opId: null, op: 'createTree', files: [], reason: String(/** @type {any} */ (e)?.message ?? e) });
   }
   return report;
 }

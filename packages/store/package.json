@@ -10,5 +10,8 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "@storyforge/format": "0.1.0"
   }
 }

@@ -144,6 +144,14 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {} }) {
       const result = await validate(root);
       const report = { completed: [], rolledBack: [], needsAttention: [] };
       const seen = new Set();
+      // the library folder has a journal of its own (a new book that was being put in place)
+      if (!result.books.some((/** @type {any} */ b) => b.path === '')) {
+        seen.add('');
+        const r = await (await openStore(root, { recover: false })).recover();
+        for (const key of /** @type {const} */ (['completed', 'rolledBack', 'needsAttention'])) {
+          for (const item of r[key]) report[key].push({ ...item, book: '' });
+        }
+      }
       for (const book of result.books) {
         if (seen.has(book.path)) continue;
         seen.add(book.path);

@@ -1,5 +1,6 @@
 // HTTP server: loopback guard, JSON API (reads, plus guarded writes), static web app.
 import http from 'node:http';
+import { createLibraryHost } from '@storyforge/core';
 import { handleApi, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
 import { hasWriteHeaders, isRequestAllowed } from './security.mjs';
 import { serveStatic } from './static.mjs';
@@ -45,17 +46,29 @@ function readBody(req) {
 }
 
 /**
- * @param {{ repository: import('@storyforge/core').FileRepository, webRoot?: string, recoverReport?: unknown,
- *           instance?: { pid: number, started_at: string, lock: string } }} options
+ * @param {{ repository?: import('@storyforge/core').FileRepository, host?: ReturnType<typeof createLibraryHost>, webRoot?: string,
+ *           recoverReport?: unknown, instance?: { pid: number, started_at: string, lock: string } }} options
+ *   `host` owns the library being served and switches to another one (POST /api/library/open); without it the
+ *   server makes one around `repository`, which holds no lock of its own. Every request uses the host's current repository.
  *   `recoverReport` is the result of the recover() run at startup; GET /api/recover/last serves it.
  *   `instance` is what GET /api/status reports about this process (the lock it holds); default: no lock.
  * @returns {import('node:http').Server} not yet listening; callers bind it to 127.0.0.1
  */
-export function createServer({ repository, webRoot, recoverReport, instance }) {
+export function createServer({ repository, host, webRoot, recoverReport, instance }) {
+  let libraryHost = host ?? null;
+  if (!libraryHost && repository) {
+    try {
+      libraryHost = createLibraryHost({ repository });
+    } catch {
+      libraryHost = null; // a repository without a root cannot be switched away from
+    }
+  }
   const state = {
     lastRecover: recoverReport ?? { completed: [], rolledBack: [], needsAttention: [] },
     instance: instance ?? { pid: process.pid, started_at: new Date().toISOString(), lock: 'none' },
+    host: libraryHost,
   };
+  const current = () => /** @type {any} */ (libraryHost ? libraryHost.repository : repository);
   const server = http.createServer(async (req, res) => {
     try {
       const address = server.address();
@@ -78,11 +91,11 @@ export function createServer({ repository, webRoot, recoverReport, instance }) {
         } catch {
           return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
         }
-        const { status, body } = await handleWrite(repository, match, parsed, state);
+        const { status, body } = await handleWrite(current(), match, parsed, state);
         return sendJson(res, status, body);
       }
       if (isApiPath(pathname)) {
-        const { status, body, raw } = await handleApi(repository, pathname, state, new URLSearchParams(queryString));
+        const { status, body, raw } = await handleApi(current(), pathname, state, new URLSearchParams(queryString));
         if (raw) {
           res.writeHead(status, { ...raw.headers, 'content-length': raw.bytes.length });
           return res.end(raw.bytes);
@@ -96,6 +109,11 @@ export function createServer({ repository, webRoot, recoverReport, instance }) {
       if (!res.headersSent) return sendJson(res, 500, { error: 'internal' });
       return res.end();
     }
+  });
+  // libraries opened later put the real port into their lock files
+  server.on('listening', () => {
+    const address = server.address();
+    if (libraryHost && address && typeof address === 'object') libraryHost.setPort(address.port);
   });
   return server;
 }

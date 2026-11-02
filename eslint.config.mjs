@@ -6,7 +6,7 @@ const FS_MODULES = ['node:fs', 'node:fs/promises', 'fs', 'fs/promises'];
 const fsPaths = FS_MODULES.map((name) => ({
   name,
   message:
-    'Filesystem access is restricted: writes only in packages/store/src; reads in packages/format, packages/core/src/fs-repository.mjs and apps/server/src/static.mjs.',
+    'Filesystem access is restricted: writes only in packages/store/src; reads in packages/format, packages/templates/src (its own template folder), packages/core/src/fs-repository.mjs and apps/server/src/static.mjs.',
 }));
 
 export default [

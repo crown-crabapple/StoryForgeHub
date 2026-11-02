@@ -267,6 +267,13 @@ export function createWatcher({ root, manager, options = {} }) {
     get ready() {
       return ready;
     },
+    /** Look for books that appeared or went (after the app itself created one), now rather than at the next event or poll. */
+    async rescan() {
+      await ready;
+      if (closed) return;
+      if (mode === 'watch') await resync();
+      else await pollOnce();
+    },
     status() {
       return { mode, reason, last_event_at: lastEventAt, pending: pending.size + running };
     },

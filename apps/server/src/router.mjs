@@ -4,9 +4,10 @@ import pkg from '../package.json' with { type: 'json' };
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
 /** @typedef {{ status: number, body: unknown, raw?: { bytes: Buffer, headers: Record<string, string> } }} ApiResult  `raw` (cover images) is sent as is instead of `body`. */
-/** @typedef {{ lastRecover: any, instance?: { pid: number, started_at: string, lock: string } }} ApiState  Report of the most recent recover() run; what this process knows about itself. */
+/** @typedef {{ lastRecover: any, instance?: { pid: number, started_at: string, lock: string }, host?: ReturnType<typeof import('@storyforge/core').createLibraryHost> | null }} ApiState  Report of the most recent recover() run; what this process knows about itself; the library host (which library is open, recent libraries, switching). */
 
 const NOT_FOUND = { status: 404, body: { error: 'not_found' } };
+const NOT_SUPPORTED = { status: 501, body: { error: 'not_supported' } };
 
 /** @param {string} s @returns {string | null} */
 function decode(s) {
@@ -64,6 +65,13 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   }
   if (a === 'library' && b === undefined) {
     return { status: 200, body: await repository.libraryInfo() };
+  }
+  if (a === 'library' && b === 'recent' && c === undefined) {
+    if (!state?.host) return NOT_SUPPORTED;
+    return { status: 200, body: await state.host.recent() };
+  }
+  if (a === 'templates' && b === undefined) {
+    return { status: 200, body: await repository.listTemplates() };
   }
   if (a === 'books') {
     if (b === undefined) return { status: 200, body: await repository.listBooks() };
@@ -175,6 +183,9 @@ export function matchWriteRoute(method, pathname) {
   if (rest.length > 0) return null;
   if (method === 'POST' && a === 'recover' && b === undefined) return { route: 'recover' };
   if (method === 'POST' && a === 'index' && b === 'rebuild' && c === undefined) return { route: 'index-rebuild' };
+  if (method === 'POST' && a === 'books' && b === undefined) return { route: 'book-create' };
+  if (method === 'POST' && a === 'library' && b === 'open' && c === undefined) return { route: 'library-open' };
+  if (method === 'POST' && a === 'library' && b === 'recent' && c === 'remove' && d === undefined) return { route: 'recent-remove' };
   if (a !== 'books' || b === undefined || c === undefined) return null;
   if (method === 'POST' && c === 'repair' && d === undefined) return { route: 'repair', bookId: b };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'body') return { route: 'body', bookId: b, sceneId: d };
@@ -217,6 +228,34 @@ export async function handleWrite(repository, match, body, state) {
       const r = await repository.rebuildIndex(body.book);
       if (r.code === 'NOT_FOUND') return NOT_FOUND;
       return { status: 200, body: r };
+    }
+    case 'book-create': {
+      const r = await repository.createBook(body);
+      if (r.ok) return { status: 201, body: { ok: true, bookId: r.bookId, path: r.path } };
+      const taken = ['FOLDER_EXISTS', 'SLUG_TAKEN', 'SERIES_NUMBER_TAKEN'].includes(r.code);
+      const mine = ['BAD_TITLE', 'BAD_SLUG', 'NO_SUCH_SERIES', 'NO_SUCH_PEN_NAME', 'NO_SUCH_TEMPLATE', 'OUTSIDE_ROOT'].includes(r.code);
+      return {
+        status: taken ? 409 : mine ? 400 : 500,
+        body: { ok: false, code: r.code, field: r.field ?? null, message: r.message ?? '', ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) },
+      };
+    }
+    case 'library-open': {
+      if (!state?.host) return NOT_SUPPORTED;
+      if (typeof body.path !== 'string' || body.path.trim() === '') return badRequest('path is required');
+      const r = await state.host.open(body.path);
+      if (r.ok) {
+        if (r.recover) state.lastRecover = r.recover;
+        state.instance = { ...(state.instance ?? { pid: process.pid, started_at: new Date().toISOString() }), lock: r.lock };
+        return { status: 200, body: { ok: true, library: r.library } };
+      }
+      const status = r.code === 'LOCKED' ? 409 : r.code === 'OPEN_FAILED' ? 500 : 400;
+      return { status, body: { ok: false, code: r.code, message: r.message, ...(r.holder !== undefined ? { holder: r.holder } : {}) } };
+    }
+    case 'recent-remove': {
+      if (!state?.host) return NOT_SUPPORTED;
+      if (typeof body.path !== 'string' || body.path.trim() === '') return badRequest('path is required');
+      await state.host.removeRecent(body.path);
+      return { status: 200, body: { ok: true } };
     }
     case 'repair': {
       if (!Array.isArray(body.actions)) return badRequest('expected { actions: [...] }');

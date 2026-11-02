@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CoverCard, SkeletonCard } from './CoverCard.jsx';
 import { SORTS, STATUS_FILTERS, filterBooks, groupBooks } from './filter.js';
+import { NewBookFlow, OpenFolderFlow } from './StartFlows.jsx';
 
 const plural = (n, one) => `${n} ${n === 1 ? one : `${one}s`}`;
 const FILTER_LABEL = 'Filter by title, series or pen name';
@@ -35,6 +36,8 @@ function Section({ id, title, status, count, children }) {
  */
 export function LibraryPage({ books, library = null, error = null, loading = false, onRetry, search = null, initial }) {
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS, ...initial });
+  /** Which Start dialog is open: null, 'new' or 'open'. */
+  const [dialog, setDialog] = useState(null);
   const set = (patch) => setFilters((f) => ({ ...f, ...patch }));
   const query = search?.query ?? '';
   const hits = query !== '' ? (search?.hits ?? null) : null;
@@ -55,7 +58,14 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
       </header>
       <section aria-labelledby="start-heading" className="start-section">
         <h2 id="start-heading">Start something new</h2>
-        <p className="secondary">Creating and opening books arrives in the next update.</p>
+        <div className="start-actions">
+          <button type="button" className="btn btn-primary" onClick={() => setDialog('new')}>
+            New book…
+          </button>
+          <button type="button" className="btn" onClick={() => setDialog('open')}>
+            Open folder…
+          </button>
+        </div>
       </section>
 
       {error && (
@@ -164,6 +174,9 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
           )}
         </>
       )}
+
+      {dialog === 'new' && <NewBookFlow onClose={() => setDialog(null)} />}
+      {dialog === 'open' && <OpenFolderFlow onClose={() => setDialog(null)} />}
     </main>
   );
 }

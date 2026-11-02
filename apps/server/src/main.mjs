@@ -5,7 +5,7 @@
 // Exit codes: 0 ok, 1 failed / needs hand repair, 2 usage or cannot open the library, 3 another instance holds the library.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ConfigError, LOCK_FILE, acquireLock, createFsRepository, loadConfig, releaseLock, releaseLockSync, updateLock } from '@storyforge/core';
+import { ConfigError, LOCK_FILE, acquireLock, createFsRepository, createLibraryHost, loadConfig, releaseLock, releaseLockSync, updateLock } from '@storyforge/core';
 import { createServer } from './server.mjs';
 
 const webRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
@@ -32,6 +32,9 @@ try {
 
 const lockPath = path.join(config.libraryRoot, LOCK_FILE);
 let holdsLock = false;
+/** The library host (server mode): after a switch it, not `lockPath`, knows which lock this process holds. */
+/** @type {ReturnType<typeof createLibraryHost> | null} */
+let host = null;
 /** @type {Promise<unknown> | null} */
 let releasing = null;
 
@@ -55,7 +58,9 @@ async function takeLock(port) {
   holdsLock = true;
   // Last resort for any way out of the process; only ever removes a lock that is ours (same pid).
   process.on('exit', () => {
-    if (holdsLock) releaseLockSync(lockPath);
+    if (!holdsLock) return;
+    if (host) host.releaseSync();
+    else releaseLockSync(lockPath);
   });
   return r.lock;
 }
@@ -63,7 +68,7 @@ async function takeLock(port) {
 /** Idempotent; every caller waits for the same release. */
 function releaseOwnLock() {
   if (!holdsLock) return Promise.resolve();
-  releasing ??= releaseLock(lockPath).catch(() => {});
+  releasing ??= (host ? host.close() : releaseLock(lockPath)).catch(() => {});
   return releasing;
 }
 
@@ -151,8 +156,11 @@ async function runServer() {
     fail(`recovery failed for ${config.libraryRoot}: ${e instanceof Error ? e.message : e}`, 2);
   }
 
+  host = createLibraryHost({ repository, libraryRoot: config.libraryRoot, holdsLock: true, port: config.port });
+  await host.remember(config.libraryRoot);
+
   const instance = { pid: process.pid, started_at: new Date().toISOString(), lock };
-  const server = createServer({ repository, webRoot, recoverReport, instance });
+  const server = createServer({ host, webRoot, recoverReport, instance });
   server.on('error', (e) => fail(`cannot listen on ${config.host}:${config.port}: ${e.message}`, 1));
 
   let stopping = false;
@@ -161,7 +169,7 @@ async function runServer() {
     stopping = true;
     server.closeAllConnections?.();
     await new Promise((resolve) => server.close(() => resolve(undefined)));
-    await repository.close().catch(() => {});
+    await host?.close().catch(() => {});
     await releaseOwnLock();
     process.exit(0);
   };
@@ -178,7 +186,7 @@ async function runServer() {
     if (port !== config.port) await updateLock(lockPath, { port }).catch(() => {});
     process.stdout.write(`StoryForge serving ${config.libraryRoot}\nhttp://${config.host}:${port}/\n`);
     // Indexes are built after the server is up; reads answer from the files until they are ready.
-    repository.ensureIndexes().then(
+    host?.repository.ensureIndexes().then(
       (r) => {
         const failed = r.books.filter((b) => !b.ok);
         if (failed.length) process.stderr.write(`storyforge: index build failed for ${failed.map((b) => b.path || '.').join(', ')}\n`);

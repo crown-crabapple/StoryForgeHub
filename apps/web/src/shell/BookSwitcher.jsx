@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { OpenFolderFlow } from '../library/StartFlows.jsx';
 import { Link, useNavigate } from '../router.jsx';
 import { ChevronDownIcon } from './icons.jsx';
 
@@ -7,7 +8,7 @@ const titleOf = (b) => b.title ?? b.slug ?? b.id;
 /**
  * Button showing the current book (initial, title, chevron) that opens a listbox of books.
  * Up/Down/Home/End move, Enter opens the book, Escape closes and returns focus to the button,
- * typing a letter jumps to the next book starting with it.
+ * typing a letter jumps to the next book starting with it. The last item, "Open another folder…", opens the Open folder dialog.
  * @param {{ books: any[] | null, current: any | null }} props
  */
 export function BookSwitcher({ books, current }) {
@@ -15,6 +16,7 @@ export function BookSwitcher({ books, current }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [folderOpen, setFolderOpen] = useState(false);
   const root = useRef(null);
   const button = useRef(null);
   const listbox = useRef(null);
@@ -54,7 +56,7 @@ export function BookSwitcher({ books, current }) {
   }
 
   function onListKeyDown(e) {
-    const last = list.length - 1;
+    const last = list.length; // the "Open another folder…" item comes after the books
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -75,7 +77,10 @@ export function BookSwitcher({ books, current }) {
       case 'Enter':
       case ' ':
         e.preventDefault();
-        if (list[active]) {
+        if (active === list.length) {
+          close(true);
+          setFolderOpen(true);
+        } else if (list[active]) {
           navigate(`/books/${encodeURIComponent(list[active].id)}`);
           close(true);
         }
@@ -128,7 +133,7 @@ export function BookSwitcher({ books, current }) {
           role="listbox"
           tabIndex={-1}
           aria-label="Books"
-          aria-activedescendant={list.length > 0 ? optionId(active) : undefined}
+          aria-activedescendant={optionId(active)}
           className="switcher-list"
           onKeyDown={onListKeyDown}
         >
@@ -148,8 +153,25 @@ export function BookSwitcher({ books, current }) {
               </Link>
             </li>
           ))}
+          <li role="presentation" className="switcher-action">
+            <button
+              type="button"
+              id={optionId(list.length)}
+              role="option"
+              tabIndex={-1}
+              aria-selected="false"
+              data-active={active === list.length ? 'true' : 'false'}
+              onClick={() => {
+                close(true);
+                setFolderOpen(true);
+              }}
+            >
+              Open another folder…
+            </button>
+          </li>
         </ul>
       )}
+      {folderOpen && <OpenFolderFlow onClose={() => setFolderOpen(false)} />}
     </div>
   );
 }

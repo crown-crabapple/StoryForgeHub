@@ -2,3 +2,6 @@
 export { openStore } from './store.mjs';
 export { acquireLock, releaseLock, releaseLockSync, updateLock } from './instance-lock.mjs';
 export { __faults } from './faults.mjs';
+export { createTree } from './tree.mjs';
+export { readUserConfig, userConfigDir, writeUserConfig } from './userconfig.mjs';
+export { escapesRoot } from './contain.mjs';
