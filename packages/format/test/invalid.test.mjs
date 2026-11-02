@@ -19,7 +19,7 @@ const CONTRACT_CASES = [
   'W201-thread-folder', 'W201-event-folder', 'W201-scene-outside-manuscript', 'E301-unknown-pen-name',
   'E209-duplicate-type', 'W304-shared-alias', 'W305-self-relation',
   'W306-planted-no-setup', 'E102-event-state', 'E301-event-state', 'E302-event-state', 'W307-duplicate-exception', 'W306-developed-no-develop', 'E301-develop-missing-scene',
-  'E302-develop-wrong-kind',
+  'E302-develop-wrong-kind', 'W308-suggestion-target-missing', 'E102-suggestion-hunk',
 ];
 
 test('invalid fixture set matches the contract case table', () => {

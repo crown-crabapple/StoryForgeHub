@@ -79,7 +79,9 @@ test('off by default: chat and rewrite create no ai/ folder and change no file',
   await app.post(AI.send(), { contextId: p.json.contextId });
   await app.post(AI.discard(), { contextId: p.json.contextId });
   assert.equal(await exists(path.join(library, 'ai')), false, 'no ai/ folder');
-  assert.deepEqual(await snapshot(library, { skipStoryforge: true }), before);
+  // M05-J06: the rewrite's proposal is a suggestion document (declined by the discard); nothing else changes
+  const after = await snapshot(library, { skipStoryforge: true });
+  assert.deepEqual(Object.fromEntries(Object.entries(after).filter(([k]) => !k.startsWith('suggestions/'))), before);
 });
 
 test('switching records on is stored in the user config, not in the book', async () => {

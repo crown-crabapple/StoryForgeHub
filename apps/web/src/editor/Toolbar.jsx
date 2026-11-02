@@ -30,10 +30,10 @@ function ToolButton({ name, label, shortcut, onRun, disabled }) {
 
 /**
  * @param {{ onBold: () => void, onItalic: () => void, onLink: () => void, onNote: () => void, onSceneBreak: () => void,
- *   showMarks: boolean, onToggleMarks: () => void, onFocus?: () => void, onRewrite?: () => void, onWorkshop?: () => void, disabled?: boolean }} props  `onFocus` shows the "Focus" button;
- *   `onRewrite` / `onWorkshop` show "Rewrite with AI..." and "AI workshop" (only when the book has an active AI provider).
+ *   showMarks: boolean, onToggleMarks: () => void, onFocus?: () => void, onCheck?: () => void, onRewrite?: () => void, onWorkshop?: () => void, disabled?: boolean }} props  `onFocus` shows the "Focus" button;
+ *   `onCheck` shows "Check scene" (a local, read-only report, M05-J06); `onRewrite` / `onWorkshop` show "Rewrite with AI..." and "AI workshop" (only when the book has an active AI provider).
  */
-export function EditorToolbar({ onBold, onItalic, onLink, onNote, onSceneBreak, showMarks, onToggleMarks, onFocus, onRewrite, onWorkshop, disabled = false }) {
+export function EditorToolbar({ onBold, onItalic, onLink, onNote, onSceneBreak, showMarks, onToggleMarks, onFocus, onCheck, onRewrite, onWorkshop, disabled = false }) {
   const mod = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform ?? '') ? 'Cmd' : 'Ctrl';
   return (
     <div role="toolbar" aria-label="Formatting" className="editor-toolbar">
@@ -46,6 +46,11 @@ export function EditorToolbar({ onBold, onItalic, onLink, onNote, onSceneBreak, 
       <button type="button" className="editor-tool editor-tool-text" aria-pressed={showMarks} onMouseDown={(e) => e.preventDefault()} onClick={onToggleMarks}>
         Show Markdown marks
       </button>
+      {onCheck && (
+        <button type="button" className="editor-tool editor-tool-text" onMouseDown={(e) => e.preventDefault()} onClick={onCheck}>
+          Check scene
+        </button>
+      )}
       {onRewrite && (
         <button type="button" className="editor-tool editor-tool-text" disabled={disabled} onMouseDown={(e) => e.preventDefault()} onClick={onRewrite}>
           Rewrite with AI…

@@ -12,6 +12,7 @@ The bytes in this folder are exact (`.gitattributes` marks `packages/format/fixt
 | `codex-graph/` | Synthetic book for the Codex model and graph (M04-J01): all five built-in entry types, a custom `ship` type with `codex/_types/ship.md`, a custom `spell` type without a type file, relations in both directions, one alias (`Skipper`) shared by two entries, and three scenes using front-matter references, `[[links]]` and plain-name mentions (one scene both links and mentions the same entry). Exactly two diagnostics: `W304` on each of the two entries. |
 | `library/` | A library with one pen name, a series `tidewater/` (two books, `series_number` 1 and 2) and one standalone book. Zero diagnostics. |
 | `continuity-cases/` | Synthetic book for the continuity engine (M05-J01): one positive and one near-miss negative per rule (CF1 text, canon note and custom `values`; TL1a/b/c; KN1; ST1a/b; TH1a/b). Zero diagnostics; `expected-continuity.json` holds the exact findings. |
+| `suggestion/` | `salt-orchard` plus `suggestions/2026/20261102-140322-arrival-eyes.md`: a pending suggestion with three hunks on Arrival (M05-J06). Zero diagnostics. |
 | `continuity-exception/` | `salt-orchard` plus `planning/continuity/maren-eyes.md` (suppresses its CF1) and `old-note.md` (names no finding: a stale exception). Zero diagnostics; `expected-continuity.json` has the finding under `suppressed` and the stale exception. |
 | `spec-example/` | Byte copy of the spec's `salt-orchard-mini` example, `.storyforge/` decoy included. Exactly four diagnostics: `I402`, `W201`, `W202`, `W301`. |
 
@@ -27,4 +28,4 @@ One folder per defect, named `<code>-<short-name>`. Each is a minimal valid book
 
 ## Regenerating
 
-`test/build-fixtures.mjs --write` regenerates `invalid/*`, `valid/salt-orchard` (and its `expected-continuity.json`), `valid/continuity-cases`, `valid/continuity-exception`, `valid/library` and `valid/spec-example/expected.json`. The committed files are the source of truth; the script is only a convenience and does nothing without `--write`. It never touches the spec-example copy.
+`test/build-fixtures.mjs --write` regenerates `invalid/*`, `valid/salt-orchard` (and its `expected-continuity.json`), `valid/continuity-cases`, `valid/continuity-exception`, `valid/suggestion`, `valid/library` and `valid/spec-example/expected.json`. The committed files are the source of truth; the script is only a convenience and does nothing without `--write`. It never touches the spec-example copy.

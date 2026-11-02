@@ -4,6 +4,8 @@ import { Link, useNavigate } from '../router.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
 import { ContinuityPage } from './ContinuityPage.jsx';
 import { continuityHref, parseContinuitySearch } from './model.js';
+import { suggestionUrl, suggestionsUrl } from '../suggestions/model.js';
+import { useSuggestionActions } from '../suggestions/useSuggestionActions.jsx';
 import { continuityUrl } from './requests.js';
 import { useContinuityActions } from './useContinuityActions.jsx';
 
@@ -21,6 +23,11 @@ export function ContinuityView({ bookId, search = '' }) {
   const [filter, setFilter] = useState({ status: 'all', rule: null, subject: null });
   const actions = useContinuityActions({ bookId, onChanged: () => setBump((n) => n + 1) });
   const url = parseContinuitySearch(search);
+  // M05-J06: the Suggestions group (all suggestions of the book) and the one open for review
+  const sg = useSuggestionActions({ bookId, onChanged: () => setBump((n) => n + 1) });
+  const sgKey = `${version}|${sg.stamp}`;
+  const sgList = useApi(suggestionsUrl(bookId), sgKey);
+  const sgOne = useApi(url.suggestion ? suggestionUrl(bookId, url.suggestion) : null, sgKey);
 
   if (loading && !data) {
     return (
@@ -61,8 +68,21 @@ export function ContinuityView({ bookId, search = '' }) {
           onRestore: actions.restore,
           onRemove: actions.remove,
         }}
+        suggestions={sgList.data?.suggestions ?? null}
+        selectedSuggestion={sgOne.data}
+        selectedSuggestionId={url.suggestion}
+        suggestionHandlers={{
+          busy: sg.busy,
+          error: sg.error,
+          onSelect: (id) => navigate(continuityHref(bookId, { suggestion: id })),
+          onAccept: (h) => sg.decide(url.suggestion, 'accept', h),
+          onDecline: (h) => sg.decide(url.suggestion, 'decline', h),
+          onAcceptAll: () => sg.decide(url.suggestion, 'accept'),
+          onDeclineAll: () => sg.decide(url.suggestion, 'decline'),
+        }}
       />
       {actions.ui}
+      {sg.ui}
     </>
   );
 }

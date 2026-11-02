@@ -89,6 +89,15 @@ export const KINDS = {
     required: ['task', 'provider', 'model'],
     fields: { task: 'str', provider: 'str', model: 'str', locality: ['local', 'cloud'], contextSha256: 'str', files: 'list', applied: 'bool', created: 'any', fullContext: 'bool' },
   },
+  // Added 2026-11-02, M05-J06 (additive within v1): a proposed change to a canonical file, under suggestions/<YYYY>/. Never story text or canon.
+  suggestion: {
+    prefix: 'note',
+    required: ['target', 'base_sha256', 'source', 'mode', 'hunks'],
+    fields: {
+      target: 'str', target_path: 'str', base_sha256: 'str', source: ['ai', 'claude-book', 'author'], mode: ['suggest', 'state', 'canon'],
+      created: 'any', status: ['pending', 'accepted', 'declined', 'partial'], ai: 'map', hunks: 'list',
+    },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],
@@ -216,6 +225,60 @@ function checkState(state, file, add) {
   });
 }
 
+const HUNK_STATUSES = ['pending', 'accepted', 'declined'];
+const DIFF_HEADER_RE = /^@@ -(\d+),(\d+) \+(\d+),(\d+) @@ (\S+)$/;
+
+/**
+ * Suggestion shape (spec 9.3): every hunk is a mapping with id, line, lines and status, and the diff block has a matching `@@ ... @@ <id>`
+ * header (with matching line counts) for each. E102 at `hunks[i]` or `body`.
+ * @param {{fm:any, body:string, file:string}} doc
+ * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ */
+function checkSuggestion(doc, add) {
+  const { fm, file } = doc;
+  if (!Array.isArray(fm.hunks)) return;
+  const lines = String(doc.body ?? '').split('\n').map((l) => l.replace(/\r$/, ''));
+  let open = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (lines[i] === '```diff') {
+      open = i;
+      break;
+    }
+  }
+  /** @type {Map<string, {lines:number, count:number, minus:number, plus:number}>} */
+  const diff = new Map();
+  let bad = open < 0 ? 'the diff block is missing' : null;
+  if (open >= 0) {
+    let close = lines.indexOf('```', open + 1);
+    if (close < 0) close = lines.length;
+    let cur = null;
+    for (const l of lines.slice(open + 1, close)) {
+      const m = DIFF_HEADER_RE.exec(l);
+      if (m) {
+        cur = { lines: Number(m[2]), count: Number(m[4]), minus: 0, plus: 0 };
+        diff.set(m[5], cur);
+      } else if (cur && l.startsWith('-')) cur.minus++;
+      else if (cur && l.startsWith('+')) cur.plus++;
+      else if (l !== '') bad ??= `unexpected line in the diff block: ${l.slice(0, 40)}`;
+    }
+  }
+  if (bad) add('E102', file, 'body', bad);
+  const seen = new Set();
+  fm.hunks.forEach((h, i) => {
+    const loc = `hunks[${i}]`;
+    if (!isPlainMap(h) || typeof h.id !== 'string' || !isInt(h.line) || h.line < 1 || !isInt(h.lines) || h.lines < 0 || !HUNK_STATUSES.includes(h.status)) {
+      add('E102', file, loc, 'hunk must be a mapping with id, line (>= 1), lines (>= 0) and status (pending, accepted or declined)');
+      return;
+    }
+    if (seen.has(h.id)) add('E102', file, loc, `hunk id ${h.id} is used twice`);
+    seen.add(h.id);
+    const d = diff.get(h.id);
+    if (open >= 0 && !d) add('E102', file, loc, `the diff block has no @@ header ending in ${h.id}`);
+    else if (d && (d.lines !== h.lines || d.minus !== h.lines || d.count !== d.plus)) add('E102', file, loc, `hunk ${h.id} disagrees with its diff (line counts)`);
+  });
+  if (open >= 0) for (const id of diff.keys()) if (!seen.has(id)) add('E102', file, 'body', `the diff block names hunk ${id}, which the front matter does not list`);
+}
+
 /**
  * Field-level checks for one parsed document: E102, I401, E103.
  * @param {{kind:string, rel:string, file:string, fm:any}} doc
@@ -287,6 +350,8 @@ export function checkFields(doc, ctx, add) {
     }
     if (typeof doc.body === 'string' && doc.body.trim() === '') add('E102', file, 'body', 'the exception needs a written rationale');
   }
+
+  if (doc.kind === 'suggestion') checkSuggestion(doc, add);
 
   for (const key of ['cover', 'image']) {
     if (Object.hasOwn(spec.fields, key) && typeof fm[key] === 'string' && escapesRoot(fm[key])) {

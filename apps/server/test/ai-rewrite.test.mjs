@@ -13,6 +13,9 @@ import path from 'node:path';
 import { AI, ARRIVAL, ARRIVAL_PATH, BOOK, freshLibrary, getScene, makeHome, setupProvider, startApp, startMockProvider, stopAll } from './ai-helpers.mjs';
 import { snapshot } from './helpers.mjs';
 
+// M05-J06: a rewrite is held as a suggestion document under suggestions/, so the tree differs there (and only there) from before the send.
+const noSuggestions = (snap) => Object.fromEntries(Object.entries(snap).filter(([k]) => !k.startsWith('suggestions/')));
+
 const GRAFTING = 'scene_01S50000000000000000000006'; // the CRLF scene
 const GRAFTING_PATH = 'manuscript/act-01-low-water/ch-002-the-grafting/0020-the-grafting.md';
 const REWRITTEN = 'The ferry bumped the jetty, and the ferryman flung her bag ashore.';
@@ -93,7 +96,8 @@ test('apply leaves every other file byte-identical', async () => {
   assert.equal((await apply(app, p.contextId)).status, 200);
   const after = await snapshot(library, { skipStoryforge: true });
   const changed = Object.keys({ ...before, ...after }).filter((k) => before[k] !== after[k]);
-  assert.deepEqual(changed, [ARRIVAL_PATH]);
+  assert.deepEqual(changed.filter((k) => !k.startsWith('suggestions/')), [ARRIVAL_PATH]);
+  assert.equal(changed.filter((k) => /^suggestions\/\d{4}\/.+\.md$/.test(k)).length, 1, 'the one suggestion document the rewrite made');
 });
 
 test('Undo restores the prior bytes exactly', async () => {
@@ -211,11 +215,11 @@ test('Discard writes nothing, anywhere in the book', async () => {
   assert.equal((await app.post(AI.send(), { contextId: p.contextId })).status, 200);
   const r = await app.post(AI.discard(), { contextId: p.contextId });
   assert.equal(r.status, 200, r.text);
-  assert.deepEqual(await snapshot(library, { skipStoryforge: true }), before);
+  assert.deepEqual(noSuggestions(await snapshot(library, { skipStoryforge: true })), before);
   // a discarded preview cannot be applied afterwards
   const late = await app.post(AI.apply(), { contextId: p.contextId });
   assert.ok(late.status >= 400 && late.status < 500, late.text);
-  assert.deepEqual(await snapshot(library, { skipStoryforge: true }), before);
+  assert.deepEqual(noSuggestions(await snapshot(library, { skipStoryforge: true })), before);
 });
 
 test('bad selections are 400 and write nothing: from > to, out of range, negative, unknown scene', async () => {
@@ -255,7 +259,7 @@ test('model output is data: a reply that looks like HTML, a path or a front-matt
   assert.ok(r.status === 200 || r.status === 400, r.text);
   const after = await snapshot(library, { skipStoryforge: true });
   const changed = Object.keys({ ...before, ...after }).filter((k) => before[k] !== after[k]);
-  assert.ok(changed.every((k) => k === ARRIVAL_PATH), changed.join());
+  assert.ok(changed.every((k) => k === ARRIVAL_PATH || k.startsWith('suggestions/')), changed.join());
   if (r.status === 200) {
     const text = (await readFile(file(ARRIVAL_PATH))).toString('utf8');
     assert.ok(text.includes(evil), 'applied literally, in the range');

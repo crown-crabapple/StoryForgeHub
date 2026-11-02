@@ -105,6 +105,17 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       if (r.code === 'NOT_FOUND') return NOT_FOUND;
       return { status: 400, body: { error: 'bad_request', code: r.code, message: r.message } };
     }
+    // M05-J06: suggestions (read-only listing; deciding is a guarded write)
+    if (c === 'suggestions' && d === undefined) {
+      const state = params.get('state');
+      if (state !== null && state !== 'open' && state !== 'decided') return badRequest('state must be open or decided');
+      const r = await repository.listSuggestions(b, { ...(params.get('target') !== null ? { target: /** @type {string} */ (params.get('target')) } : {}), ...(state !== null ? { state } : {}) });
+      return r.ok ? { status: 200, body: { suggestions: r.suggestions } } : NOT_FOUND;
+    }
+    if (c === 'suggestions' && d !== undefined && e === undefined) {
+      const r = await repository.getSuggestion(b, d);
+      return r.ok ? { status: 200, body: r.suggestion } : NOT_FOUND;
+    }
     if (c === 'repair' && d === 'plan' && e === undefined) {
       const plan = await repository.planRepair(b);
       return plan ? { status: 200, body: plan } : NOT_FOUND;
@@ -386,7 +397,7 @@ export function matchWriteRoute(method, pathname) {
   if (parts.some((p) => p === null) || parts[0] !== 'api') return null;
   const [, a, b, c, d, e, f, g, ...rest] = /** @type {string[]} */ (parts);
   if (rest.length > 0) return null;
-  if ((f !== undefined || g !== undefined) && !(a === 'books' && c === 'scenes' && e === 'revisions')) return null;
+  if ((f !== undefined || g !== undefined) && !(a === 'books' && ((c === 'scenes' && e === 'revisions') || (c === 'suggestions' && e === 'hunks' && g === undefined)))) return null;
   if (method === 'POST' && a === 'recover' && b === undefined) return { route: 'recover' };
   if (method === 'POST' && a === 'index' && b === 'rebuild' && c === undefined) return { route: 'index-rebuild' };
   if (method === 'POST' && a === 'books' && b === undefined) return { route: 'book-create' };
@@ -459,6 +470,10 @@ export function matchWriteRoute(method, pathname) {
   // M05-J02 continuity exceptions
   if (method === 'POST' && c === 'continuity' && d === 'exceptions' && e === undefined) return { route: 'continuity-exception-create', bookId: b };
   if (method === 'DELETE' && c === 'continuity' && d === 'exceptions' && e !== undefined && f === undefined) return { route: 'continuity-exception-archive', bookId: b, slug: e };
+  // M05-J06 suggestions: decide one hunk or every pending hunk; check one scene (read-only report)
+  if (method === 'POST' && c === 'suggestions' && d !== undefined && e === undefined) return { route: 'suggestion-decide', bookId: b, suggestionId: d };
+  if (method === 'POST' && c === 'suggestions' && d !== undefined && e === 'hunks' && f !== undefined) return { route: 'suggestion-hunk-decide', bookId: b, suggestionId: d, hunkId: f };
+  if (method === 'POST' && c === 'check' && d === undefined) return { route: 'check-scene', bookId: b };
   if (method === 'POST' && c === 'attachments' && d === undefined) return { route: 'attachment-upload', bookId: b };
   return null;
 }
@@ -480,6 +495,14 @@ function respondContinuity(r, okStatus, okBody) {
   if (r.ok) return { status: okStatus, body: okBody(r) };
   const named = { FINDING_NOT_FOUND: 404, ALREADY_EXCEPTED: 409, RATIONALE_REQUIRED: 400 };
   if (named[r.code]) return { status: named[r.code], body: { error: r.code, code: r.code, message: r.message } };
+  return respond(r, okStatus, okBody);
+}
+
+/** Like respond(), with the suggestion refusals named by their codes (409 SUGGESTION_STALE, ALREADY_DECIDED, TARGET_MISSING, NO_CHANGE). */
+function respondSuggestion(r, okStatus, okBody) {
+  if (r.ok) return { status: okStatus, body: okBody(r) };
+  const named = { SUGGESTION_STALE: 409, ALREADY_DECIDED: 409, TARGET_MISSING: 409, ROLLED_BACK: 409, NO_CHANGE: 409, BAD_ARGS: 400 };
+  if (named[r.code]) return { status: named[r.code], body: { error: r.code, code: r.code, message: r.message, ...(r.hunkId ? { hunkId: r.hunkId } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) } };
   return respond(r, okStatus, okBody);
 }
 
@@ -615,6 +638,18 @@ export async function handleWrite(repository, match, body, state) {
       if (typeof body.path !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { path: string, base_sha256: string }');
       const r = await repository.restoreScene(bookId, body.path, { baseSha256: body.base_sha256 });
       return respond(r, 200, (x) => ({ path: x.path }));
+    }
+    // ---- M05-J06: decide a suggestion (the only canonical write is the accepted hunk's lines); check a scene (writes nothing)
+    case 'suggestion-decide':
+    case 'suggestion-hunk-decide': {
+      if (body.decision !== 'accept' && body.decision !== 'decline') return badRequest("expected { decision: 'accept' | 'decline' }");
+      const r = await repository.decideSuggestion(bookId, /** @type {string} */ (match.suggestionId), { decision: body.decision, ...(match.route === 'suggestion-hunk-decide' ? { hunkId: match.hunkId } : {}) });
+      return respondSuggestion(r, 200, (x) => ({ ok: true, decision: x.decision, hunkIds: x.hunkIds, opId: x.opId ?? null, undo: x.undo ?? null, suggestion: x.suggestion ?? null }));
+    }
+    case 'check-scene': {
+      if (typeof body.sceneId !== 'string' || body.sceneId === '') return badRequest('expected { sceneId: string }');
+      const r = await repository.checkScene(bookId, body.sceneId);
+      return respond(r, 200, (x) => ({ scene: x.scene, at: x.at, findings: x.findings, summary: x.summary }));
     }
     default:
       if (match.route.startsWith('ai-')) return handleAiWrite(repository, match, body, state);

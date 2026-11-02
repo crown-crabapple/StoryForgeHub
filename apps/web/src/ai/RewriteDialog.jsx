@@ -126,6 +126,11 @@ export function RewriteDialog({ book, active, records, scene, rewrite, onClose }
           <h3>Proposed rewrite</h3>
           <DiffView before={original} after={replacement} />
           {applied && <p role="status">Applied to the scene.</p>}
+          {!applied && ex.result?.suggestion && (
+            <p className="muted">
+              Saved as a suggestion: the scene is unchanged. Apply accepts every change; to take only some, choose Review changes and use Suggestions in the right panel.
+            </p>
+          )}
         </section>
       )}
 
@@ -156,6 +161,11 @@ export function RewriteDialog({ book, active, records, scene, rewrite, onClose }
             <button type="button" className="btn btn-primary" disabled={working} onClick={apply}>
               Apply
             </button>
+            {ex.result?.suggestion && (
+              <button type="button" className="btn" disabled={working} onClick={onClose}>
+                Review changes
+              </button>
+            )}
             <button type="button" className="btn" disabled={working} onClick={discardAndClose}>
               Discard
             </button>

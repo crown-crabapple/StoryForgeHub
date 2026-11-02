@@ -155,6 +155,8 @@ The validator output (code, file, location) must equal this list exactly, as a s
 | `E301-event-state` | event `state` slug that resolves to nothing |
 | `E302-event-state` | event `state` location value that is a character, not a location |
 | `W307-duplicate-exception` | two `planning/continuity/` exceptions with one fingerprint |
+| `W308-suggestion-target-missing` | a `suggestions/` document whose `target` id is not a live document (M05-J06) |
+| `E102-suggestion-hunk` | a suggestion whose hunk `lines` disagrees with its diff block (M05-J06) |
 | `W302-paid-no-payoff` | thread `status: paid`, `payoff: []` |
 | `W303-archived-target` | link to an entry under `archive/` |
 | `I401-unknown-field` | scene with `mood: cold` |

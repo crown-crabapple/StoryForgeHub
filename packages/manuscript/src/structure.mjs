@@ -574,6 +574,9 @@ export function mergeScenes(bookRoot, firstId, secondId, args = {}) {
 
 // ------------------------------------------------------------------ undo
 
+/** Operations whose created files restoreOp may remove again. */
+const CREATION_UNDOABLE = new Set(['createContinuityException', 'decideSuggestion']);
+
 /**
  * Undo one earlier operation from its trash copies, but only if every file it wrote still has the hash the
  * operation gave it. Operations that created files, or touched one path twice, are not undoable this way.
@@ -598,8 +601,9 @@ export function restoreOp(bookRoot, opId, args = {}) {
     if (recorded.length === 0) return fail('REFUSED_NOT_UNDOABLE', `${opId} changed no files`);
     // A move that renumbers neighbours may write a file at a path another of its changes vacated (a chain); that is
     // undone in the reverse order. Only a path read twice or written twice makes an operation not undoable.
-    // The one exception (M05-J02): a continuity exception file the app created can be undone by removing it again (it goes to the trash).
-    const creationsOk = record?.op === 'createContinuityException';
+    // The exceptions (M05-J02, M05-J06): a continuity exception file, or the new file a suggestion's accepted new-file hunk created, can be undone by
+    // removing it again (it goes to the trash). Accepting a hunk on an existing file creates nothing and is undone like any other write.
+    const creationsOk = CREATION_UNDOABLE.has(record?.op);
     const froms = recorded.map((c) => c.from).filter((f) => f !== null);
     const tos = recorded.map((c) => c.to);
     if ((!creationsOk && recorded.some((c) => c.from === null)) || new Set(froms).size !== froms.length || new Set(tos).size !== tos.length) {

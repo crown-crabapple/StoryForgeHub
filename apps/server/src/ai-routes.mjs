@@ -116,7 +116,7 @@ export async function handleAiWrite(repository, match, body, state) {
     case 'ai-apply':
       return applyStored(repository, service, bookId, body);
     case 'ai-discard':
-      return discardStored(service, bookId, body);
+      return discardStored(repository, service, bookId, body);
     default:
       return NOT_FOUND;
   }
@@ -235,6 +235,26 @@ async function sendStored(repository, service, bookId, active, body) {
     settings: ctx.settings,
   });
 
+  // M05-J06: a rewrite is held as a pending suggestion in the book (nothing is written to the scene). If the scene changed since the preview, or the reply
+  // equals the selection, no suggestion is made and Apply keeps its J04 behaviour (SCENE_CHANGED / writing the range).
+  let suggestion = null;
+  if (rewrite) {
+    // sending the same preview again replaces its earlier proposal (that one is declined)
+    if (ctx.suggestion && !ctx.applied) await repository.decideSuggestion(bookId, ctx.suggestion.id, { decision: 'decline' });
+    ctx.suggestion = null;
+    const made = await repository.createSuggestion(bookId, {
+      target: ctx.selection.sceneId,
+      proposedRange: { from: ctx.selection.from, to: ctx.selection.to, replacement },
+      source: 'ai',
+      mode: 'suggest',
+      rationale: `Instruction: ${ctx.instruction.replace(/\s+/g, ' ').trim().slice(0, 500)}`,
+      ai: { provider: ctx.provider.name, model: ctx.provider.model, locality: ctx.provider.locality, context_sha256: ctx.contextSha256 },
+      expectSha256: ctx.selection.sha256,
+    });
+    if (made.ok) ctx.suggestion = { id: made.id, path: made.path };
+    suggestion = ctx.suggestion;
+  }
+
   let record = null;
   if (await settings.recordsOn(bookId)) {
     const saved = await repository.saveAiRecord(bookId, recordOf(ctx, { applied: false, includeContext: body.includeContext === true }), ctx.record ?? undefined);
@@ -246,7 +266,7 @@ async function sendStored(repository, service, bookId, active, body) {
   }
   return {
     status: 200,
-    body: { ok: true, contextId: body.contextId, contextSha256: ctx.contextSha256, reply, ...(rewrite ? { replacement } : {}), model: r.model ?? ctx.model, usage: r.usage, record },
+    body: { ok: true, contextId: body.contextId, contextSha256: ctx.contextSha256, reply, ...(rewrite ? { replacement, suggestion } : {}), model: r.model ?? ctx.model, usage: r.usage, record },
   };
 }
 
@@ -276,7 +296,17 @@ async function applyStored(repository, service, bookId, body) {
   if (ctx.replacement === null) return refuse(409, 'NO_REPLY', 'nothing to apply: send the request first');
   if (ctx.applied) return refuse(409, 'ALREADY_APPLIED', 'this rewrite was already applied');
   const sel = ctx.selection;
-  const r = await repository.applyAiRewrite(bookId, sel.sceneId, { baseSha256: sel.sha256, from: sel.from, to: sel.to, original: sel.text, replacement: ctx.replacement });
+  // With a pending suggestion, Apply is "accept all hunks" (M05-J06); without one it writes the range as in J04.
+  /** @type {any} */
+  let r;
+  if (ctx.suggestion) {
+    const d = await repository.decideSuggestion(bookId, ctx.suggestion.id, { decision: 'accept' });
+    if (!d.ok && d.code === 'SUGGESTION_STALE') return refuse(409, 'SCENE_CHANGED', 'the scene changed after the preview; nothing was written');
+    if (!d.ok && d.code === 'ALREADY_DECIDED') return refuse(409, 'ALREADY_APPLIED', 'this rewrite was already decided in Suggestions');
+    r = d.ok ? { ok: true, sha256: d.sha256, opId: d.opId } : d;
+  } else {
+    r = await repository.applyAiRewrite(bookId, sel.sceneId, { baseSha256: sel.sha256, from: sel.from, to: sel.to, original: sel.text, replacement: ctx.replacement });
+  }
   if (!r.ok) {
     if (r.code === 'SCENE_CHANGED') return refuse(409, 'SCENE_CHANGED', r.message ?? 'the scene changed after the preview; nothing was written');
     if (r.code === 'NOT_FOUND') return NOT_FOUND;
@@ -301,7 +331,7 @@ async function applyStored(repository, service, bookId, body) {
 }
 
 /** POST /api/books/:b/ai/discard { contextId }: nothing is written; the package is dropped. */
-async function discardStored(service, bookId, body) {
+async function discardStored(repository, service, bookId, body) {
   const { ctx, refusal } = storedContext(service, bookId, body);
   if (refusal) return refusal;
   await emit({
@@ -312,6 +342,8 @@ async function discardStored(service, bookId, body) {
     provider: { name: ctx.provider.name, model: ctx.provider.model, locality: ctx.provider.locality },
     settings: ctx.settings,
   });
+  // the pending suggestion this preview made is declined (only the suggestion file changes; the scene is never touched)
+  if (ctx.suggestion && !ctx.applied) await repository.decideSuggestion(ctx.bookId, ctx.suggestion.id, { decision: 'decline' });
   service.contexts.delete(body.contextId);
   return { status: 200, body: { ok: true } };
 }

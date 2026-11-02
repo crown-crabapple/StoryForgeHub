@@ -68,7 +68,7 @@ export function AcknowledgeDialog({ finding, busy = false, error = null, onSubmi
 }
 
 /** The message under a finished write, with Undo when there is something to undo. */
-function Toast({ toast, onUndo, onDismiss }) {
+export function Toast({ toast, onUndo, onDismiss }) {
   return (
     <div className="toast" role="status">
       <span>{toast.message}</span>

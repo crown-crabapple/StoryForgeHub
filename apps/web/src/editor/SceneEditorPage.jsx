@@ -24,6 +24,8 @@ import { focusExtensions } from './focus-extensions.js';
 import { LinkPicker } from './LinkPicker.jsx';
 import { nameIndex } from './names.js';
 import { ACCEPT, uploadAttachment } from '../notes/upload.js';
+import { CheckDialog } from '../suggestions/CheckReport.jsx';
+import { checkRequest, explainSuggestionFailure } from '../suggestions/model.js';
 import { createSaveController, draftOffer } from './save-controller.js';
 import { EditorToolbar } from './Toolbar.jsx';
 import { countWords, describeCount, selectionWords } from './wordcount.js';
@@ -96,6 +98,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const [offer, setOffer] = useState(null);
   const [discarded, setDiscarded] = useState([]);
   const [dialog, setDialog] = useState(null); // 'picker' | 'normalise' | 'discarded' | 'keep-mine'
+  const [check, setCheck] = useState(/** @type {{ report: any | null, error: string | null } | null} */ (null)); // Check scene (M05-J06): the read-only report window
   const [note, setNote] = useState(null);
   const [copied, setCopied] = useState(null);
   const showMarksRef = useRef(showMarks);
@@ -432,6 +435,18 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     }
     ai.startRewrite({ sceneId: scene.id, from: range.from, to: range.to, text: view.state.sliceDoc(range.from, range.to) });
   };
+  // "Check scene" (M05-J06): save, then ask for the local report. It never changes the text and the check writes nothing.
+  const checkScene = async () => {
+    const { saved } = await ctlRef.current.flush();
+    if (!saved) {
+      flash('The scene has changes that could not be saved yet. Try again once it is saved.');
+      return;
+    }
+    setCheck({ report: null, error: null });
+    const r = checkRequest(book.id, scene.id);
+    const { status, json } = await send(r.url, r.body);
+    setCheck(status === 200 ? { report: json, error: null } : { report: null, error: explainSuggestionFailure(status, json) });
+  };
   const toggleMarks = () => {
     const next = !showMarks;
     setShowMarks(next);
@@ -548,6 +563,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
           showMarks={showMarks}
           onToggleMarks={toggleMarks}
           onFocus={focus.toggle}
+          onCheck={!isEntry ? checkScene : undefined}
           onRewrite={ai.available && !isEntry ? rewriteSelection : undefined}
           onWorkshop={ai.available && !isEntry ? ai.toggle : undefined}
           disabled={mixed}
@@ -653,6 +669,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         </footer>
       </article>
 
+      {check && <CheckDialog bookId={book.id} sceneTitle={scene.title} report={check.report} error={check.error} onClose={() => setCheck(null)} />}
       {dialog === 'picker' && <LinkPicker objects={objects} selectedText={pickerText} onPick={pick} onClose={() => setDialog(null)} />}
       {dialog === 'normalise' && preview && (
         <InfoDialog

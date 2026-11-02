@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { useApi } from '../api.js';
 import { Link } from '../router.jsx';
+import { SuggestionReview } from '../suggestions/SuggestionReview.jsx';
+import { SuggestionsGroup } from '../suggestions/SuggestionsGroup.jsx';
 import { ShowBoth, SourceLink } from './ShowBoth.jsx';
 import { RAW_URL } from './requests.js';
 import { RULE_INFO, SEVERITY_LABEL, STATUS_FILTERS, findByFingerprint, nextRowIndex, queueModel, rationaleOf, ruleName, sourceLabel, subjectLabel } from './model.js';
@@ -188,9 +190,12 @@ export function StaleExceptions({ bookId, items, onRemove }) {
 /**
  * The Continuity review (/books/:id/continuity): filters on the left, the findings in the middle, one finding in full on the right. Presentational: everything arrives by props.
  * @param {{ bookId: string, result: any, filter?: { status: string, rule: string | null, subject: string | null }, selectedFp?: string | null, version?: string,
- *   handlers?: { onFilter?: (patch: Record<string, any>) => void, onSelect?: (fp: string) => void, onAcknowledge?: (f: any) => void, onRestore?: (slug: string) => void, onRemove?: (slug: string) => void } }} props
+ *   handlers?: { onFilter?: (patch: Record<string, any>) => void, onSelect?: (fp: string) => void, onAcknowledge?: (f: any) => void, onRestore?: (slug: string) => void, onRemove?: (slug: string) => void },
+ *   suggestions?: any[] | null, selectedSuggestion?: any | null, selectedSuggestionId?: string | null,
+ *   suggestionHandlers?: { busy?: boolean, error?: string | null, onSelect?: (id: string) => void, onAccept?: (hunkId: string) => void, onDecline?: (hunkId: string) => void, onAcceptAll?: () => void, onDeclineAll?: () => void } }} props
+ *   `suggestions` (GET /suggestions) adds the "Suggestions" group to the sidebar (M05-J06); the selected one (GET /suggestions/:id) is reviewed in the right-hand panel instead of a finding.
  */
-export function ContinuityPage({ bookId, result, filter = { status: 'all', rule: null, subject: null }, selectedFp = null, version = '', handlers = {} }) {
+export function ContinuityPage({ bookId, result, filter = { status: 'all', rule: null, subject: null }, selectedFp = null, version = '', handlers = {}, suggestions = null, selectedSuggestion = null, selectedSuggestionId = null, suggestionHandlers = {} }) {
   const model = queueModel(result, filter);
   const selected = findByFingerprint(result, selectedFp);
   const set = (patch) => handlers.onFilter?.(patch);
@@ -227,6 +232,7 @@ export function ContinuityPage({ bookId, result, filter = { status: 'all', rule:
             ))}
           </select>
         </div>
+        {suggestions && <SuggestionsGroup suggestions={suggestions} selectedId={selectedSuggestionId} onSelect={suggestionHandlers.onSelect} />}
       </aside>
 
       <main id="main" tabIndex={-1} className="nt-main">
@@ -246,9 +252,15 @@ export function ContinuityPage({ bookId, result, filter = { status: 'all', rule:
         <StaleExceptions bookId={bookId} items={model.stale} onRemove={handlers.onRemove} />
       </main>
 
-      <aside aria-label="Finding" className="nt-view">
-        <FindingDetail key={selected?.fingerprint ?? 'none'} bookId={bookId} finding={selected} version={version} handlers={handlers} />
-      </aside>
+      {selectedSuggestion ? (
+        <aside aria-label="Suggestion" className="nt-view">
+          <SuggestionReview key={selectedSuggestion.id} suggestion={selectedSuggestion} busy={suggestionHandlers.busy} error={suggestionHandlers.error} handlers={suggestionHandlers} />
+        </aside>
+      ) : (
+        <aside aria-label="Finding" className="nt-view">
+          <FindingDetail key={selected?.fingerprint ?? 'none'} bookId={bookId} finding={selected} version={version} handlers={handlers} />
+        </aside>
+      )}
     </div>
   );
 }

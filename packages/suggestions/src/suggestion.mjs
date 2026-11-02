@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
-import { parse as parseYaml } from 'yaml';
+import { Scalar, isMap, isSeq, parse as parseYaml, parseDocument } from 'yaml';
 import { diffGroups } from './diff.mjs';
 
 export const SUGGESTION_SCHEMA = 'storyforge.suggestion/v1';
 
 const HEADER_RE = /^@@ -(\d+),(\d+) \+(\d+),(\d+) @@ (\S+)$/;
-const HUNK_LINE_RE = /^(\s*-\s*)(\{.*\})\s*$/;
 
 const fail = (code, message) => Object.assign(new Error(message), { code });
 
@@ -201,6 +200,7 @@ export function applyHunk(targetBytes, parsed, hunkId) {
 
 /**
  * Record a decision on hunks in the suggestion's text (front matter only; the diff block is untouched) and refresh the derived `status:`.
+ * The front matter is edited as a YAML document, so its style (block or flow hunk entries, quoting, comments) is kept.
  * @param {string} text
  * @param {string[]} hunkIds
  * @param {'pending'|'accepted'|'declined'} status
@@ -209,6 +209,7 @@ export function applyHunk(targetBytes, parsed, hunkId) {
 export function setHunkStatus(text, hunkIds, status, decided) {
   const ids = new Set(hunkIds);
   const lines = text.split('\n');
+  const cr = lines[0].endsWith('\r') ? '\r' : '';
   let close = -1;
   for (let i = 1; i < lines.length; i++) {
     if (lines[i].replace(/\r$/, '') === '---') {
@@ -217,26 +218,23 @@ export function setHunkStatus(text, hunkIds, status, decided) {
     }
   }
   if (lines[0].replace(/\r$/, '') !== '---' || close < 0) throw fail('SUGGESTION_MALFORMED', 'no front matter');
-  const all = [];
-  let statusAt = -1;
-  for (let i = 1; i < close; i++) {
-    const cr = /\r$/.test(lines[i]) ? '\r' : '';
-    const raw = lines[i].replace(/\r$/, '');
-    if (statusAt < 0 && /^status:/.test(raw)) statusAt = i;
-    const m = HUNK_LINE_RE.exec(raw);
-    if (!m) continue;
-    const entry = parseYaml(m[2], { version: '1.2', schema: 'core' });
-    if (ids.has(entry.id)) {
-      entry.status = status;
-      if (status === 'pending' || !decided) delete entry.decided;
-      else entry.decided = decided;
-      lines[i] = hunkEntry(entry) + cr;
-    }
-    all.push(entry);
+  const doc = parseDocument(lines.slice(1, close).map((l) => l.replace(/\r$/, '')).join('\n'), { version: '1.2', schema: 'core' });
+  const seq = doc.get('hunks', true);
+  if (doc.errors.length > 0 || !isSeq(seq)) throw fail('SUGGESTION_MALFORMED', 'hunks missing');
+  const seen = new Set();
+  for (const item of seq.items) {
+    if (!isMap(item)) continue;
+    const id = item.get('id');
+    if (!ids.has(id)) continue;
+    seen.add(id);
+    item.set('status', status);
+    if (status === 'pending' || !decided) item.delete('decided');
+    else item.set('decided', new Scalar(decided, { type: 'QUOTE_DOUBLE' }));
   }
-  for (const id of ids) if (!all.some((e) => e.id === id)) throw fail('NO_SUCH_HUNK', `no hunk ${id}`);
-  if (statusAt > 0) lines[statusAt] = `status: ${deriveStatus(all)}${/\r$/.test(lines[statusAt]) ? '\r' : ''}`;
-  return lines.join('\n');
+  for (const id of ids) if (!seen.has(id)) throw fail('NO_SUCH_HUNK', `no hunk ${id}`);
+  doc.set('status', deriveStatus(doc.toJS().hunks));
+  const fm = doc.toString({ lineWidth: 0 }).replace(/\n$/, '').split('\n').map((l) => l + cr);
+  return [lines[0], ...fm, ...lines.slice(close)].join('\n');
 }
 
 /**

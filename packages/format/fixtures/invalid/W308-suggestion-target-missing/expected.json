@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W308",
+      "file": "suggestions/2026/20261102-140322-first-line.md",
+      "location": "target"
+    }
+  ]
+}

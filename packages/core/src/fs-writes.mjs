@@ -39,7 +39,9 @@ import {
 import { countWords } from '@storyforge/index';
 import { openStore } from '@storyforge/store';
 import { recordPath, renderAiRecord, selectRange, spliceReplacement } from './ai-rewrite.mjs';
+import { createCheckMethods } from './check-scene.mjs';
 import { createContinuityExceptionMethods } from './continuity-exceptions.mjs';
+import { createSuggestionMethods } from './suggestions.mjs';
 import { createSnapshotTracker, planRetention, splitRevision } from './revisions.mjs';
 import { localDate } from './writing-log.mjs';
 import { wordDelta } from './word-delta.mjs';
@@ -511,6 +513,9 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     },
     // ---- M05-J02: continuity exceptions (planning/continuity/<slug>.md, through the store) and the context lines of a finding
     ...createContinuityExceptionMethods({ root, afterWrite, reconcile, now }),
+    // ---- M05-J06: suggestions (suggestions/<YYYY>/*.md, through the store; a target changes only on accept) and the read-only scene check
+    ...createSuggestionMethods({ root, afterWrite, reconcile, now }),
+    ...createCheckMethods({ root, now }),
 
     createNote: (bookId, args = {}) => structure(bookId, (b) => createNote(b, args ?? {})),
     setNoteFields: (bookId, id, args = {}) => structure(bookId, (b) => setNoteFields(b, id, args ?? {})),

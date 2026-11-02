@@ -30,14 +30,16 @@ export const STATUS_FILTERS = [
   { key: 'acknowledged', label: 'Acknowledged' },
 ];
 
-/** /books/:id/continuity with the optional ?finding= (the fingerprint shown first). @param {string} bookId @param {{ finding?: string | null }} [q] */
-export function continuityHref(bookId, { finding = null } = {}) {
-  return `/books/${enc(bookId)}/continuity${finding ? `?finding=${enc(finding)}` : ''}`;
+/** /books/:id/continuity with the optional ?finding= (the fingerprint shown first) or ?suggestion= (a suggestion open for review, M05-J06). @param {string} bookId @param {{ finding?: string | null, suggestion?: string | null }} [q] */
+export function continuityHref(bookId, { finding = null, suggestion = null } = {}) {
+  const q = finding ? `?finding=${enc(finding)}` : suggestion ? `?suggestion=${enc(suggestion)}` : '';
+  return `/books/${enc(bookId)}/continuity${q}`;
 }
 
-/** @param {string} search the query string of the URL @returns {{ finding: string | null }} */
+/** @param {string} search the query string of the URL @returns {{ finding: string | null, suggestion: string | null }} */
 export function parseContinuitySearch(search = '') {
-  return { finding: new URLSearchParams(search).get('finding') || null };
+  const q = new URLSearchParams(search);
+  return { finding: q.get('finding') || null, suggestion: q.get('suggestion') || null };
 }
 
 /** The findings that have a source in this scene (by scene ID), in the engine's order (errors first). @param {{ findings?: any[] } | null | undefined} result @param {string} sceneId */

@@ -21,6 +21,9 @@ if (!process.argv.includes('--write')) {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.resolve(HERE, '../fixtures');
 
+// suggestion documents (M05-J06) are built with the same package the app uses, so the fixtures cannot drift from it
+const { buildSuggestion } = await import('../../suggestions/src/index.mjs');
+
 // ---------------------------------------------------------------- ids
 const ALPHA = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford, no I L O U
 function ulid(tag, n) {
@@ -570,6 +573,27 @@ bookCase('W307-duplicate-exception', (b, ids) => {
   b.files.set(p1, exceptionDoc(ids, 'eyes-one', 'cf1-0123456789abcdef'));
   b.files.set(p2, exceptionDoc(ids, 'eyes-two', 'cf1-0123456789abcdef'));
   return [D('W307', p1, 'fingerprint'), D('W307', p2, 'fingerprint')];
+});
+
+// ---- suggestion documents (M05-J06)
+const suggestionFor = (ids, targetId, targetPath, baseBytes, proposed) =>
+  buildSuggestion({
+    id: ids('note'), targetId, targetPath, baseBytes: Buffer.from(baseBytes), proposedBytes: Buffer.from(proposed),
+    source: 'claude-book', mode: 'suggest', created: '2026-11-02T14:03:22Z',
+  }).text;
+const SUGGESTION_PATH = 'suggestions/2026/20261102-140322-first-line.md';
+
+bookCase('W308-suggestion-target-missing', (b, ids) => {
+  const base = render(b.files.get(b.A)).toString();
+  b.files.set(SUGGESTION_PATH, suggestionFor(ids, `scene_${ulid('CS', 900)}`, b.A, base, base.replace('tide went out', 'tide drew back')));
+  return [D('W308', SUGGESTION_PATH, 'target')];
+});
+
+bookCase('E102-suggestion-hunk', (b, ids) => {
+  const base = render(b.files.get(b.A)).toString();
+  const text = suggestionFor(ids, b.files.get(b.A).fm.id, b.A, base, base.replace('tide went out', 'tide drew back'));
+  b.files.set(SUGGESTION_PATH, text.replace('lines: 1,', 'lines: 2,'));
+  return [D('E102', SUGGESTION_PATH, 'hunks[0]')];
 });
 
 // ---- library cases: root is a library, books live under it
@@ -1154,5 +1178,21 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
   fs.writeFileSync(path.join(dir, 'expected.json'), json(expected));
   const got = await continuityOf(dir);
   fs.writeFileSync(path.join(dir, 'expected-continuity.json'), json(got));
+}
+{
+  // salt-orchard plus one suggestion with three hunks on Arrival (adjacent changes would merge, so each is separated by an unchanged line), none decided
+  const { files, expected, ids } = buildSaltOrchard();
+  const arrivalPath = 'manuscript/act-01-low-water/ch-001-the-drowned-rows/0010-arrival.md';
+  const arrival = files.get(arrivalPath);
+  const base = render(arrival).toString();
+  const proposed = base
+    .replace('threw her bag ashore.', 'threw her bag ashore, and did not look up.')
+    .replace('green eyes ringed', 'grey eyes ringed')
+    .replace('half under water.', 'half drowned.');
+  files.set('suggestions/2026/20261102-140322-arrival-eyes.md', suggestionFor(ids, arrival.fm.id, arrivalPath, base, proposed));
+  checkIds(files);
+  const dir = path.join(FIXTURES, 'valid', 'suggestion');
+  writeTree(dir, files);
+  fs.writeFileSync(path.join(dir, 'expected.json'), json(expected));
 }
 console.log('fixtures written');

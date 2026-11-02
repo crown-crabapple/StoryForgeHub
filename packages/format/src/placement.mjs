@@ -18,6 +18,8 @@ export function checkPlacement(docs, add) {
       add('W201', d.file, 'schema', 'continuity exception is not under planning/continuity/');
     } else if (d.kind === 'ai-record' && !logical.startsWith('ai/')) {
       add('W201', d.file, 'schema', 'AI record is not under ai/');
+    } else if (d.kind === 'suggestion' && !logical.startsWith('suggestions/')) {
+      add('W201', d.file, 'schema', 'suggestion is not under suggestions/');
     } else if (d.kind === 'event' &&!logical.startsWith('planning/timeline/')) {
       add('W201', d.file, 'schema', 'event file is not under planning/timeline/');
     }
