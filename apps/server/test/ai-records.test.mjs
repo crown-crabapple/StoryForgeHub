@@ -11,7 +11,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { validate } from '../../../packages/format/src/index.mjs';
 import { snapshot } from './helpers.mjs';
-import { AI, ARRIVAL, ARRIVAL_PATH, BOOK, freshLibrary, getScene, makeHome, readConfigFiles, readEverything, setupProvider, sha, startApp, startMockProvider, stopAll } from './ai-helpers.mjs';
+import { AI, ARRIVAL, ARRIVAL_PATH, BOOK, freshLibrary, getScene, makeHome, readConfigFiles, setupProvider, sha, startApp, startMockProvider, stopAll } from './ai-helpers.mjs';
 
 const RECORDS = { toggle: (b = BOOK) => `/api/books/${b}/ai/records`, includeField: 'includeContext' };
 const SECRET = 'sk-sftest-records-0a1b2c3d4e5f';
@@ -43,10 +43,24 @@ const chat = async (app, extra = {}) => {
   return p.json;
 };
 async function recordFiles(library) {
+  // Walk only ai/: a whole-library walk races the server's own temp files (a file can vanish between readdir and read).
   const out = [];
-  const files = await readEverything(library).catch(() => new Map());
-  for (const [rel, buf] of files) if (rel.startsWith('ai/')) out.push({ rel, text: buf.toString('utf8') });
-  return out;
+  async function walk(rel) {
+    let entries;
+    try {
+      entries = await fs.readdir(path.join(library, rel), { withFileTypes: true });
+    } catch (e) {
+      if (e.code === 'ENOENT') return;
+      throw e;
+    }
+    for (const e of entries) {
+      const child = `${rel}/${e.name}`;
+      if (e.isDirectory()) await walk(child);
+      else if (!e.name.includes('.sf-tmp')) out.push({ rel: child, text: await fs.readFile(path.join(library, child), 'utf8') });
+    }
+  }
+  await walk('ai');
+  return out.sort((a, b) => a.rel.localeCompare(b.rel));
 }
 const split = (text) => {
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text);
@@ -135,7 +149,7 @@ test('on: a rewrite record holds the selected text and applied: true after Apply
   };
   const discarded = await mk();
   assert.equal((await app.post(AI.discard(), { contextId: discarded.contextId })).status, 200);
-  let recs = (await recordFiles(library)).filter((r) => r.rel.endsWith('-rewrite.md'));
+  let recs = (await recordFiles(library)).filter((r) => /-rewrite(-\d+)?\.md$/.test(r.rel));
   assert.equal(recs.length, 1);
   assert.equal(split(recs[0].text).fm.applied, false);
   assert.ok(split(recs[0].text).body.includes(TARGET), 'selected text kept in the record');
@@ -145,7 +159,7 @@ test('on: a rewrite record holds the selected text and applied: true after Apply
   assert.equal(fresh.sha256, scene.sha256, 'discard changed nothing');
   const applied = await mk();
   assert.equal((await app.post(AI.apply(), { contextId: applied.contextId, replacement: REPLY })).status, 200);
-  recs = (await recordFiles(library)).filter((r) => r.rel.endsWith('-rewrite.md'));
+  recs = (await recordFiles(library)).filter((r) => /-rewrite(-\d+)?\.md$/.test(r.rel));
   assert.ok(recs.some((r) => split(r.text).fm.applied === true), 'an applied rewrite is recorded with applied: true');
   assert.deepEqual((await validate(library)).diagnostics.filter((d) => d.severity === 'error'), []);
 });
