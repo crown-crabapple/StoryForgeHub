@@ -1,0 +1,2 @@
+{"id":1,"book_id":"edge-book","chapter_id":2,"ordinal":1,"title":"","word_count":5,"body_hash":"not-a-matching-hash","label":"Final","summary":"stale summary","updated_at":"2026-02-01 08:00:00","note":"","seq":null}
+{"id":2,"book_id":"edge-book","chapter_id":2,"ordinal":2,"title":"","word_count":5,"body_hash":"also-stale","label":"","summary":"","updated_at":"2026-02-01 08:00:00","note":"","seq":null}

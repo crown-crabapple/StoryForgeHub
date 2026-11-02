@@ -1,0 +1,591 @@
+{
+    "dumper_version": 1,
+    "driver": "sqlite",
+    "dumped_at": "2026-01-05T12:00:00Z",
+    "tables": {
+        "acts": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "title",
+                "subtitle",
+                "sort_order",
+                "updated_at"
+            ],
+            "sha256": "d0b7bca18bd95f179daba1e836d991d42278c8034f2df042b2a49a631a650727"
+        },
+        "api_tokens": {
+            "rows": 0,
+            "skipped": "server-only"
+        },
+        "book_activity": {
+            "rows": 1,
+            "columns": [
+                "id",
+                "book_id",
+                "user_id",
+                "action",
+                "detail",
+                "created_at"
+            ],
+            "sha256": "4d9df566565d651280f895ec04c1b224fda4944e93009322953c8c7f9f691607"
+        },
+        "book_members": {
+            "rows": 3,
+            "columns": [
+                "id",
+                "book_id",
+                "user_id",
+                "role",
+                "added_by",
+                "created_at"
+            ],
+            "sha256": "0c3d93494209cb5047eae089a1aebcc0ccbc16a3f151bd970c80597d75148ea3"
+        },
+        "books": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "folder",
+                "title",
+                "series",
+                "num",
+                "status",
+                "profile",
+                "logline",
+                "genre",
+                "word_target",
+                "dot",
+                "sort_order",
+                "updated_at",
+                "promise_gap",
+                "question_gap"
+            ],
+            "sha256": "24cea743fdb52025f12d39b8b3bf78ef5fb17f5b7caa571e533fd57e501b5d43"
+        },
+        "canvas_cards": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "x",
+                "y",
+                "text",
+                "color",
+                "updated_at",
+                "ref_type",
+                "ref_id"
+            ],
+            "sha256": "223363734c0eee8b48a5f4baa4b901a2f4a168c9ae20c9136a2b80f729ef7d96"
+        },
+        "canvas_links": {
+            "rows": 1,
+            "columns": [
+                "id",
+                "book_id",
+                "from_id",
+                "to_id"
+            ],
+            "sha256": "005dc3e20d51c5e9f5cc5c0bf3d8dbf59c935c4b3d21f7b2af0c75b4b1181523"
+        },
+        "captures": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "text",
+                "status",
+                "created_at"
+            ],
+            "sha256": "e9e54992d2b9f6d9fe0bad682f747a592620a9e5c85ec8c12df58d58817dc9b3"
+        },
+        "chapter_cast": {
+            "rows": 5,
+            "columns": [
+                "id",
+                "book_id",
+                "chapter_file",
+                "slug",
+                "role",
+                "sort_order"
+            ],
+            "sha256": "e814a86a4c2f74b797dd8e1e36432f20ffa7641081b02d9b9141e1b14819db9b"
+        },
+        "chapter_notes": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "chapter_file",
+                "quote",
+                "note",
+                "status",
+                "task_id",
+                "created_at",
+                "user_id"
+            ],
+            "sha256": "5b0706c2d9e17d3663e6daad0ffeb7f867b163bec650d8e7080fce43e7c15c56"
+        },
+        "chapter_revisions": {
+            "rows": 7,
+            "columns": [
+                "id",
+                "book_id",
+                "chapter_id",
+                "chapter_file",
+                "body",
+                "body_hash",
+                "word_count",
+                "kind",
+                "created_at",
+                "saved_by",
+                "saved_via"
+            ],
+            "sha256": "59d36ddd8e656c493ebf061c69f2db287aad3ab628000e4ba3dcee42186cd24f"
+        },
+        "chapters": {
+            "rows": 7,
+            "columns": [
+                "id",
+                "book_id",
+                "num",
+                "title",
+                "pov",
+                "status",
+                "words",
+                "word_count",
+                "summary",
+                "body",
+                "file",
+                "sort_order",
+                "updated_at",
+                "act_id",
+                "grid_seq"
+            ],
+            "sha256": "f41a1959c335da4574312fc7978cf8647cf608b0bf7409b3af29196f120bf357"
+        },
+        "claim_sources": {
+            "rows": 1,
+            "columns": [
+                "id",
+                "book_id",
+                "chapter_file",
+                "source_id",
+                "cite_key",
+                "hits",
+                "created_at"
+            ],
+            "sha256": "66adcb4cd47d21139d6dc4cda646be111c087eb81fd976117aa40f349b986301"
+        },
+        "continuity_exemptions": {
+            "rows": 1,
+            "columns": [
+                "id",
+                "book_id",
+                "slug",
+                "chapter",
+                "reason",
+                "created_by",
+                "created_at"
+            ],
+            "sha256": "5a0a2e602482257adc6baffff79be442a0fac7f99e3b401a2dc14284ab5be624"
+        },
+        "dictionary_terms": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "term",
+                "source",
+                "created_at",
+                "user_id"
+            ],
+            "sha256": "38bcaf0a7906e60c493b7d4e094e872e3511ffd89776010d06c3f8ccd00711a0"
+        },
+        "editing_locks": {
+            "rows": 0,
+            "columns": [
+                "id",
+                "book_id",
+                "chapter_id",
+                "user_id",
+                "acquired_at",
+                "heartbeat_at"
+            ],
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "entries": {
+            "rows": 11,
+            "columns": [
+                "id",
+                "book_id",
+                "db_key",
+                "slug",
+                "name",
+                "status",
+                "type",
+                "detail",
+                "detail_label",
+                "first_app",
+                "related_raw",
+                "sort_order",
+                "updated_at"
+            ],
+            "sha256": "28df0ccee3cbb8d3c04fdad336b93d40f1107c3349bc895efb5b81295dffedfd"
+        },
+        "entry_fields": {
+            "rows": 19,
+            "columns": [
+                "id",
+                "entry_id",
+                "label",
+                "value",
+                "sort_order"
+            ],
+            "sha256": "9477bc2bba1c5dd86c4933d4b79bf4cdca2b53a5b0b3002e2d6b72dfe29a97d4"
+        },
+        "entry_relations": {
+            "rows": 8,
+            "columns": [
+                "id",
+                "entry_id",
+                "target_slug",
+                "sort_order"
+            ],
+            "sha256": "bae280efa69219499198264535fb204dfec9febbf3952676e26ed4910f433cbb"
+        },
+        "entry_revisions": {
+            "rows": 12,
+            "columns": [
+                "id",
+                "book_id",
+                "db_key",
+                "slug",
+                "name",
+                "body",
+                "body_hash",
+                "kind",
+                "saved_by",
+                "saved_via",
+                "created_at"
+            ],
+            "sha256": "bdd34eeb61449585cf4dca2a1fcd761c24ef94211a6c7dc78fbb9b36187fa9d2"
+        },
+        "entry_sections": {
+            "rows": 14,
+            "columns": [
+                "id",
+                "entry_id",
+                "heading",
+                "body",
+                "sort_order"
+            ],
+            "sha256": "1034fc3bd9c578cbb29839da59e9acb797f91dc62940b7bde3be2312a90592c0"
+        },
+        "exercises": {
+            "rows": 0,
+            "columns": [
+                "id",
+                "book_id",
+                "chapter_id",
+                "ordinal",
+                "title",
+                "type",
+                "est_time",
+                "operationalizes",
+                "prompt",
+                "updated_at"
+            ],
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "invites": {
+            "rows": 0,
+            "skipped": "server-only"
+        },
+        "knowledge_facts": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "character_slug",
+                "fact",
+                "knows",
+                "learned_in",
+                "updated_by",
+                "updated_at"
+            ],
+            "sha256": "66ced9ee0577c25dfb228969bbc1b2b29fd910f34ff40a1384140da9fc609e2f"
+        },
+        "mentions": {
+            "rows": 0,
+            "columns": [
+                "id",
+                "book_id",
+                "entry_slug",
+                "src_type",
+                "src_ref",
+                "src_label",
+                "cnt",
+                "kind"
+            ],
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "meta_pages": {
+            "rows": 1,
+            "columns": [
+                "id",
+                "book_id",
+                "slug",
+                "title",
+                "body"
+            ],
+            "sha256": "4377dbc2e11b93a2d991259b29e2865414e080db0c0f78a2864158843de9b7eb"
+        },
+        "note_pages": {
+            "rows": 1,
+            "columns": [
+                "id",
+                "book_id",
+                "slug",
+                "title",
+                "body"
+            ],
+            "sha256": "dca2d069208697c12ae8270f27588a785ae1749604ccef5daad4a6ecd79b9712"
+        },
+        "oauth_clients": {
+            "rows": 0,
+            "skipped": "server-only"
+        },
+        "oauth_codes": {
+            "rows": 0,
+            "skipped": "server-only"
+        },
+        "oauth_grants": {
+            "rows": 0,
+            "skipped": "server-only"
+        },
+        "password_resets": {
+            "rows": 0,
+            "skipped": "server-only"
+        },
+        "progressions": {
+            "rows": 4,
+            "columns": [
+                "id",
+                "book_id",
+                "chapter",
+                "type",
+                "what",
+                "related_csv",
+                "sort_order",
+                "when_label",
+                "when_order"
+            ],
+            "sha256": "f75fa22a252c3b99f4a67a154e536c01042308c1aee5419a7470839afa931c42"
+        },
+        "prose_analysis": {
+            "rows": 0,
+            "columns": [
+                "id",
+                "book_id",
+                "chapter_id",
+                "body_hash",
+                "data",
+                "updated_at"
+            ],
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "scenes": {
+            "rows": 11,
+            "columns": [
+                "id",
+                "book_id",
+                "chapter_id",
+                "ordinal",
+                "title",
+                "word_count",
+                "body_hash",
+                "label",
+                "summary",
+                "updated_at",
+                "note",
+                "seq"
+            ],
+            "sha256": "05cc31f84e13d240e82d2b1757fe8aa79e7689f5889d3a495b1bd2d69dcb6898"
+        },
+        "sources": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "cite_key",
+                "type",
+                "author",
+                "title",
+                "year",
+                "publisher",
+                "url",
+                "accessed",
+                "locator",
+                "note",
+                "sort_order",
+                "updated_at"
+            ],
+            "sha256": "4656e5ade3fb999fe6ddb58c578d37fd95edc6d3280a1aafa1b101ec65680958"
+        },
+        "state_events": {
+            "rows": 4,
+            "columns": [
+                "id",
+                "book_id",
+                "slug",
+                "event",
+                "chapter",
+                "value",
+                "note",
+                "updated_by",
+                "updated_at"
+            ],
+            "sha256": "82dffa9e8567b6396f94204b2c46888d3217b77803d1779492a80f6e33538186"
+        },
+        "story_ledger": {
+            "rows": 3,
+            "columns": [
+                "id",
+                "book_id",
+                "kind",
+                "slug",
+                "title",
+                "status",
+                "planted_in",
+                "payoff_in",
+                "characters_csv",
+                "notes",
+                "updated_by",
+                "updated_at"
+            ],
+            "sha256": "eabf7eff7695936fe4f0b9c9e88231a981ab0a149c9e77610a7d614b89d37300"
+        },
+        "sync_state": {
+            "rows": 0,
+            "columns": [
+                "id",
+                "book_id",
+                "k",
+                "v"
+            ],
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "task_steps": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "task_id",
+                "text",
+                "done",
+                "sort_order"
+            ],
+            "sha256": "c937ae06bb2f39b43fce53da3f7b545037cd3398491b62356430bddf09c58400"
+        },
+        "tasks": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "title",
+                "body",
+                "status",
+                "for_claude",
+                "target_db",
+                "target_slug",
+                "result",
+                "created_at",
+                "updated_at",
+                "priority",
+                "due"
+            ],
+            "sha256": "6d0d0f2837c31f69c0c253d6ee3754f34f2c2fcd0ec66a379a20139d00f84945"
+        },
+        "threads": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "entry_slug",
+                "entry_name",
+                "db_key",
+                "status",
+                "text",
+                "sort_order"
+            ],
+            "sha256": "a09a7c70f1ec99831a8f5e7404682d7eaa6ac91b3e3b3c04e0f7fc0e9c5cf4c7"
+        },
+        "users": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "display_name"
+            ],
+            "sha256": "0909a8c47dccfa5aa6abd1004fa2323a45b8d1d2381fe76fd24f5a164720734e"
+        },
+        "vision_items": {
+            "rows": 2,
+            "columns": [
+                "id",
+                "book_id",
+                "caption",
+                "image_url",
+                "sort_order",
+                "created_at"
+            ],
+            "sha256": "5eb297d6e6ef75540c3fec3acb6912bc7ab79ad572b887c1d33c70c6622c2cae"
+        },
+        "workspace_docs": {
+            "rows": 4,
+            "columns": [
+                "id",
+                "book_id",
+                "path",
+                "title",
+                "body",
+                "locked",
+                "updated_by",
+                "updated_at"
+            ],
+            "sha256": "8822c338db824a1f4ede0f2f60dce1abf62b9fbc7191019a4b4051ea80e78a71"
+        },
+        "workspace_revisions": {
+            "rows": 5,
+            "columns": [
+                "id",
+                "book_id",
+                "path",
+                "body",
+                "body_hash",
+                "kind",
+                "saved_by",
+                "saved_via",
+                "created_at"
+            ],
+            "sha256": "9df7cec8ca6cd21a1f9e2020dceffe5f14f7bd0931f9a6d79ae0067ef501cf20"
+        },
+        "writing_log": {
+            "rows": 3,
+            "columns": [
+                "id",
+                "book_id",
+                "log_date",
+                "words_added",
+                "total_words",
+                "chapters",
+                "minutes",
+                "mood",
+                "note",
+                "source",
+                "created_at"
+            ],
+            "sha256": "829fe7924ecd3d48becec5481da244d6a1cf6bb5b8a22b65e67b2b56f6bdae54"
+        }
+    }
+}

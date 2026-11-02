@@ -1,0 +1,2 @@
+{"id":1,"book_id":"salt-orchard","title":"Fix the tide times in chapter 1","body":"Check against the harbour table.","status":"doing","for_claude":0,"target_db":"locations","target_slug":"port-aldine","result":"","created_at":"2026-01-05 09:01:00","updated_at":"2026-01-05 09:01:00","priority":"high","due":"week"}
+{"id":2,"book_id":"salt-orchard","title":"Name the second flood","body":"","status":"todo","for_claude":1,"target_db":"","target_slug":"","result":"","created_at":"2026-01-05 09:02:00","updated_at":"2026-01-05 09:02:00","priority":"med","due":"someday"}

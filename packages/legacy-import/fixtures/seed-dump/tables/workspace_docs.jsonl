@@ -1,0 +1,4 @@
+{"id":1,"book_id":"salt-orchard","path":"plan","title":"Plan (outline)","body":"# Plan\n\n1. Arrival\n2. The key\n3. Low water\n4. The Tidewardens\n5. (cut)\n","locked":0,"updated_by":1,"updated_at":"2026-01-05 09:01:00"}
+{"id":2,"book_id":"salt-orchard","path":"style","title":"Style guide","body":"# Style guide\n\nShort sentences near the water. Longer ones indoors.\n","locked":0,"updated_by":1,"updated_at":"2026-01-05 09:02:00"}
+{"id":3,"book_id":"salt-orchard","path":"state/chapter-01/situation","title":"Chapter 1 situation","body":"# Situation after chapter 1\n\nMaren is at the house. See [[ilse-hollis]].\n","locked":1,"updated_by":1,"updated_at":"2026-01-05 09:03:00"}
+{"id":4,"book_id":"salt-orchard","path":"timeline/history","title":"History","body":"# History\n\n- Ninety years ago: the orchard is planted.\n","locked":0,"updated_by":1,"updated_at":"2026-01-05 09:04:00"}

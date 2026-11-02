@@ -1,0 +1,4 @@
+{"id":1,"book_id":"salt-orchard","slug":"brass-key","event":"holder","chapter":"2","value":"maren-hollis","note":"Found under the porch step.","updated_by":1,"updated_at":"2026-01-05 09:01:00"}
+{"id":2,"book_id":"salt-orchard","slug":"brass-key","event":"found","chapter":"2","value":"","note":"","updated_by":1,"updated_at":"2026-01-05 09:02:00"}
+{"id":3,"book_id":"salt-orchard","slug":"ilse-hollis","event":"lost","chapter":"3","value":"","note":"","updated_by":1,"updated_at":"2026-01-05 09:03:00"}
+{"id":4,"book_id":"salt-orchard","slug":"pell","event":"location","chapter":"3","value":"salt-orchard","note":"","updated_by":1,"updated_at":"2026-01-05 09:04:00"}

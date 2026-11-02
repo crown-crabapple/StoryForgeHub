@@ -1,0 +1,4 @@
+{"id":100,"book_id":"edge-book","slug":"mara","event":"location","chapter":"1","value":"harbour","note":"arrives","updated_by":1,"updated_at":"2026-02-01 08:00:00"}
+{"id":101,"book_id":"edge-book","slug":"odd-slug","event":"died","chapter":"2","value":"","note":"","updated_by":1,"updated_at":"2026-02-01 08:00:00"}
+{"id":102,"book_id":"edge-book","slug":"mara","event":"found","chapter":"epilogue","value":"","note":"","updated_by":1,"updated_at":"2026-02-01 08:00:00"}
+{"id":103,"book_id":"edge-book","slug":"ghost","event":"died","chapter":"1","value":"","note":"","updated_by":1,"updated_at":"2026-02-01 08:00:00"}

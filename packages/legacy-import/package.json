@@ -1,0 +1,19 @@
+{
+  "name": "@storyforge/legacy-import",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge legacy importer: turns a legacy dump into an import plan and a dry-run report (M06-J01)",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@storyforge/format": "0.1.0",
+    "@storyforge/manuscript": "0.1.0"
+  },
+  "devDependencies": {}
+}

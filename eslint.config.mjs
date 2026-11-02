@@ -37,7 +37,8 @@ const NET_GLOBALS = ['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource'].map(
 const NET_PROPERTIES = ['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource'].flatMap((property) =>
   ['globalThis', 'global', 'self', 'window'].map((object) => ({ object, property, message: NET_MESSAGE })),
 );
-const NET_SCOPE = ['packages/**/*.mjs', 'apps/server/**/*.mjs'];
+const FS_WRITE_FNS = '^(write[A-Za-z]*|append[A-Za-z]*|mkdir[A-Za-z]*|rm|rmSync|rmdir|rmdirSync|unlink|unlinkSync|rename|renameSync|copyFile|copyFileSync|cp|cpSync|createWriteStream|open|openSync|truncate|truncateSync|symlink|symlinkSync|link|linkSync|chmod|chmodSync|utimes|utimesSync)$';
+const NET_SCOPE =['packages/**/*.mjs', 'apps/server/**/*.mjs'];
 const NET_IGNORES = ['**/test/**', 'packages/ai/src/transport.mjs', 'apps/server/src/server.mjs'];
 const networkPaths = ['node:http', 'node:https', 'node:http2', 'node:net', 'node:tls', 'node:dgram', 'node:dns', 'http', 'https', 'net', 'tls', 'dns'].map((name) => ({
   name,
@@ -210,6 +211,28 @@ export default [
       'no-restricted-globals': ['error', ...NET_GLOBALS],
       'no-restricted-properties': ['error', ...NET_PROPERTIES],
       'no-restricted-syntax': ['error', ...SQLITE_SELECTORS, ...NET_SELECTORS, ...HTTP_CLIENT_SELECTORS],
+    },
+  },
+
+  // M06-J01: packages/legacy-import only reads a legacy dump (planning, never writing). It may read files; it may not call a write function.
+  // (Restates the sqlite and network selectors because a later no-restricted-syntax setting replaces the earlier one.)
+  {
+    files: ['packages/legacy-import/src/**/*.mjs'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...SQLITE_SELECTORS,
+        ...NET_SELECTORS,
+        ...NO_HTTP_SELECTORS,
+        {
+          selector: `ImportDeclaration[source.value=/^(node:)?fs(\\/promises)?$/] > ImportSpecifier[imported.name=/${FS_WRITE_FNS}/]`,
+          message: 'The legacy importer only reads (planning). Writes belong to the store (the CLI writes its report through @storyforge/store).',
+        },
+        {
+          selector: `MemberExpression[object.name=/^(fs|fsp|promises)$/][property.name=/${FS_WRITE_FNS}/]`,
+          message: 'The legacy importer only reads (planning). Writes belong to the store (the CLI writes its report through @storyforge/store).',
+        },
+      ],
     },
   },
 

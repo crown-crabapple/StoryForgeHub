@@ -16,7 +16,7 @@ Commands
   backup                      Write one book as a Markdown backup (.zip).
   restore                     Restore a backup into a new or empty folder.
   receipts verify             Check the provenance receipts of one book (read-only; exit 1 on integrity problems).
-  import-legacy               Import a legacy project as a new book (run "import-legacy --help" for its options).
+  import-legacy               Plan the import of a legacy StoryForgeHub dump (needs --dry-run for now; writes nothing).
 
 Options
   --library <path>            The library folder (a folder holding one or more books). Without it StoryForge uses the
@@ -24,8 +24,8 @@ Options
                               your home folder (serve only).
   --port <n>                  Port for serve (default 4317; 0 picks a free one; or set STORYFORGE_PORT). Always on 127.0.0.1.
   --open                      serve: open the browser on the running app (no network; uses the system's opener).
-  --book <slug>               continuity, export, backup, receipts verify: which book.
-  --json                      continuity, receipts verify: machine-readable output.
+  --book <slug>               continuity, export, backup, receipts verify, import-legacy: which book.
+  --json [file]               continuity, receipts verify: machine-readable output; import-legacy: write the plan as JSON to this new file.
   --apply                     repair: write the plan (without it nothing is changed).
   --format <f>                export: markdown, docx, epub or pdf.
   --include <what>            export: manuscript (default), summary or evidence.
@@ -34,6 +34,9 @@ Options
   --provenance                backup: include provenance/ (the receipts).
   --from <file.zip>           restore: the backup to read.
   --to <folder>               restore: a new or empty folder.
+  --dump <dir>                import-legacy: the folder made by tools/legacy-dump/dump.php.
+  --dry-run                   import-legacy: plan and report only (required).
+  --report <file.md>          import-legacy: also write the report to this new file.
   --help, -h                  Show this help.
 
 Environment
