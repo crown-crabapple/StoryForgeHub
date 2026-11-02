@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W305",
+      "file": "codex/characters/maren-hollis.md",
+      "location": "related[0].to"
+    }
+  ]
+}

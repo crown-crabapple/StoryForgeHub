@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "E209",
+      "file": "codex/_types/ship.md",
+      "location": "type"
+    },
+    {
+      "code": "E209",
+      "file": "codex/_types/ships.md",
+      "location": "type"
+    }
+  ]
+}

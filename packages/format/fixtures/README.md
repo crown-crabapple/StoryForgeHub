@@ -9,6 +9,7 @@ The bytes in this folder are exact (`.gitattributes` marks `packages/format/fixt
 | Folder | What it is |
 |---|---|
 | `salt-orchard/` | The reference book. 2 acts, chapters 0 to 3, 7 ordered scenes plus a variant and an archived scene; codex (characters, locations, faction, objects, lore), a plot thread with setup and payoff, timeline events, a research note and a cited source, a planning doc, Unicode prose, all three HTML comment forms, an `x-` field, a `.storyforge/` decoy. Zero diagnostics. |
+| `codex-graph/` | Synthetic book for the Codex model and graph (M04-J01): all five built-in entry types, a custom `ship` type with `codex/_types/ship.md`, a custom `spell` type without a type file, relations in both directions, one alias (`Skipper`) shared by two entries, and three scenes using front-matter references, `[[links]]` and plain-name mentions (one scene both links and mentions the same entry). Exactly two diagnostics: `W304` on each of the two entries. |
 | `library/` | A library with one pen name, a series `tidewater/` (two books, `series_number` 1 and 2) and one standalone book. Zero diagnostics. |
 | `spec-example/` | Byte copy of the spec's `salt-orchard-mini` example, `.storyforge/` decoy included. Exactly four diagnostics: `I402`, `W201`, `W202`, `W301`. |
 

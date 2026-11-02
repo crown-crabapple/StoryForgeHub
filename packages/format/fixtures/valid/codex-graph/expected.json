@@ -1,0 +1,20 @@
+{
+  "diagnostics": [
+    {
+      "code": "W304",
+      "file": "codex/characters/maren-hollis.md",
+      "location": "aliases[1]"
+    },
+    {
+      "code": "W304",
+      "file": "codex/characters/tobin-reyes.md",
+      "location": "aliases[1]"
+    }
+  ],
+  "order": [
+    "scene_01CG0000000000000000000002",
+    "scene_01CG0000000000000000000003",
+    "scene_01CG0000000000000000000004"
+  ],
+  "excluded": []
+}

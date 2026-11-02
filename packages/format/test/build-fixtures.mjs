@@ -393,6 +393,47 @@ bookCase('W303-archived-target', (b, ids) => {
   return [D('W303', b.B, lineOf(b.files, b.B, '[[old-friend]]'))];
 });
 
+const typeFile = (ids, type) => ({
+  fm: {
+    schema: 'storyforge.codex-type/v1',
+    id: ids('note'),
+    type,
+    name: 'Ship',
+    plural: 'Ships',
+    fields: ['Captain', 'Tonnage'],
+  },
+  body: 'Vessels that work the estuary.\n',
+});
+
+bookCase('E209-duplicate-type', (b, ids) => {
+  b.files.set('codex/_types/ship.md', typeFile(ids, 'ship'));
+  b.files.set('codex/_types/ships.md', typeFile(ids, 'ship'));
+  return [D('E209', 'codex/_types/ship.md', 'type'), D('E209', 'codex/_types/ships.md', 'type')];
+});
+
+bookCase('W304-shared-alias', (b, ids) => {
+  const ilse = 'codex/characters/ilse-hollis.md';
+  b.files.get(b.ENTRY).fm.aliases = ['Mare'];
+  b.files.set(ilse, {
+    fm: {
+      schema: 'storyforge.entry/v1',
+      id: ids('entry'),
+      slug: 'ilse-hollis',
+      type: 'character',
+      name: 'Ilse Hollis',
+      aliases: ['Mare'],
+      status: 'canon',
+    },
+    body: '## Overview\nAn aunt.\n',
+  });
+  return [D('W304', b.ENTRY, 'aliases[0]'), D('W304', ilse, 'aliases[0]')];
+});
+
+bookCase('W305-self-relation', (b) => {
+  b.files.get(b.ENTRY).fm.related = { block: ['  - to: maren-hollis', '    as: herself'] };
+  return [D('W305', b.ENTRY, 'related[0].to')];
+});
+
 bookCase('I401-unknown-field', (b) => {
   b.files.get(b.A).fm.mood = 'cold';
   return [D('I401', b.A, 'mood')];

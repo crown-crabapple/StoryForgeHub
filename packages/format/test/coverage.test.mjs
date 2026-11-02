@@ -6,7 +6,8 @@ import { INVALID, listDirs, readExpected } from './helpers.mjs';
 // Every code in FORMAT-v1 section 11. Reads only expected.json files.
 const SPEC_CODES = [
   'E006', 'E100', 'E101', 'E102', 'E103', 'E201', 'E202', 'E203', 'E204', 'E205', 'E206', 'E207',
-  'E208', 'E301', 'E302', 'W101', 'W201', 'W202', 'W203', 'W204', 'W301', 'W302', 'W303', 'I401',
+  'E208', 'E209', 'E301', 'E302', 'W101', 'W201', 'W202', 'W203', 'W204', 'W301', 'W302', 'W303',
+  'W304', 'W305', 'I401',
   'I402',
 ];
 

@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "W304",
+      "file": "codex/characters/maren-hollis.md",
+      "location": "aliases[0]"
+    },
+    {
+      "code": "W304",
+      "file": "codex/characters/ilse-hollis.md",
+      "location": "aliases[0]"
+    }
+  ]
+}
