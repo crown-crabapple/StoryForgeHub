@@ -32,7 +32,7 @@ test('status after rebuild is fresh with schema_version, built_at and file_count
   const { idx, root } = await built();
   const st = plain(await idx.status());
   assert.equal(st.state, 'fresh');
-  assert.equal(st.schema_version, 1);
+  assert.equal(st.schema_version, 2);
   assert.ok(st.built_at);
   assert.deepEqual(st.stale_paths, []);
   assert.ok(st.file_count >= 30, `file_count counts the book's .md files, got ${st.file_count}`);
@@ -146,5 +146,5 @@ test('a different schema_version is not served; rebuild restores it', async () =
   assert.equal((await idx.rebuild()).ok, true);
   const st = plain(await idx.status());
   assert.equal(st.state, 'fresh');
-  assert.equal(st.schema_version, 1);
+  assert.equal(st.schema_version, 2);
 });

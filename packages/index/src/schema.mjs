@@ -1,7 +1,7 @@
 // Table definitions for index.sqlite. Bump SCHEMA_VERSION when anything here changes: an index with
 // a different version is treated as stale and rebuilt from the files.
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2; // 2: graph table (M04-J01)
 export const FORMAT = 'storyforge-format/1';
 export const INDEX_FILE = 'index.sqlite';
 
