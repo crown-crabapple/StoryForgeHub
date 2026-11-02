@@ -3,11 +3,11 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
+import { extractLinks, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts } from './book-facts.mjs';
-import { collectLinks } from './links.mjs';
+import { buildGraph, mentionRows } from './graph.mjs';
 import { DDL, FORMAT, OBJECT_KINDS, SCHEMA_VERSION, SEARCH_KINDS } from './schema.mjs';
-import { foldText, mentionCounter, stripForSearch } from './text.mjs';
+import { stripForSearch } from './text.mjs';
 import { countWords } from './word-count.mjs';
 import { readCounts } from './queries.mjs';
 
@@ -62,7 +62,7 @@ async function load({ bookRoot, validateRoot, bookPath, cache }) {
   const rel = (p) => (prefix && p.startsWith(prefix) ? p.slice(prefix.length) : p);
   const diagnostics = result.diagnostics.filter((d) => prefix === '' || d.file.startsWith(prefix)).map((d) => ({ ...d, file: rel(d.file) }));
   const context = await readContext(validateRoot, bookPath, book);
-  return { bookRoot, bookPath, files, book, prefix, rel, diagnostics, ...context };
+  return { bookRoot, bookPath, files, book, prefix, rel, diagnostics, result, ...context };
 }
 
 /** Front matter of the book's series.md and of library.md (null when there is none), for the book's display facts. */
@@ -135,6 +135,7 @@ const KEPT = {
   excluded: ['id', 'path', 'reason'],
   links: ['src_id', 'src_path', 'location', 'raw', 'target_id', 'target_kind', 'resolution'],
   mentions: ['entry_id', 'scene_id', 'count'],
+  graph: ['from_id', 'to_id', 'kind', 'rel', 'label', 'src_path', 'location', 'count'],
   fts: ['id', 'kind', 'title', 'body'],
 };
 
@@ -176,12 +177,11 @@ function keepProjection({ files, diagnostics, seriesFm, libraryFm }, prev, { now
 }
 
 /** Build the projection from an already loaded book. `extraMeta` entries are added to `meta`. */
-async function project({ bookRoot, bookPath, files, book, rel, diagnostics, seriesFm, libraryFm }, { extraMeta = {} }) {
+async function project({ bookPath, files, book, rel, diagnostics, result, seriesFm, libraryFm }, { extraMeta = {} }) {
   const docs = files.map((f) => f.doc).filter((d) => d && d.kind);
   const docByRel = new Map(docs.map((d) => [d.rel, d]));
   const bookDoc = docByRel.get('book.md');
-  const bookDir = path.join(bookRoot);
-  const links = await collectLinks(docs, bookDir);
+  const links = extractLinks(result, bookPath);
 
   const db = new DatabaseSync(':memory:');
   try {
@@ -219,13 +219,11 @@ async function project({ bookRoot, bookPath, files, book, rel, diagnostics, seri
     const insScene = db.prepare(
       'INSERT INTO scenes (id, position, act, chapter, sequence, act_label, chapter_label, title, status, pov, word_count, path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
-    const sceneText = [];
     for (const s of book.order) {
       const p = rel(s.path);
       const doc = docByRel.get(p);
       const fm = doc?.fm ?? {};
       insScene.run(s.id, s.position, s.act, s.chapter, s.sequence, s.act_label, s.chapter_label, s.title, str(fm.status), str(fm.pov), countWords(doc?.body ?? ''), p);
-      sceneText.push({ id: s.id, text: foldText(stripForSearch(doc?.body ?? '')) });
     }
 
     const insExcluded = db.prepare('INSERT INTO excluded (id, path, reason) VALUES (?, ?, ?)');
@@ -234,15 +232,13 @@ async function project({ bookRoot, bookPath, files, book, rel, diagnostics, seri
     const insLink = db.prepare('INSERT INTO links (src_id, src_path, location, raw, target_id, target_kind, resolution) VALUES (?, ?, ?, ?, ?, ?, ?)');
     for (const l of links) insLink.run(l.src_id, l.src_path, l.location, l.raw, l.target_id, l.target_kind, l.resolution);
 
+    const mentions = mentionRows(docs, book.order, rel);
     const insMention = db.prepare('INSERT INTO mentions (entry_id, scene_id, count) VALUES (?, ?, ?)');
-    for (const d of docs) {
-      if (d.kind !== 'entry' || typeof d.fm.id !== 'string') continue;
-      const count = mentionCounter([d.fm.name, ...(Array.isArray(d.fm.aliases) ? d.fm.aliases : [])]);
-      if (!count) continue;
-      for (const s of sceneText) {
-        const n = count(s.text);
-        if (n > 0) insMention.run(d.fm.id, s.id, n);
-      }
+    for (const m of mentions) insMention.run(m.entry_id, m.scene_id, m.count);
+
+    const insEdge = db.prepare('INSERT INTO graph (from_id, to_id, kind, rel, label, src_path, location, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const e of buildGraph(result, mentions, bookPath).edges) {
+      insEdge.run(e.from, e.to, e.kind, e.rel, e.label ?? null, e.source.path, e.source.location, e.count ?? null);
     }
 
     const insDiag = db.prepare('INSERT INTO diagnostics (code, severity, file, location, message) VALUES (?, ?, ?, ?, ?)');

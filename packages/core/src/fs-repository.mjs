@@ -5,7 +5,7 @@ import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { discover, escapesRoot, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
-import { bookFacts } from '@storyforge/index';
+import { bookFacts, buildGraph, subGraph } from '@storyforge/index';
 import { applyRepair, planRepair } from '@storyforge/manuscript';
 import { listTemplates } from '@storyforge/templates';
 import { createBookMethod } from './create-book.mjs';
@@ -68,6 +68,7 @@ const str = (v) => (typeof v === 'string' ? v : null);
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /** @param {string} a @param {string} b */
+const BUILTIN_TYPES = ['character', 'location', 'faction', 'object', 'lore'];
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 const noop = () => {};
@@ -482,6 +483,24 @@ export function createFsRepository(libraryRoot, options = {}) {
   }
 
   /** The book (as validate() sees it) with this id, or null. */
+  /** The graph and the scene order of a book: from the index when it is readable, else from the files. Null for an unknown book. */
+  async function graphOf(bookId) {
+    try {
+      const hit = await manager.query(bookId, (x) => ({ graph: x.graph(), scenes: x.scenes() }));
+      if (hit === null) return null;
+      return { graph: hit.graph, scenes: new Map(hit.scenes.map((s) => [s.id, { title: s.title, position: s.position }])) };
+    } catch (e) {
+      if (/** @type {any} */ (e)?.code !== 'INDEX_NOT_READY') throw e;
+    }
+    const result = await validate(root);
+    const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
+    if (!book) return null;
+    return {
+      graph: buildGraph(result, undefined, book.path),
+      scenes: new Map(book.order.map((/** @type {any} */ s) => [s.id, { title: s.title, position: s.position }])),
+    };
+  }
+
   async function bookById(bookId) {
     return (await validate(root)).books.find((/** @type {any} */ b) => b.id === bookId) ?? null;
   }
@@ -761,7 +780,58 @@ export function createFsRepository(libraryRoot, options = {}) {
       watcher.close();
     },
 
-    /** An entry for the scene rail's preview: { id, slug, name, type, status, fields, sections: [{ heading, text }] } or null. `ref` is the entry id or slug. */
+    /**
+     * The book graph { nodes, edges } (contract M04-J01 section 3), from the index when it is readable, else from the files.
+     * `node` narrows to that node and its neighbours, `kinds` to edge kinds. Null for an unknown book or node.
+     * @param {string} bookId @param {{ node?: string, kinds?: string[] }} [opts]
+     */
+    async getGraph(bookId, opts = {}) {
+      const g = await graphOf(bookId);
+      return g ? subGraph(g.graph, opts) : null;
+    },
+
+    /**
+     * Codex types of the book: the five built-in types, every custom type that has entries or a codex/_types file.
+     * [{ type, name, plural, fields, description, builtin, defined, count }] or null for an unknown book.
+     */
+    async getCodexTypes(bookId) {
+      const book = await bookById(bookId);
+      if (!book) return null;
+      const bookRoot = book.path === '' ? root : abs(book.path);
+      /** @type {Map<string, any>} */
+      const defs = new Map();
+      /** @type {Map<string, number>} */
+      const counts = new Map();
+      for (const rel of await walkMarkdown(bookRoot)) {
+        if (!rel.startsWith('codex/')) continue;
+        const { doc } = await loadDoc(path.join(bookRoot, ...rel.split('/')), rel, rel, noop);
+        if (!doc || doc.archived) continue;
+        if (doc.kind === 'codex-type' && typeof doc.fm.type === 'string' && /^[a-z]+$/.test(doc.fm.type) && !defs.has(doc.fm.type)) defs.set(doc.fm.type, doc);
+        else if (doc.kind === 'entry' && typeof doc.fm.type === 'string') counts.set(doc.fm.type, (counts.get(doc.fm.type) ?? 0) + 1);
+      }
+      const types = [...new Set([...BUILTIN_TYPES, ...[...defs.keys(), ...counts.keys()].sort()])];
+      return types.map((type) => {
+        const doc = defs.get(type);
+        const fallback = type.charAt(0).toUpperCase() + type.slice(1);
+        const name = str(doc?.fm.name) ?? fallback;
+        return {
+          type,
+          name,
+          plural: str(doc?.fm.plural) ?? (type === 'lore' ? name : `${name}s`),
+          fields: Array.isArray(doc?.fm.fields) ? doc.fm.fields.filter((f) => typeof f === 'string') : [],
+          description: doc ? doc.body.trim() : '',
+          builtin: BUILTIN_TYPES.includes(type),
+          defined: doc !== undefined,
+          count: counts.get(type) ?? 0,
+        };
+      });
+    },
+
+    /**
+     * An entry for the scene rail's preview: { id, slug, name, type, status, fields, sections: [{ heading, text }],
+     * appears_in: [{ scene_id, title, position, rel, kind }], related: [{ id, name, as, direction }] } or null.
+     * `ref` is the entry id or slug.
+     */
     async getEntry(bookId, ref) {
       const book = await bookById(bookId);
       if (!book || typeof ref !== 'string' || ref === '') return null;
@@ -769,14 +839,31 @@ export function createFsRepository(libraryRoot, options = {}) {
       for (const rel of await walkMarkdown(bookRoot)) {
         const { doc } = await loadDoc(path.join(bookRoot, ...rel.split('/')), rel, rel, noop);
         if (!doc || doc.kind !== 'entry' || doc.archived || (doc.fm.id !== ref && doc.fm.slug !== ref)) continue;
+        const id = str(doc.fm.id);
+        const links = id ? await graphOf(bookId) : null;
+        const appearsIn = [];
+        const related = [];
+        if (links) {
+          const nameOf = new Map(links.graph.nodes.map((n) => [n.id, n.name]));
+          for (const e of links.graph.edges) {
+            const scene = links.scenes.get(e.from);
+            if (e.to === id && scene) appearsIn.push({ scene_id: e.from, title: scene.title, position: scene.position, rel: e.rel, kind: e.kind });
+            if (e.rel !== 'related') continue;
+            if (e.from === id) related.push({ id: e.to, name: nameOf.get(e.to) ?? null, as: e.label ?? null, direction: 'out' });
+            else if (e.to === id) related.push({ id: e.from, name: nameOf.get(e.from) ?? null, as: e.label ?? null, direction: 'in' });
+          }
+          appearsIn.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'explicit' ? -1 : 1) || a.position - b.position);
+        }
         return {
-          id: str(doc.fm.id),
+          id,
           slug: str(doc.fm.slug),
           name: str(doc.fm.name),
           type: str(doc.fm.type),
           status: str(doc.fm.status),
           fields: doc.fm.fields && typeof doc.fm.fields === 'object' && !Array.isArray(doc.fm.fields) ? doc.fm.fields : {},
           sections: entrySections(doc.body),
+          appears_in: appearsIn,
+          related,
         };
       }
       return null;

@@ -1,5 +1,6 @@
 // Link and reference resolution (spec 1.8): front-matter references, body links, citations.
-// Emits E103 (body paths), E301, E302, W301, W302, W303, I402.
+// Emits E103 (body paths), E301, E302, W301, W302, W303, W305, I402, and records every explicit reference
+// as a link record (see extractLinks in index.mjs), so nothing else has to resolve links again.
 import path from 'node:path';
 import { exists } from './fs.mjs';
 import { ID_PREFIX_RE } from './ids.mjs';
@@ -67,9 +68,19 @@ export function* proseLines(body, startLine) {
 }
 
 /**
+ * One explicit reference and what it resolved to. `resolution`: ok, previous_slug, archived, wrong_kind,
+ * broken, cross_book. `src_path` is relative to the book root.
+ * @typedef {{ src_id: string|null, src_path: string, location: string, raw: string,
+ *             target_id: string|null, target_kind: string|null, resolution: string }} LinkRecord
+ */
+
+const idOf = (doc) => (typeof doc.fm.id === 'string' ? doc.fm.id : null);
+
+/**
  * @param {Doc[]} docs documents of one book
  * @param {string} bookDir absolute book directory (read-only existence checks)
  * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ * @returns {Promise<{eventScenes: Map<Doc, Set<Doc>>, links: LinkRecord[]}>}
  */
 export async function resolveLinks(docs, bookDir, add) {
   /** @type {Map<string, Doc>} */
@@ -80,12 +91,19 @@ export async function resolveLinks(docs, bookDir, add) {
   const byPrev = new Map();
   /** @type {Map<string, Doc[]>} */
   const byCite = new Map();
+  /** @type {Map<string, Doc>} */
+  const byRel = new Map();
+  /** @type {LinkRecord[]} */
+  const links = [];
+  const record = (src, location, raw, targetId, targetKind, resolution) =>
+    links.push({ src_id: idOf(src), src_path: src.rel, location, raw, target_id: targetId, target_kind: targetKind, resolution });
   const push = (map, key, d) => {
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(d);
   };
   for (const d of docs) {
     if (!d.kind) continue;
+    byRel.set(d.rel, d);
     if (typeof d.fm.id === 'string' && !byId.has(d.fm.id)) byId.set(d.fm.id, d);
     if (NAMED.includes(d.kind)) {
       if (typeof d.fm.slug === 'string') push(bySlug, d.fm.slug, d);
@@ -130,19 +148,21 @@ export async function resolveLinks(docs, bookDir, add) {
     if (target === '') return null;
     if (target.includes(':')) {
       add('I402', src.file, location, `cross-book link not checked: ${target}`);
+      record(src, location, target, null, null, 'cross_book');
       return null;
     }
     const hit = lookup(target);
     if (!hit) {
       add('E301', src.file, location, `cannot resolve ${target}`);
+      record(src, location, target, null, null, 'broken');
       return null;
     }
     if (hit.viaPrevious) add('W301', src.file, location, `${target} resolved only via previous_slugs`);
     if (hit.doc.archived) add('W303', src.file, location, `${target} points into archive/`);
-    if (kinds && !kinds.includes(hit.doc.kind)) {
-      add('E302', src.file, location, `${target} is a ${hit.doc.kind}, expected ${kinds.join(' or ')}`);
-      return hit.doc;
-    }
+    const wrongKind = kinds && !kinds.includes(hit.doc.kind);
+    if (wrongKind) add('E302', src.file, location, `${target} is a ${hit.doc.kind}, expected ${kinds.join(' or ')}`);
+    const resolution = wrongKind ? 'wrong_kind' : hit.doc.archived ? 'archived' : hit.viaPrevious ? 'previous_slug' : 'ok';
+    record(src, location, target, idOf(hit.doc), hit.doc.kind, resolution);
     return hit.doc;
   }
 
@@ -151,9 +171,12 @@ export async function resolveLinks(docs, bookDir, add) {
     const list = byCite.get(key);
     if (!list) {
       add('E301', src.file, location, `cannot resolve citation ${key}`);
+      record(src, location, key, null, null, 'broken');
       return;
     }
-    if (!list.some((d) => !d.archived)) add('W303', src.file, location, `citation ${key} points into archive/`);
+    const live = list.find((d) => !d.archived);
+    if (!live) add('W303', src.file, location, `citation ${key} points into archive/`);
+    record(src, location, key, idOf(live ?? list[0]), 'source', live ? 'ok' : 'archived');
   }
 
   for (const d of docs) {
@@ -174,7 +197,9 @@ export async function resolveLinks(docs, bookDir, add) {
     }
     if (d.kind === 'entry' && Array.isArray(fm.related)) {
       fm.related.forEach((r, i) => {
-        if (r && typeof r === 'object' && typeof r.to === 'string') resolveTarget(d, `related[${i}].to`, r.to, NAMED);
+        if (!r || typeof r !== 'object' || typeof r.to !== 'string') return;
+        const target = resolveTarget(d, `related[${i}].to`, r.to, NAMED);
+        if (target === d) add('W305', d.file, `related[${i}].to`, 'related points at the entry itself');
       });
     }
     if (d.kind === 'research' && Array.isArray(fm.sources)) {
@@ -221,15 +246,20 @@ export async function resolveLinks(docs, bookDir, add) {
     const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(src.rel), t));
     if (t.startsWith('/') || escapesRoot(path.posix.join(path.posix.dirname(src.rel), t))) {
       add('E103', src.file, location, `path escapes the book root: ${t}`);
+      record(src, location, rawTarget.trim(), null, 'file', 'broken');
       return;
     }
     if (resolved.startsWith('.storyforge/') || resolved === '.storyforge') return;
-    if (!(await exists(path.join(bookDir, ...resolved.split('/'))))) {
+    const present = await exists(path.join(bookDir, ...resolved.split('/')));
+    if (!present) {
       add('E301', src.file, location, `file not found: ${t}`);
     } else if (resolved.startsWith('archive/')) {
       add('W303', src.file, location, `link points into archive/: ${t}`);
     }
+    const doc = byRel.get(resolved);
+    record(src, location, rawTarget.trim(), doc ? idOf(doc) : null, doc ? doc.kind : 'file',
+      !present ? 'broken' : resolved.startsWith('archive/') ? 'archived' : 'ok');
   }
 
-  return { eventScenes };
+  return { eventScenes, links };
 }

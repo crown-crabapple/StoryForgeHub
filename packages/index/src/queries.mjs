@@ -1,6 +1,7 @@
 // Read-only query helpers over an open index database. Rows are returned as plain objects.
 import path from 'node:path';
 import { SEARCH_KINDS } from './schema.mjs';
+import { GRAPH_KINDS, subGraph } from './graph.mjs';
 import { ftsQuery } from './text.mjs';
 
 const plain = (rows) => rows.map((r) => ({ ...r }));
@@ -146,6 +147,28 @@ export function makeQueries(db) {
       if (entryId !== undefined) { where.push('entry_id = ?'); params.push(entryId); }
       if (sceneId !== undefined) { where.push('scene_id = ?'); params.push(sceneId); }
       return all(`SELECT entry_id, scene_id, count FROM mentions${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY rowid`, ...params);
+    },
+
+    /**
+     * The book graph (the same nodes and edges as buildGraph() over the files): { nodes, edges }, or null when
+     * `node` is not in it. `node` narrows to that node and its neighbours; `kinds` to edge kinds.
+     * @param {{ node?: string, kinds?: string[] }} [opts]
+     */
+    graph({ node, kinds } = {}) {
+      const nodes = all(
+        `SELECT id, kind, CASE WHEN kind = 'entry' THEN type END AS type, title AS name FROM objects WHERE kind IN (${GRAPH_KINDS.map(() => '?').join(', ')}) ORDER BY rowid`,
+        ...GRAPH_KINDS,
+      );
+      const edges = all('SELECT from_id, to_id, kind, rel, label, src_path, location, count FROM graph ORDER BY rowid').map((r) => ({
+        from: r.from_id,
+        to: r.to_id,
+        kind: r.kind,
+        rel: r.rel,
+        ...(r.label !== null ? { label: r.label } : {}),
+        source: { path: r.src_path, location: r.location },
+        ...(r.count !== null ? { count: r.count } : {}),
+      }));
+      return subGraph({ nodes, edges }, { node, kinds });
     },
 
     /** Live (not archived) objects of the given kinds, for pickers: [{ id, kind, slug, title, type }], by kind then title. */

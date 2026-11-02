@@ -8,6 +8,7 @@ import { buildTimeline } from './timeline.mjs';
 import { loadDoc } from './load.mjs';
 import { checkPlacement } from './placement.mjs';
 import { checkFields } from './schema.mjs';
+import { checkCodex } from './codex.mjs';
 
 /** @typedef {import('./load.mjs').Doc} Doc */
 
@@ -18,7 +19,7 @@ const join = (bookPath, rel) => (bookPath ? `${bookPath}/${rel}` : rel);
  * @param {{rootDir:string, bookPath:string, series:{slug:string|null}|null,
  *          add:(code:string,file:string,loc:string,msg:string)=>void}} opts
  *   bookPath is relative to rootDir ("" when rootDir is the book)
- * @returns {Promise<{book: object, docs: Doc[], bookDoc: Doc|undefined}>}
+ * @returns {Promise<{book: object, docs: Doc[], bookDoc: Doc|undefined, links: import('./links.mjs').LinkRecord[]}>}
  */
 export async function validateBook({ rootDir, bookPath, series, add }) {
   const bookDir = bookPath ? path.join(rootDir, ...bookPath.split('/')) : rootDir;
@@ -39,8 +40,9 @@ export async function validateBook({ rootDir, bookPath, series, add }) {
   for (const d of typed) checkFields(d, { inSeries: series !== null }, add);
   checkDuplicateSlugs(typed, add);
   checkPlacement(typed, add);
+  checkCodex(typed, add);
   const { order, excluded, positions } = analyzeScenes(typed, bookPath, add);
-  const { eventScenes } = await resolveLinks(typed, bookDir, add);
+  const { eventScenes, links } = await resolveLinks(typed, bookDir, add);
   const timeline = buildTimeline(typed, eventScenes, positions);
 
   const bookDoc = typed.find((d) => d.kind === 'book' && d.rel === 'book.md');
@@ -55,5 +57,5 @@ export async function validateBook({ rootDir, bookPath, series, add }) {
     excluded: [...excluded, ...unsupported].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
     timeline,
   };
-  return { book, docs: typed, bookDoc };
+  return { book, docs: typed, bookDoc, links };
 }

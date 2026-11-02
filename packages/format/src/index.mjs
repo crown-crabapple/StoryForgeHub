@@ -68,8 +68,9 @@ export async function validate(rootDir) {
   const bookEntries = [];
   for (const plan of bookPlans) {
     const series = plan.seriesPath !== null ? (seriesInfo.get(plan.seriesPath) ?? { slug: null }) : null;
-    const { book, docs, bookDoc } = await validateBook({ rootDir: root, bookPath: plan.path, series, add });
+    const { book, docs, bookDoc, links } = await validateBook({ rootDir: root, bookPath: plan.path, series, add });
     books.push(book);
+    DETAIL.set(book, { docs, links });
     allDocs.push(...docs);
     if (bookDoc) {
       bookEntries.push({ path: plan.path, file: bookDoc.file, seriesPath: plan.seriesPath, fm: bookDoc.fm });
@@ -81,7 +82,36 @@ export async function validate(rootDir) {
   if (libraryDoc) checkPenNames(libraryDoc, bookEntries, add);
 
   books.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  return { diagnostics: collector.sorted(), books };
+  const result = { diagnostics: collector.sorted(), books };
+  return result;
+}
+
+/** @type {WeakMap<object, {docs: any[], links: import('./links.mjs').LinkRecord[]}>} book object -> what validate() read and resolved */
+const DETAIL = new WeakMap();
+
+const detailOf = (result, bookPath) =>
+  (result?.books ?? []).filter((b) => bookPath === undefined || b.path === bookPath).map((b) => DETAIL.get(b)).filter(Boolean);
+
+/**
+ * Every explicit reference found by validate(), as the records validate() itself used to emit E301, E302,
+ * W301, W303 and I402: { src_id, src_path, location, raw, target_id, target_kind, resolution }. src_path is
+ * relative to the book root. With `bookPath` (as in `result.books[i].path`) only that book's records.
+ * @param {{books: object[]}} result what validate() returned
+ * @param {string} [bookPath]
+ * @returns {import('./links.mjs').LinkRecord[]}
+ */
+export function extractLinks(result, bookPath) {
+  return detailOf(result, bookPath).flatMap((d) => d.links);
+}
+
+/**
+ * The typed documents (kind, fm, body, rel, archived, ...) validate() read for a book, in file order.
+ * @param {{books: object[]}} result what validate() returned
+ * @param {string} [bookPath]
+ * @returns {import('./load.mjs').Doc[]}
+ */
+export function extractDocs(result, bookPath) {
+  return detailOf(result, bookPath).flatMap((d) => d.docs);
 }
 
 // Building blocks for derived projections (@storyforge/index). Re-exports only; behaviour unchanged.

@@ -87,6 +87,11 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
       return { ...base, state: 'error' };
     }
     if (base.schema_version !== SCHEMA_VERSION) return { ...base, state: 'stale' };
+    try {
+      db.prepare('SELECT 1 FROM graph LIMIT 1').get(); // an index built before the graph table existed is rebuilt
+    } catch {
+      return { ...base, state: 'stale' };
+    }
     const known = new Map(rows.map((r) => [r.path, r]));
     const stale = [];
     let onDisk;
@@ -170,6 +175,7 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
       const v = /** @type {any} */ (db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get());
       if (Number(v?.value) !== SCHEMA_VERSION) throw new Error('other schema');
       db.prepare('SELECT COUNT(*) FROM scenes').get();
+      db.prepare('SELECT COUNT(*) FROM graph').get();
       return db;
     } catch {
       db?.close();
@@ -209,7 +215,7 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
     return inflight;
   }
 
-  const QUERY_NAMES = ['bookId', 'invalidInfo', 'bookSummary', 'scenes', 'excluded', 'chapters', 'links', 'backlinks', 'mentions', 'diagnostics', 'counts', 'search'];
+  const QUERY_NAMES = ['bookId', 'invalidInfo', 'bookSummary', 'scenes', 'excluded', 'chapters', 'links', 'backlinks', 'mentions', 'graph', 'diagnostics', 'counts', 'search'];
   const query = Object.fromEntries(QUERY_NAMES.map((name) => [name, (...args) => read((q) => q[name](...args))]));
 
   return {

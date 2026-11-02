@@ -72,6 +72,11 @@ export const KINDS = {
       characters: 'list', locations: 'list', previous_slugs: 'list',
     },
   },
+  'codex-type': {
+    prefix: 'note',
+    required: ['type'],
+    fields: { type: 'str', name: 'str', plural: 'str', fields: 'list' },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],
@@ -94,7 +99,7 @@ export const KINDS = {
 
 /** List-valued reference fields whose items must be strings. */
 const STRING_LIST_FIELDS = new Set([
-  'characters', 'locations', 'plot_threads', 'events', 'setup', 'payoff', 'scenes', 'sources', 'links',
+  'characters', 'locations', 'plot_threads', 'events', 'setup', 'payoff', 'scenes', 'sources', 'links', 'fields',
 ]);
 
 /** @param {any} v */
@@ -183,6 +188,10 @@ export function checkFields(doc, ctx, add) {
     fm.related.forEach((r, i) => {
       if (!isPlainMap(r) || typeof r.to !== 'string') add('E102', file, `related[${i}].to`, 'related item needs a string `to`');
     });
+  }
+
+  if (doc.kind === 'codex-type' && typeof fm.type === 'string' && !/^[a-z]+$/.test(fm.type)) {
+    add('E102', file, 'type', 'type must be a lower-case word (a-z)');
   }
 
   for (const key of ['cover', 'image']) {

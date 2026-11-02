@@ -130,6 +130,21 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const entry = await repository.getEntry(b, d);
       return entry ? { status: 200, body: entry } : NOT_FOUND;
     }
+    if (c === 'graph' && d === undefined) {
+      const kindsParam = params.get('kinds');
+      let kinds;
+      if (kindsParam !== null) {
+        kinds = kindsParam.split(',').map((k) => k.trim()).filter(Boolean);
+        if (kinds.length === 0 || kinds.some((k) => !GRAPH_EDGE_KINDS.includes(k))) return badRequest(`kinds must be a comma-separated list of: ${GRAPH_EDGE_KINDS.join(', ')}`);
+      }
+      const node = params.get('node');
+      const graph = await repository.getGraph(b, { ...(node !== null ? { node } : {}), ...(kinds ? { kinds } : {}) });
+      return graph ? { status: 200, body: graph } : NOT_FOUND;
+    }
+    if (c === 'codex' && d === 'types' && e === undefined) {
+      const types = await repository.getCodexTypes(b);
+      return types ? { status: 200, body: types } : NOT_FOUND;
+    }
     if (c === 'backlinks' && d !== undefined) {
       return fromIndex(() => repository.getBacklinks(b, d));
     }
@@ -165,6 +180,7 @@ async function handleCover(repository, bookId, params) {
 }
 
 const OBJECT_KINDS = ['entry', 'thread', 'event'];
+const GRAPH_EDGE_KINDS = ['explicit', 'inferred'];
 const SEARCH_KINDS = ['scene', 'entry', 'thread', 'event', 'doc', 'research'];
 const badRequest = (message) => ({ status: 400, body: { error: 'bad_request', message } });
 

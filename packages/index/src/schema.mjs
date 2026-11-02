@@ -33,6 +33,12 @@ CREATE TABLE links (
 CREATE INDEX links_target ON links (target_id);
 CREATE INDEX links_src ON links (src_id);
 CREATE TABLE mentions (entry_id TEXT NOT NULL, scene_id TEXT NOT NULL, count INTEGER NOT NULL);
+CREATE TABLE graph (
+  from_id TEXT NOT NULL, to_id TEXT NOT NULL, kind TEXT NOT NULL, rel TEXT NOT NULL, label TEXT,
+  src_path TEXT NOT NULL, location TEXT NOT NULL, count INTEGER
+);
+CREATE INDEX graph_from ON graph (from_id);
+CREATE INDEX graph_to ON graph (to_id);
 CREATE TABLE diagnostics (
   code TEXT NOT NULL, severity TEXT NOT NULL, file TEXT NOT NULL, location TEXT NOT NULL, message TEXT NOT NULL
 );
@@ -40,4 +46,4 @@ CREATE VIRTUAL TABLE fts USING fts5(id UNINDEXED, kind UNINDEXED, title, body, t
 `;
 
 /** Tables compared by tests and by "refresh equals rebuild" (everything but meta.built_at). */
-export const TABLES = ['files', 'objects', 'scenes', 'excluded', 'links', 'mentions', 'diagnostics'];
+export const TABLES = ['files', 'objects', 'scenes', 'excluded', 'links', 'mentions', 'graph', 'diagnostics'];
