@@ -22,6 +22,7 @@ const MODULES = [
   '/src/library/Cover.jsx',
   '/src/library/CoverCard.jsx',
   '/src/library/palette.js',
+  '/src/library/cover-palette.js',
   '/src/library/LibraryPage.jsx',
   '/src/library/index.js',
   '/src/library/index.jsx',
@@ -177,11 +178,17 @@ test('empty library: honest message, the library path and the next-update note',
   assert.doesNotMatch(html, /No books match/);
 });
 
-test('no-results state: "No books match" + "Clear filters" button (only archived books, hidden by default)', () => {
-  const html = page([OLD]);
+test('no-results state: "No books match" + "Clear filters" button once a filter is active', () => {
+  // `initial` seeds the filter state (LibraryPage prop); the text filter matches nothing
+  const html = page([FIRST, NORTH], { initial: { text: 'zzz-no-such-book' } });
   assert.match(html, /No books match/);
-  assert.match(html, /<button\b[^>]*>\s*Clear filters\s*</);
+  assert.match(html, /<buttonb[^>]*>s*Clear filterss*</);
   assert.doesNotMatch(html, /No books here yet/);
+  assert.equal(cardLinks(html).length, 0);
+  // a library holding only an archived book (hidden by default) is not the empty-library state
+  const onlyArchived = page([OLD]);
+  assert.match(onlyArchived, /No books match/);
+  assert.doesNotMatch(onlyArchived, /No books here yet/);
 });
 
 test('word progress: role=progressbar with aria values and "42,100 of 90,000 words"; absent without a target', () => {
@@ -229,7 +236,7 @@ test('loading shows skeleton cards, not the empty state; error shows message and
   const loading = page(null, { loading: true });
   assert.match(loading, /skeleton/i);
   assert.doesNotMatch(loading, /No books here yet/);
-  const err = page(null, { error: 'Could not reach the server' });
+  const err = page(null, { error: 'Could not reach the server', onRetry: () => {} });
   assert.match(err, /Could not reach the server/);
   assert.match(err, /<button\b[^>]*>\s*Retry\s*</);
 });
