@@ -124,6 +124,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       },
     });
     if (r.ok) {
+      await receipts.noteOwnWrites(book, [r.value.path]);
       afterWrite(book.path);
       return { ok: true, code: 'OK', path: toLibRel(book, r.value.path), sha256: r.value.sha256 };
     }
@@ -186,6 +187,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     const r = await run(bookRootOf(found.book));
     if (!r.ok) return NOT_FOUND_CODES.includes(r.code) ? fail('NOT_FOUND') : r;
     if (!r.dryRun && r.changes.length > 0) {
+      await receipts.noteOwnWrites(found.book, r.changes.map((c) => c.to).filter((p) => typeof p === 'string'));
       if (reconcile) await reconcile(found.book.path);
       else afterWrite(found.book.path);
     }

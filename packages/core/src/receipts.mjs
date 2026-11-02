@@ -469,6 +469,33 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
   };
 
   /**
+   * Every write the app itself makes to a document that has receipts counts as the author's own: remember the bytes (keyed by document id, so a move that changes
+   * the path is still the same document) so a later flush attributes them as `author.edit`, not `external.change`.
+   * @param {{ path: string }} book library book @param {string[]} rels book-relative paths the operation wrote (their new paths)
+   */
+  async function noteOwnWrites(book, rels) {
+    try {
+      const found = await findBook(book.id ?? '').catch(() => null);
+      const bookRoot = found ? found.bookRoot : bookRootOf(book);
+      const result = found ? found.result : await validate(root);
+      const view = found ?? { book: result.books.find((/** @type {any} */ b) => b.path === book.path), result, bookRoot };
+      if (!view.book) return;
+      const store = await openStore(bookRoot, { recover: false });
+      const wanted = new Set(rels);
+      const known = new Set((await scanReceipts(store)).map((x) => x.receipt.target.id));
+      for (const doc of liveDocs(view)) {
+        if (!wanted.has(doc.rel) || !known.has(doc.fm.id)) continue;
+        const cur = await store.read(doc.rel);
+        if (!cur) continue;
+        pending.set(`${store.root}|${doc.fm.id}`, { bookRoot: store.root, sceneId: doc.fm.id, rel: doc.rel });
+        ownBytes.set(`${store.root}|${doc.fm.id}`, cur.bytes);
+      }
+    } catch {
+      // attribution help only
+    }
+  }
+
+  /**
    * Graceful shutdown: record every scene the author saved since its last receipt as an `author.edit`, so a restart does not mistake those saves for outside
    * changes. Bounded by `timeoutMs`; errors are ignored (the next flush attributes what is left).
    */
@@ -821,6 +848,7 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
     pending,
     externalCheck,
     flushPending,
+    noteOwnWrites,
     record,
     stageDecision,
     saveWithReceipts,

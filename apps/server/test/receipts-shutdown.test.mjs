@@ -56,3 +56,17 @@ test('an outside write right after a server save (no waiting) is external.change
   assert.equal(v.ok, true);
   await repo.close();
 });
+
+test('an app write to a scene that is not an editor save (a fields change) counts as the author\'s: flush gives author.edit, not external.change', async () => {
+  const library = await freshLibrary();
+  const repo = createFsRepository(library, { watch: false, pollMs: 0 });
+  assert.equal((await repo.flushReceipts(BOOK, ARRIVAL)).baseline, true);
+  const r = await repo.setSceneFields(BOOK, ARRIVAL, { status: 'revised' });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const f = await repo.flushReceipts(BOOK, ARRIVAL);
+  assert.equal(f.flushed, true);
+  const chain = chainOf(await readReceipts(library), ARRIVAL);
+  assert.deepEqual(chain.map((x) => x.fm.operation), ['baseline', 'author.edit']);
+  assert.equal((await repo.verifyReceipts(BOOK)).ok, true);
+  await repo.close();
+});
