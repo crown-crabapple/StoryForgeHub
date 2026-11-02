@@ -24,7 +24,22 @@
  *   word_count: number,
  *   error_count: number,
  *   warning_count: number,
+ *   subtitle: string | null,
+ *   pen_name: string | null,
+ *   pen_name_display: string | null,
+ *   genre: string[],
+ *   word_target: number | null,
+ *   language: string | null,
+ *   series_title: string | null,
+ *   archived: boolean,
+ *   cover_color: string | null,
+ *   cover_state: 'image' | 'none' | 'missing' | 'unsupported' | 'outside',
+ *   cover_url: string | null,
+ *   blurb: string,
+ *   index_state: 'invalid' | 'ok',
  * }} BookSummary  `path` is relative to the library root, forward slashes ('' for a one-book root).
+ *   `cover_url` is /api/books/:id/cover?v=<first 8 hex of the image's sha256> when cover_state is 'image'.
+ *   `index_state` is 'invalid' while the book has manuscript-structure errors (J04), else 'ok'.
  */
 
 /**
@@ -84,7 +99,8 @@
  */
 
 /**
- * @typedef {{ root: string, title: string | null, diagnostics: Diagnostic[] }} LibraryInfo
+ * @typedef {{ slug: string, title: string | null, status: string | null, book_ids: string[] }} SeriesInfo
+ * @typedef {{ root: string, title: string | null, diagnostics: Diagnostic[], series: SeriesInfo[] }} LibraryInfo
  */
 
 /**
@@ -92,6 +108,7 @@
  *   libraryInfo(): Promise<LibraryInfo>,
  *   listBooks(): Promise<BookSummary[]>,
  *   getBook(bookId: string): Promise<BookDetail | null>,
+ *   getCover(bookId: string): Promise<{ bytes: Buffer, contentType: string, sha256: string } | { error: 'too_large' } | null>,
  *   getScene(bookId: string, sceneId: string): Promise<SceneDoc | null>,
  *   getDiagnostics(bookId?: string): Promise<Diagnostic[]>,
  *   updateSceneBody(bookId: string, sceneId: string, body: string, opts: { baseSha256: string }):

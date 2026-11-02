@@ -82,7 +82,11 @@ export function createServer({ repository, webRoot, recoverReport, instance }) {
         return sendJson(res, status, body);
       }
       if (isApiPath(pathname)) {
-        const { status, body } = await handleApi(repository, pathname, state, new URLSearchParams(queryString));
+        const { status, body, raw } = await handleApi(repository, pathname, state, new URLSearchParams(queryString));
+        if (raw) {
+          res.writeHead(status, { ...raw.headers, 'content-length': raw.bytes.length });
+          return res.end(raw.bytes);
+        }
         return sendJson(res, status, body);
       }
       const file = await serveStatic(webRoot, pathname);

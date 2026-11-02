@@ -6,6 +6,7 @@ import { useApi } from './api.js';
 import { parseRoute } from './routes.js';
 import { AppShell } from './shell/AppShell.jsx';
 import { WritesProvider } from './shell/writes.jsx';
+import { SearchQueryProvider } from './searchQuery.jsx';
 import { StatusProvider, libraryVersion, useStatus } from './status.jsx';
 
 /** Shown when the startup recovery pass rolled an interrupted save back or needs the author's eyes. */
@@ -83,7 +84,9 @@ export function App() {
   return (
     <StatusProvider>
       <WritesProvider>
-        <Routes />
+        <SearchQueryProvider>
+          <Routes />
+        </SearchQueryProvider>
       </WritesProvider>
     </StatusProvider>
   );

@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { loadDoc, validate, walkMarkdown } from '@storyforge/format';
+import { isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
+import { bookFacts } from './book-facts.mjs';
 import { collectLinks } from './links.mjs';
 import { DDL, FORMAT, OBJECT_KINDS, SCHEMA_VERSION, SEARCH_KINDS } from './schema.mjs';
 import { foldText, mentionCounter, stripForSearch } from './text.mjs';
@@ -60,7 +61,32 @@ async function load({ bookRoot, validateRoot, bookPath, cache }) {
   const prefix = bookPath === '' ? '' : `${bookPath}/`;
   const rel = (p) => (prefix && p.startsWith(prefix) ? p.slice(prefix.length) : p);
   const diagnostics = result.diagnostics.filter((d) => prefix === '' || d.file.startsWith(prefix)).map((d) => ({ ...d, file: rel(d.file) }));
-  return { bookRoot, bookPath, files, book, prefix, rel, diagnostics };
+  const context = await readContext(validateRoot, bookPath, book);
+  return { bookRoot, bookPath, files, book, prefix, rel, diagnostics, ...context };
+}
+
+/** Front matter of the book's series.md and of library.md (null when there is none), for the book's display facts. */
+async function readContext(validateRoot, bookPath, book) {
+  const fmOf = async (file, rel) => {
+    if (!(await isFile(file))) return null;
+    const { doc } = await loadDoc(file, rel, rel, noop);
+    return doc?.fm ?? null;
+  };
+  const segs = bookPath === '' ? [] : bookPath.split('/');
+  const seriesFm = book.series && segs.length > 0 ? await fmOf(path.join(validateRoot, ...segs.slice(0, -1), 'series.md'), 'series.md') : null;
+  const rootIsLibrary = bookPath !== '' && !(await isFile(path.join(validateRoot, 'series.md')));
+  const libraryFm = rootIsLibrary ? await fmOf(path.join(validateRoot, 'library.md'), 'library.md') : null;
+  return { seriesFm, libraryFm };
+}
+
+/** The index meta rows for a book's display facts (strings only; lists are JSON). */
+function factsMeta(facts) {
+  const m = { facts: '1', genre: JSON.stringify(facts.genre), blurb: facts.blurb, archived: facts.archived ? '1' : '0' };
+  for (const k of ['subtitle', 'pen_name', 'pen_name_display', 'language', 'series_title', 'cover_color', 'cover']) {
+    if (facts[k] !== null) m[k] = facts[k];
+  }
+  if (facts.word_target !== null) m.word_target = String(facts.word_target);
+  return m;
 }
 
 /**
@@ -112,7 +138,7 @@ const KEPT = {
   fts: ['id', 'kind', 'title', 'body'],
 };
 
-function keepProjection({ files, diagnostics }, prev, { now, invalidPaths }) {
+function keepProjection({ files, diagnostics, seriesFm, libraryFm }, prev, { now, invalidPaths }) {
   const db = new DatabaseSync(':memory:');
   try {
     db.exec(DDL);
@@ -122,6 +148,10 @@ function keepProjection({ files, diagnostics }, prev, { now, invalidPaths }) {
     meta.set('state', 'invalid');
     meta.set('invalid_since', oldMeta.get('state') === 'invalid' && oldMeta.get('invalid_since') ? oldMeta.get('invalid_since') : now);
     meta.set('invalid_paths', JSON.stringify(invalidPaths));
+    // display facts come from book.md / series.md / library.md, not from the manuscript structure: always current
+    for (const k of ['facts', 'genre', 'blurb', 'archived', 'subtitle', 'pen_name', 'pen_name_display', 'language', 'series_title', 'cover_color', 'cover', 'word_target']) meta.delete(k);
+    const bookDoc = files.find((f) => f.rel === 'book.md')?.doc;
+    if (bookDoc?.kind) for (const [k, v] of Object.entries(factsMeta(bookFacts({ fm: bookDoc.fm, body: bookDoc.body, seriesFm, libraryFm })))) meta.set(k, v);
     const insMeta = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)');
     for (const [k, v] of meta) insMeta.run(k, v);
 
@@ -146,8 +176,7 @@ function keepProjection({ files, diagnostics }, prev, { now, invalidPaths }) {
 }
 
 /** Build the projection from an already loaded book. `extraMeta` entries are added to `meta`. */
-async function project({ bookRoot, bookPath, files, book, rel, diagnostics }, { extraMeta = {} }) {
-
+async function project({ bookRoot, bookPath, files, book, rel, diagnostics, seriesFm, libraryFm }, { extraMeta = {} }) {
   const docs = files.map((f) => f.doc).filter((d) => d && d.kind);
   const docByRel = new Map(docs.map((d) => [d.rel, d]));
   const bookDoc = docByRel.get('book.md');
@@ -173,6 +202,7 @@ async function project({ bookRoot, bookPath, files, book, rel, diagnostics }, { 
     if (book.series) meta.series = book.series;
     const sn = bookDoc?.fm.series_number;
     if (typeof sn === 'number' && Number.isFinite(sn)) meta.series_number = String(sn);
+    if (bookDoc) Object.assign(meta, factsMeta(bookFacts({ fm: bookDoc.fm, body: bookDoc.body, seriesFm, libraryFm })));
     const insMeta = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)');
     for (const [k, v] of Object.entries(meta)) insMeta.run(k, v);
 

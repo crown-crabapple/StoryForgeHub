@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useApi } from './api.js';
 import { Link } from './router.jsx';
+import { useSearchQuery } from './searchQuery.jsx';
 
 /** A letter or digit, ignoring case and accents: the same folding the search index uses. */
 const fold = (ch) => ch.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -70,6 +71,16 @@ export function SearchBox() {
     const t = setTimeout(() => setQuery(text.trim().slice(0, 200)), 200);
     return () => clearTimeout(t);
   }, [text]);
+  const shared = useSearchQuery();
+  const { setQuery: publish, resetKey } = shared;
+  useEffect(() => {
+    publish(query);
+  }, [query, publish]);
+  const [seenReset, setSeenReset] = useState(resetKey);
+  if (seenReset !== resetKey) {
+    setSeenReset(resetKey);
+    setText('');
+  }
   const { data: hits, error, loading } = useApi(query ? `/api/search?q=${encodeURIComponent(query)}` : null);
   const showPanel = open && query !== '' && text.trim() !== '';
   return (

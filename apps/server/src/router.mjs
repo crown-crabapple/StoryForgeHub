@@ -3,7 +3,7 @@
 import pkg from '../package.json' with { type: 'json' };
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
-/** @typedef {{ status: number, body: unknown }} ApiResult */
+/** @typedef {{ status: number, body: unknown, raw?: { bytes: Buffer, headers: Record<string, string> } }} ApiResult  `raw` (cover images) is sent as is instead of `body`. */
 /** @typedef {{ lastRecover: any, instance?: { pid: number, started_at: string, lock: string } }} ApiState  Report of the most recent recover() run; what this process knows about itself. */
 
 const NOT_FOUND = { status: 404, body: { error: 'not_found' } };
@@ -71,6 +71,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const book = await repository.getBook(b);
       return book ? { status: 200, body: book } : NOT_FOUND;
     }
+    if (c === 'cover' && d === undefined) return handleCover(repository, b, params);
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
     }
@@ -100,6 +101,26 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     }
   }
   return NOT_FOUND;
+}
+
+/** GET /api/books/:b/cover[?v=<sha8>]: the cover image bytes. Only a supported image under the book's assets/ is ever served. */
+async function handleCover(repository, bookId, params) {
+  const cover = await repository.getCover(bookId);
+  if (!cover) return NOT_FOUND;
+  if ('error' in cover) return { status: 404, body: { error: 'too_large' } };
+  const current = params.get('v') === cover.sha256.slice(0, 8);
+  return {
+    status: 200,
+    body: null,
+    raw: {
+      bytes: cover.bytes,
+      headers: {
+        'content-type': cover.contentType,
+        'x-content-type-options': 'nosniff',
+        'cache-control': current ? 'private, max-age=31536000, immutable' : 'no-cache',
+      },
+    },
+  };
 }
 
 const SEARCH_KINDS = ['scene', 'entry', 'thread', 'event', 'doc', 'research'];

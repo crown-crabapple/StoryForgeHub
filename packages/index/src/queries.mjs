@@ -5,6 +5,16 @@ import { ftsQuery } from './text.mjs';
 
 const plain = (rows) => rows.map((r) => ({ ...r }));
 
+/** A JSON list of strings from a meta value ([] when absent or unreadable). @param {string | undefined} v */
+function parseList(v) {
+  try {
+    const x = JSON.parse(v ?? '[]');
+    return Array.isArray(x) ? x.filter((i) => typeof i === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 /** @param {import('node:sqlite').DatabaseSync} db */
 export function readCounts(db) {
   const one = (sql, ...params) => /** @type {any} */ (db.prepare(sql).get(...params)).n;
@@ -62,6 +72,19 @@ export function makeQueries(db) {
         word_count: agg.w,
         error_count: sev('error'),
         warning_count: sev('warning'),
+        // display facts (M02-J02). `facts` is false for an index built before they existed.
+        facts: m.get('facts') === '1',
+        subtitle: m.get('subtitle') ?? null,
+        pen_name: m.get('pen_name') ?? null,
+        pen_name_display: m.get('pen_name_display') ?? null,
+        genre: parseList(m.get('genre')),
+        word_target: m.has('word_target') ? Number(m.get('word_target')) : null,
+        language: m.get('language') ?? null,
+        series_title: m.get('series_title') ?? null,
+        archived: m.get('archived') === '1',
+        cover_color: m.get('cover_color') ?? null,
+        cover: m.get('cover') ?? null,
+        blurb: m.get('blurb') ?? '',
       };
     },
 

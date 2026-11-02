@@ -1,10 +1,11 @@
 // FsRepository: the only core module that reads project files. Reads only; caches nothing.
 // Every change goes through fs-writes.mjs -> @storyforge/store.
 import { createHash } from 'node:crypto';
-import { readFile, realpath } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { validate } from '@storyforge/format';
+import { discover, escapesRoot, validate } from '@storyforge/format';
+import { bookFacts } from '@storyforge/index';
 import { applyRepair, planRepair } from '@storyforge/manuscript';
 import { createIndexManager } from './index-manager.mjs';
 import { createWatcher } from './watcher.mjs';
@@ -65,6 +66,16 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /** @param {string} a @param {string} b */
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+const noop = () => {};
+/** Largest cover image the library will describe or serve. */
+export const MAX_COVER_BYTES = 10 * 1024 * 1024;
+const COVER_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif' };
+/** @param {string} dir @param {string} base @returns {boolean} true when dir is base or inside it */
+function isInside(dir, base) {
+  const rel = path.relative(base, dir);
+  return rel === '' || !(rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel));
+}
 
 /** Manuscript-structure errors (E1xx/E2xx under manuscript/), as the manuscript contract's rule 5 defines them. */
 const isStructureError = (d) => d.severity === 'error' && /^E[12]\d\d$/.test(d.code) && d.file.startsWith('manuscript/');
@@ -136,7 +147,10 @@ export function createFsRepository(libraryRoot, options = {}) {
     const parsed = await readParsed(abs(bookFile));
     const fm = parsed ? parsed.fm : {};
     const own = forBook(diagnostics, book.path);
-    return {
+    const { seriesFm, libraryFm } = await contextFms(book.path, book.series !== null);
+    const facts = bookFacts({ fm, body: parsed ? parsed.body : '', seriesFm, libraryFm });
+    return finishSummary({
+      facts: true,
       id: book.id,
       slug: book.slug,
       title: book.title,
@@ -148,7 +162,115 @@ export function createFsRepository(libraryRoot, options = {}) {
       word_count: scenes.reduce((n, s) => n + s.summary.word_count, 0),
       error_count: own.filter((d) => d.severity === 'error').length,
       warning_count: own.filter((d) => d.severity === 'warning').length,
-    };
+      ...facts,
+      invalid: own.some((d) => isStructureError({ ...d, file: book.path ? d.file.slice(book.path.length + 1) : d.file })),
+    }, book.path);
+  }
+
+  /** @param {{ file?: string, contentType?: string }} c */
+  async function readCover(c) {
+    const bytes = await readFile(/** @type {string} */ (c.file));
+    return { bytes, contentType: /** @type {string} */ (c.contentType), sha256: createHash('sha256').update(bytes).digest('hex') };
+  }
+
+  /** { error: 'too_large' } when the cover is a contained, supported image over the size cap; else null. */
+  async function oversized(bookPath, cover) {
+    try {
+      const norm = path.posix.normalize(cover.replace(/\\/g, '/'));
+      const real = await realpath(path.join(abs(bookPath), ...norm.split('/')));
+      if (!isInside(real, await realpath(path.join(abs(bookPath), 'assets')))) return null;
+      return (await stat(real)).size > MAX_COVER_BYTES ? { error: 'too_large' } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Every series of the library: [{ slug, title, status, book_ids }] by series slug, books by series_number. */
+  async function seriesList() {
+    let series;
+    try {
+      if (await readParsed(abs('book.md'))) return [];
+      const isSeriesRoot = (await readParsed(abs('series.md'))) !== null;
+      series = isSeriesRoot ? [''] : (await discover(root, 'library', noop)).series;
+    } catch {
+      return [];
+    }
+    const books = await repository.listBooks();
+    const out = [];
+    for (const dir of series) {
+      const fm = (await readParsed(abs(dir ? `${dir}/series.md` : 'series.md')))?.fm;
+      if (!fm || typeof fm.slug !== 'string') continue;
+      out.push({
+        slug: fm.slug,
+        title: str(fm.title),
+        status: str(fm.status),
+        book_ids: books.filter((b) => b.series === fm.slug).map((b) => b.id),
+      });
+    }
+    return out.sort((a, b) => cmp(a.slug, b.slug));
+  }
+
+  /** Front matter of a book's series.md (if it is in a series) and of library.md (when the root is a library). */
+  async function contextFms(bookPath, inSeries) {
+    const fmOf = async (rel) => (await readParsed(abs(rel)))?.fm ?? null;
+    const segs = bookPath === '' ? [] : bookPath.split('/');
+    const seriesFm = inSeries && segs.length > 0 ? await fmOf([...segs.slice(0, -1), 'series.md'].join('/')) : null;
+    const rootIsLibrary = bookPath !== '' && !(await readParsed(abs('series.md')));
+    return { seriesFm, libraryFm: rootIsLibrary ? await fmOf('library.md') : null };
+  }
+
+  /** @type {Map<string, { size: number, mtimeMs: number, sha256: string }>} real image path -> its hash at that size and mtime */
+  const coverHashes = new Map();
+
+  /**
+   * What a book's `cover` field points at. Containment is checked on the real path (symlinks included).
+   * @param {string} bookPath @param {string | null} cover raw field
+   * @returns {Promise<{ state: 'image' | 'none' | 'missing' | 'unsupported' | 'outside', file?: string, contentType?: string, size?: number, mtimeMs?: number }>}
+   */
+  async function resolveCover(bookPath, cover) {
+    if (cover === null || cover.trim() === '') return { state: 'none' };
+    const slashed = cover.replace(/\\/g, '/');
+    const norm = path.posix.normalize(slashed);
+    if (escapesRoot(cover) || !norm.startsWith('assets/') || norm === 'assets/' || slashed.split('/').some((x) => x.startsWith('.'))) return { state: 'outside' };
+    const contentType = COVER_TYPES[path.posix.extname(norm).toLowerCase()];
+    if (!contentType) return { state: 'unsupported' };
+    const bookRoot = abs(bookPath);
+    const file = path.join(bookRoot, ...norm.split('/'));
+    try {
+      const real = await realpath(file);
+      const assetsReal = await realpath(path.join(bookRoot, 'assets'));
+      if (!isInside(real, assetsReal)) return { state: 'outside' };
+      const st = await stat(real);
+      if (!st.isFile()) return { state: 'missing' };
+      if (st.size > MAX_COVER_BYTES) return { state: 'unsupported' };
+      return { state: 'image', file: real, contentType, size: st.size, mtimeMs: st.mtimeMs };
+    } catch {
+      return { state: 'missing' };
+    }
+  }
+
+  /** sha256 of a resolved cover image (cached by size and mtime). @param {{ file?: string, size?: number, mtimeMs?: number }} c */
+  async function coverSha(c) {
+    const hit = coverHashes.get(/** @type {string} */ (c.file));
+    if (hit && hit.size === c.size && hit.mtimeMs === c.mtimeMs) return hit.sha256;
+    const sha256 = createHash('sha256').update(await readFile(/** @type {string} */ (c.file))).digest('hex');
+    coverHashes.set(/** @type {string} */ (c.file), { size: /** @type {number} */ (c.size), mtimeMs: /** @type {number} */ (c.mtimeMs), sha256 });
+    return sha256;
+  }
+
+  /**
+   * The summary as the API returns it: the raw `cover` field becomes cover_state / cover_url, and the
+   * internal markers (`facts`, `invalid`) become `index_state` ('invalid' or 'ok').
+   * @param {any} s @param {string} bookPath
+   * @returns {Promise<BookSummary>}
+   */
+  async function finishSummary(s, bookPath) {
+    const { invalid, cover } = s;
+    const rest = { ...s };
+    for (const k of ['facts', 'invalid', 'cover']) delete rest[k];
+    const c = await resolveCover(bookPath, cover ?? null);
+    const cover_url = c.state === 'image' ? `/api/books/${encodeURIComponent(s.id)}/cover?v=${(await coverSha(c)).slice(0, 8)}` : null;
+    return { ...rest, cover_state: c.state, cover_url, index_state: invalid ? 'invalid' : 'ok' };
   }
 
   /** Books in a series first (by series slug, number, title); standalone books last. */
@@ -171,12 +293,22 @@ export function createFsRepository(libraryRoot, options = {}) {
     } catch {
       return null;
     }
-    const hits = await Promise.all(paths.map((p) => manager.tryRead(p, (_q, s) => s)));
-    if (hits.some((h) => h === null)) return null;
-    return hits
-      .map((h) => /** @type {{ value: BookSummary }} */ (h).value)
-      .filter((b) => b.id)
-      .sort(compareBooks);
+    const hits = await Promise.all(paths.map((p) => manager.tryRead(p, (_q, s, inv) => (s.facts ? { ...s, invalid: inv.invalid } : null))));
+    paths.forEach((p, i) => {
+      if (hits[i] !== null && hits[i]?.value === null) rebuildOldIndex(p);
+    });
+    if (hits.some((h) => h === null || h.value === null)) return null;
+    const out = await Promise.all(hits.map((h, i) => finishSummary(/** @type {any} */ (h).value, paths[i])));
+    return out.filter((b) => b.id).sort(compareBooks);
+  }
+
+  /** @type {Set<string>} */
+  const rebuilding = new Set();
+  /** An index built before the display facts existed: rebuild it once, in the background. @param {string} bookPath */
+  function rebuildOldIndex(bookPath) {
+    if (rebuilding.has(bookPath)) return;
+    rebuilding.add(bookPath);
+    manager.reconcile(bookPath, 'read', { full: true }).finally(() => rebuilding.delete(bookPath));
   }
 
   /**
@@ -265,7 +397,25 @@ export function createFsRepository(libraryRoot, options = {}) {
     async libraryInfo() {
       const result = await validate(root);
       const lib = await readParsed(path.join(root, 'library.md'));
-      return { root, title: lib ? str(lib.fm.title) : null, diagnostics: result.diagnostics };
+      return { root, title: lib ? str(lib.fm.title) : null, diagnostics: result.diagnostics, series: await seriesList() };
+    },
+
+    async getCover(bookId) {
+      if (typeof bookId !== 'string') return null;
+      let bookPath;
+      try {
+        bookPath = await manager.pathOf(bookId);
+      } catch {
+        return null;
+      }
+      if (bookPath === null) return null;
+      const fm = (await readParsed(abs(bookPath ? `${bookPath}/book.md` : 'book.md')))?.fm;
+      if (!fm || fm.id !== bookId) return null;
+      const c = await resolveCover(bookPath, str(fm.cover));
+      if (c.state === 'image') return readCover(c);
+      // an image over the cap is described as unsupported, but the route still says why
+      const big = c.state === 'unsupported' && typeof fm.cover === 'string' && COVER_TYPES[path.posix.extname(fm.cover.replace(/\\/g, '/')).toLowerCase()];
+      return big ? await oversized(bookPath, fm.cover) : null;
     },
 
     async listBooks() {
@@ -283,8 +433,15 @@ export function createFsRepository(libraryRoot, options = {}) {
     async getBook(bookId) {
       const known = manager.knownPath(bookId);
       if (known !== undefined) {
-        const hit = await manager.tryRead(known, (q, s, inv) => (s.id === bookId ? bookDetailFromIndex(q, s, known, inv) : null));
-        if (hit && hit.value) return hit.value;
+        const hit = await manager.tryRead(known, (q, s, inv) => {
+          if (s.id !== bookId) return null;
+          return s.facts ? { detail: bookDetailFromIndex(q, s, known, inv), invalid: inv.invalid } : 'old';
+        });
+        if (hit && hit.value === 'old') rebuildOldIndex(known);
+        else if (hit && hit.value) {
+          const { detail, invalid } = /** @type {any} */ (hit.value);
+          return finishSummary({ ...detail, invalid }, known);
+        }
       }
       const result = await validate(root);
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
