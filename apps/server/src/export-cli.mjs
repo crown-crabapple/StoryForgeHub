@@ -1,15 +1,15 @@
 // CLI commands that work on one book's files and need no running server and no library lock (M05-J03):
-//   export  --library <p> --book <slug> --format markdown|docx|epub|pdf --out <file> [--force]
+//   export  --library <p> --book <slug> --format markdown|docx|epub|pdf --out <file> [--include manuscript|summary|evidence] [--force]
 //   backup  --library <p> --book <slug> --out <file.zip> [--provenance] [--force]
 //   restore --from <file.zip> --to <new or empty folder>
 // Exit codes: 0 ok, 1 failed, 2 usage. Export and backup only read the book; `--out` never overwrites without `--force` and never points into the book folder.
 import path from 'node:path';
 import { createFsRepository } from '@storyforge/core';
-import { ExportError, ExportVerificationError, FORMATS, RestoreError, createBackup, exportBook, restoreBackupFile, writeOutput } from '@storyforge/export';
+import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, restoreBackupFile, writeOutput } from '@storyforge/export';
 
 export const FILE_COMMANDS = ['export', 'backup', 'restore'];
 
-const VALUE_FLAGS = ['--library', '--book', '--format', '--out', '--from', '--to'];
+const VALUE_FLAGS = ['--library', '--book', '--format', '--include', '--out', '--from', '--to'];
 const BOOL_FLAGS = ['--provenance', '--force'];
 
 /** @param {string[]} argv @returns {{ values: Record<string, string>, flags: Set<string> }} */
@@ -65,11 +65,17 @@ export async function runFileCommand(command, argv) {
     if (command === 'export' && !values['--format']) throw usage('export needs --format markdown|docx|epub|pdf');
     if (command === 'export' && !Object.hasOwn(FORMATS, values['--format'])) throw usage(`unknown format: ${values['--format']} (use ${Object.keys(FORMATS).join(', ')})`);
 
+    const include = values['--include'] ?? 'manuscript';
+    if (command === 'export' && !INCLUDE_MODES.includes(include)) throw usage(`unknown --include: ${include} (use ${INCLUDE_MODES.join(', ')})`);
+    if (command !== 'export' && values['--include'] !== undefined) throw usage('--include only applies to export');
+
     const repository = createFsRepository(path.resolve(values['--library']), { watch: false, pollMs: 0 });
     let bookRoot;
+    let verify;
     try {
       const book = (await repository.listBooks()).find((b) => b.slug === values['--book']);
       bookRoot = book ? await repository.bookRoot(book.id) : null;
+      if (book && command === 'export' && include === 'evidence' && typeof repository.verifyReceipts === 'function') verify = await repository.verifyReceipts(book.id);
     } finally {
       await repository.close();
     }
@@ -79,7 +85,7 @@ export async function runFileCommand(command, argv) {
     }
     const force = flags.has('--force');
     if (command === 'export') {
-      const r = await exportBook(bookRoot, /** @type {any} */ (values['--format']));
+      const r = await exportBook(bookRoot, /** @type {any} */ (values['--format']), { include: /** @type {any} */ (include), verify });
       for (const w of r.warnings) complain(`warning: ${w}`);
       const out = await writeOutput(values['--out'], r.bytes, { bookRoot, force });
       say(`wrote ${out} (${r.bytes.length} bytes)`);

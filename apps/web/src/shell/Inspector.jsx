@@ -8,6 +8,7 @@ import { RailResearch } from '../notes/RailResearch.jsx';
 import { researchForScene } from '../notes/model.js';
 import { RailContinuity } from '../continuity/RailContinuity.jsx';
 import { RailSuggestions } from '../suggestions/RailSuggestions.jsx';
+import { RailReceipts } from '../receipts/RailReceipts.jsx';
 import { RailEvents } from '../timeline/RailEvents.jsx';
 import { eventsForScene } from '../timeline/model.js';
 import { threadActionsFor } from '../planning/ThreadMarks.jsx';
@@ -87,6 +88,7 @@ export function SceneInspector({ book, scene, diagnostics, objects = null, onCha
             {forScene.length > 0 && <DiagnosticList items={forScene} />}
           </InspectorSection>
           {readable && <Revisions bookId={book.id} sceneId={scene.id} onChanged={onChanged} />}
+          {readable && <RailReceipts book={book} scene={scene} version={version} onChanged={onChanged} />}
         </>
       )}
       <InspectorSection title="Book problems">

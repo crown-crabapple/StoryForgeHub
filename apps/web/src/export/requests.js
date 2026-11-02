@@ -34,11 +34,22 @@ export function statusesOf(book) {
   return [...known, ...[...used].filter((s) => !STATUS_ORDER.includes(s)).sort()];
 }
 
-/** @param {string} bookId @param {{ format: string, sceneTitles?: boolean, excludeStatuses?: string[], page?: string }} o */
-export function exportUrl(bookId, { format, sceneTitles = false, excludeStatuses = [], page = 'letter' }) {
+/** What to include (M05-J07). `key` is the server's `include` value. */
+export const INCLUDE_OPTIONS = [
+  { key: 'manuscript', label: 'Manuscript only', hint: 'Just your text. No provenance, provider or prompt data anywhere in the file.' },
+  { key: 'summary', label: 'Manuscript + provenance summary', hint: 'Adds a "Provenance summary" chapter: for each scene, how its text came to be in plain words.' },
+  { key: 'evidence', label: 'Complete private evidence package', hint: 'A .zip with the manuscript, the receipts and saved states behind it, an integrity check and a README.' },
+];
+
+/** Shown before an evidence package is downloaded. */
+export const EVIDENCE_WARNING = 'This contains your full text history and any prompts you chose to keep.';
+
+/** @param {string} bookId @param {{ format: string, sceneTitles?: boolean, excludeStatuses?: string[], page?: string, include?: string }} o */
+export function exportUrl(bookId, { format, sceneTitles = false, excludeStatuses = [], page = 'letter', include = 'manuscript' }) {
   const q = [`format=${enc(format)}`, `sceneTitles=${sceneTitles ? 1 : 0}`];
   if (excludeStatuses.length > 0) q.push(`excludeStatuses=${excludeStatuses.map(enc).join(',')}`);
   if (format === 'pdf') q.push(`page=${enc(page)}`);
+  if (include !== 'manuscript') q.push(`include=${enc(include)}`);
   return `/api/books/${enc(bookId)}/export?${q.join('&')}`;
 }
 

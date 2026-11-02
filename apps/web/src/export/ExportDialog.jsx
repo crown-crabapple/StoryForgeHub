@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Dialog } from '../shell/Dialog.jsx';
-import { EXPORT_FORMATS, PAGE_SIZES, exportUrl, fetchDownload, saveBlob, statusesOf } from './requests.js';
+import { EVIDENCE_WARNING, EXPORT_FORMATS, INCLUDE_OPTIONS, PAGE_SIZES, exportUrl, fetchDownload, saveBlob, statusesOf } from './requests.js';
 
 const EXTENSION = { markdown: 'md', docx: 'docx', epub: 'epub', pdf: 'pdf' };
 
@@ -15,6 +15,7 @@ export function ExportDialog({ book, onClose, fetchImpl }) {
   const [sceneTitles, setSceneTitles] = useState(false);
   const [leaveOut, setLeaveOut] = useState([]);
   const [page, setPage] = useState('letter');
+  const [include, setInclude] = useState('manuscript');
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
   const statuses = statusesOf(book);
@@ -24,7 +25,7 @@ export function ExportDialog({ book, onClose, fetchImpl }) {
     if (busy) return;
     setBusy(true);
     setProblem(null);
-    const r = await fetchDownload(exportUrl(book.id, { format, sceneTitles, excludeStatuses: leaveOut, page }), `${book.slug ?? 'manuscript'}.${EXTENSION[format]}`, fetchImpl);
+    const r = await fetchDownload(exportUrl(book.id, { format, sceneTitles, excludeStatuses: leaveOut, page, include }), include === 'evidence' ? `${book.slug ?? 'manuscript'}-evidence.zip` : `${book.slug ?? 'manuscript'}.${EXTENSION[format]}`, fetchImpl);
     setBusy(false);
     if (!r.ok) {
       setProblem(r.message);
@@ -48,6 +49,23 @@ export function ExportDialog({ book, onClose, fetchImpl }) {
               </span>
             </label>
           ))}
+        </fieldset>
+
+        <fieldset className="field">
+          <legend>What to include</legend>
+          {INCLUDE_OPTIONS.map((o) => (
+            <label key={o.key} className="choice">
+              <input type="radio" name="export-include" value={o.key} checked={include === o.key} onChange={() => setInclude(o.key)} />
+              <span>
+                {o.label} <span className="secondary">{o.hint}</span>
+              </span>
+            </label>
+          ))}
+          {include === 'evidence' && (
+            <p role="note" className="export-warning">
+              {EVIDENCE_WARNING}
+            </p>
+          )}
         </fieldset>
 
         <div className="field">

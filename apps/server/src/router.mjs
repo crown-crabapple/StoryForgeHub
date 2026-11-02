@@ -1,6 +1,6 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
-import { ExportError, ExportVerificationError, FORMATS, RestoreError, createBackup, exportBook, restoreBackup } from '@storyforge/export';
+import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
 
@@ -244,7 +244,8 @@ const download = (file) => ({
 const flag = (v) => (v === null || v === '0' ? false : v === '1' ? true : null);
 
 /**
- * GET /api/books/:b/export?format=markdown|docx|epub|pdf[&excludeStatuses=a,b][&sceneTitles=0|1][&page=letter|a4]: the manuscript as a download.
+ * GET /api/books/:b/export?format=markdown|docx|epub|pdf[&excludeStatuses=a,b][&sceneTitles=0|1][&page=letter|a4][&include=manuscript|summary|evidence][&scenes=id,id]: the manuscript as a download
+ * (M05-J07: `summary` appends a provenance summary; `evidence` is a private zip of the manuscript, receipts, verify.json and README.txt).
  * Read-only: the book folder is never written. 400 bad parameters, 404 unknown book, 500 { error: 'export_failed', problems } when verification fails.
  */
 async function handleExport(repository, bookId, params) {
@@ -260,7 +261,8 @@ async function handleExport(repository, bookId, params) {
   const root = await repository.bookRoot(bookId);
   if (!root) return NOT_FOUND;
   try {
-    return download(await exportBook(root, format, { excludeStatuses, sceneTitles, page }));
+    const verify = include === 'evidence' && typeof repository.verifyReceipts === 'function' ? await repository.verifyReceipts(bookId) : undefined;
+    return download(await exportBook(root, format, { excludeStatuses, sceneTitles, page, include, sceneIds, verify }));
   } catch (e) {
     if (e instanceof ExportVerificationError) return { status: 500, body: { error: 'export_failed', problems: e.problems } };
     if (e instanceof ExportError) return e.code === 'NOT_A_BOOK' ? NOT_FOUND : badRequest(e.message);
@@ -276,6 +278,11 @@ async function handleBackup(repository, bookId, params) {
   if (!root) return NOT_FOUND;
   const { bytes, filename } = await createBackup(root, { includeProvenance: provenance });
   return download({ bytes, filename, mime: 'application/zip' });
+  const include = params.get('include') ?? 'manuscript';
+  if (!INCLUDE_MODES.includes(include)) return badRequest(`include must be one of: ${INCLUDE_MODES.join(', ')}`);
+  const sceneParam = params.get('scenes');
+  const sceneIds = sceneParam === null || sceneParam === '' ? undefined : sceneParam.split(',').map((x) => x.trim());
+  if (sceneIds?.some((x) => !/^[A-Za-z0-9_-]{1,80}$/.test(x))) return badRequest('scenes must be a comma-separated list of scene ids');
 }
 
 /** GET /api/books/:b/cover[?v=<sha8>]: the cover image bytes. Only a supported image under the book's assets/ is ever served. */

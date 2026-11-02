@@ -4136,3 +4136,77 @@ label.form-check {
   border-left: 3px solid var(--border);
   font-family: var(--font-prose);
 }
+
+/* ---------- receipts (M05-J07) ---------- */
+
+.rc-lineage {
+  margin: 0 0 var(--s2);
+  padding-left: var(--s4);
+  font-size: var(--fs-13);
+}
+.rc-step {
+  margin: var(--s1) 0;
+}
+.rc-step summary {
+  cursor: pointer;
+}
+.rc-details {
+  margin: var(--s1) 0 var(--s2);
+  font-size: var(--fs-12);
+}
+.rc-details dt {
+  color: var(--text-3);
+}
+.rc-details dd {
+  margin: 0 0 var(--s1);
+}
+.rc-path {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-12);
+}
+.rc-diff {
+  margin: 0;
+  padding: var(--s1) var(--s2);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  white-space: pre-wrap;
+}
+.rc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: var(--s2) 0;
+}
+.rc-blame {
+  margin: 0;
+  padding-left: var(--s4);
+  font-size: var(--fs-13);
+}
+.rc-badge-ok {
+  border-color: var(--success, var(--border));
+}
+.rc-badge-info {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+.rc-badge-problem {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.rc-problems {
+  margin: var(--s1) 0;
+  padding-left: var(--s4);
+  font-size: var(--fs-13);
+}
+.rc-note {
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-12);
+}
+.export-warning {
+  margin: var(--s2) 0 0;
+  padding: var(--s2);
+  border: 1px solid var(--warning);
+  border-radius: 4px;
+  font-size: var(--fs-13);
+}
