@@ -16,10 +16,11 @@ export async function copyFixture(rel) {
 }
 
 /** sha256 of every file (and directory name) under root, keyed by relative path. */
-export async function snapshot(root) {
+export async function snapshot(root, { skipStoryforge = false } = {}) {
   const out = {};
   async function walk(dir) {
     for (const e of await fs.readdir(dir, { withFileTypes: true })) {
+      if (skipStoryforge && e.name === '.storyforge') continue;
       const full = path.join(dir, e.name);
       const rel = path.relative(root, full).split(path.sep).join('/');
       if (e.isDirectory()) {

@@ -136,7 +136,7 @@ test('a write through the repository refreshes the index', async () => {
 
   // Reads are right immediately, whatever the index is doing.
   assert.equal((await repo.getScene(SALT_BOOK, ARRIVAL)).body, 'Entirely replaced prose about uniquewordtheta.\n');
-  assert.equal((await repo.getBook(SALT_BOOK)).acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes)).find((s) => s.id === ARRIVAL).word_count, 6);
+  assert.equal((await repo.getBook(SALT_BOOK)).acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes)).find((s) => s.id === ARRIVAL).word_count, 5); // 'Entirely replaced prose about uniquewordtheta.' = 5 \S+ runs
 
   await waitFor(async () => (await repo.indexStatus(SALT_BOOK)).state === 'fresh', 'index to become fresh after the write');
   const found = rowsOf(plain(await repo.search('uniquewordtheta', { bookId: SALT_BOOK })));
@@ -154,7 +154,7 @@ test('createScene and archiveScene through the repository keep the index fresh a
   const repo = createFsRepository(root);
   await repo.rebuildIndex(SALT_BOOK);
 
-  const c = await repo.createScene(SALT_BOOK, { act: 1, chapter: 1, title: 'Indexed Newcomer', body: 'About uniquewordiota.\n' });
+  const c = await repo.createScene(SALT_BOOK, { act: 1, chapter: 1, after: null, slug: 'indexed-newcomer', title: 'Indexed Newcomer', body: 'About uniquewordiota.\n' });
   assert.equal(c.ok, true, JSON.stringify(c));
   await waitFor(async () => rowsOf(plain(await repo.search('uniquewordiota', { bookId: SALT_BOOK }))).some((r) => r.id === c.id), 'new scene to be searchable');
 

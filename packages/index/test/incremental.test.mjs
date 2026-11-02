@@ -70,7 +70,7 @@ test('adding a scene through createScene: refresh equals rebuild', async () => {
   const ctx = await setup();
   const repo = createFsRepository(ctx.root);
   const before = plain(await ctx.idx.query.scenes());
-  const r = await repo.createScene(SALT_BOOK, { act: 1, chapter: 1, title: 'Brand New Scene', body: 'A scene about uniquewordbeta.\n' });
+  const r = await repo.createScene(SALT_BOOK, { act: 1, chapter: 1, after: null, slug: 'brand-new-scene', title: 'Brand New Scene', body: 'A scene about uniquewordbeta.\n' });
   assert.equal(r.ok, true, JSON.stringify(r));
   await refreshEqualsRebuild(ctx);
   const after = plain(await ctx.idx.query.scenes());

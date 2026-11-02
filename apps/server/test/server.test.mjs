@@ -26,7 +26,7 @@ before(async () => {
   await fs.writeFile(path.join(outer, 'package.json'), `{"name":"${SECRET}"}`);
   server = createServer({ repository: createFsRepository(libRoot), webRoot });
   port = await listen(server);
-  before0 = await snapshot(libRoot);
+  before0 = await snapshot(libRoot, { skipStoryforge: true });
 });
 
 after(async () => {
@@ -176,5 +176,8 @@ test('read-only: library byte-identical after hitting every route', async () => 
   ];
   for (const p of paths) await request(port, 'GET', p);
   for (const m of ['POST', 'PUT', 'DELETE']) await request(port, m, `/api/books/${BOOK}`);
-  assert.deepEqual(await snapshot(libRoot), before0);
+  // Reads may build the index under .storyforge/ (J03 rule 5); nothing else may change.
+  const afterSnap = await snapshot(libRoot, { skipStoryforge: true });
+  assert.deepEqual(Object.keys(afterSnap).sort(), Object.keys(before0).sort(), 'nothing outside .storyforge/ created or removed');
+  assert.deepEqual(afterSnap, before0);
 });

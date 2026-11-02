@@ -141,7 +141,9 @@ test('read-only: library is byte-identical after calling every method', async ()
   for (const fx of ['valid/salt-orchard', 'valid/library', 'valid/spec-example', 'invalid/E204-duplicate-sequence']) {
     const root = await copyFixture(fx);
     const repo = createFsRepository(root);
-    const before = await snapshot(root);
+    // Reads may schedule an index build (J03 rule 5), which writes under .storyforge/ only;
+    // every other path is still compared byte-for-byte (a created or removed file changes the key set).
+    const before = await snapshot(root, { skipStoryforge: true });
     await repo.libraryInfo();
     const books = await repo.listBooks();
     await repo.getDiagnostics();
@@ -152,6 +154,8 @@ test('read-only: library is byte-identical after calling every method', async ()
     }
     await repo.getBook('book_NOPE');
     await repo.getScene('book_NOPE', 'scene_NOPE');
-    assert.deepEqual(await snapshot(root), before, fx);
+    const afterSnap = await snapshot(root, { skipStoryforge: true });
+    assert.deepEqual(Object.keys(afterSnap).sort(), Object.keys(before).sort(), `${fx}: nothing outside .storyforge/ created or removed`);
+    assert.deepEqual(afterSnap, before, fx);
   }
 });
