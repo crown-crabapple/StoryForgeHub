@@ -246,22 +246,25 @@ test('1. dry run: returns the planned changes (position lines only), writes noth
   assert.deepEqual(await state(ctx.root), before);
 });
 
-// ---------------------------------------------------------------- acceptance 4: undo
+// ---------------------------------------------------------------- acceptance 4: undo = POST ops/:opId/restore
 
-/** Move, then the inverse move from `undo`; every file must be back byte for byte at its original path. */
-async function roundTrip(scene, body) {
-  const ctx = await freshBook();
+const restore = (port, opId, opts = {}) => send(port, 'POST', `/api/books/${BOOK}/ops/${encodeURIComponent(opId)}/restore`, { body: {}, ...opts });
+
+/** Move, then restore the op from the move response; every file must be back byte for byte at its original path. */
+async function roundTrip(scene, body, prep) {
+  const ctx = await freshBook('valid/salt-orchard', prep);
   const original = await readAll(ctx.root);
   const r = await move(ctx.port, scene, body);
   assert.equal(r.status, 200, r.text);
+  assert.equal(typeof r.json.opId, 'string', 'the move response carries opId');
   assert.notDeepEqual([...(await readAll(ctx.root)).keys()].sort(), [...original.keys()].sort(), 'the move changed a path');
-  const u = await move(ctx.port, scene, r.json.undo);
+  const u = await restore(ctx.port, r.json.opId);
   assert.equal(u.status, 200, u.text);
-  assert.equal(u.json.ok, true, u.text);
   const back = await readAll(ctx.root);
   assert.deepEqual([...back.keys()].sort(), [...original.keys()].sort(), 'every file at its original path');
   for (const [p, buf] of original) assert.ok(back.get(p).equals(buf), `${p} byte-identical after undo`);
   assert.deepEqual(await errorsOf(ctx.root), []);
+  assert.deepEqual((await apiOrder(ctx.port)).map((x) => x.id), ORIGINAL_ORDER, 'API order restored');
 }
 
 test('4. undo: cross-act move of the last scene of a chapter', () => roundTrip(WALL, { chapter: 2, after: FERRY }));
@@ -269,43 +272,57 @@ test('4. undo: cross-chapter move of a first scene to the start of another chapt
 test('4. undo: cross-act move to the first slot', () => roundTrip(FERRY, { chapter: 3, after: null }));
 test('4. undo: within a chapter (last to first)', () => roundTrip(GRAFTING, { chapter: 2, after: null }));
 test('4. undo: within a chapter (first to last)', () => roundTrip(LOWTIDE, { chapter: 3, after: WALL }));
-// KEY shares sequence 20 with a variant; the inverse (`after: ARRIVAL`) has to land back on 20 for the files to
-// be byte-identical, as the contract demands.
-test('4. undo: a scene that shared its sequence with a variant comes back byte-identical', () => roundTrip(KEY, { chapter: 3, after: LOWTIDE }));
-
-test('4. undo after a move that renumbered neighbours: order, chapters, acts and bodies are restored', async () => {
-  const ctx = await freshBook('valid/salt-orchard', closeGap);
-  const original = await readAll(ctx.root);
-  const r = await move(ctx.port, KEY, { chapter: 2, after: FERRY });
-  assert.equal(r.status, 200, r.text);
-  const u = await move(ctx.port, KEY, r.json.undo);
-  assert.equal(u.status, 200, u.text);
-  const back = scenesById(await readAll(ctx.root));
-  for (const [id, s] of scenesById(original)) {
-    assert.equal(back.get(id).body, s.body, `body of ${id}`);
-    assert.equal(fmInt(back.get(id).fm, 'chapter'), fmInt(s.fm, 'chapter'), `chapter of ${id}`);
-    assert.equal(fmInt(back.get(id).fm, 'act'), fmInt(s.fm, 'act'), `act of ${id}`);
-  }
-  assert.deepEqual((await apiOrder(ctx.port)).map((x) => x.id), ORIGINAL_ORDER);
+test('4. undo: a scene that shared its sequence with a variant comes back byte-identical (exact sequence 20)', () => roundTrip(KEY, { chapter: 3, after: LOWTIDE }));
+test('4. undo: a move that renumbered neighbours restores the neighbours exactly (sequences, names, bytes)', async () => {
+  await roundTrip(KEY, { chapter: 2, after: FERRY }, closeGap);
 });
-
-test('4. undo when the original filename was not canonical: body and front matter identical, path canonical', async () => {
-  const ctx = await freshBook('valid/salt-orchard', async (root) => {
+test('4. undo: a scene whose original filename was not canonical comes back at exactly that path', () =>
+  roundTrip(FERRY, { chapter: 3, after: null }, async (root) => {
     const dir = path.join(root, ACT1, 'ch-002-the-grafting');
     await fs.rename(path.join(dir, '0010-ferry.md'), path.join(dir, '0010-ferry-misnamed.md'));
-  });
-  const original = scenesById(await readAll(ctx.root));
-  const r = await move(ctx.port, FERRY, { chapter: 3, after: null });
+  }));
+
+test('4. undo of a move out of a chapter that becomes empty puts the scene back', async () => {
+  const ctx = await freshBook();
+  await send(ctx.port, 'POST', `/api/books/${BOOK}/chapters`, { body: { act: 2, after: 3, title: 'Aftermath' } });
+  const starter = (await request(ctx.port, 'GET', `/api/books/${BOOK}`)).json.acts.flatMap((c) => c.chapters).find((c) => c.chapter === 4).scenes[0].id;
+  const before = await readAll(ctx.root);
+  const r = await move(ctx.port, starter, { chapter: 3, after: WALL });
   assert.equal(r.status, 200, r.text);
-  const u = await move(ctx.port, FERRY, r.json.undo);
+  const u = await restore(ctx.port, r.json.opId);
   assert.equal(u.status, 200, u.text);
-  const back = scenesById(await readAll(ctx.root));
-  assert.equal(back.get(FERRY).body, original.get(FERRY).body);
-  assert.equal(back.get(FERRY).fm, original.get(FERRY).fm);
-  assert.ok(canonicalFor(back.get(FERRY).fm, back.get(FERRY).path));
+  const back = await readAll(ctx.root);
+  assert.deepEqual([...back.keys()].sort(), [...before.keys()].sort());
+  for (const [p, buf] of before) assert.ok(back.get(p).equals(buf), `${p} byte-identical`);
 });
 
-// ---------------------------------------------------------------- acceptance 5: no guessing
+test('4. undo is refused (409 with a reason), nothing written, after an external edit to a touched file', async () => {
+  for (const which of ['mover', 'neighbour']) {
+    const ctx = await freshBook('valid/salt-orchard', closeGap);
+    const r = await move(ctx.port, KEY, { chapter: 2, after: FERRY });
+    assert.equal(r.status, 200, r.text);
+    assert.ok(r.json.changes.length >= 2, 'a neighbour was renumbered');
+    const target = which === 'mover'
+      ? r.json.changes.find((c) => c.to.endsWith('-the-key.md')).to
+      : r.json.changes.find((c) => c.to.includes('the-grafting')).to;
+    const file = path.join(ctx.root, ...target.split('/'));
+    await fs.appendFile(file, '\nAn external edit.\n');
+    const before = await state(ctx.root);
+    const u = await restore(ctx.port, r.json.opId);
+    assert.equal(u.status, 409, `${which}: ${u.text}`);
+    assert.ok(u.json.message || u.json.code, 'says why');
+    assert.deepEqual(await state(ctx.root), before, `${which}: nothing written`);
+    assert.ok((await fs.readFile(file, 'utf8')).endsWith('An external edit.\n'), 'the edit is kept');
+  }
+});
+
+test('4. the response still carries the original position as `undo` (informational)', async () => {
+  const ctx = await freshBook();
+  const r = await move(ctx.port, ARRIVAL, { chapter: 3, after: null });
+  assert.deepEqual(r.json.undo, { chapter: 1, act: 1, after: null });
+});
+
+// ---------------------------------------------------------------- acceptance 5 / 5b: duplicates and expected state
 
 test('5. a book with a duplicate sequence: move is REFUSED_INVALID_BOOK with diagnostics, nothing written', async () => {
   const root = await copyFixture('invalid/E204-duplicate-sequence');
@@ -320,31 +337,65 @@ test('5. a book with a duplicate sequence: move is REFUSED_INVALID_BOOK with dia
   }
 });
 
-test('5. an external edit to the mover between dry run and apply: 409 CONFLICT, nothing written', async () => {
+/** `expect` as the UI builds it from a dry run. */
+const expectFrom = (plan) => plan.json.changes.map((c) => ({ path: c.from, sha256: c.before_sha256 })).filter((e) => e.sha256);
+
+test('5b. an external edit to the mover after the dry run: apply with expect is 409 CONFLICT listing the path, nothing written', async () => {
   const ctx = await freshBook();
   const plan = await move(ctx.port, KEY, { chapter: 3, after: LOWTIDE, dryRun: true });
   assert.equal(plan.status, 200, plan.text);
-  const file = path.join(ctx.root, ACT1, 'ch-001-the-drowned-rows', '0020-the-key.md');
+  const expect = expectFrom(plan);
+  assert.ok(expect.length >= 1);
+  const rel = `${ACT1}/ch-001-the-drowned-rows/0020-the-key.md`;
+  const file = path.join(ctx.root, ...rel.split('/'));
   await fs.writeFile(file, `${await fs.readFile(file, 'utf8')}\nAn edit made elsewhere.\n`);
   const before = await state(ctx.root);
-  const r = await move(ctx.port, KEY, { chapter: 3, after: LOWTIDE });
+  const r = await move(ctx.port, KEY, { chapter: 3, after: LOWTIDE, expect });
   assert.equal(r.status, 409, r.text);
   assert.equal(r.json.code, 'CONFLICT');
+  assert.deepEqual(r.json.changed, [rel]);
   assert.deepEqual(await state(ctx.root), before, 'nothing written');
 });
 
-test('5. an external edit to a neighbour that would be renumbered between dry run and apply: 409 CONFLICT, nothing written', async () => {
+test('5b. an external edit to a neighbour the dry run renumbers: 409 CONFLICT listing it, nothing written', async () => {
   const ctx = await freshBook('valid/salt-orchard', closeGap);
   const plan = await move(ctx.port, KEY, { chapter: 2, after: FERRY, dryRun: true });
   assert.equal(plan.status, 200, plan.text);
-  assert.ok(plan.json.changes.length >= 2, 'the plan renumbers a neighbour besides moving the mover');
-  const file = path.join(ctx.root, ACT1, 'ch-002-the-grafting', '0011-the-grafting.md');
+  const neighbour = plan.json.changes.find((c) => c.from.includes('the-grafting'));
+  assert.ok(neighbour, 'the plan renumbers the grafting scene');
+  const expect = expectFrom(plan);
+  const file = path.join(ctx.root, ...neighbour.from.split('/'));
   await fs.writeFile(file, `${await fs.readFile(file, 'utf8')}\nA neighbour edited elsewhere.\n`);
   const before = await state(ctx.root);
-  const r = await move(ctx.port, KEY, { chapter: 2, after: FERRY });
+  const r = await move(ctx.port, KEY, { chapter: 2, after: FERRY, expect });
   assert.equal(r.status, 409, r.text);
   assert.equal(r.json.code, 'CONFLICT');
+  assert.deepEqual(r.json.changed, [neighbour.from]);
   assert.deepEqual(await state(ctx.root), before);
+});
+
+test('5b. apply with a correct expect succeeds; apply without expect still works', async () => {
+  const a = await freshBook();
+  const plan = await move(a.port, KEY, { chapter: 3, after: LOWTIDE, dryRun: true });
+  const ok = await move(a.port, KEY, { chapter: 3, after: LOWTIDE, expect: expectFrom(plan) });
+  assert.equal(ok.status, 200, ok.text);
+  assert.equal(ok.json.ok, true);
+  assert.deepEqual((await apiOrder(a.port)).map((x) => x.id), [PROLOGUE, ARRIVAL, FERRY, GRAFTING, LOWTIDE, KEY, WALL]);
+  const b = await freshBook();
+  const bare = await move(b.port, KEY, { chapter: 3, after: LOWTIDE });
+  assert.equal(bare.status, 200, bare.text);
+});
+
+test('5b. an expect for the unchanged mover alone (a direct drop) passes, and a wrong sha is a conflict', async () => {
+  const a = await freshBook();
+  const rel = `${ACT1}/ch-001-the-drowned-rows/0020-the-key.md`;
+  const plan = await move(a.port, KEY, { chapter: 3, after: LOWTIDE, dryRun: true });
+  const real = plan.json.changes.find((c) => c.from === rel).before_sha256;
+  const wrong = await move(a.port, KEY, { chapter: 3, after: LOWTIDE, expect: [{ path: rel, sha256: '0'.repeat(64) }] });
+  assert.equal(wrong.status, 409, wrong.text);
+  assert.deepEqual(wrong.json.changed, [rel]);
+  const right = await move(a.port, KEY, { chapter: 3, after: LOWTIDE, expect: [{ path: rel, sha256: real }] });
+  assert.equal(right.status, 200, right.text);
 });
 
 // ---------------------------------------------------------------- guards and refusals
