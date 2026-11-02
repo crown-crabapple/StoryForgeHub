@@ -3,6 +3,11 @@ import { LinkedEntries } from '../writing/LinkedEntries.jsx';
 import { Revisions } from '../writing/Revisions.jsx';
 import { SceneNotes } from '../writing/SceneNotes.jsx';
 import { SceneSection } from '../writing/SceneSection.jsx';
+import { sceneLinkItems } from '../writing/scene-context.js';
+import { RailResearch } from '../notes/RailResearch.jsx';
+import { researchForScene } from '../notes/model.js';
+import { RailEvents } from '../timeline/RailEvents.jsx';
+import { eventsForScene } from '../timeline/model.js';
 import { threadActionsFor } from '../planning/ThreadMarks.jsx';
 import { useStructure } from '../structure/useStructure.jsx';
 import { threadListRequest } from '../planning/requests.js';
@@ -39,10 +44,13 @@ export function isForFile(diagnostic, book, scene) {
  * The right rail for the open scene (M03-J04): goal card, scene facts, what is linked, notes, continuity, problems, revisions.
  * Names come from `objects` (the GET /api/books/:b/objects answer) with the slug in the tooltip; a slug nothing resolves is shown as it is.
  * @param {{ book: any, scene: any | null, diagnostics: { items: any[] | null, error: string | null, loading: boolean },
- *   objects?: { id: string, kind: string, slug: string | null, title: string | null }[] | null, onChanged?: () => void, planning?: { threads: any[] } | null }} props
+ *   objects?: { id: string, kind: string, slug: string | null, title: string | null }[] | null, onChanged?: () => void, planning?: { threads: any[] } | null,
+ *   timeline?: any | null, notes?: { notes: any[] } | null }} props
  *   `onChanged` runs after the rail changed the book (status, POV, a restore as a new scene).
+ *   `timeline` (GET /timeline) and `notes` (GET /notes), M04-J04: when given (null while loading), the rail also shows "Events" (the scene's events, from both sides) and "Research"
+ *   (research notes that link any entry or thread of the scene). Left out, those two sections are not drawn.
  */
-export function SceneInspector({ book, scene, diagnostics, objects = null, onChanged, planning = null }) {
+export function SceneInspector({ book, scene, diagnostics, objects = null, onChanged, planning = null, timeline = undefined, notes = undefined }) {
   const { liveBody } = useWriting();
   const structure = useStructure({ book, activeId: scene?.id ?? null, onChanged });
   // "Mark this scene as setup / development / payoff" under each plot thread (M04-J03): the thread file's list changes, after a preview
@@ -65,6 +73,8 @@ export function SceneInspector({ book, scene, diagnostics, objects = null, onCha
           {readable && <SceneSection book={book} scene={scene} objects={objects} onChanged={onChanged} />}
           <LinkedEntries bookId={book.id} front={scene.front_matter} body={body} objects={objects} threadActions={planning ? threadActionsFor({ planning, sceneId: scene.id, onMark: markThread }) : null} />
           <SceneNotes body={body} />
+          {timeline !== undefined && <RailEvents bookId={book.id} events={timeline ? eventsForScene(timeline, scene.id) : null} />}
+          {notes !== undefined && <RailResearch bookId={book.id} notes={notes ? researchForScene(notes.notes, sceneLinkItems(scene.front_matter, body, objects)) : null} />}
           <InspectorSection title="Continuity">
             <p className="placeholder-card">Continuity checks arrive in M05.</p>
           </InspectorSection>

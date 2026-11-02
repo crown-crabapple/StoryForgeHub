@@ -38,6 +38,11 @@ export function codexHref(bookId, { type = null, entry = null } = {}) {
   return `/books/${encodeURIComponent(bookId)}/codex${qs ? `?${qs}` : ''}`;
 }
 
+/** /books/:id/places: the Codex filtered to locations, with the optional ?entry= of the page (M04-J04). @param {string} bookId @param {{ entry?: string | null }} [q] */
+export function placesHref(bookId, { entry = null } = {}) {
+  return `/books/${encodeURIComponent(bookId)}/places${entry ? `?entry=${encodeURIComponent(entry)}` : ''}`;
+}
+
 /** The scene in the manuscript. @param {string} bookId @param {string} sceneId */
 export const sceneHref = (bookId, sceneId) => `/books/${encodeURIComponent(bookId)}?scene=${encodeURIComponent(sceneId)}`;
 

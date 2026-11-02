@@ -2,7 +2,8 @@ import { Link, useLocation } from './router.jsx';
 import { LibraryView } from './LibraryView.jsx';
 import { BookView } from './BookView.jsx';
 import { CodexView } from './codex/CodexView.jsx';
-import { PlaceholderView } from './PlaceholderView.jsx';
+import { NotesView } from './notes/NotesView.jsx';
+import { TimelineView } from './timeline/TimelineView.jsx';
 import { useApi } from './api.js';
 import { parseRoute } from './routes.js';
 import { AppShell } from './shell/AppShell.jsx';
@@ -64,7 +65,9 @@ function Routes() {
   } else if (route.name === 'tab') {
     bookId = route.bookId;
     tab = route.tab;
-    view = route.tab === 'codex' ? <CodexView bookId={route.bookId} search={search} /> : <PlaceholderView bookId={route.bookId} tab={route.tab} />;
+    if (route.tab === 'timeline') view = <TimelineView bookId={route.bookId} search={search} />;
+    else if (route.tab === 'notes') view = <NotesView bookId={route.bookId} search={search} />;
+    else view = <CodexView bookId={route.bookId} search={search} places={route.tab === 'places'} />;
   } else {
     view = (
       <main id="main" tabIndex={-1} className="page">

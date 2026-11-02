@@ -8,7 +8,7 @@ import { PreviewDialog } from '../structure/PreviewDialog.jsx';
 import { CodexPage } from './CodexPage.jsx';
 import { ChangeSlugDialog, EditFieldsDialog, NewEntryDialog, NewTypeDialog } from './dialogs.jsx';
 import { EntryBodyEditor } from './EntryBodyEditor.jsx';
-import { codexHref, defaultTypeKey, parseCodexSearch, sidebarRows } from './model.js';
+import { codexHref, defaultTypeKey, parseCodexSearch, placesHref, sidebarRows } from './model.js';
 import { archiveRequest, explainCodexFailure, restoreRequest } from './requests.js';
 
 const enc = encodeURIComponent;
@@ -17,9 +17,10 @@ const SEARCH_DELAY_MS = 250;
 /**
  * /books/:id/codex. Fetches the entries, keeps the selection in the URL (?type= and ?entry=) and runs the write flows: a form, the dry-run
  * preview with its diffs, and only then the real write.
- * @param {{ bookId: string, search?: string }} props `search` is the query string of the URL
+ * `places` (M04-J04): the Places tab, the same page locked to the location type, with its own URL (/books/:id/places?entry=).
+ * @param {{ bookId: string, search?: string, places?: boolean }} props `search` is the query string of the URL
  */
-export function CodexView({ bookId, search = '' }) {
+export function CodexView({ bookId, search = '', places = false }) {
   const { status } = useStatus();
   const navigate = useNavigate();
   const { track } = useWrites();
@@ -29,6 +30,7 @@ export function CodexView({ bookId, search = '' }) {
   const { data: types } = useApi(`${api}/codex/types`, version);
   const { data: list, error, loading } = useApi(`${api}/codex/entries`, version);
   const { data: objects } = useApi(`${api}/objects?kinds=entry,thread,event`, version);
+  const { data: notesData } = useApi(`${api}/notes`, version);
 
   const [query, setQuery] = useState('');
   const [statusKey, setStatusKey] = useState('all');
@@ -46,7 +48,7 @@ export function CodexView({ bookId, search = '' }) {
   const url = parseCodexSearch(search);
   const urlEntry = url.entry ? (entries.find((e) => e.id === url.entry || e.slug === url.entry) ?? null) : null;
   const rows = sidebarRows(typeList, entries);
-  const typeKey = url.type ?? (urlEntry ? (urlEntry.archived ? 'archived' : (urlEntry.type ?? 'all')) : defaultTypeKey(rows));
+  const typeKey = places ? 'location' : (url.type ?? (urlEntry ? (urlEntry.archived ? 'archived' : (urlEntry.type ?? 'all')) : defaultTypeKey(rows)));
   const selectedId = urlEntry?.id ?? null;
 
   // the full-text half of the search: what /api/search finds in the entries' text
@@ -70,7 +72,7 @@ export function CodexView({ bookId, search = '' }) {
     return e ? { id: e.id, name: e.name } : null;
   };
   const takenSlugs = new Set((objects ?? []).map((o) => o.slug).filter(Boolean));
-  const go = (next) => navigate(codexHref(bookId, next));
+  const go = (next) => navigate(places ? placesHref(bookId, { entry: next.entry ?? null }) : codexHref(bookId, next));
 
   /** Dry-run every request, then show the preview. */
   async function startPreview(title, requests, then = {}) {
@@ -184,6 +186,8 @@ export function CodexView({ bookId, search = '' }) {
         onNewEntry={() => setDialog({ kind: 'new' })}
         onNewType={() => setDialog({ kind: 'type' })}
         resolve={resolve}
+        notes={notesData?.notes ?? null}
+        lockedType={places ? 'location' : null}
         actions={actionsFor}
         editor={
           editor ? (

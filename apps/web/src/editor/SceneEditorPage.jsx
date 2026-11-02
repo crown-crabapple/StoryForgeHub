@@ -20,6 +20,7 @@ import { decoratedMarkdown, marksExtension, setMarks } from './extensions.js';
 import { focusExtensions } from './focus-extensions.js';
 import { LinkPicker } from './LinkPicker.jsx';
 import { nameIndex } from './names.js';
+import { ACCEPT, uploadAttachment } from '../notes/upload.js';
 import { createSaveController, draftOffer } from './save-controller.js';
 import { EditorToolbar } from './Toolbar.jsx';
 import { countWords, describeCount, selectionWords } from './wordcount.js';
@@ -57,13 +58,14 @@ function InfoDialog({ title, children, onClose, actions }) {
 
 /**
  * @param {{ book: any, scene: any, chapterLabel?: string | null, objects?: any[] | null, footerExtra?: import('react').ReactNode,
- *   onStructureChanged?: (info?: any) => void, resource?: { url: string, label: string, meta: string[] } }} props
+ *   onStructureChanged?: (info?: any) => void, resource?: { url: string, label: string, meta: string[], attach?: { noteId: string } } }} props
  *   `resource` makes the same editor edit something else with a body: a Codex entry (`scene` is then `{ id, title, body, sha256 }`, `url` is
- *   GET /entries/:id, saved with PUT <url>/body). `label` names the text area, `meta` replaces the meta line under the title.
+ *   GET /entries/:id, saved with PUT <url>/body). `label` names the text area, `meta` replaces the meta line under the title. `attach` (a note's text) adds "Attach file..." and drag-and-drop of files: each file is
+ *   uploaded to the book and the returned Markdown link is inserted at the caret (or where it was dropped). `initialLine`: a 1-based line to put the caret on when the scene opens.
  *   Render with `key={scene.id}`: one editor (and one save controller) per open scene. `scene` is the GET scene answer; when its
  *   `sha256` changes later (the book was reconciled) the editor asks the server whether the file changed outside.
  */
-export function SceneEditorPage({ book, scene, chapterLabel = null, objects = null, footerExtra = null, onStructureChanged, resource = undefined }) {
+export function SceneEditorPage({ book, scene, chapterLabel = null, objects = null, footerExtra = null, onStructureChanged, resource = undefined, initialLine = null }) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
   const ctlRef = useRef(null);
@@ -96,6 +98,9 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const applyTextRef = useRef(() => {});
   const focusRef = useRef(focus);
   const noteTimer = useRef(null);
+  const attachRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [attaching, setAttaching] = useState(false);
   const names = nameIndex(objects);
 
   const flash = useCallback((message, { sticky = false } = {}) => {
@@ -131,6 +136,30 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     writingRef.current = writing;
     focusRef.current = focus;
     applyTextRef.current = applyText;
+  });
+
+  /** Upload a file and put the link it comes back with into the text (at `at`, else at the caret). Nothing is inserted when the upload fails. */
+  const attachNoteId = resource?.attach?.noteId ?? null;
+  const attachFile = useCallback(
+    async (file, at = null) => {
+      if (attachNoteId === null) return;
+      setAttaching(true);
+      const r = await uploadAttachment(book.id, file, attachNoteId);
+      setAttaching(false);
+      const view = viewRef.current;
+      if (!r.ok || !view) {
+        flash(r.ok ? 'The editor is not ready.' : r.message, { sticky: true });
+        return;
+      }
+      const pos = at ?? view.state.selection.main.head;
+      view.dispatch({ changes: { from: pos, insert: r.markdown }, selection: { anchor: pos + r.markdown.length }, scrollIntoView: true });
+      view.focus();
+      flash(`Attached ${r.path}`);
+    },
+    [book.id, attachNoteId, flash],
+  );
+  useEffect(() => {
+    attachRef.current = attachNoteId === null ? null : attachFile;
   });
 
   // ---- focus mode: typewriter scrolling and dimming are only on while focused
@@ -195,6 +224,22 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       EditorView.domEventHandlers({
         blur: () => {
           void ctl.blur();
+        },
+        // files dropped on a note's text are attached where they were dropped
+        dragover: (e) => {
+          if (attachRef.current && e.dataTransfer?.types?.includes('Files')) {
+            e.preventDefault();
+            return true;
+          }
+          return false;
+        },
+        drop: (e, view) => {
+          const files = [...(e.dataTransfer?.files ?? [])];
+          if (!attachRef.current || files.length === 0) return false;
+          e.preventDefault();
+          const at = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head;
+          files.forEach((file, i) => void attachRef.current(file, i === 0 ? at : null));
+          return true;
         },
       }),
     ];
@@ -274,6 +319,15 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one editor per scene id; later `scene` props are handled below
   }, [book.id, scene.id]);
+
+  // ---- opened from a link to a line (the Scene notes list): put the caret there
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!initialLine || !view) return;
+    const line = view.state.doc.line(Math.min(Math.max(1, initialLine), view.state.doc.lines));
+    view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
+    view.focus();
+  }, [initialLine, scene.id]);
 
   // ---- tell the top bar what the editor is doing
   useEffect(() => {
@@ -524,6 +578,25 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
             {describeCount(words, selected)}
           </span>
           <span className="editor-footer-actions">
+            {resource?.attach && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPT}
+                  hidden
+                  aria-label="Choose a file to attach"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) void attachFile(file);
+                  }}
+                />
+                <button type="button" className="btn row-button" disabled={attaching} onClick={() => fileInputRef.current?.click()}>
+                  {attaching ? 'Attaching…' : 'Attach file…'}
+                </button>
+              </>
+            )}
             {discarded.length > 0 && (
               <button type="button" className="btn row-button" onClick={() => setDialog('discarded')}>
                 Discarded drafts ({discarded.length})

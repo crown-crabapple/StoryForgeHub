@@ -3,6 +3,7 @@ import { Link } from '../router.jsx';
 import { Avatar, StatusChip } from './CodexCard.jsx';
 import { LinkedText } from './LinkedText.jsx';
 import { PresenceBars } from './PresenceBars.jsx';
+import { ResearchList } from '../notes/RailResearch.jsx';
 import { codexHref, factsOf, roleLabel, sceneHref, sceneRows } from './model.js';
 
 function Section({ title, children }) {
@@ -41,9 +42,10 @@ function Relation({ bookId, rel, onSelect }) {
  * the page gives a handler for them. Presentational: `entry` is one entry of GET /codex/entries (or GET /entries/:id).
  * @param {{ bookId: string, entry: any | null, chapters?: { chapter: number, scene_ids?: string[] }[], types?: { type: string, name: string }[],
  *   resolve?: (ref: string) => { id: string } | null, onSelect?: (entryId: string) => void, onEdit?: () => void, onEditText?: () => void,
- *   onChangeSlug?: () => void, onArchive?: () => void, onRestore?: () => void }} props
+ *   onChangeSlug?: () => void, onArchive?: () => void, onRestore?: () => void, research?: { id: string, title: string | null }[] | null }} props
+ *   `research` (M04-J04): the research notes whose `links` name the entry; when given (even empty) the inspector shows a "Research" section.
  */
-export function EntryInspector({ bookId, entry, chapters = [], types = [], resolve, onSelect, onEdit, onEditText, onChangeSlug, onArchive, onRestore }) {
+export function EntryInspector({ bookId, entry, chapters = [], types = [], resolve, onSelect, onEdit, onEditText, onChangeSlug, onArchive, onRestore, research = null }) {
   if (!entry) return <p className="muted">Select an entry to see its details.</p>;
   const facts = factsOf(entry.fields);
   const rows = sceneRows(entry.appears_in);
@@ -110,6 +112,12 @@ export function EntryInspector({ bookId, entry, chapters = [], types = [], resol
               ))}
             </ul>
           )}
+        </Section>
+      )}
+
+      {research !== null && !entry.archived && (
+        <Section title="Research">
+          <ResearchList bookId={bookId} notes={research} empty="No research notes link to this entry." />
         </Section>
       )}
 

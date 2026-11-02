@@ -1,4 +1,6 @@
 import { useRef } from 'react';
+import { Link } from '../router.jsx';
+import { researchForEntry } from '../notes/model.js';
 import { CodexCard } from './CodexCard.jsx';
 import { EntryInspector } from './EntryInspector.jsx';
 import { SORTS, STATUS_FILTERS, filterEntries, headerCounts, nextCardIndex, sidebarRows, sortEntries, typeTitle } from './model.js';
@@ -21,6 +23,8 @@ import { SORTS, STATUS_FILTERS, filterEntries, headerCounts, nextCardIndex, side
  *   resolve?: (ref: string) => { id: string } | null,
  *   actions?: ((entry: any) => { onEdit?: () => void, onEditText?: () => void, onChangeSlug?: () => void, onArchive?: () => void, onRestore?: () => void }) | null, // the inspector's buttons for the entry it shows
  *   editor?: import('react').ReactNode,  // replaces the header and the grid while an entry's text is being edited
+ *   notes?: any[] | null,                 // GET /notes `notes` (M04-J04): the inspector then shows each entry's Research section
+ *   lockedType?: string | null,           // the Places tab: only this type's row is drawn and the page is titled "Places"
  * }} props
  */
 export function CodexPage({
@@ -46,9 +50,11 @@ export function CodexPage({
   resolve,
   actions = null,
   editor = null,
+  notes = null,
+  lockedType = null,
 }) {
   const gridRef = useRef(null);
-  const rows = sidebarRows(types, entries);
+  const rows = sidebarRows(types, entries).filter((r) => lockedType === null || r.key === lockedType);
   // the header counts the entries of the sidebar row, before the search and status chips narrow the grid
   const ofRow = filterEntries(entries, { type: typeKey });
   const shown = sortEntries(filterEntries(entries, { type: typeKey, status, query, textIds: searchText ? textIds : null }), sort);
@@ -87,7 +93,12 @@ export function CodexPage({
             <span className="codex-cat-count">{r.count}</span>
           </button>
         ))}
-        {onNewType && (
+        {lockedType !== null && (
+          <Link className="codex-cat" to={`/books/${encodeURIComponent(bookId)}/codex`}>
+            <span>The whole Codex</span>
+          </Link>
+        )}
+        {onNewType && lockedType === null && (
           <button type="button" className="btn codex-new-type" onClick={onNewType}>
             New type…
           </button>
@@ -98,7 +109,7 @@ export function CodexPage({
         {editor ?? (
           <>
             <div className="codex-head">
-              <h1>{typeTitle(typeKey, types)}</h1>
+              <h1>{lockedType === null ? typeTitle(typeKey, types) : 'Places'}</h1>
               <span className="codex-counts">{counts.text}</span>
               {onNewEntry && (
                 <button type="button" className="btn btn-primary codex-new" onClick={onNewEntry}>
@@ -178,6 +189,7 @@ export function CodexPage({
           types={types}
           resolve={resolve}
           onSelect={onSelect}
+          research={notes && selected ? researchForEntry(notes, selected) : null}
           onEdit={selected && !selected.archived ? act.onEdit : undefined}
           onEditText={selected && !selected.archived ? act.onEditText : undefined}
           onChangeSlug={selected && !selected.archived ? act.onChangeSlug : undefined}

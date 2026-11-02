@@ -164,6 +164,9 @@ export function BookView({ bookId, sceneId, file }) {
   const { data: objects } = useApi(book ? `/api/books/${encodeURIComponent(bookId)}/objects?kinds=entry,thread,event` : null, version);
   // M04-J03: the threads with their scene lists and the scenes' summaries (the Board, Outline, Threads and Matrix views and the rail's thread marks)
   const { data: planning } = useApi(book ? `/api/books/${encodeURIComponent(bookId)}/threads` : null, version);
+  // M04-J04: the events and research notes the editor rail shows for the open scene (they refresh with the status poll, like everything else)
+  const { data: timeline } = useApi(showScene ? `/api/books/${encodeURIComponent(bookId)}/timeline` : null, version);
+  const { data: notes } = useApi(showScene ? `/api/books/${encodeURIComponent(bookId)}/notes` : null, version);
 
   if (loading) return <main id="main" tabIndex={-1} className="page muted">Loading...</main>;
   if (error) return <main id="main" tabIndex={-1} className="page error">{error}</main>;
@@ -222,6 +225,7 @@ export function BookView({ bookId, sceneId, file }) {
         scene={scene}
         chapterLabel={chapterLabel}
         objects={objects}
+        initialLine={/^[1-9][0-9]{0,6}$/.test(new URLSearchParams(search).get('line') ?? '') ? Number(new URLSearchParams(search).get('line')) : null}
         footerExtra={<ArchiveButton bookId={book.id} scene={scene} />}
         onStructureChanged={() => setBump((n) => n + 1)}
       />
@@ -233,7 +237,7 @@ export function BookView({ bookId, sceneId, file }) {
       book={book}
       activeId={file ? null : activeId}
       onChanged={() => setBump((n) => n + 1)}
-      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} planning={planning ?? null} onChanged={() => setBump((n) => n + 1)} />}
+      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} planning={planning ?? null} timeline={timeline ?? null} notes={notes ?? null} onChanged={() => setBump((n) => n + 1)} />}
     >
       {!file && <ViewSwitch bookId={book.id} view="write" scene={activeId} />}
       {main}
