@@ -8,59 +8,16 @@
 // reconciliation for an existing library; --compare says whether two libraries are byte-identical (ignoring .storyforge/). The legacy app is never touched.
 // Exit codes: 0 ok (plan complete / every book validates and nothing is unexplained / libraries equivalent), 1 errors in the dump, the plan, the
 // imported books or the reconciliation (or the libraries differ), 2 usage or a refused path.
-import fs from 'node:fs';
 import path from 'node:path';
 import { validate } from '@storyforge/format';
 import {
-  DumpError, compareLibraries, executePlan, outputPathProblem, planImport, planToJson, reconcile, reconciliationToJson, renderReconciliation, renderReport,
+  DumpError, compareLibraries, executePlan, insideLibrary, intoPathProblem, isFolder, outputPathProblem, planImport, planToJson, reconcile, reconciliationToJson, renderReconciliation, renderReport,
 } from '@storyforge/legacy-import';
 import { writeOutFile } from '@storyforge/store';
 
 export const LEGACY_COMMANDS = ['import-legacy'];
 
 const VALUE_FLAGS = ['--dump', '--book', '--report', '--json', '--into', '--reconcile'];
-const LEGACY_REPO_NAME = 'legacy-StoryForgeHub';
-
-/** The real path of the nearest existing ancestor of `p`, with the missing tail appended (so a not-yet-existing folder can be compared). */
-function realish(p) {
-  const abs = path.resolve(p);
-  let cur = abs;
-  const tail = [];
-  for (;;) {
-    try {
-      return path.join(fs.realpathSync(cur), ...tail.reverse());
-    } catch {
-      const parent = path.dirname(cur);
-      if (parent === cur) return abs;
-      tail.push(path.basename(cur));
-      cur = parent;
-    }
-  }
-}
-const isInside = (child, parent) => {
-  const rel = path.relative(parent, child);
-  return rel === '' || !(rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel));
-};
-
-/** @returns {string | null} why `--into` must be refused, or null */
-function intoProblem(dumpDir, into) {
-  const target = realish(into);
-  let stat = null;
-  try {
-    stat = fs.statSync(target);
-  } catch {
-    stat = null;
-  }
-  if (stat && !stat.isDirectory()) return `${into} is a file; the import needs a new folder`;
-  if (stat && fs.readdirSync(target).length > 0) return `${into} already exists and is not empty; StoryForge never imports into an existing library`;
-  if (isInside(target, realish(dumpDir))) return `${into} is inside the dump folder; the dump is never changed`;
-  for (let d = target; ; d = path.dirname(d)) {
-    if (path.basename(d).toLowerCase() === LEGACY_REPO_NAME.toLowerCase()) return `${into} is inside a ${LEGACY_REPO_NAME} folder; the legacy app is never changed`;
-    if (path.dirname(d) === d) break;
-  }
-  return null;
-}
-
 /** @param {string[]} argv arguments after `import-legacy` @returns {Promise<number>} the exit code */
 export async function runLegacyCommand(argv) {
   const say = (s) => process.stdout.write(s);
@@ -120,7 +77,7 @@ export async function runLegacyCommand(argv) {
       return 2;
     }
     for (const lib of compare) {
-      if (!fs.existsSync(lib) || !fs.statSync(lib).isDirectory()) {
+      if (!isFolder(lib)) {
         complain(`${lib} is not a folder`);
         return 2;
       }
@@ -140,12 +97,12 @@ export async function runLegacyCommand(argv) {
     return 2;
   }
   const dumpDir = values['--dump'];
-  if (against !== undefined && (!fs.existsSync(against) || !fs.statSync(against).isDirectory())) {
+  if (against !== undefined && !isFolder(against)) {
     complain(`--reconcile: ${against} is not a folder`);
     return 2;
   }
   if (into !== undefined) {
-    const problem = intoProblem(dumpDir, into);
+    const problem = intoPathProblem(dumpDir, into);
     if (problem) {
       complain(`--into: ${problem}`);
       return 2;
@@ -159,7 +116,7 @@ export async function runLegacyCommand(argv) {
       complain(`${flag}: ${problem}`);
       return 2;
     }
-    if (libraryDir !== null && isInside(realish(values[flag]), realish(libraryDir))) {
+    if (libraryDir !== null && insideLibrary(values[flag], libraryDir)) {
       complain(`${flag}: ${path.resolve(values[flag])} is inside the library folder; the library holds only the imported books`);
       return 2;
     }
