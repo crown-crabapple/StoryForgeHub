@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W306",
+      "file": "planning/threads/brass-key.md",
+      "location": "status"
+    }
+  ]
+}

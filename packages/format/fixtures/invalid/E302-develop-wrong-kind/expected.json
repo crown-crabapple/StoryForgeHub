@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E302",
+      "file": "planning/threads/brass-key.md",
+      "location": "develop[0]"
+    }
+  ]
+}

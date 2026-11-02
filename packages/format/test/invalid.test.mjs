@@ -17,6 +17,8 @@ const CONTRACT_CASES = [
   'W302-paid-no-payoff', 'W303-archived-target', 'I401-unknown-field', 'I402-cross-book',
   'W201-thread-folder', 'W201-event-folder', 'W201-scene-outside-manuscript', 'E301-unknown-pen-name',
   'E209-duplicate-type', 'W304-shared-alias', 'W305-self-relation',
+  'W306-planted-no-setup', 'W306-developed-no-develop', 'E301-develop-missing-scene',
+  'E302-develop-wrong-kind',
 ];
 
 test('invalid fixture set matches the contract case table', () => {

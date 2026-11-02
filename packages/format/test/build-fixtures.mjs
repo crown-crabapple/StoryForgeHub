@@ -327,6 +327,41 @@ bookCase('E302-wrong-kind', (b) => {
   return [D('E302', b.B, 'pov')];
 });
 
+bookCase('E301-develop-missing-scene', (b) => {
+  const p = addThread(b, {
+    status: 'developed',
+    setup: [b.files.get(b.A).fm.id],
+    develop: [`scene_${ulid('CS', 999)}`],
+    payoff: [],
+  });
+  return [D('E301', p, 'develop[0]')];
+});
+
+bookCase('E302-develop-wrong-kind', (b) => {
+  const p = addThread(b, {
+    status: 'developed',
+    setup: [b.files.get(b.A).fm.id],
+    develop: [b.files.get(b.ENTRY).fm.id],
+    payoff: [],
+  });
+  return [D('E302', p, 'develop[0]')];
+});
+
+bookCase('W306-planted-no-setup', (b) => {
+  const p = addThread(b, { status: 'planted', setup: [], payoff: [] });
+  return [D('W306', p, 'status')];
+});
+
+bookCase('W306-developed-no-develop', (b) => {
+  const p = addThread(b, {
+    status: 'developed',
+    setup: [b.files.get(b.A).fm.id],
+    develop: [],
+    payoff: [],
+  });
+  return [D('W306', p, 'status')];
+});
+
 bookCase('W201-misfiled-scene', (b) => {
   const to = `${ACT1}ch-002-two/0020-b.md`;
   move(b.files, b.B, to); // fields still say chapter 1
