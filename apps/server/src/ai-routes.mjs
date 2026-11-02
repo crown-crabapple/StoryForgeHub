@@ -217,8 +217,11 @@ async function sendStored(repository, service, bookId, active, body) {
   if (!r.ok) return refuse(502, r.code, r.message, r.status !== undefined ? { providerStatus: r.status } : {});
   const reply = redact(r.reply, [key], Infinity);
   const rewrite = ctx.task === 'rewrite';
-  const replacement = rewrite ? reply.replace(/^(?:\r?\n)+|(?:\r?\n)+$/g, '') : null;
-  if (rewrite && replacement === '') return refuse(502, 'BAD_RESPONSE', 'the provider answered without any text');
+  const core = rewrite ? reply.replace(/^\s+|\s+$/g, '') : null;
+  if (rewrite && core === '') return refuse(502, 'BAD_RESPONSE', 'the provider answered without any text');
+  // The selection keeps its own surrounding whitespace (a line-wise selection ends with the paragraph break); only its text is replaced.
+  const original = ctx.selection?.text ?? '';
+  const replacement = !rewrite ? null : original.trim() === '' ? core : `${/^\s*/.exec(original)[0]}${core}${/\s*$/.exec(original)[0]}`;
   ctx.reply = reply;
   ctx.replacement = replacement;
 

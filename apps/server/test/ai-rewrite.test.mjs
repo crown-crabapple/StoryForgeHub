@@ -262,3 +262,17 @@ test('model output is data: a reply that looks like HTML, a path or a front-matt
     assert.match(text, /^---\r?\nschema: storyforge\.scene\/v1\r?\nid: scene_01S50000000000000000000002\r?\n/, 'front matter untouched');
   }
 });
+
+test('a line-wise selection keeps its paragraph break: only the text is replaced, the surrounding whitespace stays (coordinator regression)', async () => {
+  const { app, file } = await boot();
+  const scene = await getScene(app, ARRIVAL);
+  const before = (await readFile(file(ARRIVAL_PATH))).toString('utf8');
+  const from = scene.body.indexOf(TARGET);
+  const to = from + TARGET.length + 2; // the paragraph and the blank line after it, as a triple-click selects it
+  assert.equal(scene.body.slice(to - 2, to), '\n\n');
+  const p = await rewrite(app, scene, from, to);
+  const r = await apply(app, p.contextId, `\n${REWRITTEN}\n`);
+  assert.equal(r.status, 200, r.text);
+  const after = (await readFile(file(ARRIVAL_PATH))).toString('utf8');
+  assert.equal(after, before.replace(TARGET, REWRITTEN), 'the blank line between the paragraphs is still there');
+});
