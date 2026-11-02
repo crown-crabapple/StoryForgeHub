@@ -910,3 +910,45 @@ describe('restoreOp (acceptance 8)', () => {
     assert.deepEqual(bodies(dir), bodies(copyFixture(SALT)));
   });
 });
+
+// ================================================================ split and range anchors
+
+describe('splitScene and <!-- sf:anchor --> ranges', () => {
+  const BODY = [
+    'Before.', //                                  1
+    '<!-- sf:anchor id=a_01S50000000000000000000001 -->', // 2 opening anchor
+    'Anchored one.', //                            3
+    '', //                                         4
+    'Anchored two.', //                            5
+    '<!-- /sf:anchor -->', //                      6 closing anchor
+    'After.', //                                   7
+    'End.', //                                     8
+  ].join('\n') + '\n';
+
+  for (const atLine of [3, 4, 5, 6]) {
+    it(`line ${atLine}, inside the anchor range, is BAD_SPLIT_POINT and nothing is written`, async () => {
+      const dir = copyFixture(SALT);
+      putMid(dir, BODY);
+      const before = snapshot(dir);
+      const r = await call('splitScene', dir, MID, { atLine });
+      assert.equal(r.ok, false, JSON.stringify(r));
+      assert.equal(r.code, 'BAD_SPLIT_POINT');
+      assertUntouched(dir, before);
+    });
+  }
+
+  for (const [atLine, what] of [[2, 'the opening anchor line itself'], [7, 'the line after the closing anchor'], [8, 'a later line']]) {
+    it(`line ${atLine} (${what}) is allowed and the bodies concatenate to the original`, async () => {
+      const dir = copyFixture(SALT);
+      putMid(dir, BODY);
+      const r = await call('splitScene', dir, MID, { atLine });
+      assert.equal(r.ok, true, JSON.stringify(r));
+      const rows = await orderRows(dir);
+      const at = rows.findIndex((x) => x.id === MID);
+      const b1 = bodyOf(Buffer.from(read(dir, rows[at].path))).toString('utf8');
+      const b2 = bodyOf(Buffer.from(read(dir, rows[at + 1].path))).toString('utf8');
+      assert.equal(b1 + b2, BODY);
+      assert.deepEqual(await errorsOf(dir), []);
+    });
+  }
+});

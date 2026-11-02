@@ -253,3 +253,49 @@ test('archive then restore a scene: every body survives, and restore puts the fi
   assert.deepEqual(await bookFiles(root), filesBefore, 'book is byte-identical to the start');
   assert.deepEqual(treeRows(await repo.getBook(SALT_BOOK)), (await expectedTree(root)).scenes);
 });
+
+// ---------------------------------------------------------------- empty acts and chapters (FORMAT-v1 4.5: shown empty, not an error)
+
+const FERRY = 'scene_01S50000000000000000000005';
+const GRAFTING = 'scene_01S50000000000000000000006';
+
+test('an act with no scenes and a chapter whose scenes are all archived are listed empty, from files and from a fresh index', async () => {
+  const root = await copyFixture('valid/salt-orchard');
+  const repo = open(root);
+  const act = await repo.createAct(SALT_BOOK, { title: 'Ebb Tide' });
+  assert.equal(act.ok, true, JSON.stringify(act));
+  for (const id of [FERRY, GRAFTING]) {
+    const s = await repo.getScene(SALT_BOOK, id);
+    const r = await repo.archiveScene(SALT_BOOK, id, { baseSha256: s.sha256 });
+    assert.equal(r.ok, true, JSON.stringify(r));
+  }
+
+  const check = (book, label) => {
+    assert.deepEqual(book.acts.map((a) => a.act), [1, 2, 3], `${label}: acts in number order, empty act 3 included`);
+    const a1 = book.acts[0];
+    assert.deepEqual(a1.chapters.map((c) => c.chapter), [0, 1, 2], `${label}: chapter 2 still listed`);
+    const ch2 = a1.chapters[2];
+    assert.deepEqual(ch2.scenes, [], `${label}: chapter 2 has no scenes`);
+    assert.equal(ch2.label, 'Chapter Two');
+    assert.equal(ch2.title, 'The Grafting', `${label}: its title still comes from chapter.md`);
+    const a3 = book.acts[2];
+    assert.equal(a3.label, 'Act 3');
+    assert.deepEqual(a3.chapters, [], `${label}: act 3 has no chapters`);
+    const ids = book.acts.flatMap((x) => x.chapters.flatMap((c) => c.scenes.map((sc) => sc.id)));
+    assert.ok(!ids.includes(FERRY) && !ids.includes(GRAFTING), `${label}: archived scenes are out of the tree`);
+    assert.equal(book.scene_count, 5, `${label}: scene_count counts scenes only`);
+  };
+
+  const fromFiles = await repo.getBook(SALT_BOOK);
+  check(fromFiles, 'from files');
+  await repo.rebuildIndex(SALT_BOOK);
+  await repo.close();
+  const repoB = open(root);
+  const fromIndex = await repoB.getBook(SALT_BOOK);
+  check(fromIndex, 'from index');
+  assert.deepEqual(plain(fromIndex), plain(fromFiles), 'index and files give the same tree');
+  await repoB.close();
+  await removeStoryforgeDirs(root);
+  const fromScratch = await open(root).getBook(SALT_BOOK);
+  assert.deepEqual(plain(fromScratch), plain(fromFiles), 'and so does a rebuilt index');
+});

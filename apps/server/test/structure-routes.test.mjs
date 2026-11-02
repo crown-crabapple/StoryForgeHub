@@ -377,3 +377,55 @@ test('guards: a 6 MB body to a structure route is 413 and nothing is written', a
   assert.ok(r.status === 413 || r.status === 'ECONNRESET' || r.status === 'EPIPE', String(r.status));
   assert.deepEqual(await state(root), before);
 });
+
+// ---------------------------------------------------------------- undo route
+
+const restoreUrl = (b, opId) => u(b, `ops/${encodeURIComponent(opId)}/restore`);
+const keyPath = 'manuscript/act-01-low-water/ch-001-the-drowned-rows/0020-the-key.md';
+
+test('undo: rename a scene, POST ops/:opId/restore, and the files are byte-identical again', async () => {
+  const { root, port } = await fresh();
+  const before = await snapshot(root, { skipStoryforge: true });
+  const r = await post(port, u(BOOK, `scenes/${KEY}/fields`), { title: 'Undo Me' });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(typeof r.json.opId, 'string', 'the write result carries the op id');
+  assert.notDeepEqual(await snapshot(root, { skipStoryforge: true }), before);
+  const undo = await post(port, restoreUrl(BOOK, r.json.opId), {});
+  assert.equal(undo.status, 200, undo.text);
+  assert.deepEqual(await snapshot(root, { skipStoryforge: true }), before, 'byte-identical to before the rename');
+  const book = (await request(port, 'GET', `/api/books/${BOOK}`)).json;
+  assert.equal(book.acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes)).find((s) => s.id === KEY).title, 'The Key');
+});
+
+test('undo: after an external edit the restore is refused with 409 and a reason, and the edit is kept', async () => {
+  const { root, port } = await fresh();
+  const r = await post(port, u(BOOK, `scenes/${KEY}/fields`), { title: 'Undo Me' });
+  const file = path.join(root, ...keyPath.split('/'));
+  await fs.appendFile(file, '\nAn external edit.\n');
+  const before = await state(root);
+  const undo = await post(port, restoreUrl(BOOK, r.json.opId), {});
+  assert.equal(undo.status, 409, undo.text);
+  assert.ok(undo.json.message || undo.json.code, 'says why');
+  assert.deepEqual(await state(root), before, 'nothing written');
+  assert.ok((await fs.readFile(file, 'utf8')).endsWith('An external edit.\n'));
+});
+
+test('undo: dry run writes nothing; 403 without the guard header (also wrong type, foreign Host); 404 unknown book; unknown op refused', async () => {
+  const { root, port } = await fresh();
+  const r = await post(port, u(BOOK, `scenes/${KEY}/fields`), { title: 'Undo Me' });
+  const url = restoreUrl(BOOK, r.json.opId);
+  const before = await state(root);
+  const dry = await post(port, url, { dryRun: true });
+  assert.equal(dry.status, 200, dry.text);
+  assert.ok(dry.json.changes.length > 0);
+  assert.deepEqual(await state(root), before);
+  assert.equal((await post(port, url, {}, { headers: { 'content-type': 'application/json' } })).status, 403);
+  assert.equal((await post(port, url, {}, { headers: { 'content-type': 'text/plain', 'x-storyforge': '1' } })).status, 403);
+  assert.equal((await post(port, url, {}, { host: 'evil.example' })).status, 403);
+  assert.equal((await post(port, restoreUrl(UNKNOWN_BOOK, r.json.opId), {})).status, 404);
+  for (const op of ['20990101T000000000Z-ZZZZZZ', '..%2F..%2Fbook.md']) {
+    const bad = await post(port, `/api/books/${BOOK}/ops/${op}/restore`, {});
+    assert.ok(bad.status >= 400 && bad.status < 500, `${op}: ${bad.status}`);
+  }
+  assert.deepEqual(await state(root), before, 'nothing written by any of them');
+});

@@ -437,3 +437,35 @@ test('Preview dialog: lists what a merge does not copy over (characters / plot t
   assert.match(t, /characters: pell/);
   assert.match(t, /plot_threads: brass-key/);
 });
+
+// ---------------------------------------------------------------- empty acts and chapters (FORMAT-v1 4.5: shown empty, not an error)
+
+const EMPTY_BOOK = {
+  ...BOOK,
+  acts: [
+    ...BOOK.acts.map((a) => (a.act === 1 ? { ...a, chapters: [...a.chapters, { chapter: 4, label: 'Chapter Four', title: 'Hollow', scenes: [] }] } : a)),
+    { act: 3, label: 'Act 3', title: 'Ebb Tide', chapters: [] },
+  ],
+};
+
+test('tree: an empty chapter and an empty act are shown, with zero counts, and can still be added to', () => {
+  const html = tree({ book: EMPTY_BOOK });
+  assert.ok(html.includes('Chapter Four: Hollow'), 'the empty chapter row is rendered');
+  assert.ok(html.includes('Act 3: Ebb Tide'), 'the empty act row is rendered');
+  assert.ok(html.indexOf('Act 3: Ebb Tide') > html.indexOf('Act 2: High Water'), 'in number order');
+  const rowText = (label) => {
+    const i = html.indexOf(label);
+    const end = html.indexOf('<ul', i);
+    return plainText(html.slice(i, end > -1 ? end : undefined));
+  };
+  assert.match(rowText('Chapter Four'), /(?<![\d,])0 scenes/, `zero scenes: ${rowText('Chapter Four')}`);
+  assert.match(rowText('Chapter Four'), /(?<!\d)0w/, 'zero words');
+  assert.match(rowText('Act 3'), /(?<!\d)0w/, 'the empty act has zero words');
+  const names = buttons(html).map((b) => b.name);
+  assert.ok(names.some((n) => /^Add scene to .*Chapter Four/.test(n)), `the empty chapter keeps its add-scene action: ${names.filter((n) => /Add scene/.test(n))}`);
+  assert.ok(names.some((n) => /^More actions for .*Chapter Four/.test(n)), 'and its row menu');
+  assert.ok(names.some((n) => /^More actions for .*Act 3/.test(n)), 'the empty act has its row menu (Add chapter lives there)');
+  assert.ok(names.some((n) => /(Collapse|Expand) .*Act 3/.test(n)), 'and a collapse toggle');
+  // the non-empty rows are unchanged
+  assert.ok(html.includes('Arrival') && html.includes('Wall'));
+});
