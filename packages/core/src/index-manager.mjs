@@ -4,6 +4,7 @@ import path from 'node:path';
 import { discover, isFile, validate } from '@storyforge/format';
 import { openIndex } from '@storyforge/index';
 import { openStore } from '@storyforge/store';
+import { __hooks } from './hooks.mjs';
 
 const noop = () => {};
 const notReady = (state) => Object.assign(new Error(`index is not ready (${state})`), { code: 'INDEX_NOT_READY', state });
@@ -41,6 +42,7 @@ export function createIndexManager(root) {
     if (!p) {
       p = openStore(bookRootOf(bookPath), { recover: false }).then((store) => ({
         bookPath,
+        store,
         idx: openIndex(bookRootOf(bookPath), { store, libraryRoot: root }),
       }));
       p.catch(() => entries.delete(bookPath));
@@ -58,10 +60,35 @@ export function createIndexManager(root) {
     return null;
   };
 
-  /** Start a background refresh unless a build is already running. Never throws. */
-  function refreshSoon({ idx }) {
-    if (idx.status().state === 'building') return;
-    idx.refresh().catch(noop);
+  /** @type {Map<string, string>} book path -> when this process last finished a reconcile */
+  const lastReconciled = new Map();
+  /** @type {Map<string, number>} book path -> writes whose own reconcile has not started yet */
+  const pendingWrites = new Map();
+
+  /**
+   * The one way the repository brings an index up to date (never refresh()/rebuild() directly: those would
+   * replace the last valid projection of an invalid book). Counted by `__hooks.onReconcile`.
+   * @param {{ idx: ReturnType<typeof openIndex> }} entry
+   * @param {string} bookPath
+   * @param {string} reason
+   * @param {{ full?: boolean }} [opts]
+   */
+  async function reconcileEntry(entry, bookPath, reason, opts) {
+    try {
+      __hooks.onReconcile?.({ bookPath, reason });
+    } catch {
+      // a test hook must not break a reconcile
+    }
+    const r = await entry.idx.reconcile(opts);
+    lastReconciled.set(bookPath, new Date().toISOString());
+    if (r.ok) learn(bookPath, readableId(entry.idx));
+    return r;
+  }
+
+  /** Start a background reconcile unless a build is already running or a write's own reconcile is coming. Never throws. */
+  function refreshSoon(entry, reason = 'read') {
+    if (entry.idx.status().state === 'building' || (pendingWrites.get(entry.bookPath) ?? 0) > 0) return;
+    reconcileEntry(entry, entry.bookPath, reason).catch(noop);
   }
 
   /** The folder of a book id; asks validate() once if the id has not been seen. @returns {Promise<string | null>} */
@@ -100,34 +127,59 @@ export function createIndexManager(root) {
             const summary = q.bookSummary();
             if (summary.path !== bookPath) throw notReady('other-context');
             learn(bookPath, summary.id);
-            return fn(q, summary);
+            return fn(q, summary, q.invalidInfo());
           }),
         };
       } catch (e) {
         if (e?.code !== 'INDEX_NOT_READY') throw e;
-        if (e.state === 'other-context') entry.idx.refresh().catch(noop);
+        if (e.state === 'other-context') reconcileEntry(entry, bookPath, 'read').catch(noop);
         else refreshSoon(entry);
         return null;
       }
     },
 
-    /** Called after a successful write: refresh that book's index in the background. */
+    /** Called after a successful write: reconcile that book's index in the background (the watcher ignores our own writes). */
     afterWrite(bookPath) {
-      entryFor(bookPath).then((e) => e.idx.refresh().catch(noop), noop);
+      pendingWrites.set(bookPath, (pendingWrites.get(bookPath) ?? 0) + 1);
+      const done = () => pendingWrites.set(bookPath, Math.max(0, (pendingWrites.get(bookPath) ?? 1) - 1));
+      entryFor(bookPath).then(
+        (e) => {
+          done();
+          return reconcileEntry(e, bookPath, 'write').catch(noop);
+        },
+        done,
+      );
     },
+
+    /** Reconcile one book now (watcher, poll, series/library change). Resolves with the result; never throws. */
+    async reconcile(bookPath, reason = 'watch', opts) {
+      try {
+        return await reconcileEntry(await entryFor(bookPath), bookPath, reason, opts);
+      } catch (e) {
+        return { ok: false, code: e?.code ?? 'ERROR', message: String(e?.message ?? e) };
+      }
+    },
+
+    /** The book's store (opened without a recovery pass). */
+    storeFor: async (bookPath) => (await entryFor(bookPath)).store,
+    /** Index state of one book without touching anything else. */
+    indexStateOf: async (bookPath) => (await entryFor(bookPath)).idx.status(),
+    bookRootOf,
+    lastReconciledAt: (bookPath) => lastReconciled.get(bookPath) ?? null,
 
     /** The files path answered for this book: make sure its index gets built. */
     warm(bookPath, bookId) {
       learn(bookPath, bookId);
       entryFor(bookPath).then((e) => {
-        if (!isFresh(e.idx)) refreshSoon(e);
+        if (!isFresh(e.idx)) refreshSoon(e, 'read');
       }, noop);
     },
 
     async status(bookId) {
       const one = async (bookPath) => {
         const { idx } = await entryFor(bookPath);
-        return { book_id: idOf(bookPath), path: bookPath, ...idx.status() };
+        const st = idx.status();
+        return { ...st, book_id: idOf(bookPath) ?? st.book_id, path: bookPath, last_reconciled_at: lastReconciled.get(bookPath) ?? st.built_at };
       };
       if (bookId !== undefined) {
         const p = await pathOf(bookId);
@@ -148,9 +200,8 @@ export function createIndexManager(root) {
       }
       const books = [];
       for (const bookPath of paths) {
-        const { idx } = await entryFor(bookPath);
-        const r = await idx.rebuild();
-        if (r.ok) learn(bookPath, readableId(idx));
+        const entry = await entryFor(bookPath);
+        const r = await reconcileEntry(entry, bookPath, 'rebuild', { full: true });
         books.push({ book_id: idOf(bookPath), path: bookPath, ...r });
       }
       return { ok: books.every((b) => b.ok), books };
@@ -160,8 +211,9 @@ export function createIndexManager(root) {
     async ensure() {
       const books = [];
       for (const bookPath of await bookPaths()) {
-        const { idx } = await entryFor(bookPath);
-        const r = isFresh(idx) ? { ok: true, skipped: true } : await idx.refresh();
+        const entry = await entryFor(bookPath);
+        const { idx } = entry;
+        const r = isFresh(idx) ? { ok: true, skipped: true } : await reconcileEntry(entry, bookPath, 'ensure');
         learn(bookPath, readableId(idx));
         books.push({ book_id: idOf(bookPath), path: bookPath, ...r });
       }

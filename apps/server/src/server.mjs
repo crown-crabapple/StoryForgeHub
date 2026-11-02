@@ -45,12 +45,17 @@ function readBody(req) {
 }
 
 /**
- * @param {{ repository: import('@storyforge/core').FileRepository, webRoot: string, recoverReport?: unknown }} options
+ * @param {{ repository: import('@storyforge/core').FileRepository, webRoot?: string, recoverReport?: unknown,
+ *           instance?: { pid: number, started_at: string, lock: string } }} options
  *   `recoverReport` is the result of the recover() run at startup; GET /api/recover/last serves it.
+ *   `instance` is what GET /api/status reports about this process (the lock it holds); default: no lock.
  * @returns {import('node:http').Server} not yet listening; callers bind it to 127.0.0.1
  */
-export function createServer({ repository, webRoot, recoverReport }) {
-  const state = { lastRecover: recoverReport ?? { completed: [], rolledBack: [], needsAttention: [] } };
+export function createServer({ repository, webRoot, recoverReport, instance }) {
+  const state = {
+    lastRecover: recoverReport ?? { completed: [], rolledBack: [], needsAttention: [] },
+    instance: instance ?? { pid: process.pid, started_at: new Date().toISOString(), lock: 'none' },
+  };
   const server = http.createServer(async (req, res) => {
     try {
       const address = server.address();

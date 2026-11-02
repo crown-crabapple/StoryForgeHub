@@ -3,6 +3,8 @@ import path from 'node:path';
 
 export const DEFAULT_PORT = 4317;
 export const HOST = '127.0.0.1';
+/** The single-instance lock file, in the library root. */
+export const LOCK_FILE = '.storyforge-lock';
 
 export class ConfigError extends Error {
   /** @param {string} message */

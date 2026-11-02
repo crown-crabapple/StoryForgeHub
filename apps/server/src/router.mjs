@@ -4,7 +4,7 @@ import pkg from '../package.json' with { type: 'json' };
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
 /** @typedef {{ status: number, body: unknown }} ApiResult */
-/** @typedef {{ lastRecover: unknown }} ApiState  Report of the most recent recover() run. */
+/** @typedef {{ lastRecover: any, instance?: { pid: number, started_at: string, lock: string } }} ApiState  Report of the most recent recover() run; what this process knows about itself. */
 
 const NOT_FOUND = { status: 404, body: { error: 'not_found' } };
 
@@ -45,6 +45,19 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   if (a === 'recover' && b === 'last' && c === undefined) {
     return { status: 200, body: state?.lastRecover ?? { completed: [], rolledBack: [], needsAttention: [] } };
   }
+  if (a === 'status' && b === undefined) {
+    const status = await repository.getStatus();
+    const last = state?.lastRecover;
+    return {
+      status: 200,
+      body: {
+        instance: state?.instance ?? { pid: process.pid, started_at: null, lock: 'none' },
+        watch: status.watch,
+        books: status.books,
+        recover: { needsAttention: last?.needsAttention ?? [], rolledBack: last?.rolledBack ?? [] },
+      },
+    };
+  }
   if (a === 'search' && b === undefined) return handleSearch(repository, params);
   if (a === 'index' && b === 'status' && c === undefined) {
     return { status: 200, body: await repository.indexStatus() };
@@ -60,6 +73,16 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     }
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
+    }
+    if (c === 'repair' && d === 'plan' && rest.length === 0) {
+      const plan = await repository.planRepair(b);
+      return plan ? { status: 200, body: plan } : NOT_FOUND;
+    }
+    if (c === 'raw' && d === undefined) {
+      const file = params.get('path');
+      if (file === null) return badRequest('path is required');
+      const raw = await repository.getRawFile(b, file);
+      return raw ? { status: 200, body: raw } : NOT_FOUND;
     }
     if (c === 'scenes' && d !== undefined && rest.length === 0) {
       const scene = await repository.getScene(b, d);
@@ -132,6 +155,7 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && a === 'recover' && b === undefined) return { route: 'recover' };
   if (method === 'POST' && a === 'index' && b === 'rebuild' && c === undefined) return { route: 'index-rebuild' };
   if (a !== 'books' || b === undefined || c === undefined) return null;
+  if (method === 'POST' && c === 'repair' && d === undefined) return { route: 'repair', bookId: b };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'body') return { route: 'body', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d === undefined) return { route: 'create', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'archive') return { route: 'archive', bookId: b, sceneId: d };
@@ -147,7 +171,7 @@ function respond(r, okStatus, okBody) {
   if (r.code === 'NOT_FOUND') return NOT_FOUND;
   if (r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', current: r.current ?? null } };
   const detail = { code: r.code, ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
-  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID'].includes(r.code);
+  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION'].includes(r.code);
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
 }
 
@@ -172,6 +196,11 @@ export async function handleWrite(repository, match, body, state) {
       const r = await repository.rebuildIndex(body.book);
       if (r.code === 'NOT_FOUND') return NOT_FOUND;
       return { status: 200, body: r };
+    }
+    case 'repair': {
+      if (!Array.isArray(body.actions)) return badRequest('expected { actions: [...] }');
+      const r = await repository.applyRepair(bookId, body.actions);
+      return respond(r, 200, (x) => ({ ok: true, changes: x.changes ?? [], opId: x.opId ?? null }));
     }
     case 'body': {
       if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');

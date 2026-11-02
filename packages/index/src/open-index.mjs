@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { buildIndex } from './build.mjs';
+import { buildIndex, buildReconciled } from './build.mjs';
 import { makeQueries } from './queries.mjs';
 import { INDEX_FILE, SCHEMA_VERSION } from './schema.mjs';
 
@@ -42,6 +42,9 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
   let inflight = null;
   /** @type {Promise<any> | null} */
   let queued = null;
+  /** @type {Promise<any> | null} the follow-up run that reconcile() calls made during a build share */
+  let queuedReconcile = null;
+  let queuedFull = false;
 
   function openDb() {
     try {
@@ -54,16 +57,31 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
 
   /** The index as it stands against the files, ignoring any build in progress. @param {DatabaseSync | null} db */
   function inspect(db) {
-    const base = { built_at: null, schema_version: null, file_count: 0, stale_paths: [] };
+    const base = { built_at: null, schema_version: null, file_count: 0, stale_paths: [], invalid_paths: [], invalid_since: null, book_id: null, title: null, errors: 0, warnings: 0 };
+    let flagged;
     if (!db) return { ...base, state: 'missing' };
     let rows;
     try {
       const meta = new Map(db.prepare('SELECT key, value FROM meta').all().map((r) => [r.key, r.value]));
       rows = db.prepare('SELECT path, sha256, size, mtime_ms FROM files').all();
+      const sev = new Map(db.prepare('SELECT severity, COUNT(*) AS n FROM diagnostics GROUP BY severity').all().map((r) => [r.severity, Number(r.n)]));
+      flagged = meta.get('state') === 'invalid';
+      let paths = [];
+      try {
+        const parsed = JSON.parse(meta.get('invalid_paths') ?? '[]');
+        if (Array.isArray(parsed)) paths = parsed.filter((x) => typeof x === 'string');
+      } catch {
+        // keep []
+      }
       Object.assign(base, {
         built_at: meta.get('built_at') ?? null,
         schema_version: meta.has('schema_version') ? Number(meta.get('schema_version')) : null,
         file_count: rows.length,
+        book_id: meta.get('book_id') ?? null,
+        title: meta.get('book_title') ?? null,
+        errors: sev.get('error') ?? 0,
+        warnings: sev.get('warning') ?? 0,
+        ...(flagged ? { invalid_paths: paths, invalid_since: meta.get('invalid_since') ?? null } : {}),
       });
     } catch {
       return { ...base, state: 'error' };
@@ -95,7 +113,7 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
     }
     for (const rel of known.keys()) stale.push(rel);
     stale.sort();
-    return { ...base, state: stale.length ? 'stale' : 'fresh', stale_paths: stale };
+    return { ...base, state: stale.length ? 'stale' : flagged ? 'invalid' : 'fresh', stale_paths: stale };
   }
 
   function status() {
@@ -103,7 +121,7 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
     try {
       db = openDb();
     } catch {
-      return { built_at: null, schema_version: null, file_count: 0, stale_paths: [], state: inflight ? 'building' : 'error' };
+      return { built_at: null, schema_version: null, file_count: 0, stale_paths: [], invalid_paths: [], invalid_since: null, book_id: null, title: null, errors: 0, warnings: 0, state: inflight ? 'building' : 'error' };
     }
     try {
       const s = inspect(db);
@@ -117,7 +135,7 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
    * Run `fn` with the query helpers over a read-only handle (closed afterwards). Throws INDEX_NOT_READY
    * unless the index is fresh. A build in progress does not matter: the old index keeps serving.
    * `allowStale` also serves an index that is readable but out of date (used for search, which has no
-   * file-based fallback).
+   * file-based fallback). An `invalid` index (the last valid projection, kept on purpose) is always served.
    * @template T
    * @param {(q: ReturnType<typeof makeQueries>) => T} fn
    * @param {{ allowStale?: boolean }} [opts]
@@ -132,7 +150,7 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
     }
     try {
       const s = inspect(db);
-      const usable = s.state === 'fresh' || (allowStale && s.state === 'stale' && s.schema_version === SCHEMA_VERSION);
+      const usable = s.state === 'fresh' || s.state === 'invalid' || (allowStale && s.state === 'stale' && s.schema_version === SCHEMA_VERSION);
       if (!usable) throw notReady(s.state);
       return fn(makeQueries(/** @type {DatabaseSync} */ (db)));
     } catch (e) {
@@ -143,27 +161,55 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
     }
   }
 
-  async function run(full) {
-    const t0 = performance.now();
+  /** The previous projection as an open read-only handle if it is usable as "the last valid one", else null. */
+  function openPrevious() {
+    let db = null;
     try {
-      if (full) cache.clear();
-      const { bytes, counts } = await buildIndex({ bookRoot: root, validateRoot, bookPath, cache });
-      const w = await store.writeMeta(INDEX_FILE, bytes);
-      if (!w?.ok) throw Object.assign(new Error(`could not save the index (${w?.code})`), { code: w?.code ?? 'WRITE_FAILED' });
-      return { ok: true, ms: performance.now() - t0, counts };
-    } catch (e) {
-      return { ok: false, ms: performance.now() - t0, code: e?.code ?? 'ERROR', message: String(e?.message ?? e) };
+      db = openDb();
+      if (!db) return null;
+      const v = /** @type {any} */ (db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get());
+      if (Number(v?.value) !== SCHEMA_VERSION) throw new Error('other schema');
+      db.prepare('SELECT COUNT(*) FROM scenes').get();
+      return db;
+    } catch {
+      db?.close();
+      return null;
     }
   }
 
-  function start(full) {
-    inflight = run(full).finally(() => {
+  async function run(full, reconcile = false) {
+    const t0 = performance.now();
+    let prev = null;
+    try {
+      if (full) cache.clear();
+      const params = { bookRoot: root, validateRoot, bookPath, cache };
+      let built;
+      if (reconcile) {
+        prev = openPrevious();
+        built = await buildReconciled(params, { prev });
+      } else {
+        built = await buildIndex(params);
+      }
+      prev?.close();
+      prev = null;
+      const w = await store.writeMeta(INDEX_FILE, built.bytes);
+      if (!w?.ok) throw Object.assign(new Error(`could not save the index (${w?.code})`), { code: w?.code ?? 'WRITE_FAILED' });
+      return { ok: true, ms: performance.now() - t0, counts: built.counts, ...(reconcile ? { state: built.state, invalid_paths: built.invalid_paths } : {}) };
+    } catch (e) {
+      return { ok: false, ms: performance.now() - t0, code: e?.code ?? 'ERROR', message: String(e?.message ?? e) };
+    } finally {
+      prev?.close();
+    }
+  }
+
+  function start(full, reconcile = false) {
+    inflight = run(full, reconcile).finally(() => {
       inflight = null;
     });
     return inflight;
   }
 
-  const QUERY_NAMES = ['bookId', 'bookSummary', 'scenes', 'excluded', 'chapters', 'links', 'backlinks', 'mentions', 'diagnostics', 'counts', 'search'];
+  const QUERY_NAMES = ['bookId', 'invalidInfo', 'bookSummary', 'scenes', 'excluded', 'chapters', 'links', 'backlinks', 'mentions', 'diagnostics', 'counts', 'search'];
   const query = Object.fromEntries(QUERY_NAMES.map((name) => [name, (...args) => read((q) => q[name](...args))]));
 
   return {
@@ -183,6 +229,25 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
         return start(false);
       });
       return queued;
+    },
+    /**
+     * Bring the index in line with the files without ever hiding or touching them (contract M01-J04 section 2).
+     * Valid book: same as refresh() (or rebuild() with `full`). Book with manuscript-structure errors: the last
+     * valid projection stays, diagnostics are replaced, state becomes `invalid`. Writes no project file.
+     * Resolves `{ ok, state: 'fresh' | 'invalid', invalid_paths, ... }`. Calls made while a build runs share one follow-up run.
+     * @param {{ full?: boolean }} [opts]
+     */
+    reconcile({ full = false } = {}) {
+      if (!inflight) return start(full, true);
+      queuedFull ||= full;
+      queuedReconcile ??= inflight.then(async () => {
+        while (inflight) await inflight; // a refresh() queued behind the same run may have started first
+        const wantFull = queuedFull;
+        queuedReconcile = null;
+        queuedFull = false;
+        return start(wantFull, true);
+      });
+      return queuedReconcile;
     },
   };
 }

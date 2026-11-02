@@ -9,10 +9,11 @@ async function getJson(url, signal) {
 }
 
 /**
- * Fetch JSON for a URL (null url = nothing to load).
+ * Fetch JSON for a URL (null url = nothing to load). Changing `refreshKey` fetches again but keeps showing
+ * the previous data meanwhile (no "Loading..." flash); changing the url starts from scratch.
  * @returns {{ data: any, error: string | null, loading: boolean }} data is null on 404.
  */
-export function useApi(url) {
+export function useApi(url, refreshKey = '') {
   const [state, setState] = useState({ url: null, data: null, error: null });
   useEffect(() => {
     if (!url) return undefined;
@@ -24,7 +25,7 @@ export function useApi(url) {
       },
     );
     return () => ctrl.abort();
-  }, [url]);
+  }, [url, refreshKey]);
   const ready = url !== null && state.url === url;
   return {
     data: ready ? state.data : null,

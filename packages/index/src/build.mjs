@@ -50,12 +50,8 @@ async function readFiles(bookRoot, cache) {
   return entries;
 }
 
-/**
- * @param {{ bookRoot: string, validateRoot: string, bookPath: string, cache: Map<string, any> }} p
- *   validateRoot is the folder handed to validate(): the library root, or the book root itself.
- * @returns {Promise<{ bytes: Buffer, counts: object }>}
- */
-export async function buildIndex({ bookRoot, validateRoot, bookPath, cache }) {
+/** Read the book's files and validate it: everything a build (normal or reconciling) starts from. */
+async function load({ bookRoot, validateRoot, bookPath, cache }) {
   const files = await readFiles(bookRoot, cache);
   const result = await validate(validateRoot);
   const book = result.books.find((b) => b.path === bookPath);
@@ -64,6 +60,93 @@ export async function buildIndex({ bookRoot, validateRoot, bookPath, cache }) {
   const prefix = bookPath === '' ? '' : `${bookPath}/`;
   const rel = (p) => (prefix && p.startsWith(prefix) ? p.slice(prefix.length) : p);
   const diagnostics = result.diagnostics.filter((d) => prefix === '' || d.file.startsWith(prefix)).map((d) => ({ ...d, file: rel(d.file) }));
+  return { bookRoot, bookPath, files, book, prefix, rel, diagnostics };
+}
+
+/**
+ * @param {{ bookRoot: string, validateRoot: string, bookPath: string, cache: Map<string, any> }} p
+ *   validateRoot is the folder handed to validate(): the library root, or the book root itself.
+ * @returns {Promise<{ bytes: Buffer, counts: object }>}
+ */
+export async function buildIndex(p) {
+  return project(await load(p), {});
+}
+
+/** Manuscript-structure errors (E1xx/E2xx on files under manuscript/), as in the manuscript contract rule 5. */
+export const structureErrors = (diagnostics) =>
+  diagnostics.filter((d) => d.severity === 'error' && /^E[12]\d\d$/.test(d.code) && d.file.startsWith('manuscript/'));
+
+/** The distinct files those errors are on, sorted. */
+export const invalidPathsOf = (errs) => [...new Set(errs.map((d) => d.file))].sort();
+
+/**
+ * Reconciling build (contract M01-J04 section 2). With no structure errors this is a normal build. With
+ * them, the last valid projection (`prev`, an open read-only database) is kept as it is, except for the
+ * `files` and `diagnostics` tables and the invalid markers; with no usable `prev`, whatever can be built
+ * from the current files is built and marked invalid.
+ * @param {{ bookRoot: string, validateRoot: string, bookPath: string, cache: Map<string, any> }} p
+ * @param {{ prev: import('node:sqlite').DatabaseSync | null }} o
+ * @returns {Promise<{ bytes: Buffer, counts: object, state: 'fresh' | 'invalid', invalid_paths: string[] }>}
+ */
+export async function buildReconciled(p, { prev }) {
+  const ctx = await load(p);
+  const errs = structureErrors(ctx.diagnostics);
+  if (errs.length === 0) return { ...(await project(ctx, {})), state: 'fresh', invalid_paths: [] };
+  const invalidPaths = invalidPathsOf(errs);
+  const now = new Date().toISOString();
+  if (!prev) {
+    const built = await project(ctx, { extraMeta: { state: 'invalid', invalid_since: now, invalid_paths: JSON.stringify(invalidPaths) } });
+    return { ...built, state: 'invalid', invalid_paths: invalidPaths };
+  }
+  const built = keepProjection(ctx, prev, { now, invalidPaths });
+  return { ...built, state: 'invalid', invalid_paths: invalidPaths };
+}
+
+/** Columns copied unchanged from the last valid projection. */
+const KEPT = {
+  objects: ['id', 'kind', 'slug', 'title', 'type', 'status', 'path', 'archived'],
+  scenes: ['id', 'position', 'act', 'chapter', 'sequence', 'act_label', 'chapter_label', 'title', 'status', 'pov', 'word_count', 'path'],
+  excluded: ['id', 'path', 'reason'],
+  links: ['src_id', 'src_path', 'location', 'raw', 'target_id', 'target_kind', 'resolution'],
+  mentions: ['entry_id', 'scene_id', 'count'],
+  fts: ['id', 'kind', 'title', 'body'],
+};
+
+function keepProjection({ files, diagnostics }, prev, { now, invalidPaths }) {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(DDL);
+    db.exec('BEGIN');
+    const oldMeta = new Map(prev.prepare('SELECT key, value FROM meta').all().map((r) => [r.key, r.value]));
+    const meta = new Map(oldMeta);
+    meta.set('state', 'invalid');
+    meta.set('invalid_since', oldMeta.get('state') === 'invalid' && oldMeta.get('invalid_since') ? oldMeta.get('invalid_since') : now);
+    meta.set('invalid_paths', JSON.stringify(invalidPaths));
+    const insMeta = db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)');
+    for (const [k, v] of meta) insMeta.run(k, v);
+
+    const insFile = db.prepare('INSERT INTO files (path, sha256, size, mtime_ms, kind, schema, id) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    for (const f of files) insFile.run(f.rel, f.sha256, f.size, f.mtime_ms, f.kind, f.schema, f.id);
+
+    for (const [table, cols] of Object.entries(KEPT)) {
+      const ins = db.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`);
+      for (const row of prev.prepare(`SELECT ${cols.join(', ')} FROM ${table} ORDER BY rowid`).all()) ins.run(...cols.map((c) => row[c]));
+    }
+
+    const insDiag = db.prepare('INSERT INTO diagnostics (code, severity, file, location, message) VALUES (?, ?, ?, ?, ?)');
+    for (const d of diagnostics) insDiag.run(d.code, d.severity, d.file, d.location, d.message);
+
+    db.exec('COMMIT');
+    const counts = readCounts(db);
+    const u8 = db.serialize();
+    return { bytes: Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength), counts };
+  } finally {
+    db.close();
+  }
+}
+
+/** Build the projection from an already loaded book. `extraMeta` entries are added to `meta`. */
+async function project({ bookRoot, bookPath, files, book, rel, diagnostics }, { extraMeta = {} }) {
 
   const docs = files.map((f) => f.doc).filter((d) => d && d.kind);
   const docByRel = new Map(docs.map((d) => [d.rel, d]));
@@ -81,6 +164,7 @@ export async function buildIndex({ bookRoot, validateRoot, bookPath, cache }) {
       built_at: new Date().toISOString(),
       format: FORMAT,
       book_path: bookPath,
+      ...extraMeta,
     };
     if (book.id) meta.book_id = book.id;
     if (book.slug) meta.book_slug = book.slug;

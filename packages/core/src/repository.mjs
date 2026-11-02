@@ -110,7 +110,16 @@
  *   indexStatus(bookId?: string): Promise<any>,
  *   rebuildIndex(bookId?: string): Promise<{ ok: boolean, code?: string, books: any[] }>,
  *   ensureIndexes(): Promise<{ ok: boolean, books: any[] }>,
+ *   getStatus(): Promise<{ watch: { mode: 'watch' | 'poll', reason: string | null, last_event_at: string | null, pending: number }, books: any[] }>,
+ *   getRawFile(bookId: string, bookRelPath: string): Promise<{ path: string, body: string, sha256: string, problem?: { code: string, message: string } } | null>,
+ *   planRepair(bookId: string): Promise<{ ok: boolean, code: string, actions: any[], unrepairable: any[] } | null>,
+ *   repairPlans(): Promise<any[]>,
+ *   applyRepair(bookId: string, actions: any[]): Promise<WriteResult & { changes?: any[], opId?: string }>,
+ *   close(): Promise<void>,
  * }} FileRepository
+ *   While a book is `invalid` (a file broke outside the app) getBook serves the last valid structure plus `index_state`,
+ *   `invalid_paths`, `diagnostics`, `unplaced`, and a `problem` on scenes whose file cannot be read; getScene returns
+ *   the current file bytes raw (`raw: true`, `body` = the whole file) with a `problem`. `close()` stops the watchers.
  *   The index methods read the per-book SQLite index (see @storyforge/index); `getBacklinks` and `getMentions`
  *   return null for an unknown book and throw an error with code INDEX_NOT_READY while no index is readable.
  */

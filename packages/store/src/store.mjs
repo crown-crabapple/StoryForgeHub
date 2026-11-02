@@ -4,12 +4,16 @@
 // Batches are deferred: calls on `tx` check their preconditions against disk plus the changes
 // already queued, then the whole batch is applied at once under one journal entry. That is what
 // makes a batch all-old or all-new after a crash (the journal lists every file up front).
+import { watch as fsWatch } from 'node:fs';
 import { readdir, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import { absOf, atomicWrite, fsyncDir, kindOf, mkdirTracked, moveFile, readOrNull, sha256, tmpOf, writeSynced } from './atomic.mjs';
+import { escapesRoot } from './contain.mjs';
 import { fault } from './faults.mjs';
+import { acquireLock, releaseLock, updateLock } from './instance-lock.mjs';
 import { OP_ID_RE, archiveJournal, listJournal, makeOpId, writeJournal } from './journal.mjs';
 import { withRootLock } from './lock.mjs';
+import { isOwn, markOwn } from './ownwrites.mjs';
 import { recoverRoot, settleEntry } from './recover.mjs';
 import { copyToTrash, moveToTrash } from './trash.mjs';
 
@@ -78,14 +82,14 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
       const tx = {
         async read(rel) {
           const r = normRel(rel);
-          if (!r) return null;
+          if (!r || (await escapesRoot(root, r))) return null;
           const v = await view(r);
           return v.bytes ? cur(v) : null;
         },
         async create(rel, bytes) {
           if (failure) return failure;
           const r = normRel(rel);
-          if (!r) return refuse(fail('OUTSIDE_ROOT'));
+          if (!r || (await escapesRoot(root, r))) return refuse(fail('OUTSIDE_ROOT'));
           if (!Buffer.isBuffer(bytes)) return refuse(fail('BAD_ARGS', { message: 'bytes must be a Buffer' }));
           const v = await view(r);
           if (v.bytes !== null || v.dir) return refuse(fail('EXISTS'));
@@ -97,7 +101,7 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
         async write(rel, bytes, { baseSha256 } = {}) {
           if (failure) return failure;
           const r = normRel(rel);
-          if (!r) return refuse(fail('OUTSIDE_ROOT'));
+          if (!r || (await escapesRoot(root, r))) return refuse(fail('OUTSIDE_ROOT'));
           if (!Buffer.isBuffer(bytes)) return refuse(fail('BAD_ARGS', { message: 'bytes must be a Buffer' }));
           if (baseSha256 === undefined) return refuse(fail('BAD_ARGS', { message: 'baseSha256 is required (a hex string, or null for "must not exist")' }));
           const v = await view(r);
@@ -114,7 +118,7 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
           if (failure) return failure;
           const from = normRel(fromRel);
           const to = normRel(toRel);
-          if (!from || !to) return refuse(fail('OUTSIDE_ROOT'));
+          if (!from || !to || (await escapesRoot(root, from)) || (await escapesRoot(root, to))) return refuse(fail('OUTSIDE_ROOT'));
           if (from === to) return refuse(fail('BAD_ARGS', { message: 'from and to are the same path' }));
           if (bytes !== undefined && !Buffer.isBuffer(bytes)) return refuse(fail('BAD_ARGS', { message: 'bytes must be a Buffer' }));
           if (baseSha256 === undefined) return refuse(fail('BAD_ARGS', { message: 'baseSha256 is required' }));
@@ -164,6 +168,13 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
       // by the change that produced them; within a change the new file lands before the old one leaves
       planned.sort((a, b) => a.group - b.group || (a.bytes ? 0 : 1) - (b.bytes ? 0 : 1));
       if (planned.length === 0) return { ok: true, code: 'OK', opId: null, changes, value };
+      // The watcher must not treat what follows as an external edit (marked now and again when settled).
+      const ownRels = planned.flatMap((f) => {
+        const out = f.tmp ? [f.rel, f.tmp] : [f.rel];
+        for (let d = path.posix.dirname(f.rel); d !== '.'; d = path.posix.dirname(d)) out.push(d); // folders it may create
+        return out;
+      });
+      markOwn(root, ownRels);
 
       const entry = {
         opId,
@@ -211,6 +222,7 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
         // 5. done
         await writeJournal(root, { ...entry, state: 'done' });
         await archiveJournal(root, opId).catch(() => {}); // cosmetic: the entry is already 'done'
+        markOwn(root, ownRels);
         return { ok: true, code: 'OK', opId, changes, value, verified };
       } catch (e) {
         let rollbackErrors;
@@ -221,6 +233,7 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
         } catch (e2) {
           rollbackErrors = [String(e2?.message ?? e2)];
         }
+        markOwn(root, ownRels);
         for (const d of [...createdDirs].reverse()) {
           try {
             await rmdir(d);
@@ -262,19 +275,19 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
 
     async read(rel) {
       const r = normRel(rel);
-      if (!r) return null;
+      if (!r || (await escapesRoot(root, r))) return null;
       const bytes = await readOrNull(absOf(root, r));
       return bytes ? { bytes, sha256: sha256(bytes) } : null;
     },
     /** True if a file or folder exists at `rel` (read-only helper). */
     async exists(rel) {
       const r = normRel(rel);
-      return r ? (await kindOf(absOf(root, r))) !== null : false;
+      return r && !(await escapesRoot(root, r)) ? (await kindOf(absOf(root, r))) !== null : false;
     },
     /** Entries of a folder, or [] (read-only helper). `rel` '' is the root. */
     async list(rel = '') {
       const r = rel === '' ? '' : normRel(rel);
-      if (r === null) return [];
+      if (r === null || (await escapesRoot(root, r))) return [];
       try {
         const entries = await readdir(r === '' ? root : absOf(root, r), { withFileTypes: true });
         return entries.filter((e) => !(r === '' && e.name === '.storyforge')).map((e) => ({ name: e.name, isDirectory: e.isDirectory() }));
@@ -284,10 +297,13 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
     },
     /** Derived-data files under .storyforge/ (e.g. the disposable index); atomic, not journaled. */
     async readMeta(name) {
-      return META_RE.test(name) && !name.startsWith('.') ? readOrNull(path.join(root, '.storyforge', name)) : null;
+      if (!META_RE.test(name) || name.startsWith('.') || (await escapesRoot(root, `.storyforge/${name}`))) return null;
+      return readOrNull(path.join(root, '.storyforge', name));
     },
     async writeMeta(name, bytes) {
-      if (!META_RE.test(name) || name.startsWith('.') || !Buffer.isBuffer(bytes)) return fail('OUTSIDE_ROOT');
+      if (!META_RE.test(name) || name.startsWith('.') || !Buffer.isBuffer(bytes) || (await escapesRoot(root, `.storyforge/${name}`))) {
+        return fail('OUTSIDE_ROOT');
+      }
       return withRootLock(root, async () => {
         await atomicWrite(path.join(root, '.storyforge', name), bytes);
         return { ok: true, code: 'OK', sha256: sha256(bytes) };
@@ -308,6 +324,35 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
      *   if it throws, the whole batch is undone from the trash and the result is ROLLED_BACK.
      */
     batch: (opName, args, fn, opts) => runBatch(opName, args, fn, { verify: opts?.verify }),
+
+    /**
+     * Watch the root for changes made by anyone (the app's own writes are flagged `own`). Never keeps the
+     * process alive. `onEvent({ rel, eventType, own })`: `rel` is root-relative with forward slashes, or null
+     * when the platform did not say which file. `onError` gets watcher failures (the watcher is then dead).
+     * @param {(e: { rel: string | null, eventType: string, own: boolean }) => void} onEvent
+     * @param {{ recursive?: boolean, onError?: (err: Error) => void }} [opts]
+     * @returns {{ close(): void }}
+     */
+    watch(onEvent, { recursive = true, onError } = {}) {
+      const w = fsWatch(root, { recursive, persistent: false }, (eventType, filename) => {
+        const rel = filename == null ? null : String(filename).split(path.sep).join('/');
+        onEvent({ rel, eventType, own: rel !== null && isOwn(root, rel) });
+      });
+      w.on('error', (err) => {
+        try {
+          w.close();
+        } catch {
+          // already closed
+        }
+        onError?.(err);
+      });
+      return { close: () => w.close() };
+    },
+
+    /** Single-instance lock helpers (the lock file lives outside any book, so `absPath` is absolute). */
+    acquireLock: (absPath, info) => acquireLock(absPath, info),
+    releaseLock: (absPath, info) => releaseLock(absPath, info),
+    updateLock: (absPath, patch) => updateLock(absPath, patch),
 
     recover: () => withRootLock(root, () => recoverRoot(root)),
     journal: () => listJournal(root),

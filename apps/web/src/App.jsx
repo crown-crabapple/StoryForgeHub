@@ -4,6 +4,7 @@ import { BookView } from './BookView.jsx';
 import { useApi } from './api.js';
 import { SearchBox } from './SearchBox.jsx';
 import { IndexStatus } from './IndexStatus.jsx';
+import { StatusProvider } from './status.jsx';
 
 /** Shown when the startup recovery pass rolled an interrupted save back or needs the author's eyes. */
 function RecoverBanner() {
@@ -50,8 +51,8 @@ export function App() {
   if (pathname === '/' || pathname === '') view = <LibraryView />;
   else if (match) {
     const bookId = decodeURIComponent(match[1]);
-    const sceneId = new URLSearchParams(search).get('scene');
-    view = <BookView bookId={bookId} sceneId={sceneId} />;
+    const params = new URLSearchParams(search);
+    view = <BookView bookId={bookId} sceneId={params.get('scene')} file={params.get('file')} />;
   } else {
     view = (
       <main className="page">
@@ -63,7 +64,7 @@ export function App() {
     );
   }
   return (
-    <>
+    <StatusProvider>
       <header className="topbar">
         <Link to="/" className="brand">
           StoryForge
@@ -73,6 +74,6 @@ export function App() {
       </header>
       <RecoverBanner />
       {view}
-    </>
+    </StatusProvider>
   );
 }

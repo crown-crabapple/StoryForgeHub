@@ -1,11 +1,13 @@
 // FsRepository: the only core module that reads project files. Reads only; caches nothing.
 // Every change goes through fs-writes.mjs -> @storyforge/store.
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { validate } from '@storyforge/format';
+import { applyRepair, planRepair } from '@storyforge/manuscript';
 import { createIndexManager } from './index-manager.mjs';
+import { createWatcher } from './watcher.mjs';
 import { createWriteMethods } from './fs-writes.mjs';
 import { countWords } from './word-count.mjs';
 
@@ -64,13 +66,28 @@ const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 /** @param {string} a @param {string} b */
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
+/** Manuscript-structure errors (E1xx/E2xx under manuscript/), as the manuscript contract's rule 5 defines them. */
+const isStructureError = (d) => d.severity === 'error' && /^E[12]\d\d$/.test(d.code) && d.file.startsWith('manuscript/');
+const problemOf = (d) => ({ code: d.code, message: d.message });
+
+/** Plain-words explanation of a file the repair cannot fix. */
+function explain(d) {
+  const what = d.code === 'E100' ? 'its front matter cannot be read' : d.code === 'E101' ? 'it uses a YAML feature StoryForge does not allow' : 'a front-matter field is wrong';
+  return `${d.file}: ${what} (${d.message}). StoryForge will not change this file for you; fix this file by hand.`;
+}
+
 /**
  * @param {string} libraryRoot
+ * @param {import('./watcher.mjs').WatchOptions & { watcher?: import('./watcher.mjs').WatchOptions }} [options]
+ *   Watching is on by default. Tests can pass `{ watch: false | 'fail', pollMs }` (also accepted under `watcher`),
+ *   `debounceMs` and `maxWaitMs`. Call `close()` to stop the watchers and timers.
  * @returns {FileRepository}
  */
-export function createFsRepository(libraryRoot) {
+export function createFsRepository(libraryRoot, options = {}) {
   const root = path.resolve(libraryRoot);
   const manager = createIndexManager(root);
+  const watcher = createWatcher({ root, manager, options: { ...options, ...(options.watcher ?? {}) } });
+  watcher.start();
   /** @param {string} rel */
   const abs = (rel) => path.join(root, ...rel.split('/').filter(Boolean));
 
@@ -162,9 +179,15 @@ export function createFsRepository(libraryRoot) {
       .sort(compareBooks);
   }
 
-  /** @param {any} q index queries @param {BookSummary} summary @param {string} bookPath */
-  function bookDetailFromIndex(q, summary, bookPath) {
+  /**
+   * @param {any} q index queries @param {BookSummary} summary @param {string} bookPath
+   * @param {{ invalid: boolean, invalid_paths: string[] }} [inv] the invalid marker of the projection being read
+   */
+  function bookDetailFromIndex(q, summary, bookPath, inv) {
     const prefix = bookPath === '' ? '' : `${bookPath}/`;
+    const diagnostics = inv?.invalid ? q.diagnostics() : [];
+    const problems = new Map();
+    for (const d of diagnostics) if (isStructureError(d) && !problems.has(d.file)) problems.set(d.file, problemOf(d));
     /** @type {BookDetail['acts']} */
     const acts = [];
     for (const c of q.chapters()) {
@@ -177,10 +200,64 @@ export function createFsRepository(libraryRoot) {
     }
     for (const s of q.scenes()) {
       const act = /** @type {any} */ (acts.find((a) => a.act === s.act));
-      act.chapters.find((/** @type {any} */ c) => c.chapter === s.chapter).scenes.push({ ...s, path: prefix + s.path });
+      act.chapters.find((/** @type {any} */ c) => c.chapter === s.chapter).scenes.push({ ...s, path: prefix + s.path, ...(problems.has(s.path) ? { problem: problems.get(s.path) } : {}) });
     }
     const excluded = q.excluded().map((/** @type {any} */ e) => ({ ...e, path: prefix + e.path }));
-    return { ...summary, acts, excluded };
+    if (!inv?.invalid) return { ...summary, acts, excluded };
+    // Last valid structure, plus what is wrong now. Files the structure does not know are "unplaced".
+    const placed = new Set([...q.scenes().map((/** @type {any} */ x) => x.path), ...q.excluded().map((/** @type {any} */ x) => x.path)]);
+    const unplaced = [...problems]
+      .filter(([file]) => !placed.has(file) && !/\/(act|chapter)\.md$/.test(file))
+      .map(([file, problem]) => ({ path: prefix + file, problem }));
+    return {
+      ...summary,
+      acts,
+      excluded,
+      index_state: 'invalid',
+      invalid_paths: inv.invalid_paths.map((/** @type {string} */ f) => prefix + f),
+      diagnostics: diagnostics.map((/** @type {any} */ d) => ({ ...d, file: prefix + d.file })),
+      unplaced,
+    };
+  }
+
+  /** The book (as validate() sees it) with this id, or null. */
+  async function bookById(bookId) {
+    return (await validate(root)).books.find((/** @type {any} */ b) => b.id === bookId) ?? null;
+  }
+
+  /**
+   * A scene the validator no longer lists (its file cannot be parsed) but the last valid projection knows:
+   * the current file bytes, raw, with the problem. Null if the index does not know the scene or the file is gone.
+   * @param {any} book @param {Diagnostic[]} diagnostics @param {string} sceneId
+   */
+  async function rawScene(book, diagnostics, sceneId) {
+    let row;
+    try {
+      row = await manager.query(book.id, (q, prefix) => {
+        const r = q.scenes().find((/** @type {any} */ x) => x.id === sceneId);
+        return r ? { ...r, path: prefix + r.path } : null;
+      });
+    } catch {
+      return null;
+    }
+    if (!row) return null;
+    let bytes;
+    try {
+      bytes = await readFile(abs(row.path));
+    } catch {
+      return null;
+    }
+    const text = bytes.toString('utf8');
+    const diag = diagnostics.find((d) => d.file === row.path && isStructureError(d));
+    return {
+      ...row,
+      word_count: countWords(text),
+      front_matter: {},
+      body: text,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      raw: true,
+      ...(diag ? { problem: problemOf(diag) } : {}),
+    };
   }
 
   /** @type {FileRepository} */
@@ -206,7 +283,7 @@ export function createFsRepository(libraryRoot) {
     async getBook(bookId) {
       const known = manager.knownPath(bookId);
       if (known !== undefined) {
-        const hit = await manager.tryRead(known, (q, s) => (s.id === bookId ? bookDetailFromIndex(q, s, known) : null));
+        const hit = await manager.tryRead(known, (q, s, inv) => (s.id === bookId ? bookDetailFromIndex(q, s, known, inv) : null));
         if (hit && hit.value) return hit.value;
       }
       const result = await validate(root);
@@ -246,9 +323,34 @@ export function createFsRepository(libraryRoot) {
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
       if (!book) return null;
       const entry = book.order.find((/** @type {any} */ s) => s.id === sceneId);
-      if (!entry) return null;
+      if (!entry) return rawScene(book, result.diagnostics, sceneId);
       const [{ summary, fm, body, sha256 }] = await loadScenes([entry]);
       return { ...summary, front_matter: fm, body, sha256 };
+    },
+
+    async getRawFile(bookId, relPath) {
+      const book = await bookById(bookId);
+      if (!book || typeof relPath !== 'string') return null;
+      const segs = relPath.split('/');
+      if (!/\.md$/i.test(relPath) || relPath.includes('\\') || segs.some((x) => x === '' || x === '.' || x === '..' || x.startsWith('.'))) return null;
+      const bookRoot = book.path === '' ? root : abs(book.path);
+      const file = path.join(bookRoot, ...segs);
+      const libRel = book.path ? `${book.path}/${relPath}` : relPath;
+      try {
+        const [realRoot, real] = await Promise.all([realpath(bookRoot), realpath(file)]);
+        const rel = path.relative(realRoot, real);
+        if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
+        const bytes = await readFile(file);
+        const diag = (await validate(root)).diagnostics.find((d) => d.file === libRel && isStructureError(d));
+        return {
+          path: libRel,
+          body: bytes.toString('utf8'),
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          ...(diag ? { problem: problemOf(diag) } : {}),
+        };
+      } catch {
+        return null;
+      }
     },
 
     async search(q, { bookId, kinds, limit } = {}) {
@@ -266,6 +368,59 @@ export function createFsRepository(libraryRoot) {
     indexStatus: (bookId) => manager.status(bookId),
     rebuildIndex: (bookId) => manager.rebuild(bookId),
     ensureIndexes: () => manager.ensure(),
+
+    async getStatus() {
+      const states = /** @type {any[]} */ (await manager.status());
+      return {
+        watch: watcher.status(),
+        books: states.map((st) => ({
+          book_id: st.book_id,
+          path: st.path,
+          title: st.title,
+          index: st.state,
+          invalid_paths: (st.invalid_paths ?? []).map((/** @type {string} */ f) => (st.path ? `${st.path}/${f}` : f)),
+          errors: st.errors,
+          warnings: st.warnings,
+          last_reconciled_at: st.last_reconciled_at,
+        })),
+      };
+    },
+
+    async planRepair(bookId) {
+      const book = await bookById(bookId);
+      if (!book) return null;
+      const plan = await planRepair(book.path === '' ? root : abs(book.path));
+      if (!plan.ok) return { ok: false, code: plan.code, message: plan.message, actions: [], unrepairable: [] };
+      return {
+        ok: true,
+        code: 'OK',
+        actions: plan.actions,
+        unrepairable: plan.unrepairable.map((/** @type {any} */ d) => ({ ...d, explanation: explain(d) })),
+      };
+    },
+
+    /** Read-only repair plan of every book (for the CLI): [{ book_id, path, title, ...plan }]. */
+    async repairPlans() {
+      const out = [];
+      for (const book of (await validate(root)).books.filter((/** @type {any} */ b) => b.id)) {
+        const plan = await repository.planRepair(book.id);
+        if (plan) out.push({ book_id: book.id, path: book.path, title: book.title, ...plan });
+      }
+      return out;
+    },
+
+    async applyRepair(bookId, actions) {
+      const book = await bookById(bookId);
+      if (!book) return { ok: false, code: 'NOT_FOUND' };
+      const r = await applyRepair(book.path === '' ? root : abs(book.path), actions);
+      if (r.ok) await manager.reconcile(book.path, 'repair', { full: true });
+      return r;
+    },
+
+    async close() {
+      await watcher.ready;
+      watcher.close();
+    },
 
     async getDiagnostics(bookId) {
       const result = await validate(root);

@@ -32,6 +32,20 @@ export function makeQueries(db) {
       return meta().get('book_id') ?? null;
     },
 
+    /** The invalid marker kept in meta by a reconciling build: { invalid, invalid_paths, invalid_since }. */
+    invalidInfo() {
+      const m = meta();
+      let paths = [];
+      try {
+        const parsed = JSON.parse(m.get('invalid_paths') ?? '[]');
+        if (Array.isArray(parsed)) paths = parsed.filter((x) => typeof x === 'string');
+      } catch {
+        // keep []
+      }
+      const invalid = m.get('state') === 'invalid';
+      return { invalid, invalid_paths: invalid ? paths : [], invalid_since: invalid ? (m.get('invalid_since') ?? null) : null };
+    },
+
     bookSummary() {
       const m = meta();
       const agg = /** @type {any} */ (db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(word_count), 0) AS w FROM scenes').get());
