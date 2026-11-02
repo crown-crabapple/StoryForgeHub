@@ -9,6 +9,7 @@ import { bookFacts } from '@storyforge/index';
 import { applyRepair, planRepair } from '@storyforge/manuscript';
 import { listTemplates } from '@storyforge/templates';
 import { createBookMethod } from './create-book.mjs';
+import { createActivity } from './activity.mjs';
 import { createIndexManager } from './index-manager.mjs';
 import { createWatcher } from './watcher.mjs';
 import { createWriteMethods } from './fs-writes.mjs';
@@ -122,6 +123,46 @@ export async function folderExists(p) {
   }
 }
 
+/** Markdown as plain words: links and comments reduced to their text, emphasis marks dropped, whitespace collapsed. @param {string} md */
+function plainText(md) {
+  return md
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/\[\[([^\]\n|]+)\|([^\]\n]+)\]\]/g, '$2')
+    .replace(/\[\[([^\]\n]+)\]\]/g, '$1')
+    .replace(/!?\[([^\]\n]*)\]\([^)\n]*\)/g, '$1')
+    .replace(/[*_`~]+/g, '')
+    .replace(/^\s{0,3}(#{1,6}|>|[-+*]|\d+\.)\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** The `##` sections of an entry body: [{ heading, text }] with plain text of at most 600 characters. @param {string} body */
+export function entrySections(body) {
+  /** @type {{ heading: string, text: string }[]} */
+  const out = [];
+  /** @type {{ heading: string, lines: string[] } | null} */
+  let cur = null;
+  let fence = null;
+  for (const line of body.split('\n')) {
+    const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (fence) {
+      if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null;
+      continue;
+    }
+    if (f) {
+      fence = f[1];
+      continue;
+    }
+    const h = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t#]*\r?$/.exec(line);
+    if (h && h[1].length <= 2) {
+      if (cur && cur.heading !== null) out.push({ heading: cur.heading, text: plainText(cur.lines.join('\n')).slice(0, 600) });
+      cur = h[1].length === 2 ? { heading: plainText(h[2]), lines: [] } : null;
+    } else if (cur) cur.lines.push(line);
+  }
+  if (cur) out.push({ heading: cur.heading, text: plainText(cur.lines.join('\n')).slice(0, 600) });
+  return out;
+}
+
 /** Manuscript-structure errors (E1xx/E2xx under manuscript/), as the manuscript contract's rule 5 defines them. */
 const isStructureError = (d) => d.severity === 'error' && /^E[12]\d\d$/.test(d.code) && d.file.startsWith('manuscript/');
 const problemOf = (d) => ({ code: d.code, message: d.message });
@@ -136,7 +177,9 @@ function explain(d) {
  * @param {string} libraryRoot
  * @param {import('./watcher.mjs').WatchOptions & { watcher?: import('./watcher.mjs').WatchOptions }} [options]
  *   Watching is on by default. Tests can pass `{ watch: false | 'fail', pollMs }` (also accepted under `watcher`),
- *   `debounceMs` and `maxWaitMs`. Call `close()` to stop the watchers and timers.
+ *   `debounceMs` and `maxWaitMs`. Call `close()` to stop the watchers and timers (and write the pending writing log).
+ *   `clock: () => number | Date` is the time used for the writing log's dates, revision stamps and snapshot timing;
+ *   `activityFlushMs` (default 60 000) is how often the writing log is flushed.
  * @returns {FileRepository}
  */
 export function createFsRepository(libraryRoot, options = {}) {
@@ -478,6 +521,17 @@ export function createFsRepository(libraryRoot, options = {}) {
     };
   }
 
+  const activity = createActivity({
+    rootOf: (bookPath) => abs(bookPath),
+    async readGoal(bookPath) {
+      const goal = (await readParsed(abs(bookPath ? `${bookPath}/book.md` : 'book.md')))?.fm.daily_word_goal;
+      return Number.isInteger(goal) && goal >= 1 ? goal : null;
+    },
+    afterWrite: (bookPath) => manager.afterWrite(bookPath),
+    now: options.clock,
+    flushMs: options.activityFlushMs,
+  });
+
   /** @type {FileRepository} */
   const repository = {
     root,
@@ -702,8 +756,30 @@ export function createFsRepository(libraryRoot, options = {}) {
     }),
 
     async close() {
+      await activity.close().catch(() => {});
       await watcher.ready;
       watcher.close();
+    },
+
+    /** An entry for the scene rail's preview: { id, slug, name, type, status, fields, sections: [{ heading, text }] } or null. `ref` is the entry id or slug. */
+    async getEntry(bookId, ref) {
+      const book = await bookById(bookId);
+      if (!book || typeof ref !== 'string' || ref === '') return null;
+      const bookRoot = book.path === '' ? root : abs(book.path);
+      for (const rel of await walkMarkdown(bookRoot)) {
+        const { doc } = await loadDoc(path.join(bookRoot, ...rel.split('/')), rel, rel, noop);
+        if (!doc || doc.kind !== 'entry' || doc.archived || (doc.fm.id !== ref && doc.fm.slug !== ref)) continue;
+        return {
+          id: str(doc.fm.id),
+          slug: str(doc.fm.slug),
+          name: str(doc.fm.name),
+          type: str(doc.fm.type),
+          status: str(doc.fm.status),
+          fields: doc.fm.fields && typeof doc.fm.fields === 'object' && !Array.isArray(doc.fm.fields) ? doc.fm.fields : {},
+          sections: entrySections(doc.body),
+        };
+      }
+      return null;
     },
 
     async getDiagnostics(bookId) {
@@ -761,6 +837,6 @@ export function createFsRepository(libraryRoot, options = {}) {
     for (const act of detail.acts) act.chapters.sort((a, b) => a.chapter - b.chapter);
     return detail;
   };
-  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }) }));
+  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }), activity, now: options.clock }));
   return repository;
 }

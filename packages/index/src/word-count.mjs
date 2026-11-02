@@ -27,12 +27,20 @@ function stripFences(text) {
 }
 
 /**
+ * The words that countWords counts, in order.
+ * @param {string} body
+ * @returns {string[]}
+ */
+export function wordTokens(body) {
+  const noComments = body.replace(/<!--[\s\S]*?-->/g, ' ');
+  const text = stripFences(noComments);
+  return text.match(/\S+/g) ?? [];
+}
+
+/**
  * @param {string} body
  * @returns {number}
  */
 export function countWords(body) {
-  const noComments = body.replace(/<!--[\s\S]*?-->/g, ' ');
-  const text = stripFences(noComments);
-  const runs = text.match(/\S+/g);
-  return runs ? runs.length : 0;
+  return wordTokens(body).length;
 }

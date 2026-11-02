@@ -15,6 +15,7 @@ import { OP_ID_RE, archiveJournal, listJournal, makeOpId, writeJournal } from '.
 import { withRootLock } from './lock.mjs';
 import { isOwn, markOwn } from './ownwrites.mjs';
 import { recoverRoot, settleEntry } from './recover.mjs';
+import { listRevisions, pruneRevisions, readRevision, saveRevision } from './revisions.mjs';
 import { copyToTrash, moveToTrash, trashPath } from './trash.mjs';
 
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
@@ -315,6 +316,17 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
         return { ok: true, code: 'OK', sha256: sha256(bytes) };
       });
     },
+
+    /**
+     * Local revision snapshots (.storyforge/revisions/<scene-id>/, FORMAT-v1 section 9). Atomic, not journaled, never deleted.
+     * `listRevisions(sceneId)`: entries newest first (null for an unusable id). `readRevision(sceneId, file)`: bytes or null.
+     * `saveRevision(sceneId, bytes, { reason, at?, label?, words? })`: `{ ok, stored, entry }`; identical to the newest snapshot: `stored: false`.
+     * `pruneRevisions(sceneId, files)`: moves the files into the trash (`.storyforge/trash/<opId>/revisions/<scene-id>/`) and drops their index entries.
+     */
+    listRevisions: (sceneId) => listRevisions(root, sceneId),
+    readRevision: (sceneId, file) => readRevision(root, sceneId, file),
+    saveRevision: (sceneId, bytes, meta) => withRootLock(root, () => saveRevision(root, sceneId, bytes, meta)),
+    pruneRevisions: (sceneId, files) => withRootLock(root, () => pruneRevisions(root, sceneId, files)),
 
     create: (rel, bytes, opts) => single('create', rel, opts, (tx) => tx.create(rel, bytes)),
     write: (rel, bytes, opts) => single('write', rel, opts, (tx) => tx.write(rel, bytes, { baseSha256: opts?.baseSha256 })),

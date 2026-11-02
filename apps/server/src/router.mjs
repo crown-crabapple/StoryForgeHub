@@ -36,8 +36,10 @@ export function isApiPath(pathname) {
 export async function handleApi(repository, pathname, state, params = new URLSearchParams()) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
   if (parts.some((p) => p === null)) return NOT_FOUND;
-  const [api, a, b, c, d, ...rest] = /** @type {string[]} */ (parts);
+  const [api, a, b, c, d, e, f, ...rest] = /** @type {string[]} */ (parts);
   if (api !== 'api' || rest.length > 0) return NOT_FOUND;
+  // only the revisions routes (scenes/:s/revisions[/:file]) are longer than five segments
+  if (e !== undefined && !(a === 'books' && c === 'scenes' && d !== undefined && e === 'revisions')) return NOT_FOUND;
 
   if (a === 'health' && b === undefined) {
     const info = await repository.libraryInfo();
@@ -83,7 +85,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
     }
-    if (c === 'repair' && d === 'plan' && rest.length === 0) {
+    if (c === 'repair' && d === 'plan' && e === undefined) {
       const plan = await repository.planRepair(b);
       return plan ? { status: 200, body: plan } : NOT_FOUND;
     }
@@ -103,9 +105,30 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const objects = await repository.getObjects(b, kinds);
       return objects ? { status: 200, body: objects } : NOT_FOUND;
     }
-    if (c === 'scenes' && d !== undefined && rest.length === 0) {
+    if (c === 'scenes' && d !== undefined && e === undefined) {
       const scene = await repository.getScene(b, d);
       return scene ? { status: 200, body: scene } : NOT_FOUND;
+    }
+    // M03-J04: scene revisions, writing activity, entry preview
+    if (c === 'scenes' && d !== undefined && e === 'revisions' && f === undefined) {
+      const r = await repository.listRevisions(b, d);
+      return r.ok ? { status: 200, body: r.revisions } : NOT_FOUND;
+    }
+    if (c === 'scenes' && d !== undefined && e === 'revisions') {
+      const r = await repository.getRevision(b, d, f);
+      return r.ok ? { status: 200, body: r.revision } : NOT_FOUND;
+    }
+    if (c === 'activity' && d === undefined) {
+      const daysParam = params.get('days');
+      if (daysParam !== null && (!/^[0-9]+$/.test(daysParam) || Number(daysParam) < 1 || Number(daysParam) > 366)) return badRequest('days must be an integer from 1 to 366');
+      const r = await repository.getActivity(b, daysParam !== null ? { days: Number(daysParam) } : {});
+      if (!r.ok) return NOT_FOUND;
+      const { added, removed, net, minutes, sessions } = r.today;
+      return { status: 200, body: { goal: r.goal, today: { added, removed, net, minutes, sessions }, days: r.days, streak: r.streak } };
+    }
+    if (c === 'entries' && d !== undefined && e === undefined) {
+      const entry = await repository.getEntry(b, d);
+      return entry ? { status: 200, body: entry } : NOT_FOUND;
     }
     if (c === 'backlinks' && d !== undefined) {
       return fromIndex(() => repository.getBacklinks(b, d));
@@ -185,13 +208,14 @@ async function fromIndex(read) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, bookId?: string, sceneId?: string, n?: string, opId?: string } | null}
+ * @returns {{ route: string, bookId?: string, sceneId?: string, n?: string, opId?: string, file?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
   if (parts.some((p) => p === null) || parts[0] !== 'api') return null;
-  const [, a, b, c, d, e, ...rest] = /** @type {string[]} */ (parts);
+  const [, a, b, c, d, e, f, g, ...rest] = /** @type {string[]} */ (parts);
   if (rest.length > 0) return null;
+  if ((f !== undefined || g !== undefined) && !(a === 'books' && c === 'scenes' && e === 'revisions')) return null;
   if (method === 'POST' && a === 'recover' && b === undefined) return { route: 'recover' };
   if (method === 'POST' && a === 'index' && b === 'rebuild' && c === undefined) return { route: 'index-rebuild' };
   if (method === 'POST' && a === 'books' && b === undefined) return { route: 'book-create' };
@@ -199,6 +223,11 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && a === 'library' && b === 'recent' && c === 'remove' && d === undefined) return { route: 'recent-remove' };
   if (a !== 'books' || b === undefined || c === undefined) return null;
   if (method === 'POST' && c === 'repair' && d === undefined) return { route: 'repair', bookId: b };
+  // M03-J04
+  if (method === 'POST' && c === 'activity' && d === 'session' && e === undefined) return { route: 'activity-session', bookId: b };
+  if (method === 'POST' && c === 'goal' && d === undefined) return { route: 'goal', bookId: b };
+  if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f === undefined) return { route: 'revision-save', bookId: b, sceneId: d };
+  if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f !== undefined && g === 'restore') return { route: 'revision-restore', bookId: b, sceneId: d, file: f };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'body') return { route: 'body', bookId: b, sceneId: d };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'raw') return { route: 'scene-raw', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d === undefined) return { route: 'create', bookId: b };
@@ -233,7 +262,7 @@ function respond(r, okStatus, okBody) {
 
 /**
  * @param {FileRepository} repository
- * @param {{ route: string, bookId?: string, sceneId?: string, n?: string, opId?: string }} match from matchWriteRoute
+ * @param {{ route: string, bookId?: string, sceneId?: string, n?: string, opId?: string, file?: string }} match from matchWriteRoute
  * @param {unknown} body parsed JSON request body
  * @param {ApiState} [state] updated by POST /api/recover
  * @returns {Promise<ApiResult>}
@@ -289,7 +318,34 @@ export async function handleWrite(repository, match, body, state) {
     case 'body': {
       if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');
       const r = await repository.updateSceneBody(bookId, /** @type {string} */ (match.sceneId), body.body, { baseSha256: body.base_sha256 });
-      return respond(r, 200, (x) => ({ sha256: x.sha256 }));
+      return respond(r, 200, (x) => ({ sha256: x.sha256, words: x.words ?? { added: 0, removed: 0 } }));
+    }
+    case 'activity-session': {
+      if (!Number.isInteger(body.minutes)) return badRequest('expected { minutes: integer >= 1 }');
+      const r = await repository.recordSession(bookId, /** @type {number} */ (body.minutes));
+      return respond(r, 200, () => ({ ok: true }));
+    }
+    case 'goal': {
+      if (body.daily_word_goal === undefined || (body.daily_word_goal !== null && !Number.isInteger(body.daily_word_goal))) {
+        return badRequest('expected { daily_word_goal: integer >= 1 }');
+      }
+      const r = await repository.setDailyGoal(bookId, body.daily_word_goal);
+      return respond(r, 200, (x) => ({ ok: true, daily_word_goal: x.daily_word_goal }));
+    }
+    case 'revision-save': {
+      if (body.label !== undefined && typeof body.label !== 'string') return badRequest('label must be a string');
+      if (body.reason !== undefined && body.reason !== 'manual' && body.reason !== 'external') return badRequest("reason must be 'manual' or 'external'");
+      const r = await repository.saveRevision(bookId, /** @type {string} */ (match.sceneId), { label: body.label, ...(body.reason !== undefined ? { reason: body.reason } : {}) });
+      return respond(r, r.ok && r.stored ? 201 : 200, (x) => ({ ok: true, stored: x.stored, revision: x.revision }));
+    }
+    case 'revision-restore': {
+      if (body.mode !== 'into' && body.mode !== 'new') return badRequest("mode must be 'into' or 'new'");
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      if (body.mode === 'into' && body.base_sha256 === undefined) return badRequest('expected { mode, base_sha256: string }');
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const dryRun = body.dryRun === true;
+      const r = await repository.restoreRevision(bookId, /** @type {string} */ (match.sceneId), /** @type {string} */ (match.file), { mode: body.mode, baseSha256: body.base_sha256, dryRun });
+      return respond(r, body.mode === 'new' && !dryRun ? 201 : 200, structureBody);
     }
     case 'scene-raw': {
       if (typeof body.content !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { content: string, base_sha256: string }');

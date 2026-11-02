@@ -8,6 +8,7 @@ import { AppShell } from './shell/AppShell.jsx';
 import { WritesProvider } from './shell/writes.jsx';
 import { SearchQueryProvider } from './searchQuery.jsx';
 import { StatusProvider, libraryVersion, useStatus } from './status.jsx';
+import { FocusProvider } from './writing/FocusContext.jsx';
 
 /** Shown when the startup recovery pass rolled an interrupted save back or needs the author's eyes. */
 function RecoverBanner() {
@@ -84,9 +85,11 @@ export function App() {
   return (
     <StatusProvider>
       <WritesProvider>
-        <SearchQueryProvider>
-          <Routes />
-        </SearchQueryProvider>
+        <FocusProvider>
+          <SearchQueryProvider>
+            <Routes />
+          </SearchQueryProvider>
+        </FocusProvider>
       </WritesProvider>
     </StatusProvider>
   );

@@ -6,12 +6,42 @@ import { actKey, chapterKey, readCollapsed, writeCollapsed } from './structure/c
 import { STATUSES, actName, archivedName, archivedScenes, chapterName, povInitial, wordsOf } from './structure/helpers.js';
 import { dropTarget, halfOf, keyboardTarget } from './structure/move-target.js';
 import { useStructure } from './structure/useStructure.jsx';
+import { bookProgress, chapterProgress } from './writing/scene-context.js';
 
 const EXPAND_MS = 600;
 const DRAG_TYPE = 'application/x-storyforge-scene';
 const findScene = (book, id) => book.acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes)).find((s) => s.id === id);
 
 const sceneHref = (bookId, sceneId) => `/books/${encodeURIComponent(bookId)}?scene=${encodeURIComponent(sceneId)}`;
+
+/** The book's words against its word target, under the rail heading (just the words when there is no target). */
+function BookCount({ book }) {
+  const words = book.word_count ?? 0;
+  const p = bookProgress(words, book.word_target);
+  const fmt = (n) => n.toLocaleString('en-US');
+  if (!p) return <p className="rail-count">{fmt(words)} words</p>;
+  return (
+    <div className="rail-count">
+      <p>
+        {fmt(words)} / {fmt(p.target)} words
+      </p>
+      <span className="thin-bar" role="progressbar" aria-label="Book words against the word target" aria-valuemin={0} aria-valuemax={p.target} aria-valuenow={Math.min(words, p.target)} aria-valuetext={`${fmt(words)} of ${fmt(p.target)} words`}>
+        <span className="thin-bar-fill" style={{ width: `${p.percent}%` }} />
+      </span>
+    </div>
+  );
+}
+
+/** A thin bar under a chapter's count: how many of its scenes are final. */
+function ChapterBar({ scenes }) {
+  const { final, total, percent } = chapterProgress(scenes);
+  if (total === 0) return null;
+  return (
+    <span className="thin-bar" role="progressbar" aria-label="Scenes final" aria-valuemin={0} aria-valuemax={total} aria-valuenow={final} aria-valuetext={`${final} of ${total} scenes final`} title={`${final}/${total} scenes final`}>
+      <span className="thin-bar-fill" style={{ width: `${percent}%` }} />
+    </span>
+  );
+}
 
 /** Up/Down move between scene links in the rail; Enter opens the focused link (native). Plain Tab works too. */
 function moveBetweenScenes(e) {
@@ -310,6 +340,7 @@ export function Outline({ book, activeId = null, onChanged }) {
         <h2 className="rail-heading">{book.title ?? book.slug ?? book.id}</h2>
         <RowMenu name={book.title ?? book.slug ?? book.id} items={[{ label: 'Tidy file names...', run: () => start({ type: 'tidy' }) }]} />
       </div>
+      <BookCount book={book} />
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="move-live">
         {live}
       </div>
@@ -353,6 +384,7 @@ export function Outline({ book, activeId = null, onChanged }) {
                             <span className="outline-words">
                               {ch.scenes.length} {ch.scenes.length === 1 ? 'scene' : 'scenes'}, {wordsOf(ch.scenes)}w
                             </span>
+                            <ChapterBar scenes={ch.scenes} />
                           </span>
                         </Toggle>
                         <button

@@ -6,6 +6,7 @@ import {
   archiveChapter,
   createAct,
   createChapter,
+  editFrontMatterLine,
   insertScene,
   mergeScenes,
   moveScene,
@@ -14,10 +15,16 @@ import {
   setActFields,
   setChapterFields,
   setSceneFields,
+  slugify,
   splitScene,
 } from '@storyforge/manuscript';
+import { countWords } from '@storyforge/index';
 import { openStore } from '@storyforge/store';
+import { createSnapshotTracker, planRetention, splitRevision } from './revisions.mjs';
+import { localDate } from './writing-log.mjs';
+import { wordDelta } from './word-delta.mjs';
 
+const CONTROL_RE = new RegExp(`[\x00-\x1f\x7f]`);
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
 
 /** Byte offset just past the closing front-matter `---` line (and its terminator), or -1. */
@@ -45,10 +52,11 @@ const errKey = (d) => `${d.code}\0${d.file}\0${d.location}`;
 
 /**
  * @param {{ root: string, getScene: (bookId: string, sceneId: string) => Promise<any>,
- *           afterWrite?: (bookPath: string) => void, reconcile?: (bookPath: string) => Promise<any> }} deps
+ *           afterWrite?: (bookPath: string) => void, reconcile?: (bookPath: string) => Promise<any>,
+ *           activity?: ReturnType<typeof import('./activity.mjs').createActivity>, now?: () => number | Date }} deps
  *   `afterWrite` runs after every successful change; `reconcile` (structure commands) brings the book's index up to date before the call returns
  */
-export function createWriteMethods({ root, getScene, afterWrite = () => {}, reconcile }) {
+export function createWriteMethods({ root, getScene, afterWrite = () => {}, reconcile, activity, now = () => Date.now() }) {
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
   const toLibRel = (book, p) => (book.path === '' ? p : `${book.path}/${p}`);
   const toBookRel = (book, p) => (book.path === '' ? p : p.startsWith(`${book.path}/`) ? p.slice(book.path.length + 1) : null);
@@ -101,6 +109,45 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     return fail(r.code, r.message ? { message: r.message } : {});
   }
 
+  const nowMs = () => Number(now());
+  const tracker = createSnapshotTracker();
+
+  /** Prune a scene's snapshots by the retention rules (moved to the trash, never deleted). */
+  async function applyRetention(store, sceneId) {
+    const files = planRetention((await store.listRevisions(sceneId)) ?? [], nowMs());
+    if (files.length > 0) await store.pruneRevisions(sceneId, files);
+  }
+
+  /** Snapshot the scene file as it is, with `reason`. Returns the store result (`stored: false` when identical to the newest). */
+  async function snapshot(store, sceneId, bytes, reason, extra = {}) {
+    const end = frontMatterEnd(bytes);
+    const words = countWords(end < 0 ? bytes.toString('utf8') : bytes.subarray(end).toString('utf8'));
+    const r = await store.saveRevision(sceneId, bytes, { reason, at: new Date(nowMs()), words, ...extra });
+    if (r.ok && r.stored) await applyRetention(store, sceneId);
+    return r;
+  }
+
+  /** The book, the scene's file (null when it is not a live scene) and a store on the book. */
+  async function sceneContext(bookId, sceneId, { live }) {
+    const found = await findBook(bookId);
+    if (!found) return null;
+    const entry = found.book.order.find((/** @type {any} */ s) => s.id === sceneId) ?? null;
+    if (live && !entry) return null;
+    const rel = entry ? toBookRel(found.book, entry.path) : null;
+    if (live && rel === null) return null;
+    return { book: found.book, entry, rel, store: await openStore(bookRootOf(found.book), { recover: false }) };
+  }
+
+  async function createSceneImpl(bookId, args = {}) {
+    const found = await findBook(bookId);
+    if (!found) return fail('NOT_FOUND');
+    const { chapter, act, after, title, slug, body, dryRun } = args ?? {};
+    const r = await insertScene(bookRootOf(found.book), { chapter, act, after, title, slug, body, dryRun: dryRun === true });
+    if (!r.ok) return r;
+    if (!r.dryRun) afterWrite(found.book.path);
+    return { ...r, path: toLibRel(found.book, r.path) };
+  }
+
   const NOT_FOUND_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_CHAPTER', 'REFUSED_UNKNOWN_ACT', 'REFUSED_UNKNOWN_OP'];
 
   /**
@@ -121,7 +168,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
   }
 
   return {
-    async updateSceneBody(bookId, sceneId, body, { baseSha256 } = {}) {
+    async updateSceneBody(bookId, sceneId, body, { baseSha256, count = true } = {}) {
       if (typeof body !== 'string') return fail('BAD_ARGS', { message: 'body must be a string' });
       const found = await findBook(bookId);
       const entry = found?.book.order.find((/** @type {any} */ s) => s.id === sceneId);
@@ -134,10 +181,18 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       const end = frontMatterEnd(cur.bytes);
       if (end < 0) return fail('NOT_A_SCENE', { message: 'front matter is not terminated' });
       const next = Buffer.concat([cur.bytes.subarray(0, end), Buffer.from(body, 'utf8')]);
+      const changing = !next.equals(cur.bytes);
+      if (changing && cur.sha256 === baseSha256) {
+        // a safety copy of the file as it is, before it is overwritten (never blocks the save)
+        const reason = tracker.due(sceneId, nowMs());
+        if (reason) await snapshot(store, sceneId, cur.bytes, reason).catch(() => {});
+      }
       const r = await store.write(rel, next, { baseSha256 });
       if (r.ok) {
+        const words = count && changing ? wordDelta(cur.bytes.subarray(end).toString('utf8'), body) : { added: 0, removed: 0 };
+        activity?.record(found.book.path, words);
         afterWrite(found.book.path);
-        return { ok: true, code: 'OK', sha256: r.sha256 };
+        return { ok: true, code: 'OK', sha256: r.sha256, words };
       }
       if (r.code === 'CONFLICT') return conflict(r, bookId, sceneId);
       return fail(r.code, r.message ? { message: r.message } : {});
@@ -192,14 +247,136 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       return fail(r.code, r.message ? { message: r.message } : {});
     },
 
-    async createScene(bookId, args = {}) {
+    createScene: createSceneImpl,
+
+    // ---- M03-J04: writing log, goal, revisions
+
+    /** Today's totals, the last `days` days and the streak for a book. */
+    async getActivity(bookId, { days = 30 } = {}) {
+      const found = await findBook(bookId);
+      if (!found || !activity) return fail('NOT_FOUND');
+      return { ok: true, code: 'OK', ...(await activity.read(found.book.path, { days })) };
+    },
+
+    /** The client reports a finished writing session of `minutes` (a whole number >= 1). */
+    async recordSession(bookId, minutes) {
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) return fail('BAD_ARGS', { message: 'minutes must be a whole number from 1 to 1440' });
+      const found = await findBook(bookId);
+      if (!found || !activity) return fail('NOT_FOUND');
+      activity.session(found.book.path, minutes);
+      return { ok: true, code: 'OK' };
+    },
+
+    /** Write everything the activity log holds in memory to activity/writing-log.md now. */
+    async flushActivity() {
+      await activity?.flush();
+    },
+
+    /** Set book.md `daily_word_goal` (a whole number >= 1) with a single-line edit; nothing else in the file changes. */
+    async setDailyGoal(bookId, goal) {
+      if (goal === null) return fail('NOT_SUPPORTED', { message: 'removing the daily goal is not supported; edit book.md by hand' });
+      if (!Number.isInteger(goal) || goal < 1 || goal > 999_999_999) return fail('BAD_ARGS', { message: 'daily_word_goal must be a whole number >= 1' });
       const found = await findBook(bookId);
       if (!found) return fail('NOT_FOUND');
-      const { chapter, act, after, title, slug, body, dryRun } = args ?? {};
-      const r = await insertScene(bookRootOf(found.book), { chapter, act, after, title, slug, body, dryRun: dryRun === true });
-      if (!r.ok) return r;
-      if (!r.dryRun) afterWrite(found.book.path);
-      return { ...r, path: toLibRel(found.book, r.path) };
+      const store = await openStore(bookRootOf(found.book));
+      const cur = await store.read('book.md');
+      if (!cur) return fail('NOT_FOUND');
+      const edit = editFrontMatterLine(cur.bytes, 'daily_word_goal', String(goal), { integer: true, anchors: ['word_target', 'status', 'profile', 'title', 'id'] });
+      if (!edit.ok) return fail(edit.code, { message: edit.message });
+      if (edit.changed) {
+        const r = await store.write('book.md', edit.buf, { baseSha256: cur.sha256 });
+        if (!r.ok) return r.code === 'CONFLICT' ? fail('CONFLICT', { current: null }) : fail(r.code, r.message ? { message: r.message } : {});
+        if (reconcile) await reconcile(found.book.path);
+        else afterWrite(found.book.path);
+      }
+      return { ok: true, code: 'OK', daily_word_goal: goal };
+    },
+
+    /** Snapshots of a scene, newest first. */
+    async listRevisions(bookId, sceneId) {
+      const ctx = await sceneContext(bookId, sceneId, { live: false });
+      const list = ctx ? await ctx.store.listRevisions(sceneId) : null;
+      // a scene that is not in the book (archived) is known only while it still has snapshots
+      return list && (ctx?.entry || list.length > 0) ? { ok: true, code: 'OK', revisions: list } : fail('NOT_FOUND');
+    },
+
+    /** One snapshot: its index entry plus `front_matter` (parsed), `front_matter_text` and `body`. */
+    async getRevision(bookId, sceneId, file) {
+      const ctx = await sceneContext(bookId, sceneId, { live: false });
+      if (!ctx) return fail('NOT_FOUND');
+      const entry = ((await ctx.store.listRevisions(sceneId)) ?? []).find((e) => e.file === file);
+      const bytes = entry ? await ctx.store.readRevision(sceneId, file) : null;
+      if (!entry || !bytes) return fail('NOT_FOUND');
+      const parts = splitRevision(bytes, frontMatterEnd(bytes));
+      return { ok: true, code: 'OK', revision: { ...entry, front_matter: parts.frontMatter, front_matter_text: parts.frontMatterText, body: parts.body } };
+    },
+
+    /** Snapshot the scene file as it is now: `manual` ("Save a revision", optional label) or `external` (the editor is about to reload). */
+    async saveRevision(bookId, sceneId, { label, reason = 'manual' } = {}) {
+      if (reason !== 'manual' && reason !== 'external') return fail('BAD_ARGS', { message: 'reason must be manual or external' });
+      if (label !== undefined && (typeof label !== 'string' || label.length > 200 || CONTROL_RE.test(label))) return fail('BAD_ARGS', { message: 'label must be text of up to 200 characters' });
+      const ctx = await sceneContext(bookId, sceneId, { live: true });
+      if (!ctx || ctx.rel === null) return fail('NOT_FOUND');
+      const cur = await ctx.store.read(ctx.rel);
+      if (!cur) return fail('NOT_FOUND');
+      const r = await snapshot(ctx.store, sceneId, cur.bytes, reason, reason === 'manual' && label ? { label } : {});
+      return r.ok ? { ok: true, code: 'OK', stored: r.stored, revision: r.entry } : fail(r.code, r.message ? { message: r.message } : {});
+    },
+
+    /**
+     * Bring a snapshot back. `into`: the current file is snapshotted first (`restore`), then the snapshot's body replaces the
+     * body (the current front matter stays). `new`: a new scene right after this one, titled "<title> (revision <date>)".
+     * `baseSha256` must be the file as the author saw it (`into` requires it; `new` checks it when given): otherwise CONFLICT and nothing is written.
+     * `dryRun` previews: nothing is written.
+     */
+    async restoreRevision(bookId, sceneId, file, { mode, baseSha256, dryRun = false } = {}) {
+      if (mode !== 'into' && mode !== 'new') return fail('BAD_ARGS', { message: "mode must be 'into' or 'new'" });
+      if (mode === 'into' && typeof baseSha256 !== 'string') return fail('BAD_ARGS', { message: 'base_sha256 is required' });
+      if (baseSha256 !== undefined && typeof baseSha256 !== 'string') return fail('BAD_ARGS', { message: 'base_sha256 must be a string' });
+      const ctx = await sceneContext(bookId, sceneId, { live: true });
+      if (!ctx || ctx.rel === null) return fail('NOT_FOUND');
+      const { store, rel } = ctx;
+      const entry = ((await store.listRevisions(sceneId)) ?? []).find((e) => e.file === file);
+      const revBytes = entry ? await store.readRevision(sceneId, file) : null;
+      if (!entry || !revBytes) return fail('NOT_FOUND');
+      const cur = await store.read(rel);
+      if (!cur) return fail('NOT_FOUND');
+      if (baseSha256 !== undefined && cur.sha256 !== baseSha256) return conflict({ current: cur }, bookId, sceneId);
+      const curEnd = frontMatterEnd(cur.bytes);
+      const revEnd = frontMatterEnd(revBytes);
+      if (curEnd < 0) return fail('NOT_A_SCENE', { message: 'front matter is not terminated' });
+      const revBody = revEnd < 0 ? revBytes : revBytes.subarray(revEnd);
+      const norm = (b) => b.toString('utf8').replace(/\r\n/g, '\n');
+      const curHead = cur.bytes.subarray(0, curEnd);
+      const revHead = revEnd < 0 ? Buffer.alloc(0) : revBytes.subarray(0, revEnd);
+      const title = `${ctx.entry?.title ?? 'Scene'} (revision ${localDate(new Date(entry.at))})`;
+      if (dryRun) {
+        return {
+          ok: true,
+          code: 'OK',
+          dryRun: true,
+          mode,
+          revision: entry,
+          current_sha256: cur.sha256,
+          body_differs: !cur.bytes.subarray(curEnd).equals(revBody),
+          front_matter_differs: norm(curHead) !== norm(revHead),
+          front_matter: { revision: revHead.toString('utf8'), current: curHead.toString('utf8') },
+          ...(mode === 'new' ? { title } : {}),
+        };
+      }
+      if (mode === 'new') {
+        const scene = await getScene(bookId, sceneId);
+        if (!scene) return fail('NOT_FOUND');
+        const r = await createSceneImpl(bookId, { chapter: scene.chapter, act: scene.act, after: sceneId, title, slug: slugify(title) || 'revision', body: revBody.toString('utf8') });
+        return r.ok ? { ok: true, code: 'OK', mode, id: r.id, path: r.path, title } : r;
+      }
+      const saved = await snapshot(store, sceneId, cur.bytes, 'restore');
+      if (!saved.ok) return fail(saved.code, saved.message ? { message: saved.message } : {});
+      const next = Buffer.concat([curHead, revBody]);
+      const w = await store.write(rel, next, { baseSha256: cur.sha256 });
+      if (!w.ok) return w.code === 'CONFLICT' ? conflict(w, bookId, sceneId) : fail(w.code, w.message ? { message: w.message } : {});
+      afterWrite(ctx.book.path);
+      return { ok: true, code: 'OK', mode, sha256: w.sha256, snapshot: saved.entry };
     },
 
     async archiveScene(bookId, sceneId, { baseSha256 } = {}) {

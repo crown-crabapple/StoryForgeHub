@@ -40,7 +40,9 @@ const quiet = (p) => {
  *   bookId: string, sceneId: string, text: string, sha256: string | null,
  *   fetch?: typeof fetch, drafts?: DraftStore | null, timers?: Timers, now?: () => number,
  *   onChange?: (snapshot: SaveSnapshot) => void,
- * }} options  `text`/`sha256`: the scene body and file hash as loaded.
+ *   onSaved?: (words: { added: number, removed: number } | null) => void,
+ * }} options  `text`/`sha256`: the scene body and file hash as loaded. `onSaved` runs after each successful save with the
+ *   server's `words` ({ added, removed }) for that save, or null if the answer had none.
  */
 export function createSaveController(options) {
   const { bookId, sceneId } = options;
@@ -154,6 +156,12 @@ export function createSaveController(options) {
         s.savedAt = isoNow();
         s.attempt = 0;
         s.error = null;
+        try {
+          const w = json.words;
+          options.onSaved?.(w && Number.isFinite(w.added) && Number.isFinite(w.removed) ? { added: w.added, removed: w.removed } : null);
+        } catch {
+          // a listener must not break saving
+        }
         if (s.text === sent) {
           clearDraft();
           set({ state: 'saved' });

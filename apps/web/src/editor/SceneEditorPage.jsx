@@ -1,19 +1,23 @@
 // The centre column for one scene: title, meta line, formatting toolbar and the CodeMirror editor, with the
 // autosave / conflict / offline behaviour of save-controller.js. The buffer is the scene body only.
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from '../router.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
+import { SaveStatus } from '../shell/SaveStatus.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { bookUrl, send, slugify } from '../structure/helpers.js';
+import { useFocus } from '../writing/FocusContext.jsx';
+import { useWriting } from '../writing/WritingContext.jsx';
 import { useEditorBridge } from './bridge.jsx';
 import { caretLine, detectLineEnding, loadBuffer, normaliseLineEndings, normalisePreview, serialise } from './buffer.js';
 import { authorNote, bold, insertLink, italic, sceneBreak } from './commands.js';
 import { ConflictPanel } from './ConflictPanel.jsx';
 import { createDraftStore, draftKey } from './draft-store.js';
 import { decoratedMarkdown, marksExtension, setMarks } from './extensions.js';
+import { focusExtensions } from './focus-extensions.js';
 import { LinkPicker } from './LinkPicker.jsx';
 import { nameIndex } from './names.js';
 import { createSaveController, draftOffer } from './save-controller.js';
@@ -67,6 +71,11 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const firstSha = useRef(true);
   const bridge = useEditorBridge();
   const { setEditor } = useWrites();
+  const focus = useFocus();
+  const writing = useWriting();
+  const writingRef = useRef(writing);
+  const focusCompartment = useRef(new Compartment());
+  const liveTimer = useRef(null);
   const key = draftKey(book.id, scene.id);
 
   const [snap, setSnap] = useState(null);
@@ -81,6 +90,8 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const [note, setNote] = useState(null);
   const [copied, setCopied] = useState(null);
   const showMarksRef = useRef(showMarks);
+  const applyTextRef = useRef(() => {});
+  const focusRef = useRef(focus);
   const noteTimer = useRef(null);
   const names = nameIndex(objects);
 
@@ -105,6 +116,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     view.dispatch({ effects: setMarks(showMarksRef.current) });
     setLineKind(lineEndings.kind);
     setWords(countWords(text));
+    writingRef.current.setLiveBody(text);
     setSelected(0);
     if (keepLine) {
       const at = view.state.doc.line(Math.min(line, view.state.doc.lines)).from;
@@ -112,11 +124,32 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     }
   }, []);
 
+  useEffect(() => {
+    writingRef.current = writing;
+    focusRef.current = focus;
+    applyTextRef.current = applyText;
+  });
+
+  // ---- focus mode: typewriter scrolling and dimming are only on while focused
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: focusCompartment.current.reconfigure(focusExtensions({ typewriter: focus.active && focus.options.typewriter, dim: focus.active && focus.options.dim })),
+    });
+  }, [focus.active, focus.options.typewriter, focus.options.dim]);
+
   // ---- the editor, the save controller and the draft store live and die with this scene
   useEffect(() => {
     const drafts = createDraftStore();
     const fileText = scene.body ?? '';
-    const ctl = createSaveController({ bookId: book.id, sceneId: scene.id, text: fileText, sha256: scene.sha256 ?? null, drafts, onChange: setSnap });
+    const ctl = createSaveController({
+      bookId: book.id,
+      sceneId: scene.id,
+      text: fileText,
+      sha256: scene.sha256 ?? null,
+      drafts,
+      onChange: setSnap,
+      onSaved: (words) => writingRef.current.applySaved(words),
+    });
     draftsRef.current = drafts;
     ctlRef.current = ctl;
 
@@ -143,11 +176,15 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       EditorView.clipboardInputFilter.of((text, state) => text.replace(/\r\n|\r|\n/g, state.lineBreak)),
       EditorView.contentAttributes.of({ 'aria-label': 'Scene text', spellcheck: 'true' }),
       EditorView.contentAttributes.compute([EditorState.readOnly], (state) => (state.facet(EditorState.readOnly) ? { 'aria-readonly': 'true' } : {})),
+      focusCompartment.current.of(focusExtensions({ typewriter: false, dim: false })),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) {
           const text = serialise(u.state);
           ctl.edit(text);
           setWords(countWords(text));
+          writingRef.current.reportEdit();
+          clearTimeout(liveTimer.current);
+          liveTimer.current = setTimeout(() => writingRef.current.setLiveBody(text), 250);
         }
         if (u.docChanged || u.selectionSet) setSelected(selectionWords(u.state));
       }),
@@ -175,7 +212,27 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       if (!cancelled) setDiscarded(list);
     });
 
-    const unregister = bridge.register({ sceneId: scene.id, caretLine: () => (viewRef.current ? caretLine(viewRef.current.state) : null), flush: () => ctl.flush(), isConflict: () => ctl.snapshot().state === 'conflict' });
+    const unregister = bridge.register({
+      sceneId: scene.id,
+      caretLine: () => (viewRef.current ? caretLine(viewRef.current.state) : null),
+      flush: () => ctl.flush(),
+      isConflict: () => ctl.snapshot().state === 'conflict',
+      jumpToLine(n) {
+        const v = viewRef.current;
+        if (!v) return;
+        const line = v.state.doc.line(Math.min(Math.max(1, n), v.state.doc.lines));
+        v.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
+        v.focus();
+      },
+      baseSha: () => ctl.snapshot().baseSha256,
+      text: () => ctl.snapshot().text,
+      async reload() {
+        const r = await ctl.checkDisk();
+        if (r.action === 'reload') applyTextRef.current(r.text, { keepLine: true });
+        return r;
+      },
+    });
+    const unregisterFocus = focusRef.current.register();
     const onPageHide = () => ctl.mirrorForUnload();
     const onBeforeUnload = (e) => {
       ctl.mirrorForUnload();
@@ -197,6 +254,9 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     return () => {
       cancelled = true;
       unregister();
+      unregisterFocus();
+      clearTimeout(liveTimer.current);
+      writingRef.current.setLiveBody(null);
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('beforeunload', onBeforeUnload);
       document.removeEventListener('keydown', onKeyDown);
@@ -225,13 +285,25 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     }
     const ctl = ctlRef.current;
     if (!ctl || scene.sha256 === ctl.snapshot().baseSha256) return;
+    const before = ctl.snapshot().text;
     ctl.checkDisk().then((r) => {
       if (r.action === 'reload') {
         applyText(r.text, { keepLine: true });
         flash('Updated from disk');
+        // the text changed outside and the buffer was clean: keep a copy of what is on disk now, so it can be found again
+        if (r.text !== before) {
+          void send(bookUrl(book.id, `/scenes/${encodeURIComponent(scene.id)}/revisions`), { reason: 'external' }).then(() => writingRef.current.bumpRevisions());
+        }
       }
     });
-  }, [scene.sha256, applyText, flash]);
+  }, [scene.sha256, applyText, flash, book.id, scene.id]);
+
+  // ---- a conflict must be seen: it ends focus mode
+  const conflicted = snap?.state === 'conflict';
+  const exitFocus = focus.exit;
+  useEffect(() => {
+    if (conflicted) exitFocus();
+  }, [conflicted, exitFocus]);
 
   // ---- toolbar and picker
   const runCmd = (cmd) => {
@@ -348,17 +420,35 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const preview = mixed ? normalisePreview(snap?.text ?? scene.body ?? '') : null;
 
   return (
-    <div className="editor-column">
-      <EditorToolbar
-        onBold={() => runCmd(bold)}
-        onItalic={() => runCmd(italic)}
-        onLink={() => pickerRef.current()}
-        onNote={() => runCmd(authorNote)}
-        onSceneBreak={() => runCmd(sceneBreak)}
-        showMarks={showMarks}
-        onToggleMarks={toggleMarks}
-        disabled={mixed}
-      />
+    <div className="editor-column" data-focus={focus.active ? 'on' : 'off'} data-typewriter={focus.active && focus.options.typewriter ? 'on' : 'off'}>
+      {focus.active && (
+        <div className="focus-strip" role="region" aria-label="Focus mode">
+          <span className="focus-title">{scene.title}</span>
+          <SaveStatus bookId={book.id} />
+          <label className="focus-option">
+            <input type="checkbox" checked={focus.options.typewriter} onChange={(e) => focus.setOption('typewriter', e.target.checked)} /> Typewriter scrolling
+          </label>
+          <label className="focus-option">
+            <input type="checkbox" checked={focus.options.dim} onChange={(e) => focus.setOption('dim', e.target.checked)} /> Dim other paragraphs
+          </label>
+          <button type="button" className="btn" onClick={focus.exit}>
+            Exit focus
+          </button>
+        </div>
+      )}
+      {!focus.active && (
+        <EditorToolbar
+          onBold={() => runCmd(bold)}
+          onItalic={() => runCmd(italic)}
+          onLink={() => pickerRef.current()}
+          onNote={() => runCmd(authorNote)}
+          onSceneBreak={() => runCmd(sceneBreak)}
+          showMarks={showMarks}
+          onToggleMarks={toggleMarks}
+          onFocus={focus.toggle}
+          disabled={mixed}
+        />
+      )}
       {mixed && (
         <section className="editor-notice" role="region" aria-label="Mixed line endings">
           <p>

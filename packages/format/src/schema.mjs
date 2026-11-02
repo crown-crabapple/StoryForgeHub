@@ -25,7 +25,7 @@ export const KINDS = {
       slug: 'slug', title: 'str', subtitle: 'str', series_number: 'int', pen_name: 'str',
       profile: ['fiction', 'nonfiction', 'memoir', 'selfhelp'],
       status: ['planning', 'drafting', 'revising', 'complete', 'archived'],
-      genre: 'list', word_target: 'int', cover: 'str', cover_color: 'hex', language: 'str', previous_slugs: 'list',
+      genre: 'list', word_target: 'int', daily_word_goal: 'int1', cover: 'str', cover_color: 'hex', language: 'str', previous_slugs: 'list',
     },
   },
   act: {

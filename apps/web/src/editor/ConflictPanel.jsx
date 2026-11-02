@@ -4,12 +4,16 @@ import { diffLines } from './line-diff.js';
 const MARK = { same: '', change: '~', 'left-only': '-', 'right-only': '+' };
 const WORDS = { same: 'unchanged', change: 'different', 'left-only': 'only in your text', 'right-only': 'only in the file' };
 
-/** Your text and the file on disk side by side, changed lines marked with a sign as well as a colour. */
-export function CompareView({ mine, theirs }) {
+/**
+ * Your text and the file on disk side by side, changed lines marked with a sign as well as a colour.
+ * `leftLabel` / `rightLabel` rename the two sides (e.g. a revision and the scene now).
+ */
+export function CompareView({ mine, theirs, leftLabel = 'Your text', rightLabel = 'The file on disk' }) {
+  const words = leftLabel === 'Your text' ? WORDS : { ...WORDS, 'left-only': `only in ${leftLabel.toLowerCase()}`, 'right-only': `only in ${rightLabel.toLowerCase()}` };
   const rows = useMemo(() => diffLines(mine, theirs), [mine, theirs]);
   const changed = rows.filter((r) => r.type !== 'same').length;
   return (
-    <div className="compare" role="group" aria-label="Your text compared with the file on disk">
+    <div className="compare" role="group" aria-label={`${leftLabel} compared with ${rightLabel.toLowerCase()}`}>
       <p className="muted compare-summary">{changed === 0 ? 'The two texts are the same line for line.' : `${changed} ${changed === 1 ? 'line differs' : 'lines differ'}.`}</p>
       <div className="compare-scroll" tabIndex={0}>
         <table className="compare-table">
@@ -23,10 +27,10 @@ export function CompareView({ mine, theirs }) {
           <thead>
             <tr>
               <th scope="col" colSpan={2}>
-                Your text
+                {leftLabel}
               </th>
               <th scope="col" colSpan={2}>
-                The file on disk
+                {rightLabel}
               </th>
             </tr>
           </thead>
@@ -36,9 +40,9 @@ export function CompareView({ mine, theirs }) {
                 <td className="compare-no">{r.leftNo ?? ''}</td>
                 <td className="compare-text">
                   {r.type !== 'same' && r.left !== null && (
-                    <span className="compare-sign" title={WORDS[r.type]}>
+                    <span className="compare-sign" title={words[r.type]}>
                       {MARK[r.type]}
-                      <span className="sr-only"> {WORDS[r.type]}: </span>
+                      <span className="sr-only"> {words[r.type]}: </span>
                     </span>
                   )}
                   {r.left ?? ''}
@@ -46,9 +50,9 @@ export function CompareView({ mine, theirs }) {
                 <td className="compare-no">{r.rightNo ?? ''}</td>
                 <td className="compare-text">
                   {r.type !== 'same' && r.right !== null && (
-                    <span className="compare-sign" title={WORDS[r.type]}>
+                    <span className="compare-sign" title={words[r.type]}>
                       {MARK[r.type]}
-                      <span className="sr-only"> {WORDS[r.type]}: </span>
+                      <span className="sr-only"> {words[r.type]}: </span>
                     </span>
                   )}
                   {r.right ?? ''}

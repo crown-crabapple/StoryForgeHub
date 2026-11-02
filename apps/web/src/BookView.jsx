@@ -9,6 +9,7 @@ import { SceneInspector } from './shell/Inspector.jsx';
 import { Workspace } from './shell/Workspace.jsx';
 import { useWrites } from './shell/writes.jsx';
 import { bookVersion, useStatus } from './status.jsx';
+import { WritingProvider } from './writing/WritingContext.jsx';
 
 /** Archives the scene. If the scene is open in the editor it is saved first, and the file's current hash is used as the base. */
 export function ArchiveButton({ bookId, scene }) {
@@ -135,10 +136,12 @@ export { Outline };
 export function BookLayout({ book, activeId, inspector, onChanged, children }) {
   return (
     <EditorBridgeProvider>
-      <InvalidBanner book={book} />
-      <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector}>
-        {children}
-      </Workspace>
+      <WritingProvider key={book.id} bookId={book.id}>
+        <InvalidBanner book={book} />
+        <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector}>
+          {children}
+        </Workspace>
+      </WritingProvider>
     </EditorBridgeProvider>
   );
 }
@@ -203,7 +206,7 @@ export function BookView({ bookId, sceneId, file }) {
       book={book}
       activeId={file ? null : activeId}
       onChanged={() => setBump((n) => n + 1)}
-      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} />}
+      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} onChanged={() => setBump((n) => n + 1)} />}
     >
       {main}
     </BookLayout>

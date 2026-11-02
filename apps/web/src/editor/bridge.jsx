@@ -2,7 +2,13 @@
 // "Split here" asks the editor for its caret line and to save first; "Edit raw file" asks it to save first.
 import { createContext, useContext, useMemo, useRef } from 'react';
 
-/** @typedef {{ sceneId: string, caretLine: () => number | null, flush: () => Promise<{ saved: boolean }>, isConflict?: () => boolean }} EditorHandle */
+/**
+ * @typedef {{ sceneId: string, caretLine: () => number | null, flush: () => Promise<{ saved: boolean }>, isConflict?: () => boolean,
+ *   jumpToLine?: (line: number) => void, baseSha?: () => string | null, text?: () => string,
+ *   reload?: () => Promise<{ action: string }> }} EditorHandle
+ *   `jumpToLine` moves the caret to a 1-based line and focuses the editor; `baseSha` / `text` are the file hash and text the editor last saved
+ *   or loaded / its current text; `reload` re-reads the file after something else changed it (a restored revision).
+ */
 
 const BridgeContext = createContext(null);
 const NONE = { current: () => null, register: () => () => {} };

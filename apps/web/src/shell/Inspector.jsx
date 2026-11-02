@@ -1,31 +1,12 @@
-import { nameIndex } from '../editor/names.js';
-import { sceneNotes } from '../prose.js';
+import { GoalCard } from '../writing/GoalCard.jsx';
+import { LinkedEntries } from '../writing/LinkedEntries.jsx';
+import { Revisions } from '../writing/Revisions.jsx';
+import { SceneNotes } from '../writing/SceneNotes.jsx';
+import { SceneSection } from '../writing/SceneSection.jsx';
+import { useWriting } from '../writing/WritingContext.jsx';
+import { InspectorSection } from './InspectorSection.jsx';
 
-/** One inspector section: uppercase 12px muted heading, then content. @param {{ title: string, children: import('react').ReactNode }} props */
-export function InspectorSection({ title, children }) {
-  return (
-    <section className="inspector-section">
-      <h2>{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function Refs({ label, slugs, nameOf = (ref) => ref }) {
-  if (!slugs || slugs.length === 0) return null;
-  return (
-    <div className="refs">
-      <span className="refs-label">{label}</span>
-      <ul>
-        {slugs.map((slug) => (
-          <li key={slug} title={slug}>
-            {nameOf(slug)}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+export { InspectorSection };
 
 export function DiagnosticList({ items }) {
   return (
@@ -52,46 +33,29 @@ export function isForFile(diagnostic, book, scene) {
 }
 
 /**
- * Inspector for the open scene. POV, characters, locations and threads show the entry name / thread title (from
- * `objects`, the GET /api/books/:b/objects answer) with the slug in the tooltip; a slug nothing resolves is shown as it is.
+ * The right rail for the open scene (M03-J04): goal card, scene facts, what is linked, notes, continuity, problems, revisions.
+ * Names come from `objects` (the GET /api/books/:b/objects answer) with the slug in the tooltip; a slug nothing resolves is shown as it is.
  * @param {{ book: any, scene: any | null, diagnostics: { items: any[] | null, error: string | null, loading: boolean },
- *   objects?: { id: string, kind: string, slug: string | null, title: string | null }[] | null }} props
+ *   objects?: { id: string, kind: string, slug: string | null, title: string | null }[] | null, onChanged?: () => void }} props
+ *   `onChanged` runs after the rail changed the book (status, POV, a restore as a new scene).
  */
-export function SceneInspector({ book, scene, diagnostics, objects = null }) {
-  const { nameOf } = nameIndex(objects);
-  const front = scene?.front_matter ?? {};
-  const pov = scene?.pov ?? front.pov ?? null;
-  const notes = scene && !scene.problem ? sceneNotes(scene.body ?? '') : [];
+export function SceneInspector({ book, scene, diagnostics, objects = null, onChanged }) {
+  const { liveBody } = useWriting();
+  const readable = Boolean(scene) && !scene?.problem && !scene?.raw;
+  const body = readable ? (liveBody ?? scene?.body ?? '') : '';
   const items = diagnostics.items ?? [];
   const forScene = scene ? items.filter((d) => isForFile(d, book, scene)) : [];
   const forBook = scene ? items.filter((d) => !forScene.includes(d)) : items;
-  const nothingToShow = !pov && !front.characters?.length && !front.locations?.length && !front.plot_threads?.length;
   return (
     <>
       {scene && (
         <>
-          <InspectorSection title="In this scene">
-            {nothingToShow ? (
-              <p className="muted">Nothing is linked to this scene yet.</p>
-            ) : (
-              <>
-                <Refs label="POV" slugs={pov ? [pov] : []} nameOf={nameOf} />
-                <Refs label="Characters" slugs={front.characters} nameOf={nameOf} />
-                <Refs label="Locations" slugs={front.locations} nameOf={nameOf} />
-                <Refs label="Plot threads" slugs={front.plot_threads} nameOf={nameOf} />
-              </>
-            )}
-          </InspectorSection>
-          <InspectorSection title="Scene notes">
-            {notes.length === 0 ? (
-              <p className="muted">No notes in this scene.</p>
-            ) : (
-              <ul className="notes">
-                {notes.map((n, i) => (
-                  <li key={i}>{n}</li>
-                ))}
-              </ul>
-            )}
+          <GoalCard />
+          {readable && <SceneSection book={book} scene={scene} objects={objects} onChanged={onChanged} />}
+          <LinkedEntries bookId={book.id} front={scene.front_matter} body={body} objects={objects} />
+          <SceneNotes body={body} />
+          <InspectorSection title="Continuity">
+            <p className="placeholder-card">Continuity checks arrive in M05.</p>
           </InspectorSection>
           <InspectorSection title="Problems">
             {diagnostics.loading && <p className="muted">Loading…</p>}
@@ -99,6 +63,7 @@ export function SceneInspector({ book, scene, diagnostics, objects = null }) {
             {diagnostics.items && forScene.length === 0 && <p className="muted">No problems in this scene.</p>}
             {forScene.length > 0 && <DiagnosticList items={forScene} />}
           </InspectorSection>
+          {readable && <Revisions bookId={book.id} sceneId={scene.id} onChanged={onChanged} />}
         </>
       )}
       <InspectorSection title="Book problems">

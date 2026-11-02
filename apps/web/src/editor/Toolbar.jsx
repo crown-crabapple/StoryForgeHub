@@ -30,9 +30,9 @@ function ToolButton({ name, label, shortcut, onRun, disabled }) {
 
 /**
  * @param {{ onBold: () => void, onItalic: () => void, onLink: () => void, onNote: () => void, onSceneBreak: () => void,
- *   showMarks: boolean, onToggleMarks: () => void, disabled?: boolean }} props
+ *   showMarks: boolean, onToggleMarks: () => void, onFocus?: () => void, disabled?: boolean }} props  `onFocus` shows the "Focus" button.
  */
-export function EditorToolbar({ onBold, onItalic, onLink, onNote, onSceneBreak, showMarks, onToggleMarks, disabled = false }) {
+export function EditorToolbar({ onBold, onItalic, onLink, onNote, onSceneBreak, showMarks, onToggleMarks, onFocus, disabled = false }) {
   const mod = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform ?? '') ? 'Cmd' : 'Ctrl';
   return (
     <div role="toolbar" aria-label="Formatting" className="editor-toolbar">
@@ -45,6 +45,11 @@ export function EditorToolbar({ onBold, onItalic, onLink, onNote, onSceneBreak, 
       <button type="button" className="editor-tool editor-tool-text" aria-pressed={showMarks} onMouseDown={(e) => e.preventDefault()} onClick={onToggleMarks}>
         Show Markdown marks
       </button>
+      {onFocus && (
+        <button type="button" className="editor-tool editor-tool-text" title={`Focus mode (${mod}+Shift+F)`} aria-keyshortcuts="Control+Shift+F Meta+Shift+F" onMouseDown={(e) => e.preventDefault()} onClick={onFocus}>
+          Focus
+        </button>
+      )}
     </div>
   );
 }
