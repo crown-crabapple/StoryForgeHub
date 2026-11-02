@@ -90,7 +90,7 @@ for (const [label, body, entries, extra] of [
   ['same colour', 'Her grey eyes narrowed.', CF1_ENTRIES],
   ['synonym gray = grey', 'Her gray eyes narrowed.', CF1_ENTRIES],
   ['mixed case value', 'Her GREY eyes narrowed.', CF1_ENTRIES],
-  ['paragraph also mentions another character by name', 'Tobin watched Maren Hollis and her green eyes.', CF1_ENTRIES],
+  ['paragraph also mentions another character by name', 'Tobin Reyes watched Maren Hollis and her green eyes.', CF1_ENTRIES],
   ['pov paragraph that mentions another character by link', 'She met [[tobin-reyes]] and her green eyes stung.', CF1_ENTRIES],
   ['entry is not a character of the scene', '[[maren-hollis]] had green eyes.', CF1_ENTRIES, { pov: 'tobin-reyes', characters: ['tobin-reyes'] }],
   ['paragraph attributed to nobody (pov is another character)', 'The gull had green eyes.', CF1_ENTRIES, { pov: 'tobin-reyes', characters: ['tobin-reyes', 'maren-hollis'] }],
