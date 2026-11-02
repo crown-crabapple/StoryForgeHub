@@ -114,31 +114,42 @@ function relevantEntries(model, scenes) {
 
 const STATUS_MAP = { planned: 'open', planted: 'open', developed: 'open', open: 'open', paid: 'paid-off', dropped: 'dropped', abandoned: 'dropped', unresolved: 'unresolved' };
 
-function renderLedger(model) {
-  const firstChapter = (t, field) => {
+/**
+ * ledger.md as of chapter n (contract M05-J06 section 3): a thread whose first setup scene is after chapter n is left out;
+ * payoffs after chapter n do not exist yet, so such a thread reads `open` with no payoff chapter.
+ */
+function renderLedger(model, n) {
+  const chaptersOf = (t, field) => {
     const found = [];
     for (const id of Array.isArray(t.fm[field]) ? t.fm[field] : []) {
       const s = model.find(id, ['scene']);
       const sc = s && model.sceneOf.get(s);
       if (sc) found.push(sc);
     }
-    found.sort((a, b) => a.position - b.position);
-    return found.length > 0 ? String(found[0].chapter) : '';
+    return found.sort((a, b) => a.position - b.position).map((sc) => sc.chapter);
   };
   const firstPara = (body) => model.prose(body).split(/\n\s*\n/)[0]?.trim() ?? '';
-  return json(
-    [...model.threads].sort((a, b) => cmp(a.rel, b.rel)).map((t) => ({
+  const rows = [];
+  for (const t of [...model.threads].sort((a, b) => cmp(a.rel, b.rel))) {
+    const setup = chaptersOf(t, 'setup');
+    if (setup.length > 0 && Math.min(...setup) > n) continue;
+    const payoff = chaptersOf(t, 'payoff');
+    const paidByN = payoff.filter((c) => c <= n);
+    let status = STATUS_MAP[t.fm.status] ?? 'open';
+    if (status === 'paid-off' && payoff.length > 0 && paidByN.length === 0) status = 'open';
+    rows.push({
       slug: t.fm.slug,
       kind: str(t.fm.kind),
       title: str(t.fm.title),
-      status: STATUS_MAP[t.fm.status] ?? 'open',
-      planted_in: firstChapter(t, 'setup'),
-      payoff_in: firstChapter(t, 'payoff'),
+      status,
+      planted_in: setup.length > 0 ? String(setup[0]) : '',
+      payoff_in: paidByN.length > 0 ? String(paidByN[0]) : '',
       characters: (Array.isArray(t.fm.characters) ? t.fm.characters : []).filter((c) => typeof c === 'string'),
       notes: firstPara(t.body),
       updated_at: model.mtimeOf(t),
-    })),
-  );
+    });
+  }
+  return json(rows);
 }
 
 function renderTimeline(model, keep) {
@@ -246,7 +257,7 @@ export async function buildPack(model, n) {
   const relevant = relevantEntries(model, target);
   for (const e of relevant) put(`${dbOf(e)}/${e.fm.slug}.md`, renderEntry(e));
 
-  put('ledger.md', renderLedger(model));
+  put('ledger.md', renderLedger(model, n));
 
   const derived = deriveState(model, n);
   put('state-events.md', json(derived.events.flatMap(({ items }) => items).filter((i) => i.event !== 'learns' && i.event !== 'knows').map((i) => ({

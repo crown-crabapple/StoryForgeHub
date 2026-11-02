@@ -125,8 +125,10 @@ test('entries-index.md lists every non-archived entry with the documented keys',
   for (const r of rows) assert.deepEqual(Object.keys(r).sort(), ['db', 'detail', 'name', 'slug', 'status', 'type']);
 });
 
-test('ledger.md has brass-key, status and chapters mapped per contract', () => {
-  const rows = json('ledger.md');
+test('ledger.md has brass-key, status and chapters mapped per contract (as of chapter 3, where it is paid)', () => {
+  const fw3 = makeFramework();
+  assert.equal(run('context', { book, fw: fw3, chapter: 3 }).status, 0);
+  const rows = parseConcatenatedJson(read(fw3, `${WORK}/context/ledger.md`));
   const key = rows.find((r) => r.slug === 'brass-key');
   assert.ok(key, 'brass-key missing from ledger.md');
   assert.equal(key.title, 'The brass key');
@@ -139,6 +141,14 @@ test('ledger.md has brass-key, status and chapters mapped per contract', () => {
   assert.equal(key.notes, 'What the key opens, and why Ilse left it where Maren would find it.');
   const mtime = fs.statSync(abs(book, 'planning/threads/brass-key.md')).mtimeMs;
   assert.ok(Math.abs(new Date(key.updated_at).getTime() - mtime) <= 1, `updated_at ${key.updated_at} vs mtime ${mtime}`);
+});
+
+test('ledger.md is computed as of the target chapter (M05-J06): payoff after chapter 2 reads open', () => {
+  const key = json('ledger.md').find((r) => r.slug === 'brass-key');
+  assert.ok(key);
+  assert.equal(key.status, 'open');
+  assert.equal(key.planted_in, '1');
+  assert.equal(key.payoff_in, '');
 });
 
 test('JSON context files parse as concatenated objects whose keys and types match the shapes file', () => {

@@ -17,6 +17,7 @@
   "dependencies": {
     "@storyforge/continuity": "0.1.0",
     "@storyforge/format": "0.1.0",
-    "@storyforge/store": "0.1.0"
+    "@storyforge/store": "0.1.0",
+    "@storyforge/suggestions": "0.1.0"
   }
 }
