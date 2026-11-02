@@ -249,6 +249,20 @@ test('markdown link is relative to the note given in ?note= (research/, research
   }
 });
 
+test('?note= may also be a note id: the link is relative to that note\'s folder (research note, source, planning doc)', async () => {
+  const { port } = await freshBook();
+  const cases = [
+    ['note_01S50000000000000000000011', '../assets/research/by-id.pdf'], // research/tidal-ranges.md
+    ['note_01S50000000000000000000012', '../../assets/research/by-id-2.pdf'], // research/sources/admiralty-tables.md
+    ['note_01S50000000000000000000010', '../assets/research/by-id-3.pdf'], // planning/plan.md
+  ];
+  for (const [id, href] of cases) {
+    const r = await raw(port, 'POST', `${base}?name=by-id.pdf&note=${id}`, { headers: GUARD('application/pdf'), body: PDF });
+    ok(r);
+    assert.equal(linkTarget(r.json.markdown), href, id);
+  }
+});
+
 test('an image gets image syntax and a document gets a plain link; the label is the original file name', async () => {
   const { port } = await freshBook();
   const img = await upload(port, 'harbour.png', PNG, GUARD('image/png'));
