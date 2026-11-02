@@ -10,7 +10,6 @@
       "api_tokens": {
         "rows": 0,
         "by_disposition": {},
-        "not_dumped": 0,
         "skipped": "server-only"
       },
       "book_activity": {
@@ -132,7 +131,6 @@
       "invites": {
         "rows": 0,
         "by_disposition": {},
-        "not_dumped": 0,
         "skipped": "server-only"
       },
       "knowledge_facts": {
@@ -160,25 +158,21 @@
       "oauth_clients": {
         "rows": 0,
         "by_disposition": {},
-        "not_dumped": 0,
         "skipped": "server-only"
       },
       "oauth_codes": {
         "rows": 0,
         "by_disposition": {},
-        "not_dumped": 0,
         "skipped": "server-only"
       },
       "oauth_grants": {
         "rows": 0,
         "by_disposition": {},
-        "not_dumped": 0,
         "skipped": "server-only"
       },
       "password_resets": {
         "rows": 0,
         "by_disposition": {},
-        "not_dumped": 0,
         "skipped": "server-only"
       },
       "progressions": {
@@ -290,5 +284,5 @@
   },
   "validation_errors": [],
   "validation_warnings": [],
-  "tree_sha256": "6309f624910f54085b3c7f77c3c7d06fdf5c90e16a50109535674044c15d67d6"
+  "tree_sha256": "61a57363f61e0021ed1943884120596432a48576b1d09cf2b1450cd17de29bd9"
 }

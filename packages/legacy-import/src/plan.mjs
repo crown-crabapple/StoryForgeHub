@@ -617,8 +617,6 @@ export function planImport(dumpDir, options = {}) {
       if (status !== str(e.row, 'status')) issue('warning', 'unknown-status', `entry ${e.id} has the unknown status "${str(e.row, 'status')}"; it becomes "seed"`, ctx);
       let body = sections.join('\n\n');
       if (unresolved.length) body += `${body ? '\n\n' : ''}<!-- legacy related not applied: ${unresolved.join(', ')} -->`;
-      const bullets = Object.entries(fields).map(([k, v]) => `- **${k}:** ${v}`.replace(/-->/g, '-- >'));
-      if (bullets.length) body += `${body ? '\n\n' : ''}<!-- legacy codex bullets (the values are in the fields map above)\n${bullets.join('\n')}\n-->`;
       const text = `${frontMatter({
         schema: 'storyforge.entry/v1', id: en.id, slug: en.slug, previous_slugs: en.prev ? [en.prev] : undefined, type: en.type, name: str(e.row, 'name') || en.slug, status,
         first_appearance: firstApp ? firstSceneId(firstApp) ?? undefined : undefined, fields: Object.keys(fields).length ? fields : undefined, related: related.length ? related : undefined,
@@ -983,7 +981,7 @@ export function planImport(dumpDir, options = {}) {
       if (d) covered += 1;
       by[d.disposition] = (by[d.disposition] ?? 0) + 1;
     }
-    summaryTables[name] = { rows: rowsOf.get(name).length, by_disposition: Object.fromEntries(Object.entries(by).sort((x, y) => byCodePoint(x[0], y[0]))), ...(t.skipped ? { not_dumped: Number(t.manifest.rows) || 0, skipped: t.skipped } : {}) };
+    summaryTables[name] = { rows: t.skipped ? Number(t.manifest.rows) || 0 : rowsOf.get(name).length, by_disposition: Object.fromEntries(Object.entries(by).sort((x, y) => byCodePoint(x[0], y[0]))), ...(t.skipped ? { skipped: t.skipped } : {}) };
   }
   const coverage = total === 0 ? 1 : covered / total;
   const fileCount = books.reduce((s, b) => s + b.files.length, 0);

@@ -106,7 +106,7 @@ export function renderReport(plan) {
   const ds = ['converted', 'merged', 'history', 'kept-as-data', 'derived', 'server-only', 'skipped'];
   w(`| Table | Rows | ${ds.join(' | ')} |`);
   w(`|---|---|${ds.map(() => '---').join('|')}|`);
-  for (const [name, t] of Object.entries(plan.summary.tables)) w(`| ${name}${t.skipped ? ` (not dumped: ${t.not_dumped} rows, ${t.skipped})` : ''} | ${t.rows} | ${ds.map((d) => t.by_disposition[d] ?? 0).join(' | ')} |`);
+  for (const [name, t] of Object.entries(plan.summary.tables)) w(`| ${name}${t.skipped ? ` (not dumped: ${t.skipped})` : ''} | ${t.rows} | ${ds.map((d) => t.by_disposition[d] ?? 0).join(' | ')} |`);
   w();
   w('- converted: becomes, or feeds, a v2 file. merged: folded into another row\'s file. history: written under legacy/history/.');
   w('- kept-as-data: written unchanged under legacy/tables/. derived: a cache v2 rebuilds. server-only: accounts and tokens, never imported.');

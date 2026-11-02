@@ -85,7 +85,7 @@ test('entry_fields, sections and relations are merged into the entry file, not g
   const entry = allFiles(plan).find((f) => /(^|\/)codex\/characters\/mara-voss\.md$/.test(f.path));
   assert.ok(entry, 'codex/characters/mara-voss.md');
   const text = Buffer.from(entry.bytes).toString('utf8');
-  assert.match(text, /\*\*Age:\*\* 34/);
+  assert.equal(String(frontMatterSplit(entry.bytes).fm.fields.Age), '34'); // the field lives in the YAML fields map only
   assert.match(text, /Born on the salt flats\./);
   assert.match(text, /the-quay/);
 });

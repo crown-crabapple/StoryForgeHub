@@ -50,6 +50,7 @@ for (const [label, dir] of [['seed-dump', SEED_DUMP], ['edge-dump', EDGE_DUMP]])
     test('every row has exactly one disposition; coverage is 1', () => {
       let total = 0;
       for (const [table, rows] of Object.entries(tables)) {
+        if (manifest.tables[table].skipped === 'server-only') continue; // listed with a row count, but dump.php writes no jsonl for it
         assert.equal(rows.length, manifest.tables[table].rows, `${table}: jsonl rows match manifest`);
         for (const row of rows) {
           total++;
@@ -61,6 +62,11 @@ for (const [label, dir] of [['seed-dump', SEED_DUMP], ['edge-dump', EDGE_DUMP]])
       assert.equal(plan.summary.coverage, 1);
       for (const [table, rows] of Object.entries(tables)) {
         const t = plan.summary.tables[table];
+        if (manifest.tables[table].skipped === 'server-only') {
+          assert.equal(t.rows, manifest.tables[table].rows, `${table} rows come from the manifest`);
+          assert.deepEqual(t.by_disposition, {}, `${table} has no dispositions`);
+          continue;
+        }
         assert.equal(t.rows, rows.length, table);
         assert.equal(Object.values(t.by_disposition).reduce((a, b) => a + b, 0), rows.length, `${table} by_disposition`);
       }
