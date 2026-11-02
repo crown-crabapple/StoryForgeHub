@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E302",
+      "file": "planning/timeline/the-flood.md",
+      "location": "state[0].value"
+    }
+  ]
+}

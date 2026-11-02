@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "W307",
+      "file": "planning/continuity/eyes-one.md",
+      "location": "fingerprint"
+    },
+    {
+      "code": "W307",
+      "file": "planning/continuity/eyes-two.md",
+      "location": "fingerprint"
+    }
+  ]
+}

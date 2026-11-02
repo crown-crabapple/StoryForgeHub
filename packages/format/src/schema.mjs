@@ -70,13 +70,18 @@ export const KINDS = {
     required: ['slug', 'title', 'order'],
     fields: {
       slug: 'slug', title: 'str', order: 'num', when: 'any', date: 'any', scenes: 'list',
-      characters: 'list', locations: 'list', previous_slugs: 'list',
+      characters: 'list', locations: 'list', previous_slugs: 'list', state: 'list',
     },
   },
   'codex-type': {
     prefix: 'note',
     required: ['type'],
-    fields: { type: 'str', name: 'str', plural: 'str', fields: 'list' },
+    fields: { type: 'str', name: 'str', plural: 'str', fields: 'list', values: 'map' },
+  },
+  'continuity-exception': {
+    prefix: 'note',
+    required: ['slug', 'fingerprint', 'rule', 'title'],
+    fields: { slug: 'slug', fingerprint: 'str', rule: 'str', title: 'str', created: 'any' },
   },
   doc: {
     prefix: 'note',
@@ -102,6 +107,18 @@ export const KINDS = {
 const STRING_LIST_FIELDS = new Set([
   'characters', 'locations', 'plot_threads', 'events', 'setup', 'develop', 'payoff', 'scenes', 'sources', 'links', 'fields',
 ]);
+
+/**
+ * Event `state` vocabulary (spec 6.2): what each `event` word needs as `value`.
+ * 'none' = value must be absent; 'link' = a slug (holder may also be ""); 'fact' = a slug-shaped fact key.
+ */
+export const STATE_EVENTS = {
+  died: 'none', revived: 'none', destroyed: 'none', lost: 'none', found: 'none',
+  holder: 'link', location: 'link', learns: 'fact', knows: 'fact',
+};
+
+/** Exception fingerprint shape (spec 6.4). */
+export const FINGERPRINT_RE = /^[a-z0-9]{2,4}-[0-9a-f]{16}$/;
 
 /** @param {any} v */
 const isInt = (v) => typeof v === 'number' && Number.isInteger(v);
@@ -161,6 +178,39 @@ export function escapesRoot(p) {
 }
 
 /**
+ * Event `state` items (spec 6.2): E102 for shape problems. Whether slugs resolve (E301, E302) is checked with the links.
+ * @param {any[]} state
+ * @param {string} file
+ * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ */
+function checkState(state, file, add) {
+  state.forEach((item, i) => {
+    if (!isPlainMap(item)) {
+      add('E102', file, `state[${i}]`, 'state item must be a mapping with slug, event and value');
+      return;
+    }
+    if (typeof item.slug !== 'string') add('E102', file, `state[${i}].slug`, 'state item needs a string slug');
+    if (typeof item.event !== 'string' || !Object.hasOwn(STATE_EVENTS, item.event)) {
+      add('E102', file, `state[${i}].event`, `event must be one of ${Object.keys(STATE_EVENTS).join(', ')}`);
+      return;
+    }
+    const need = STATE_EVENTS[item.event];
+    const has = !isAbsent(item.value);
+    if (need === 'none') {
+      if (has) add('E102', file, `state[${i}].value`, `${item.event} takes no value`);
+    } else if (!has) {
+      add('E102', file, `state[${i}].value`, `${item.event} needs a value`);
+    } else if (typeof item.value !== 'string') {
+      add('E102', file, `state[${i}].value`, 'value must be a string');
+    } else if (need === 'fact' && !isValidSlug(item.value)) {
+      add('E102', file, `state[${i}].value`, 'fact key must be slug-shaped (a-z, 0-9, single hyphens)');
+    } else if (item.event === 'location' && item.value === '') {
+      add('E102', file, `state[${i}].value`, 'location needs a location slug');
+    }
+  });
+}
+
+/**
  * Field-level checks for one parsed document: E102, I401, E103.
  * @param {{kind:string, rel:string, file:string, fm:any}} doc
  * @param {{inSeries?:boolean}} ctx
@@ -213,6 +263,23 @@ export function checkFields(doc, ctx, add) {
 
   if (doc.kind === 'event' && !isAbsent(fm.date) && !isIsoDate(fm.date)) {
     add('E102', file, 'date', 'date must be "" or an ISO date: YYYY, YYYY-MM or YYYY-MM-DD');
+  }
+
+  if (doc.kind === 'event' && Array.isArray(fm.state)) checkState(fm.state, file, add);
+
+  if (doc.kind === 'codex-type' && isPlainMap(fm.values)) {
+    for (const [label, words] of Object.entries(fm.values)) {
+      if (!Array.isArray(words) || words.some((w) => typeof w !== 'string')) {
+        add('E102', file, 'values', `values.${label} must be a list of words`);
+      }
+    }
+  }
+
+  if (doc.kind === 'continuity-exception') {
+    if (typeof fm.fingerprint === 'string' && !FINGERPRINT_RE.test(fm.fingerprint)) {
+      add('E102', file, 'fingerprint', 'fingerprint must look like cf1-0123456789abcdef');
+    }
+    if (typeof doc.body === 'string' && doc.body.trim() === '') add('E102', file, 'body', 'the exception needs a written rationale');
   }
 
   for (const key of ['cover', 'image']) {

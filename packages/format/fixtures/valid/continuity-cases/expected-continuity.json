@@ -1,0 +1,519 @@
+{
+  "findings": [
+    {
+      "fingerprint": "kn1-71efcea0bcb9cbf8",
+      "rule": "KN1",
+      "rule_version": 1,
+      "severity": "error",
+      "title": "Bram Keel knows \"the-lamp-is-hollow\" before learning it",
+      "message": "\"Bram suspects\" (order 500) says Bram Keel knows \"the-lamp-is-hollow\"; the event that teaches it, \"Bram is told\", is at order 600.",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01C70000000000000000000004",
+        "slug": "bram-keel",
+        "name": "Bram Keel"
+      },
+      "sources": [
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C7000000000000000000001B",
+          "file": "planning/timeline/bram-suspects.md",
+          "heading": "Bram suspects",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 64
+          },
+          "excerpt": "{ slug: bram-keel, event: knows, value: the-lamp-is-hollow }"
+        },
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C7000000000000000000001C",
+          "file": "planning/timeline/bram-told.md",
+          "heading": "Bram is told",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 65
+          },
+          "excerpt": "{ slug: bram-keel, event: learns, value: the-lamp-is-hollow }"
+        }
+      ]
+    },
+    {
+      "fingerprint": "th1-8a88a07025c4e719",
+      "rule": "TH1",
+      "rule_version": 1,
+      "severity": "error",
+      "title": "\"The ledger seal\" is paid off before it is set up",
+      "message": "The first payoff of \"The ledger seal\" is \"The Dock\" (scene 2), which comes before its first setup, \"The Stairs\" (scene 4).",
+      "subject": {
+        "kind": "thread",
+        "id": "thread_01C7000000000000000000000M",
+        "slug": "ledger-seal",
+        "name": "The ledger seal"
+      },
+      "sources": [
+        {
+          "role": "text",
+          "kind": "scene",
+          "id": "scene_01C7000000000000000000000J",
+          "file": "manuscript/act-01-one/ch-002-two/0020-the-stairs.md",
+          "heading": "The Stairs",
+          "location": "title",
+          "line": 6,
+          "range": {
+            "from": 0,
+            "to": 17
+          },
+          "excerpt": "title: The Stairs"
+        },
+        {
+          "role": "text",
+          "kind": "scene",
+          "id": "scene_01C7000000000000000000000G",
+          "file": "manuscript/act-01-one/ch-001-one/0020-the-dock.md",
+          "heading": "The Dock",
+          "location": "title",
+          "line": 6,
+          "range": {
+            "from": 0,
+            "to": 15
+          },
+          "excerpt": "title: The Dock"
+        }
+      ]
+    },
+    {
+      "fingerprint": "tl1-76045e6199a10907",
+      "rule": "TL1",
+      "rule_version": 1,
+      "severity": "error",
+      "title": "Ana Voss is in two places at order 300",
+      "message": "Ana Voss is at The Lighthouse in \"Ana in the tower\" and at The Market in \"Ana at the stall\", and both events have order 300.",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01C70000000000000000000003",
+        "slug": "ana-voss",
+        "name": "Ana Voss"
+      },
+      "sources": [
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C70000000000000000000011",
+          "file": "planning/timeline/ana-tower.md",
+          "heading": "Ana in the tower",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 58
+          },
+          "excerpt": "{ slug: ana-voss, event: location, value: lighthouse }"
+        },
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C70000000000000000000012",
+          "file": "planning/timeline/ana-stall.md",
+          "heading": "Ana at the stall",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 54
+          },
+          "excerpt": "{ slug: ana-voss, event: location, value: market }"
+        }
+      ]
+    },
+    {
+      "fingerprint": "tl1-ae3104c4ed359cca",
+      "rule": "TL1",
+      "rule_version": 1,
+      "severity": "error",
+      "title": "\"The earlier inspection\" is dated before \"The spring inspection\" but comes after it",
+      "message": "\"The spring inspection\" (order 400) is dated 2020-05, but \"The earlier inspection\" (order 410) is dated 2020-03.",
+      "subject": {
+        "kind": "event",
+        "id": "event_01C70000000000000000000018",
+        "slug": "dated-b",
+        "name": "The earlier inspection"
+      },
+      "sources": [
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C70000000000000000000017",
+          "file": "planning/timeline/dated-a.md",
+          "heading": "The spring inspection",
+          "location": "date",
+          "line": 7,
+          "range": {
+            "from": 0,
+            "to": 13
+          },
+          "excerpt": "date: 2020-05"
+        },
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C70000000000000000000018",
+          "file": "planning/timeline/dated-b.md",
+          "heading": "The earlier inspection",
+          "location": "date",
+          "line": 7,
+          "range": {
+            "from": 0,
+            "to": 13
+          },
+          "excerpt": "date: 2020-03"
+        }
+      ]
+    },
+    {
+      "fingerprint": "tl1-98e98ea2450f4db5",
+      "rule": "TL1",
+      "rule_version": 1,
+      "severity": "error",
+      "title": "Dov Ellis takes part in \"Dov at the door\" after dying",
+      "message": "Dov Ellis died at \"Dov dies\" (order 100) but is present at \"Dov at the door\" (order 200) with no revival in between.",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01C70000000000000000000006",
+        "slug": "dov-ellis",
+        "name": "Dov Ellis"
+      },
+      "sources": [
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C7000000000000000000000S",
+          "file": "planning/timeline/dov-dies.md",
+          "heading": "Dov dies",
+          "location": "state[0]",
+          "line": 9,
+          "range": {
+            "from": 4,
+            "to": 36
+          },
+          "excerpt": "{ slug: dov-ellis, event: died }"
+        },
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C7000000000000000000000T",
+          "file": "planning/timeline/dov-returns.md",
+          "heading": "Dov at the door",
+          "location": "characters[0]",
+          "line": 7,
+          "range": {
+            "from": 13,
+            "to": 22
+          },
+          "excerpt": "dov-ellis"
+        }
+      ]
+    },
+    {
+      "fingerprint": "tl1-b6fcc14fb20619d0",
+      "rule": "TL1",
+      "rule_version": 1,
+      "severity": "error",
+      "title": "Tin Whistle is used in \"Bram takes the whistle\" after being destroyed",
+      "message": "Tin Whistle was destroyed at \"The whistle breaks\" (order 140) but is used at \"Bram takes the whistle\" (order 150) with no revival in between.",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01C7000000000000000000000B",
+        "slug": "tin-whistle",
+        "name": "Tin Whistle"
+      },
+      "sources": [
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C7000000000000000000000Z",
+          "file": "planning/timeline/whistle-breaks.md",
+          "heading": "The whistle breaks",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 43
+          },
+          "excerpt": "{ slug: tin-whistle, event: destroyed }"
+        },
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C70000000000000000000010",
+          "file": "planning/timeline/whistle-held.md",
+          "heading": "Bram takes the whistle",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 58
+          },
+          "excerpt": "{ slug: tin-whistle, event: holder, value: bram-keel }"
+        }
+      ]
+    },
+    {
+      "fingerprint": "cf1-614d656695e6a7a3",
+      "rule": "CF1",
+      "rule_version": 1,
+      "severity": "warning",
+      "title": "Ana Voss: Eyes Brown in the codex, green in the text",
+      "message": "The codex says Ana Voss's Eyes is \"Brown\", but the text of \"Lamp Room\" says \"green\": Her green eyes caught the lamplight.",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01C70000000000000000000003",
+        "slug": "ana-voss",
+        "name": "Ana Voss"
+      },
+      "sources": [
+        {
+          "role": "canon",
+          "kind": "entry",
+          "id": "entry_01C70000000000000000000003",
+          "file": "codex/characters/ana-voss.md",
+          "heading": "Ana Voss",
+          "location": "fields.Eyes",
+          "line": 10,
+          "range": {
+            "from": 2,
+            "to": 13
+          },
+          "excerpt": "Eyes: Brown"
+        },
+        {
+          "role": "text",
+          "kind": "scene",
+          "id": "scene_01C7000000000000000000000F",
+          "file": "manuscript/act-01-one/ch-001-one/0010-lamp-room.md",
+          "heading": "Lamp Room",
+          "location": "line 13",
+          "line": 13,
+          "range": {
+            "from": 4,
+            "to": 14
+          },
+          "excerpt": "Her green eyes caught the lamplight."
+        }
+      ]
+    },
+    {
+      "fingerprint": "cf1-5f9706d4cca30c35",
+      "rule": "CF1",
+      "rule_version": 1,
+      "severity": "warning",
+      "title": "Cleo Marsh: Hair Red in the codex, black in the text",
+      "message": "The codex says Cleo Marsh's Hair is \"Red\", but the canon note \"Cleo, canon notes\" says \"black\": Hair: Black",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01C70000000000000000000005",
+        "slug": "cleo-marsh",
+        "name": "Cleo Marsh"
+      },
+      "sources": [
+        {
+          "role": "canon",
+          "kind": "entry",
+          "id": "entry_01C70000000000000000000005",
+          "file": "codex/characters/cleo-marsh.md",
+          "heading": "Cleo Marsh",
+          "location": "fields.Hair",
+          "line": 10,
+          "range": {
+            "from": 2,
+            "to": 11
+          },
+          "excerpt": "Hair: Red"
+        },
+        {
+          "role": "note",
+          "kind": "research",
+          "id": "note_01C7000000000000000000001T",
+          "file": "research/cleo-notes.md",
+          "heading": "Cleo, canon notes › Appearance",
+          "location": "line 9",
+          "line": 9,
+          "range": {
+            "from": 0,
+            "to": 11
+          },
+          "excerpt": "Hair: Black"
+        }
+      ]
+    },
+    {
+      "fingerprint": "cf1-d0c8fb73903d70b7",
+      "rule": "CF1",
+      "rule_version": 1,
+      "severity": "warning",
+      "title": "Cleo Marsh: Build Slight in the codex, stocky in the text",
+      "message": "The codex says Cleo Marsh's Build is \"Slight\", but the text of \"Tide Office\" says \"stocky\": Her stocky build filled the doorway of the tide office.",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01C70000000000000000000005",
+        "slug": "cleo-marsh",
+        "name": "Cleo Marsh"
+      },
+      "sources": [
+        {
+          "role": "canon",
+          "kind": "entry",
+          "id": "entry_01C70000000000000000000005",
+          "file": "codex/characters/cleo-marsh.md",
+          "heading": "Cleo Marsh",
+          "location": "fields.Build",
+          "line": 11,
+          "range": {
+            "from": 2,
+            "to": 15
+          },
+          "excerpt": "Build: Slight"
+        },
+        {
+          "role": "text",
+          "kind": "scene",
+          "id": "scene_01C7000000000000000000000H",
+          "file": "manuscript/act-01-one/ch-002-two/0010-tide-office.md",
+          "heading": "Tide Office",
+          "location": "line 13",
+          "line": 13,
+          "range": {
+            "from": 4,
+            "to": 16
+          },
+          "excerpt": "Her stocky build filled the doorway of the tide office."
+        }
+      ]
+    },
+    {
+      "fingerprint": "st1-564c3cf37c76b9f8",
+      "rule": "ST1",
+      "rule_version": 1,
+      "severity": "warning",
+      "title": "Clay Jar is used after being lost",
+      "message": "Clay Jar is lost at \"The jar is lost\" (order 800) and not found again, but \"Ana holds the jar\" (order 810) gives it a holder (Ana Voss).",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01C7000000000000000000000C",
+        "slug": "clay-jar",
+        "name": "Clay Jar"
+      },
+      "sources": [
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C7000000000000000000001H",
+          "file": "planning/timeline/jar-lost.md",
+          "heading": "The jar is lost",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 35
+          },
+          "excerpt": "{ slug: clay-jar, event: lost }"
+        },
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C7000000000000000000001J",
+          "file": "planning/timeline/jar-held.md",
+          "heading": "Ana holds the jar",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 54
+          },
+          "excerpt": "{ slug: clay-jar, event: holder, value: ana-voss }"
+        }
+      ]
+    },
+    {
+      "fingerprint": "st1-9d74a5861b433f4c",
+      "rule": "ST1",
+      "rule_version": 1,
+      "severity": "warning",
+      "title": "Copper Kettle has two holders at order 900",
+      "message": "Copper Kettle is held by Ana Voss in \"Ana has the kettle\" and by Bram Keel in \"Bram has the kettle\", and both events have order 900.",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01C7000000000000000000000D",
+        "slug": "copper-kettle",
+        "name": "Copper Kettle"
+      },
+      "sources": [
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C7000000000000000000001P",
+          "file": "planning/timeline/kettle-ana.md",
+          "heading": "Ana has the kettle",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 59
+          },
+          "excerpt": "{ slug: copper-kettle, event: holder, value: ana-voss }"
+        },
+        {
+          "role": "event",
+          "kind": "event",
+          "id": "event_01C7000000000000000000001Q",
+          "file": "planning/timeline/kettle-bram.md",
+          "heading": "Bram has the kettle",
+          "location": "state[0]",
+          "line": 8,
+          "range": {
+            "from": 4,
+            "to": 60
+          },
+          "excerpt": "{ slug: copper-kettle, event: holder, value: bram-keel }"
+        }
+      ]
+    },
+    {
+      "fingerprint": "th1-b7e16e0c9eb28472",
+      "rule": "TH1",
+      "rule_version": 1,
+      "severity": "info",
+      "title": "\"The hollow bell\" is never resolved",
+      "message": "\"The hollow bell\" has status \"open\", but the book ends (scene 5) after the last scene it appears in (scene 3). Mark it paid, dropped or unresolved if that is intended.",
+      "subject": {
+        "kind": "thread",
+        "id": "thread_01C7000000000000000000000P",
+        "slug": "hollow-bell",
+        "name": "The hollow bell"
+      },
+      "sources": [
+        {
+          "role": "thread",
+          "kind": "thread",
+          "id": "thread_01C7000000000000000000000P",
+          "file": "planning/threads/hollow-bell.md",
+          "heading": "The hollow bell",
+          "location": "status",
+          "line": 7,
+          "range": {
+            "from": 0,
+            "to": 12
+          },
+          "excerpt": "status: open"
+        }
+      ]
+    }
+  ],
+  "suppressed": []
+}

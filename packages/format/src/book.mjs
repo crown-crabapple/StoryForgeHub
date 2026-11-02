@@ -9,6 +9,7 @@ import { loadDoc } from './load.mjs';
 import { checkPlacement } from './placement.mjs';
 import { checkFields } from './schema.mjs';
 import { checkCodex } from './codex.mjs';
+import { checkExceptions } from './exceptions.mjs';
 
 /** @typedef {import('./load.mjs').Doc} Doc */
 
@@ -41,6 +42,7 @@ export async function validateBook({ rootDir, bookPath, series, add }) {
   checkDuplicateSlugs(typed, add);
   checkPlacement(typed, add);
   checkCodex(typed, add);
+  checkExceptions(typed, add);
   const { order, excluded, positions } = analyzeScenes(typed, bookPath, add);
   const { eventScenes, links } = await resolveLinks(typed, bookDir, add);
   const timeline = buildTimeline(typed, eventScenes, positions);

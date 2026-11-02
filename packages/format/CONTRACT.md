@@ -151,6 +151,10 @@ The validator output (code, file, location) must equal this list exactly, as a s
 | `W203-bad-filename` | `Chapter One Notes.md` (plain note, no front matter) |
 | `W204-bom` | scene file starting with a UTF-8 BOM |
 | `W301-previous-slug` | link via `previous_slugs` |
+| `E102-event-state` | event `state` item with an unknown `event` word (M05-J01) |
+| `E301-event-state` | event `state` slug that resolves to nothing |
+| `E302-event-state` | event `state` location value that is a character, not a location |
+| `W307-duplicate-exception` | two `planning/continuity/` exceptions with one fingerprint |
 | `W302-paid-no-payoff` | thread `status: paid`, `payoff: []` |
 | `W303-archived-target` | link to an entry under `archive/` |
 | `I401-unknown-field` | scene with `mood: cold` |
@@ -164,3 +168,7 @@ Every code in spec §11 has at least one case. A case may produce a second diagn
 - Every invalid case matches its `expected.json` exactly.
 - Both valid projects and the spec example match their expected results.
 - `sf-validate` exit codes behave as above on one valid and one invalid fixture.
+
+## M05-J01 additions (additive within v1)
+
+Event `state` (E102 / E301 / E302 at `state[i].slug|event|value`), `codex/_types` `values` (E102 at `values`), the `continuity-exception` kind (required `slug`, `fingerprint`, `rule`, `title`; E102 for a bad fingerprint or an empty body at `body`; W201 outside `planning/continuity/`) and `W307` (duplicate fingerprint, at `fingerprint`). `@storyforge/format` also exports `readText`, `STATE_EVENTS` and `FINGERPRINT_RE` for `@storyforge/continuity`.
