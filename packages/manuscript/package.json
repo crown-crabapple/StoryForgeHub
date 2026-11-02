@@ -1,0 +1,20 @@
+{
+  "name": "@storyforge/manuscript",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Safe scene insert/move/renumber, disposable index and repair planning for StoryForge books",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "bin": {
+    "sf-manuscript": "bin/sf-manuscript.mjs"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@storyforge/format": "file:../format"
+  }
+}
