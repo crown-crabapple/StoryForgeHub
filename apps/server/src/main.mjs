@@ -3,15 +3,19 @@
 //   node apps/server/src/main.mjs rebuild --library <path>             rebuild every book's index
 //   node apps/server/src/main.mjs repair --library <path> [--apply]    print the repair plan; write only with --apply
 //   node apps/server/src/main.mjs continuity --library <path> [--book <slug>] [--json]   print continuity findings (read-only, no lock)
+//   node apps/server/src/main.mjs export --library <path> --book <slug> --format markdown|docx|epub|pdf --out <file> [--force]
+//   node apps/server/src/main.mjs backup --library <path> --book <slug> --out <file.zip> [--provenance] [--force]
+//   node apps/server/src/main.mjs restore --from <file.zip> --to <new or empty folder>
 // Exit codes: 0 ok, 1 failed / needs hand repair / continuity errors found, 2 usage or cannot open the library, 3 another instance holds the library.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, LOCK_FILE, acquireLock, createFsRepository, createLibraryHost, loadConfig, releaseLock, releaseLockSync, updateLock } from '@storyforge/core';
+import { FILE_COMMANDS, runFileCommand } from './export-cli.mjs';
 import { createServer } from './server.mjs';
 
 const webRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const argv = process.argv.slice(2);
-const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity'];
+const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', ...FILE_COMMANDS];
 const command = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'serve';
 const apply = argv.includes('--apply');
 
@@ -21,7 +25,10 @@ function fail(message, code) {
   process.exit(code);
 }
 
-if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair or continuity)`, 2);
+if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, export, backup or restore)`, 2);
+
+// export, backup and restore work on files only: no library config, no lock, no server
+if (FILE_COMMANDS.includes(command)) process.exit(await runFileCommand(command, argv.slice(1)));
 
 let config;
 try {

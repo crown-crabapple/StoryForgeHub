@@ -66,7 +66,7 @@ export const unsimpleResult = ({ file, field }) =>
 async function checkPaths(store, changes) {
   const seen = new Set();
   for (const c of changes) {
-    if (c.to === c.from) continue;
+    if (c.to === c.from || c.to === null) continue;
     if (seen.has(c.to)) return fail('REFUSED_PATH_TAKEN', `two changes target ${c.to}`, { path: c.to });
     seen.add(c.to);
     const vacated = changes.some((o) => o !== c && o.from === c.to);

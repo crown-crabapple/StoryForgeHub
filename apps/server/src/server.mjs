@@ -2,14 +2,16 @@
 import http from 'node:http';
 import { createLibraryHost } from '@storyforge/core';
 import { createAiService } from './ai-routes.mjs';
-import { handleApi, handleUpload, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
-import { hasUploadHeaders, hasWriteHeaders, isRequestAllowed } from './security.mjs';
+import { RESTORE_FOLDER_RE, handleApi, handleRestore, handleUpload, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
+import { hasRestoreHeaders, hasUploadHeaders, hasWriteHeaders, isRequestAllowed } from './security.mjs';
 import { serveStatic } from './static.mjs';
 
 const JSON_TYPE = 'application/json; charset=utf-8';
 export const MAX_BODY_BYTES = 5 * 1024 * 1024;
 /** The most one attachment upload may carry (M04-J04). */
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+/** The most one backup restore upload may carry (M05-J03). */
+export const MAX_RESTORE_BYTES = 512 * 1024 * 1024;
 
 /**
  * @param {import('node:http').ServerResponse} res
@@ -74,14 +76,15 @@ function readUpload(req, max) {
 
 /**
  * @param {{ repository?: import('@storyforge/core').FileRepository, host?: ReturnType<typeof createLibraryHost>, webRoot?: string,
- *           recoverReport?: unknown, instance?: { pid: number, started_at: string, lock: string } }} options
+ *           recoverReport?: unknown, instance?: { pid: number, started_at: string, lock: string }, maxRestoreBytes?: number }} options
  *   `host` owns the library being served and switches to another one (POST /api/library/open); without it the
  *   server makes one around `repository`, which holds no lock of its own. Every request uses the host's current repository.
  *   `recoverReport` is the result of the recover() run at startup; GET /api/recover/last serves it.
  *   `instance` is what GET /api/status reports about this process (the lock it holds); default: no lock.
+ *   `maxRestoreBytes` is the size cap of the backup restore upload (default 512 MB; tests lower it).
  * @returns {import('node:http').Server} not yet listening; callers bind it to 127.0.0.1
  */
-export function createServer({ repository, host, webRoot, recoverReport, instance }) {
+export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES }) {
   let libraryHost = host ?? null;
   if (!libraryHost && repository) {
     try {
@@ -118,13 +121,25 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
           const { status, body } = await handleUpload(current(), match, { name: query.get('name'), note: query.get('note'), bytes: up.buffer });
           return sendJson(res, status, body);
         }
+        if (match.route === 'backup-restore') {
+          if (!hasRestoreHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
+          const folder = new URLSearchParams(queryString).get('folder');
+          if (folder === null || !RESTORE_FOLDER_RE.test(folder)) {
+            req.resume();
+            return sendJson(res, 400, { error: 'bad_request', message: 'folder must be a single folder name of 1 to 60 characters: a-z, 0-9 and hyphen' });
+          }
+          const up = await readUpload(req, maxRestoreBytes);
+          if (up.tooLarge) return sendJson(res, 413, { error: 'too_large', code: 'TOO_LARGE', message: `backups can be at most ${Math.round(maxRestoreBytes / (1024 * 1024))} MB` });
+          const { status, body } = await handleRestore(current(), folder, up.buffer);
+          return sendJson(res, status, body);
+        }
         if (!hasWriteHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
         const read = await readBody(req);
         if (read.tooLarge) return sendJson(res, 413, { error: 'too_large' });
         let parsed;
         try {
           const text = read.buffer.toString('utf8');
-          parsed = req.method === 'DELETE' && text.trim() === '' ? {} : JSON.parse(text);
+          parsed = req.method === 'DELETE' && text.trim() === '' ? {} : JSON.parse(text); // a DELETE may carry no body
         } catch {
           return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
         }

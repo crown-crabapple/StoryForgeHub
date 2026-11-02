@@ -1,5 +1,6 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
+import { ExportError, ExportVerificationError, FORMATS, RestoreError, createBackup, exportBook, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
 
@@ -85,6 +86,8 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       return book ? { status: 200, body: book } : NOT_FOUND;
     }
     if (c === 'cover' && d === undefined) return handleCover(repository, b, params);
+    if (c === 'export' && d === undefined) return handleExport(repository, b, params);
+    if (c === 'backup' && d === undefined) return handleBackup(repository, b, params);
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
     }
@@ -92,6 +95,15 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'continuity' && d === undefined) {
       const continuity = await repository.getContinuity(b);
       return continuity ? { status: 200, body: continuity } : NOT_FOUND;
+    }
+    // M05-J02: the lines around a finding's evidence ("Show both"): ?file=<book-relative>&line=N&radius=3 (radius at most 10)
+    if (c === 'continuity' && d === 'context' && e === undefined) {
+      const line = params.get('line');
+      const radius = params.get('radius');
+      const r = await repository.getContinuityContext(b, { file: params.get('file') ?? undefined, line: line === null ? undefined : /^[0-9]+$/.test(line) ? Number(line) : NaN, ...(radius === null ? {} : { radius: /^[0-9]+$/.test(radius) ? Number(radius) : NaN }) });
+      if (r.ok) return { status: 200, body: { lines: r.lines } };
+      if (r.code === 'NOT_FOUND') return NOT_FOUND;
+      return { status: 400, body: { error: 'bad_request', code: r.code, message: r.message } };
     }
     if (c === 'repair' && d === 'plan' && e === undefined) {
       const plan = await repository.planRepair(b);
@@ -202,6 +214,57 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     }
   }
   return NOT_FOUND;
+}
+
+const DOWNLOAD_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'cache-control': 'no-store',
+  'content-security-policy': "default-src 'none'; sandbox",
+};
+
+/** @param {{ bytes: Buffer, filename: string, mime: string }} file */
+const download = (file) => ({
+  status: 200,
+  body: null,
+  raw: { bytes: file.bytes, headers: { ...DOWNLOAD_HEADERS, 'content-type': file.mime, 'content-disposition': `attachment; filename="${file.filename}"` } },
+});
+
+/** `0` / `1` (or absent) to a boolean; null when it is anything else. @param {string | null} v */
+const flag = (v) => (v === null || v === '0' ? false : v === '1' ? true : null);
+
+/**
+ * GET /api/books/:b/export?format=markdown|docx|epub|pdf[&excludeStatuses=a,b][&sceneTitles=0|1][&page=letter|a4]: the manuscript as a download.
+ * Read-only: the book folder is never written. 400 bad parameters, 404 unknown book, 500 { error: 'export_failed', problems } when verification fails.
+ */
+async function handleExport(repository, bookId, params) {
+  const format = params.get('format');
+  if (format === null || !Object.hasOwn(FORMATS, format)) return badRequest(`format must be one of: ${Object.keys(FORMATS).join(', ')}`);
+  const sceneTitles = flag(params.get('sceneTitles'));
+  if (sceneTitles === null) return badRequest('sceneTitles must be 0 or 1');
+  const page = params.get('page') ?? 'letter';
+  if (page !== 'letter' && page !== 'a4') return badRequest('page must be letter or a4');
+  const statusParam = params.get('excludeStatuses');
+  const excludeStatuses = statusParam === null || statusParam === '' ? [] : statusParam.split(',').map((x) => x.trim());
+  if (excludeStatuses.some((x) => !/^[A-Za-z0-9_-]{1,40}$/.test(x))) return badRequest('excludeStatuses must be a comma-separated list of status names');
+  const root = await repository.bookRoot(bookId);
+  if (!root) return NOT_FOUND;
+  try {
+    return download(await exportBook(root, format, { excludeStatuses, sceneTitles, page }));
+  } catch (e) {
+    if (e instanceof ExportVerificationError) return { status: 500, body: { error: 'export_failed', problems: e.problems } };
+    if (e instanceof ExportError) return e.code === 'NOT_A_BOOK' ? NOT_FOUND : badRequest(e.message);
+    throw e;
+  }
+}
+
+/** GET /api/books/:b/backup[?provenance=0|1]: the book folder as a zip (no .storyforge/; provenance/ only when asked). */
+async function handleBackup(repository, bookId, params) {
+  const provenance = flag(params.get('provenance'));
+  if (provenance === null) return badRequest('provenance must be 0 or 1');
+  const root = await repository.bookRoot(bookId);
+  if (!root) return NOT_FOUND;
+  const { bytes, filename } = await createBackup(root, { includeProvenance: provenance });
+  return download({ bytes, filename, mime: 'application/zip' });
 }
 
 /** GET /api/books/:b/cover[?v=<sha8>]: the cover image bytes. Only a supported image under the book's assets/ is ever served. */
@@ -329,6 +392,7 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && a === 'books' && b === undefined) return { route: 'book-create' };
   if (method === 'POST' && a === 'library' && b === 'open' && c === undefined) return { route: 'library-open' };
   if (method === 'POST' && a === 'library' && b === 'recent' && c === 'remove' && d === undefined) return { route: 'recent-remove' };
+  if (method === 'POST' && a === 'library' && b === 'restore' && c === undefined) return { route: 'backup-restore' };
   // M05-J04 optional AI workshop
   if (a === 'ai' && b === 'profiles') {
     if (method === 'POST' && c === undefined) return { route: 'ai-profile-create' };
@@ -392,6 +456,9 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'notes' && d !== undefined && e === 'archive') return { route: 'note-archive', bookId: b, noteId: d };
   if (method === 'POST' && c === 'notes' && d !== undefined && e === 'restore') return { route: 'note-restore', bookId: b, noteId: d };
   if (method === 'PUT' && c === 'notes' && d !== undefined && e === 'body') return { route: 'note-body', bookId: b, noteId: d };
+  // M05-J02 continuity exceptions
+  if (method === 'POST' && c === 'continuity' && d === 'exceptions' && e === undefined) return { route: 'continuity-exception-create', bookId: b };
+  if (method === 'DELETE' && c === 'continuity' && d === 'exceptions' && e !== undefined && f === undefined) return { route: 'continuity-exception-archive', bookId: b, slug: e };
   if (method === 'POST' && c === 'attachments' && d === undefined) return { route: 'attachment-upload', bookId: b };
   return null;
 }
@@ -406,6 +473,14 @@ function respond(r, okStatus, okBody) {
   const detail = { code: r.code, ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
   const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE', 'SLUG_TAKEN', 'TYPE_EXISTS', 'CITE_KEY_TAKEN'].includes(r.code);
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
+}
+
+/** Like respond(), with the continuity refusals named by their codes: 404 FINDING_NOT_FOUND, 409 ALREADY_EXCEPTED, 400 RATIONALE_REQUIRED. */
+function respondContinuity(r, okStatus, okBody) {
+  if (r.ok) return { status: okStatus, body: okBody(r) };
+  const named = { FINDING_NOT_FOUND: 404, ALREADY_EXCEPTED: 409, RATIONALE_REQUIRED: 400 };
+  if (named[r.code]) return { status: named[r.code], body: { error: r.code, code: r.code, message: r.message } };
+  return respond(r, okStatus, okBody);
 }
 
 /**
@@ -725,6 +800,18 @@ async function handleStructure(repository, match, body) {
       const r = await repository.restoreNote(bookId, /** @type {string} */ (match.noteId), { dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
     }
+    // ---- M05-J02 continuity exceptions: the only files these routes write are planning/continuity/<slug>.md (archive/ when removed)
+    case 'continuity-exception-create': {
+      for (const k of ['fingerprint', 'rationale', 'title']) if (body[k] !== undefined && typeof body[k] !== 'string') return badRequest(`${k} must be a string`);
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.createContinuityException(bookId, { fingerprint: body.fingerprint, rationale: body.rationale, title: body.title, dryRun: body.dryRun === true });
+      return respondContinuity(r, body.dryRun === true ? 200 : 201, (x) => (x.dryRun ? { ok: true, dryRun: true, file: x.file, slug: x.slug, text: x.text, changes: x.changes } : { ok: true, file: x.file, slug: x.slug, opId: x.opId ?? null, undo: x.undo ?? null }));
+    }
+    case 'continuity-exception-archive': {
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.archiveContinuityException(bookId, /** @type {string} */ (match.slug), { dryRun: body.dryRun === true });
+      return respondContinuity(r, 200, (x) => (x.dryRun ? { ok: true, dryRun: true, archived: x.archived, changes: x.changes } : { ok: true, archived: x.archived, opId: x.opId ?? null, undo: x.undo ?? null }));
+    }
     case 'op-restore': {
       const r = await repository.restoreOp(bookId, /** @type {string} */ (match.opId), { dryRun });
       return respond(r, 200, structureBody);
@@ -748,4 +835,28 @@ export async function handleUpload(repository, match, { name, note, bytes }) {
   const status = r.code === 'TOO_LARGE' ? 413 : r.code === 'UNSUPPORTED_TYPE' ? 415 : r.code === 'REFUSED_PATH_TAKEN' ? 409 : 400;
   const error = status === 413 ? 'too_large' : status === 415 ? 'unsupported_type' : status === 409 ? 'conflict' : 'refused';
   return { status, body: { error, code: r.code, ...(r.message ? { message: r.message } : {}) } };
+}
+
+/** The single folder name a restore may create inside the library. */
+export const RESTORE_FOLDER_RE = /^[a-z0-9-]{1,60}$/;
+
+/**
+ * POST /api/library/restore?folder=<new folder name>: the raw bytes of a backup zip (the caller has already limited the body). Restores into
+ * <library>/<folder> and rescans the library so the book appears. 200 { bookRoot, bookId, folder, diagnostics }; 400 bad folder or an archive that
+ * is refused (nothing is written); 409 RESTORE_TARGET_NOT_EMPTY.
+ * @param {FileRepository} repository @param {string | null} folder @param {Buffer} bytes
+ * @returns {Promise<ApiResult>}
+ */
+export async function handleRestore(repository, folder, bytes) {
+  if (folder === null || !RESTORE_FOLDER_RE.test(folder)) return badRequest('folder must be a single folder name of 1 to 60 characters: a-z, 0-9 and hyphen');
+  const library = /** @type {any} */ (repository).root;
+  try {
+    const r = await restoreBackup(bytes, `${library}/${folder}`);
+    await repository.rescan();
+    return { status: 200, body: { bookRoot: r.bookRoot, bookId: r.bookId, folder, diagnostics: r.diagnostics } };
+  } catch (e) {
+    if (!(e instanceof RestoreError)) throw e;
+    if (e.code === 'RESTORE_TARGET_NOT_EMPTY') return { status: 409, body: { error: 'conflict', code: e.code, message: e.message } };
+    return { status: 400, body: { error: 'refused', code: e.code, message: e.message } };
+  }
 }

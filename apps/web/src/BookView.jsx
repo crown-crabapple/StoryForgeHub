@@ -184,6 +184,8 @@ export function BookView({ bookId, sceneId, file }) {
   // M04-J04: the events and research notes the editor rail shows for the open scene (they refresh with the status poll, like everything else)
   const { data: timeline } = useApi(showScene ? `/api/books/${encodeURIComponent(bookId)}/timeline` : null, version);
   const { data: notes } = useApi(showScene ? `/api/books/${encodeURIComponent(bookId)}/notes` : null, version);
+  // M05-J02: the continuity findings the rail's Continuity section lists (refreshed by the status poll and after every save, like the rest of the rail)
+  const { data: continuity } = useApi(showScene ? `/api/books/${encodeURIComponent(bookId)}/continuity` : null, version);
 
   if (loading) return <main id="main" tabIndex={-1} className="page muted">Loading...</main>;
   if (error) return <main id="main" tabIndex={-1} className="page error">{error}</main>;
@@ -254,7 +256,7 @@ export function BookView({ bookId, sceneId, file }) {
       book={book}
       activeId={file ? null : activeId}
       onChanged={() => setBump((n) => n + 1)}
-      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} planning={planning ?? null} timeline={timeline ?? null} notes={notes ?? null} onChanged={() => setBump((n) => n + 1)} />}
+      inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} planning={planning ?? null} timeline={timeline ?? null} notes={notes ?? null} continuity={continuity ?? null} version={version} onChanged={() => setBump((n) => n + 1)} />}
     >
       {!file && <ViewSwitch bookId={book.id} view="write" scene={activeId} />}
       {main}

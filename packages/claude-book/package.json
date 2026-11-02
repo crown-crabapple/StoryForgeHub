@@ -1,0 +1,22 @@
+{
+  "name": "@storyforge/claude-book",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge to Claude-Book local adapter: builds the context pack from a v2 book, runs the style checker, writes review requests",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "bin": {
+    "sf-claude-book": "bin/sf-claude-book.mjs"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@storyforge/continuity": "0.1.0",
+    "@storyforge/format": "0.1.0",
+    "@storyforge/store": "0.1.0"
+  }
+}

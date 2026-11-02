@@ -45,3 +45,13 @@ export function hasWriteHeaders(req) {
 export function hasUploadHeaders(req) {
   return req.headers['x-storyforge'] === '1' && typeof req.headers['content-type'] === 'string' && req.headers['content-type'].trim() !== '';
 }
+
+/**
+ * Guard for the backup restore upload (a raw zip body): the custom `x-storyforge: 1` header (forces a CORS preflight, no CORS headers are ever sent)
+ * and `content-type: application/zip`.
+ * @param {import('node:http').IncomingMessage} req
+ */
+export function hasRestoreHeaders(req) {
+  const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+  return type === 'application/zip' && req.headers['x-storyforge'] === '1';
+}

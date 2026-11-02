@@ -1,3 +1,4 @@
+import { BookActions } from '../export/BookActions.jsx';
 import { IndexStatus } from '../IndexStatus.jsx';
 import { Link } from '../router.jsx';
 import { SearchBox } from '../SearchBox.jsx';
@@ -17,6 +18,7 @@ export function TopBar({ books, bookId }) {
         <span className="logo-word">StoryForge</span>
       </Link>
       <BookSwitcher books={books} current={current} />
+      {current && <BookActions bookId={current.id} slug={current.slug ?? null} />}
       <SaveStatus bookId={bookId && (books === null || current) ? bookId : null} />
       <SearchBox />
       <IndexStatus />

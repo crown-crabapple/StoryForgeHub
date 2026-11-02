@@ -39,6 +39,14 @@ const NET_PROPERTIES = ['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource'].f
 );
 const NET_SCOPE = ['packages/**/*.mjs', 'apps/server/**/*.mjs'];
 const NET_IGNORES = ['**/test/**', 'packages/ai/src/transport.mjs', 'apps/server/src/server.mjs'];
+const networkPaths = ['node:http', 'node:https', 'node:http2', 'node:net', 'node:tls', 'node:dgram', 'node:dns', 'http', 'https', 'net', 'tls', 'dns'].map((name) => ({
+  name,
+  message: 'The Claude-Book adapter is local only: no network.',
+}));
+const processPaths = ['node:child_process', 'child_process'].map((name) => ({
+  name,
+  message: 'Only packages/claude-book/src/style.mjs starts a process (the Claude-Book style checker).',
+}));
 
 export default [
   { ignores: ['**/node_modules/**', '**/dist/**', 'packages/format/fixtures/**', 'packages/manuscript/fixtures/**'] },
@@ -110,6 +118,8 @@ export default [
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
+  // packages/export (M05-J03) reads book folders directly (export and backup only read) and has no fs restriction of its own; every write it
+  // causes (a restored backup, an output file) goes through @storyforge/store (writeNewTree, writeOutFile). It never imports node:sqlite (rule below).
   // packages/continuity: read-only; it reads the book through @storyforge/format and never touches the filesystem itself.
   {
     files: ['packages/continuity/src/**/*.mjs'],
@@ -120,6 +130,21 @@ export default [
   {
     files: ['packages/ai/src/**/*.mjs'],
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
+  },
+  // packages/claude-book: the local Claude-Book adapter. Only src/io.mjs touches the filesystem (every write is checked
+  // to stay inside <framework>/.work/<work-id>/); only src/style.mjs starts a process (the style checker); no network.
+  {
+    files: ['packages/claude-book/src/**/*.mjs'],
+    ignores: ['packages/claude-book/src/io.mjs', 'packages/claude-book/src/style.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: [...fsPaths, ...networkPaths, ...processPaths] }] },
+  },
+  {
+    files: ['packages/claude-book/src/io.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: [...networkPaths, ...processPaths] }] },
+  },
+  {
+    files: ['packages/claude-book/src/style.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: [...fsPaths, ...networkPaths] }] },
   },
 
   // node:sqlite belongs to the index package alone (its tests may open the database to check tables).
