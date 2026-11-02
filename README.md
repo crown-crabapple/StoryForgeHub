@@ -33,3 +33,13 @@ packages/core   the only module that reads project files is src/fs-repository.mj
 ```
 
 ESLint (`eslint.config.mjs`) enforces this. Details: `docs/decisions/0001-local-web-app-stack.md` and `docs/contracts/M01-J01-app-boundary.md`.
+
+## Documentation
+
+- [Installing and running](docs/install.md)
+- [Getting started with the sample book](docs/getting-started-sample.md)
+- [What is in a book folder](docs/format.md)
+- [Backing up and restoring](docs/backup-restore.md)
+- [Moving from the old StoryForgeHub](docs/migration.md)
+- [Privacy and the optional AI workshop](docs/privacy-ai.md)
+- [Troubleshooting](docs/troubleshooting.md)
