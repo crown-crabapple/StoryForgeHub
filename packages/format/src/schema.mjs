@@ -133,6 +133,22 @@ function typeProblem(value, type) {
   }
 }
 
+/** Event `date` (spec 6.2): "" or ISO YYYY, YYYY-MM, YYYY-MM-DD with a real month and day. A bare 4-digit integer is a year. @param {any} v */
+export function isIsoDate(v) {
+  if (typeof v === 'number') return Number.isInteger(v) && v >= 1000 && v <= 9999;
+  if (typeof v !== 'string') return false;
+  if (v === '') return true;
+  const m = /^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?$/.exec(v);
+  if (!m) return false;
+  const month = m[2] === undefined ? 1 : Number(m[2]);
+  if (month < 1 || month > 12) return false;
+  if (m[3] === undefined) return true;
+  const year = Number(m[1]);
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  return Number(m[3]) >= 1 && Number(m[3]) <= days;
+}
+
 /**
  * True when a front-matter path leaves the book root or is absolute.
  * @param {string} p
@@ -193,6 +209,10 @@ export function checkFields(doc, ctx, add) {
 
   if (doc.kind === 'codex-type' && typeof fm.type === 'string' && !/^[a-z]+$/.test(fm.type)) {
     add('E102', file, 'type', 'type must be a lower-case word (a-z)');
+  }
+
+  if (doc.kind === 'event' && !isAbsent(fm.date) && !isIsoDate(fm.date)) {
+    add('E102', file, 'date', 'date must be "" or an ISO date: YYYY, YYYY-MM or YYYY-MM-DD');
   }
 
   for (const key of ['cover', 'image']) {

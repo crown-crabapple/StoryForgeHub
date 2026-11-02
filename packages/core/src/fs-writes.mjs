@@ -5,11 +5,15 @@ import { extractDocs, validate } from '@storyforge/format';
 import {
   archiveChapter,
   archiveEntry,
+  archiveEvent,
+  archiveNote,
   changeEntrySlug,
   createAct,
   createChapter,
   createCodexType,
   createEntry,
+  createEvent,
+  createNote,
   createThread,
   editFrontMatterLine,
   insertScene,
@@ -17,14 +21,19 @@ import {
   moveScene,
   renumberChapters,
   restoreEntry,
+  restoreEvent,
+  restoreNote,
   restoreOp,
   setActFields,
   setChapterFields,
   setEntryFields,
+  setEventFields,
+  setNoteFields,
   setSceneFields,
   setThreadFields,
   slugify,
   splitScene,
+  uploadAttachment,
 } from '@storyforge/manuscript';
 import { countWords } from '@storyforge/index';
 import { openStore } from '@storyforge/store';
@@ -156,7 +165,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     return { ...r, path: toLibRel(found.book, r.path) };
   }
 
-  const NOT_FOUND_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_CHAPTER', 'REFUSED_UNKNOWN_ACT', 'REFUSED_UNKNOWN_OP', 'REFUSED_UNKNOWN_ENTRY', 'REFUSED_UNKNOWN_THREAD'];
+  const NOT_FOUND_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_CHAPTER', 'REFUSED_UNKNOWN_ACT', 'REFUSED_UNKNOWN_OP', 'REFUSED_UNKNOWN_ENTRY', 'REFUSED_UNKNOWN_THREAD', 'REFUSED_UNKNOWN_EVENT', 'REFUSED_UNKNOWN_NOTE'];
 
   /**
    * Run one @storyforge/manuscript structure command on a book. A real change reconciles the index before
@@ -173,6 +182,33 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       else afterWrite(found.book.path);
     }
     return r;
+  }
+
+  /** Body replacement for a live document of one of `kinds`, found by id (or slug when `bySlug`). */
+  async function updateDocBody(bookId, kinds, ref, body, { baseSha256 } = {}, bySlug = false) {
+    if (typeof body !== 'string') return fail('BAD_ARGS', { message: 'body must be a string' });
+    const found = await findBook(bookId);
+    if (!found || typeof ref !== 'string') return fail('NOT_FOUND');
+    const result = await validate(root);
+    const doc = extractDocs(result, found.book.path).find((d) => kinds.includes(d.kind) && !d.archived && (d.fm.id === ref || (bySlug && d.fm.slug === ref)));
+    if (!doc) return fail('NOT_FOUND');
+    const store = await openStore(bookRootOf(found.book));
+    const cur = await store.read(doc.rel);
+    if (!cur) return fail('NOT_FOUND');
+    const end = frontMatterEnd(cur.bytes);
+    if (end < 0) return fail('NOT_A_DOCUMENT', { message: 'front matter is not terminated' });
+    const next = Buffer.concat([cur.bytes.subarray(0, end), Buffer.from(body, 'utf8')]);
+    const r = await store.write(doc.rel, next, { baseSha256 });
+    if (r.ok) {
+      afterWrite(found.book.path);
+      return { ok: true, code: 'OK', sha256: r.sha256 };
+    }
+    if (r.code === 'CONFLICT') {
+      const now = r.current?.bytes ?? cur.bytes;
+      const e = frontMatterEnd(now);
+      return fail('CONFLICT', { current: { sha256: r.current?.sha256 ?? cur.sha256, body: now.subarray(e < 0 ? 0 : e).toString('utf8') } });
+    }
+    return fail(r.code, r.message ? { message: r.message } : {});
   }
 
   return {
@@ -457,6 +493,40 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     // ---- M04-J03: plot threads (canonical files only; dryRun previews with diffs)
     createThread: (bookId, args = {}) => structure(bookId, (b) => createThread(b, args ?? {})),
     setThreadFields: (bookId, ref, args = {}) => structure(bookId, (b) => setThreadFields(b, ref, args ?? {})),
+
+    // ---- M04-J04: timeline events, research notes / planning docs / sources, attachments (canonical files only; dryRun previews with diffs)
+    createEvent: (bookId, args = {}) => structure(bookId, (b) => createEvent(b, args ?? {})),
+    setEventFields: (bookId, ref, args = {}) => structure(bookId, (b) => setEventFields(b, ref, args ?? {})),
+    archiveEvent: (bookId, ref, args = {}) => structure(bookId, (b) => archiveEvent(b, ref, args ?? {})),
+    /** `ref`: an archived event's id, slug or archived path (library-relative, archive/planning/timeline/...). */
+    async restoreEvent(bookId, ref, args = {}) {
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const rel = typeof ref === 'string' && ref.includes('/') ? toBookRel(found.book, ref) : ref;
+      if (rel === null) return fail('NOT_FOUND');
+      return structure(bookId, (b) => restoreEvent(b, rel, args ?? {}));
+    },
+    createNote: (bookId, args = {}) => structure(bookId, (b) => createNote(b, args ?? {})),
+    setNoteFields: (bookId, id, args = {}) => structure(bookId, (b) => setNoteFields(b, id, args ?? {})),
+    archiveNote: (bookId, id, args = {}) => structure(bookId, (b) => archiveNote(b, id, args ?? {})),
+    restoreNote: (bookId, id, args = {}) => structure(bookId, (b) => restoreNote(b, id, args ?? {})),
+    /**
+     * Store an uploaded file as assets/research/<safe-name> (the store is the only writer; a taken name gets -2, -3). `notePath` is the note's book-relative path
+     * (or its id): the returned `markdown` is the link to insert relative to that note's folder. Refusals: BAD_NAME / BAD_ARGS (400), UNSUPPORTED_TYPE (415), TOO_LARGE (413).
+     */
+    async uploadAttachment(bookId, { name, bytes, note } = {}) {
+      let notePath = note;
+      if (typeof note === 'string' && /^note_/.test(note)) {
+        const found = await findBook(bookId);
+        const doc = found ? extractDocs(await validate(root), found.book.path).find((d) => d.fm.id === note && !d.archived) : null;
+        notePath = doc ? doc.rel : undefined;
+      }
+      return structure(bookId, (b) => uploadAttachment(b, { name, bytes, ...(typeof notePath === 'string' ? { notePath } : {}) }));
+    },
+
+    /** Replace the body of a live event / research note / planning doc / source (the text after its front matter), keeping the front matter bytes. Same conflict rule as an entry body. */
+    updateEventBody: (bookId, ref, body, opts) => updateDocBody(bookId, ['event'], ref, body, opts, true),
+    updateNoteBody: (bookId, id, body, opts) => updateDocBody(bookId, ['research', 'doc', 'source'], id, body, opts, false),
 
     /**
      * Replace the body of a live thread (the text after its front matter), keeping the front matter bytes. Same conflict rule as an entry body:

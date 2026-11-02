@@ -6,13 +6,14 @@ import path from 'node:path';
 import { parse } from 'yaml';
 import { discover, escapesRoot, extractDocs, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts, buildGraph, subGraph } from '@storyforge/index';
-import { applyRepair, planRepair } from '@storyforge/manuscript';
+import { MAX_ATTACHMENT_BYTES, applyRepair, planRepair } from '@storyforge/manuscript';
 import { listTemplates } from '@storyforge/templates';
 import { createBookMethod } from './create-book.mjs';
 import { createActivity } from './activity.mjs';
 import { createIndexManager } from './index-manager.mjs';
 import { createWatcher } from './watcher.mjs';
 import { createWriteMethods } from './fs-writes.mjs';
+import { createTimelineReads } from './fs-timeline.mjs';
 import { countWords } from './word-count.mjs';
 
 /** @typedef {import('./repository.mjs').FileRepository} FileRepository */
@@ -1075,6 +1076,33 @@ export function createFsRepository(libraryRoot, options = {}) {
     for (const act of detail.acts) act.chapters.sort((a, b) => a.chapter - b.chapter);
     return detail;
   };
+  Object.assign(repository, createTimelineReads({
+    root,
+    bookPathOf: (bookId) => manager.pathOf(bookId),
+    async readFileAt(libRel) {
+      try {
+        const [bytes, st] = await Promise.all([readFile(abs(libRel)), stat(abs(libRel))]);
+        return { bytes, mtimeMs: st.mtimeMs };
+      } catch {
+        return null;
+      }
+    },
+    /** A file under the book's assets/ folder: its real path must stay inside the real assets/ folder (symlinks included), be a regular file, and be at most 25 MB. */
+    async readAssetFile(bookPath, segs) {
+      try {
+        const real = await realpath(path.join(abs(bookPath), ...segs));
+        const assets = await realpath(path.join(abs(bookPath), 'assets'));
+        const rel = path.relative(assets, real);
+        if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
+        const st = await stat(real);
+        if (!st.isFile()) return null;
+        if (st.size > MAX_ATTACHMENT_BYTES) return { error: 'too_large' };
+        return { bytes: await readFile(real) };
+      } catch {
+        return null;
+      }
+    },
+  }));
   Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }), activity, now: options.clock }));
   return repository;
 }

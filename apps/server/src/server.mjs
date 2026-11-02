@@ -1,12 +1,14 @@
 // HTTP server: loopback guard, JSON API (reads, plus guarded writes), static web app.
 import http from 'node:http';
 import { createLibraryHost } from '@storyforge/core';
-import { handleApi, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
-import { hasWriteHeaders, isRequestAllowed } from './security.mjs';
+import { handleApi, handleUpload, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
+import { hasUploadHeaders, hasWriteHeaders, isRequestAllowed } from './security.mjs';
 import { serveStatic } from './static.mjs';
 
 const JSON_TYPE = 'application/json; charset=utf-8';
 export const MAX_BODY_BYTES = 5 * 1024 * 1024;
+/** The most one attachment upload may carry (M04-J04). */
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 /**
  * @param {import('node:http').ServerResponse} res
@@ -39,6 +41,30 @@ function readBody(req) {
       size += chunk.length;
       if (size > MAX_BODY_BYTES) tooLarge = true;
       if (!tooLarge) chunks.push(chunk);
+    });
+    req.on('end', () => resolve(tooLarge ? { tooLarge: true } : { tooLarge: false, buffer: Buffer.concat(chunks) }));
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Read an upload body, never holding more than `max` bytes: a declared length over the limit is refused before reading, and a body that grows past it
+ * (a missing or false length) stops being kept at once; the rest is drained and discarded.
+ * @param {import('node:http').IncomingMessage} req @param {number} max
+ * @returns {Promise<{ tooLarge: true } | { tooLarge: false, buffer: Buffer }>}
+ */
+function readUpload(req, max) {
+  return new Promise((resolve, reject) => {
+    const declared = Number(req.headers['content-length']);
+    let size = 0;
+    let tooLarge = Number.isFinite(declared) && declared > max;
+    /** @type {Buffer[]} */
+    let chunks = [];
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > max) tooLarge = true;
+      if (tooLarge) chunks = [];
+      else chunks.push(chunk);
     });
     req.on('end', () => resolve(tooLarge ? { tooLarge: true } : { tooLarge: false, buffer: Buffer.concat(chunks) }));
     req.on('error', reject);
@@ -82,6 +108,14 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
       if (req.method !== 'GET') {
         const match = matchWriteRoute(req.method ?? '', pathname);
         if (!match) return sendJson(res, 405, { error: 'read_only' });
+        if (match.route === 'attachment-upload') {
+          if (!hasUploadHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
+          const up = await readUpload(req, MAX_UPLOAD_BYTES);
+          if (up.tooLarge) return sendJson(res, 413, { error: 'too_large', code: 'TOO_LARGE', message: 'attachments can be at most 25 MB' });
+          const query = new URLSearchParams(queryString);
+          const { status, body } = await handleUpload(current(), match, { name: query.get('name'), note: query.get('note'), bytes: up.buffer });
+          return sendJson(res, status, body);
+        }
         if (!hasWriteHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
         const read = await readBody(req);
         if (read.tooLarge) return sendJson(res, 413, { error: 'too_large' });

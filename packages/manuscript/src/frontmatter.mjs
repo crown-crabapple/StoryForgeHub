@@ -149,14 +149,16 @@ function isSimpleScalar(v, next) {
  * @param {string} value the new string (no control characters or line breaks)
  * @param {{anchors?: string[], integer?: boolean}} [opts] anchor keys to insert after when `key` is absent (defaults: title after id, status after sequence, pov after status);
  *   `integer: true` writes `value` (digits, no leading zero) as a plain YAML integer instead of a string;
- *   `plain: true` leaves a simple phrase unquoted (formatYamlText)
+ *   `plain: true` leaves a simple phrase unquoted (formatYamlText);
+ *   `number: true` writes `value` (an optionally negative decimal such as 150 or -2.5) as a plain YAML number
  * @returns {{ok: true, code: 'OK', buf: Buffer, bytes: Buffer, changed: boolean} | {ok: false, code: string, field: string, message: string, error: {code: string, field: string, message: string}}}
  */
-export function editFrontMatterLine(bytes, key, value, { anchors, integer = false, plain = false } = {}) {
+export function editFrontMatterLine(bytes, key, value, { anchors, integer = false, plain = false, number = false } = {}) {
   const refuse = (code, message) => ({ ok: false, code, field: key, message, error: { code, field: key, message } });
   if (typeof key !== 'string' || !KEY_RE.test(key)) return refuse('REFUSED_BAD_ARGS', 'key is not a plain YAML key');
   if (typeof value !== 'string' || CONTROL_RE.test(value)) return refuse('REFUSED_BAD_ARGS', 'value must be a string without control characters or line breaks');
   if (integer && !/^[1-9][0-9]{0,8}$/.test(value)) return refuse('REFUSED_BAD_ARGS', 'value must be a whole number written in digits');
+  if (number && !/^-?(0|[1-9][0-9]{0,14})(\.[0-9]{1,10})?$/.test(value)) return refuse('REFUSED_BAD_ARGS', 'value must be a plain decimal number');
   const buf = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
   const s = buf.toString('latin1');
   const range = frontMatterRange(s);
@@ -164,7 +166,7 @@ export function editFrontMatterLine(bytes, key, value, { anchors, integer = fals
   const region = s.slice(range.start, range.end);
   const lines = regionLines(region);
   const keyed = (k) => lines.map((l, i) => ({ l, i })).filter(({ l }) => l.text.startsWith(`${k}:`));
-  const newText = `${key}: ${integer ? value : plain ? formatYamlText(value) : formatYamlString(value)}`;
+  const newText = `${key}: ${integer || number ? value : plain ? formatYamlText(value) : formatYamlString(value)}`;
   const asLatin1 = (t) => Buffer.from(t, 'utf8').toString('latin1');
   const rebuild = (nextRegion) => Buffer.from(s.slice(0, range.start) + nextRegion + s.slice(range.end), 'latin1');
 

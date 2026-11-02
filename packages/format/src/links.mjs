@@ -242,6 +242,12 @@ export async function resolveLinks(docs, bookDir, add) {
     } else {
       t = t.split(/\s+/)[0];
     }
+    // an absolute local path (a drive letter, a UNC path, file://) can never work on another machine (M04-J04)
+    if (/^[A-Za-z]:([\\/]|$)/.test(t) || /^file:/i.test(t) || t.startsWith('\\\\')) {
+      add('E103', src.file, location, `absolute local path: ${t}`);
+      record(src, location, rawTarget.trim(), null, 'file', 'broken');
+      return;
+    }
     if (t === '' || t.startsWith('#') || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(t)) return;
     t = t.split('#')[0].split('?')[0];
     if (t === '') return;

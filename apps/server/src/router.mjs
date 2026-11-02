@@ -140,6 +140,28 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const thread = await repository.getThread(b, d);
       return thread ? { status: 200, body: thread } : NOT_FOUND;
     }
+    // M04-J04: the timeline, events, notes (research, planning docs, sources), scene notes and attachments
+    if (c === 'timeline' && d === undefined) {
+      const timeline = await repository.getTimeline(b);
+      return timeline ? { status: 200, body: timeline } : NOT_FOUND;
+    }
+    if (c === 'events' && d !== undefined && e === undefined) {
+      const event = await repository.getEvent(b, d);
+      return event ? { status: 200, body: event } : NOT_FOUND;
+    }
+    if (c === 'notes' && d === undefined) {
+      const notes = await repository.listNotes(b);
+      return notes ? { status: 200, body: notes } : NOT_FOUND;
+    }
+    if (c === 'notes' && d !== undefined && e === undefined) {
+      const note = await repository.getNote(b, d);
+      return note ? { status: 200, body: note } : NOT_FOUND;
+    }
+    if (c === 'scene-notes' && d === undefined) {
+      const notes = await repository.getSceneNotes(b);
+      return notes ? { status: 200, body: notes } : NOT_FOUND;
+    }
+    if (c === 'attachments' && d === undefined) return handleAttachment(repository, b, params);
     if (c === 'graph' && d === undefined) {
       const kindsParam = params.get('kinds');
       let kinds;
@@ -188,6 +210,33 @@ async function handleCover(repository, bookId, params) {
         'content-type': cover.contentType,
         'x-content-type-options': 'nosniff',
         'cache-control': current ? 'private, max-age=31536000, immutable' : 'no-cache',
+      },
+    },
+  };
+}
+
+/**
+ * GET /api/books/:b/attachments?path=assets/...: a file of the book's assets/ folder. Only an allowlisted extension (png jpg jpeg webp gif pdf txt md csv; never SVG)
+ * whose real path is inside assets/ is served; images inline, everything else as a download; always nosniff and a sandboxing CSP. Anything else is 404.
+ */
+async function handleAttachment(repository, bookId, params) {
+  const file = params.get('path');
+  if (file === null) return badRequest('path is required');
+  const a = await repository.getAttachment(bookId, file);
+  if (!a || 'error' in a) return NOT_FOUND;
+  const name = a.name.replace(/[^A-Za-z0-9._-]/g, '_');
+  return {
+    status: 200,
+    body: null,
+    raw: {
+      bytes: a.bytes,
+      headers: {
+        'content-type': a.contentType,
+        'x-content-type-options': 'nosniff',
+        'content-disposition': a.inline ? `inline; filename="${name}"` : `attachment; filename="${name}"`,
+        'content-security-policy': "default-src 'none'; sandbox",
+        'cross-origin-resource-policy': 'same-origin',
+        'cache-control': 'no-cache',
       },
     },
   };
@@ -258,7 +307,7 @@ async function fromIndex(read) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, n?: string, opId?: string, file?: string } | null}
+ * @returns {{ route: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
@@ -308,6 +357,19 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'threads' && d === undefined) return { route: 'thread-create', bookId: b };
   if (method === 'POST' && c === 'threads' && d !== undefined && e === 'fields') return { route: 'thread-fields', bookId: b, threadId: d };
   if (method === 'PUT' && c === 'threads' && d !== undefined && e === 'body') return { route: 'thread-body', bookId: b, threadId: d };
+  // M04-J04 timeline events, notes / planning docs / sources, attachments
+  if (method === 'POST' && c === 'events' && d === undefined) return { route: 'event-create', bookId: b };
+  if (method === 'POST' && c === 'events' && d === 'restore' && e === undefined) return { route: 'event-restore', bookId: b };
+  if (method === 'POST' && c === 'events' && d !== undefined && e === 'fields') return { route: 'event-fields', bookId: b, eventId: d };
+  if (method === 'POST' && c === 'events' && d !== undefined && e === 'archive') return { route: 'event-archive', bookId: b, eventId: d };
+  if (method === 'POST' && c === 'events' && d !== undefined && e === 'restore') return { route: 'event-restore', bookId: b, eventId: d };
+  if (method === 'PUT' && c === 'events' && d !== undefined && e === 'body') return { route: 'event-body', bookId: b, eventId: d };
+  if (method === 'POST' && c === 'notes' && d === undefined) return { route: 'note-create', bookId: b };
+  if (method === 'POST' && c === 'notes' && d !== undefined && e === 'fields') return { route: 'note-fields', bookId: b, noteId: d };
+  if (method === 'POST' && c === 'notes' && d !== undefined && e === 'archive') return { route: 'note-archive', bookId: b, noteId: d };
+  if (method === 'POST' && c === 'notes' && d !== undefined && e === 'restore') return { route: 'note-restore', bookId: b, noteId: d };
+  if (method === 'PUT' && c === 'notes' && d !== undefined && e === 'body') return { route: 'note-body', bookId: b, noteId: d };
+  if (method === 'POST' && c === 'attachments' && d === undefined) return { route: 'attachment-upload', bookId: b };
   return null;
 }
 
@@ -319,7 +381,7 @@ function respond(r, okStatus, okBody) {
   if (r.code === 'NOT_FOUND') return NOT_FOUND;
   if (r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', current: r.current ?? null } };
   const detail = { code: r.code, ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
-  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE', 'SLUG_TAKEN', 'TYPE_EXISTS'].includes(r.code);
+  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE', 'SLUG_TAKEN', 'TYPE_EXISTS', 'CITE_KEY_TAKEN'].includes(r.code);
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
 }
 
@@ -391,6 +453,16 @@ export async function handleWrite(repository, match, body, state) {
     case 'thread-body': {
       if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');
       const r = await repository.updateThreadBody(bookId, /** @type {string} */ (match.threadId), body.body, { baseSha256: body.base_sha256 });
+      return respond(r, 200, (x) => ({ sha256: x.sha256, words: { added: 0, removed: 0 } }));
+    }
+    case 'event-body': {
+      if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');
+      const r = await repository.updateEventBody(bookId, /** @type {string} */ (match.eventId), body.body, { baseSha256: body.base_sha256 });
+      return respond(r, 200, (x) => ({ sha256: x.sha256, words: { added: 0, removed: 0 } }));
+    }
+    case 'note-body': {
+      if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');
+      const r = await repository.updateNoteBody(bookId, /** @type {string} */ (match.noteId), body.body, { baseSha256: body.base_sha256 });
       return respond(r, 200, (x) => ({ sha256: x.sha256, words: { added: 0, removed: 0 } }));
     }
     case 'activity-session': {
@@ -573,6 +645,62 @@ async function handleStructure(repository, match, body) {
       const r = await repository.setThreadFields(bookId, /** @type {string} */ (match.threadId), { status: body.status, setup: body.setup, develop: body.develop, payoff: body.payoff, characters: body.characters, add: body.add, remove: body.remove, dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
     }
+    // ---- M04-J04 events and notes. `base_sha256` (optional) is the file as the author saw it: a different file on disk is a 409.
+    case 'event-create': {
+      const r = await repository.createEvent(bookId, { title: body.title, slug: body.slug, order: body.order, when: body.when, date: body.date, scenes: body.scenes, characters: body.characters, locations: body.locations, dryRun });
+      return respond(r, created, structureBody);
+    }
+    case 'event-fields': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.setEventFields(bookId, /** @type {string} */ (match.eventId), {
+        title: body.title,
+        when: body.when,
+        date: body.date,
+        order: body.order,
+        scenes: body.scenes,
+        characters: body.characters,
+        locations: body.locations,
+        add: body.add,
+        remove: body.remove,
+        ...(body.two_sided !== undefined ? { twoSided: body.two_sided } : {}),
+        dryRun,
+        baseSha256: body.base_sha256,
+      });
+      return respond(r, 200, structureBody);
+    }
+    case 'event-archive': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.archiveEvent(bookId, /** @type {string} */ (match.eventId), { dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
+    case 'event-restore': {
+      const ref = match.eventId ?? body.path ?? body.id;
+      if (typeof ref !== 'string' || ref === '') return badRequest('expected { path: string } or { id: string }');
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.restoreEvent(bookId, ref, { dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
+    case 'note-create': {
+      const { kind, title, slug, tags, links, sources, canon, cite_key: citeKey, type, author, year, publisher, url, accessed, locator } = body;
+      const r = await repository.createNote(bookId, { kind, title, slug, tags, links, sources, canon, cite_key: citeKey, type, author, year, publisher, url, accessed, locator, dryRun });
+      return respond(r, created, structureBody);
+    }
+    case 'note-fields': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const { title, canon, locked, tags, links, sources, type, author, year, publisher, url, accessed, locator } = body;
+      const r = await repository.setNoteFields(bookId, /** @type {string} */ (match.noteId), { title, canon, locked, tags, links, sources, type, author, year, publisher, url, accessed, locator, dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
+    case 'note-archive': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.archiveNote(bookId, /** @type {string} */ (match.noteId), { dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
+    case 'note-restore': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.restoreNote(bookId, /** @type {string} */ (match.noteId), { dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
     case 'op-restore': {
       const r = await repository.restoreOp(bookId, /** @type {string} */ (match.opId), { dryRun });
       return respond(r, 200, structureBody);
@@ -580,4 +708,20 @@ async function handleStructure(repository, match, body) {
     default:
       return NOT_FOUND;
   }
+}
+
+/**
+ * POST /api/books/:b/attachments?name=<file name>[&note=<book-relative note path or note id>]: the raw bytes of one file (at most 25 MB; the caller has already
+ * limited the body). 201 { path, name, markdown } with the link to insert in the note; 400 bad name or empty; 413 too large; 415 type not allowed.
+ * @param {FileRepository} repository @param {{ bookId?: string }} match @param {{ name: string | null, note: string | null, bytes: Buffer }} upload
+ * @returns {Promise<ApiResult>}
+ */
+export async function handleUpload(repository, match, { name, note, bytes }) {
+  if (name === null || name.trim() === '') return badRequest('name is required (the file name)');
+  const r = await repository.uploadAttachment(/** @type {string} */ (match.bookId), { name, bytes, ...(note !== null ? { note } : {}) });
+  if (r.ok) return { status: 201, body: { ok: true, path: r.path, name: r.name, markdown: r.markdown } };
+  if (r.code === 'NOT_FOUND') return NOT_FOUND;
+  const status = r.code === 'TOO_LARGE' ? 413 : r.code === 'UNSUPPORTED_TYPE' ? 415 : r.code === 'REFUSED_PATH_TAKEN' ? 409 : 400;
+  const error = status === 413 ? 'too_large' : status === 415 ? 'unsupported_type' : status === 409 ? 'conflict' : 'refused';
+  return { status, body: { error, code: r.code, ...(r.message ? { message: r.message } : {}) } };
 }

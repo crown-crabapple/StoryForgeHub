@@ -36,3 +36,12 @@ export function hasWriteHeaders(req) {
   const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
   return type === 'application/json' && req.headers['x-storyforge'] === '1';
 }
+
+/**
+ * Guard for the attachment upload (a raw file body, so no JSON content type): the custom `x-storyforge: 1` header, which forces a CORS preflight in browsers
+ * (no CORS headers are ever sent), and a declared content type.
+ * @param {import('node:http').IncomingMessage} req
+ */
+export function hasUploadHeaders(req) {
+  return req.headers['x-storyforge'] === '1' && typeof req.headers['content-type'] === 'string' && req.headers['content-type'].trim() !== '';
+}
