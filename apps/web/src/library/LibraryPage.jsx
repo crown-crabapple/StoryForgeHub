@@ -97,7 +97,7 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
               Library folder: <code>{library.root}</code>
             </p>
           )}
-          <p className="secondary">Creating books arrives in the next update.</p>
+          <p className="secondary">Use <strong>New book…</strong> above to start one, or <strong>Open folder…</strong> to open a folder that already has books.</p>
         </section>
       )}
 

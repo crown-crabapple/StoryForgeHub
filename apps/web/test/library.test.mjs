@@ -170,11 +170,12 @@ test('status chips are real buttons with aria-pressed; All starts pressed', () =
   assert.match(html, /<select\b/, 'sort select');
 });
 
-test('empty library: honest message, the library path and the next-update note', () => {
+test('empty library: honest message, the library path and how to start', () => {
   const html = page([]);
   assert.match(html, /No books here yet\./);
   assert.match(html, /\/synthetic\/library/);
-  assert.match(html, /Creating books arrives in the next update\./);
+  assert.match(html, /New book…<\/strong> above to start one/);
+  assert.doesNotMatch(html, /arrives in the next update/);
   assert.doesNotMatch(html, /No books match/);
 });
 
