@@ -3803,4 +3803,42 @@ label.form-check {
 }
 .cf-stale-row {
   cursor: default;
+/* ---------- export, back up, restore (M05-J03) ---------- */
+
+.book-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  min-height: 32px;
+  padding: var(--s1) 0;
+  color: var(--text);
+  font-size: var(--fs-15);
+  font-weight: 400;
+  cursor: pointer;
+}
+.field .choice {
+  color: var(--text);
+  font-size: var(--fs-15);
+  font-weight: 400;
+}
+.choice input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+.export-dialog .field input[type='file'],
+.restore-dialog .field input[type='file'] {
+  font: inherit;
+  color: var(--text);
+}
+
+.page-head-action {
+  margin-left: auto;
 }
