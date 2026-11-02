@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CoverCard, SkeletonCard } from './CoverCard.jsx';
 import { SORTS, STATUS_FILTERS, filterBooks, groupBooks } from './filter.js';
-import { NewBookFlow, OpenFolderFlow } from './StartFlows.jsx';
+import { NewBookFlow, OpenFolderFlow, RestoreFlow } from './StartFlows.jsx';
 
 const plural = (n, one) => `${n} ${n === 1 ? one : `${one}s`}`;
 const FILTER_LABEL = 'Filter by title, series or pen name';
@@ -55,6 +55,9 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
       <header className="page-head">
         <h1>Library</h1>
         {books && <span className="secondary">{plural(books.length, 'book')}</span>}
+        <button type="button" className="btn page-head-action" onClick={() => setDialog('restore')}>
+          Restore from backup…
+        </button>
       </header>
       <section aria-labelledby="start-heading" className="start-section">
         <h2 id="start-heading">Start something new</h2>
@@ -177,6 +180,7 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
 
       {dialog === 'new' && <NewBookFlow onClose={() => setDialog(null)} />}
       {dialog === 'open' && <OpenFolderFlow onClose={() => setDialog(null)} />}
+      {dialog === 'restore' && <RestoreFlow onClose={() => setDialog(null)} />}
     </main>
   );
 }

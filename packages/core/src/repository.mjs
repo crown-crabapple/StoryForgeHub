@@ -114,6 +114,8 @@
  *   libraryInfo(): Promise<LibraryInfo>,
  *   listBooks(): Promise<BookSummary[]>,
  *   getBook(bookId: string): Promise<BookDetail | null>,
+ *   bookRoot(bookId: string): Promise<string | null>,
+ *   rescan(): Promise<void>,
  *   getCover(bookId: string): Promise<{ bytes: Buffer, contentType: string, sha256: string } | { error: 'too_large' } | null>,
  *   getScene(bookId: string, sceneId: string): Promise<SceneDoc | null>,
  *   getDiagnostics(bookId?: string): Promise<Diagnostic[]>,

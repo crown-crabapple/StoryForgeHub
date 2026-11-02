@@ -1,5 +1,6 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
+import { ExportError, ExportVerificationError, FORMATS, RestoreError, createBackup, exportBook, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
@@ -82,6 +83,8 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       return book ? { status: 200, body: book } : NOT_FOUND;
     }
     if (c === 'cover' && d === undefined) return handleCover(repository, b, params);
+    if (c === 'export' && d === undefined) return handleExport(repository, b, params);
+    if (c === 'backup' && d === undefined) return handleBackup(repository, b, params);
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
     }
@@ -198,6 +201,57 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     }
   }
   return NOT_FOUND;
+}
+
+const DOWNLOAD_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'cache-control': 'no-store',
+  'content-security-policy': "default-src 'none'; sandbox",
+};
+
+/** @param {{ bytes: Buffer, filename: string, mime: string }} file */
+const download = (file) => ({
+  status: 200,
+  body: null,
+  raw: { bytes: file.bytes, headers: { ...DOWNLOAD_HEADERS, 'content-type': file.mime, 'content-disposition': `attachment; filename="${file.filename}"` } },
+});
+
+/** `0` / `1` (or absent) to a boolean; null when it is anything else. @param {string | null} v */
+const flag = (v) => (v === null || v === '0' ? false : v === '1' ? true : null);
+
+/**
+ * GET /api/books/:b/export?format=markdown|docx|epub|pdf[&excludeStatuses=a,b][&sceneTitles=0|1][&page=letter|a4]: the manuscript as a download.
+ * Read-only: the book folder is never written. 400 bad parameters, 404 unknown book, 500 { error: 'export_failed', problems } when verification fails.
+ */
+async function handleExport(repository, bookId, params) {
+  const format = params.get('format');
+  if (format === null || !Object.hasOwn(FORMATS, format)) return badRequest(`format must be one of: ${Object.keys(FORMATS).join(', ')}`);
+  const sceneTitles = flag(params.get('sceneTitles'));
+  if (sceneTitles === null) return badRequest('sceneTitles must be 0 or 1');
+  const page = params.get('page') ?? 'letter';
+  if (page !== 'letter' && page !== 'a4') return badRequest('page must be letter or a4');
+  const statusParam = params.get('excludeStatuses');
+  const excludeStatuses = statusParam === null || statusParam === '' ? [] : statusParam.split(',').map((x) => x.trim());
+  if (excludeStatuses.some((x) => !/^[A-Za-z0-9_-]{1,40}$/.test(x))) return badRequest('excludeStatuses must be a comma-separated list of status names');
+  const root = await repository.bookRoot(bookId);
+  if (!root) return NOT_FOUND;
+  try {
+    return download(await exportBook(root, format, { excludeStatuses, sceneTitles, page }));
+  } catch (e) {
+    if (e instanceof ExportVerificationError) return { status: 500, body: { error: 'export_failed', problems: e.problems } };
+    if (e instanceof ExportError) return e.code === 'NOT_A_BOOK' ? NOT_FOUND : badRequest(e.message);
+    throw e;
+  }
+}
+
+/** GET /api/books/:b/backup[?provenance=0|1]: the book folder as a zip (no .storyforge/; provenance/ only when asked). */
+async function handleBackup(repository, bookId, params) {
+  const provenance = flag(params.get('provenance'));
+  if (provenance === null) return badRequest('provenance must be 0 or 1');
+  const root = await repository.bookRoot(bookId);
+  if (!root) return NOT_FOUND;
+  const { bytes, filename } = await createBackup(root, { includeProvenance: provenance });
+  return download({ bytes, filename, mime: 'application/zip' });
 }
 
 /** GET /api/books/:b/cover[?v=<sha8>]: the cover image bytes. Only a supported image under the book's assets/ is ever served. */
@@ -325,6 +379,7 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && a === 'books' && b === undefined) return { route: 'book-create' };
   if (method === 'POST' && a === 'library' && b === 'open' && c === undefined) return { route: 'library-open' };
   if (method === 'POST' && a === 'library' && b === 'recent' && c === 'remove' && d === undefined) return { route: 'recent-remove' };
+  if (method === 'POST' && a === 'library' && b === 'restore' && c === undefined) return { route: 'backup-restore' };
   if (a !== 'books' || b === undefined || c === undefined) return null;
   if (method === 'POST' && c === 'repair' && d === undefined) return { route: 'repair', bookId: b };
   // M03-J04
@@ -729,4 +784,28 @@ export async function handleUpload(repository, match, { name, note, bytes }) {
   const status = r.code === 'TOO_LARGE' ? 413 : r.code === 'UNSUPPORTED_TYPE' ? 415 : r.code === 'REFUSED_PATH_TAKEN' ? 409 : 400;
   const error = status === 413 ? 'too_large' : status === 415 ? 'unsupported_type' : status === 409 ? 'conflict' : 'refused';
   return { status, body: { error, code: r.code, ...(r.message ? { message: r.message } : {}) } };
+}
+
+/** The single folder name a restore may create inside the library. */
+export const RESTORE_FOLDER_RE = /^[a-z0-9-]{1,60}$/;
+
+/**
+ * POST /api/library/restore?folder=<new folder name>: the raw bytes of a backup zip (the caller has already limited the body). Restores into
+ * <library>/<folder> and rescans the library so the book appears. 200 { bookRoot, bookId, folder, diagnostics }; 400 bad folder or an archive that
+ * is refused (nothing is written); 409 RESTORE_TARGET_NOT_EMPTY.
+ * @param {FileRepository} repository @param {string | null} folder @param {Buffer} bytes
+ * @returns {Promise<ApiResult>}
+ */
+export async function handleRestore(repository, folder, bytes) {
+  if (folder === null || !RESTORE_FOLDER_RE.test(folder)) return badRequest('folder must be a single folder name of 1 to 60 characters: a-z, 0-9 and hyphen');
+  const library = /** @type {any} */ (repository).root;
+  try {
+    const r = await restoreBackup(bytes, `${library}/${folder}`);
+    await repository.rescan();
+    return { status: 200, body: { bookRoot: r.bookRoot, bookId: r.bookId, folder, diagnostics: r.diagnostics } };
+  } catch (e) {
+    if (!(e instanceof RestoreError)) throw e;
+    if (e.code === 'RESTORE_TARGET_NOT_EMPTY') return { status: 409, body: { error: 'conflict', code: e.code, message: e.message } };
+    return { status: 400, body: { error: 'refused', code: e.code, message: e.message } };
+  }
 }

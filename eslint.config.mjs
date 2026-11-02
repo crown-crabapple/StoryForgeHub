@@ -88,6 +88,8 @@ export default [
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
+  // packages/export (M05-J03) reads book folders directly (export and backup only read) and has no fs restriction of its own; every write it
+  // causes (a restored backup, an output file) goes through @storyforge/store (writeNewTree, writeOutFile). It never imports node:sqlite (rule below).
   // packages/continuity: read-only; it reads the book through @storyforge/format and never touches the filesystem itself.
   {
     files: ['packages/continuity/src/**/*.mjs'],

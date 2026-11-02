@@ -1,4 +1,5 @@
 import { useApi } from '../api.js';
+import { RestoreDialog } from '../export/RestoreDialog.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { NewBookDialog } from './NewBookDialog.jsx';
 import { OpenFolderDialog } from './OpenFolderDialog.jsx';
@@ -41,6 +42,16 @@ export function NewBookFlow({ onClose }) {
       penNames={library.data.pen_names ?? []}
       onClose={onClose}
       onCreated={(r) => window.location.assign(`/books/${encodeURIComponent(r.bookId)}`)}
+    />
+  );
+}
+
+/** The Restore from backup dialog. On success it opens the restored book (the server has already rescanned the library). */
+export function RestoreFlow({ onClose }) {
+  return (
+    <RestoreDialog
+      onClose={onClose}
+      onRestored={(r) => window.location.assign(r.bookId ? `/books/${encodeURIComponent(r.bookId)}` : '/')}
     />
   );
 }
