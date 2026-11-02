@@ -25,7 +25,7 @@ export const KINDS = {
       slug: 'slug', title: 'str', subtitle: 'str', series_number: 'int', pen_name: 'str',
       profile: ['fiction', 'nonfiction', 'memoir', 'selfhelp'],
       status: ['planning', 'drafting', 'revising', 'complete', 'archived'],
-      genre: 'list', word_target: 'int', cover: 'str', language: 'str', previous_slugs: 'list',
+      genre: 'list', word_target: 'int', cover: 'str', cover_color: 'hex', language: 'str', previous_slugs: 'list',
     },
   },
   act: {
@@ -122,6 +122,7 @@ function typeProblem(value, type) {
     case 'bool': return typeof value === 'boolean' ? null : 'must be true or false';
     case 'list': return Array.isArray(value) ? null : 'must be a list';
     case 'map': return isPlainMap(value) ? null : 'must be a mapping';
+    case 'hex': return typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value) ? null : 'must be a colour like "#3A5F7D"';
     default: return null;
   }
 }
