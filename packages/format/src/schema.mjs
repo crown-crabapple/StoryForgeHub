@@ -83,6 +83,12 @@ export const KINDS = {
     required: ['slug', 'fingerprint', 'rule', 'title'],
     fields: { slug: 'slug', fingerprint: 'str', rule: 'str', title: 'str', created: 'any' },
   },
+  // Added 2026-11-02, M05-J04 (additive within v1): one saved AI chat or rewrite, under ai/<YYYY>/.
+  'ai-record': {
+    prefix: 'note',
+    required: ['task', 'provider', 'model'],
+    fields: { task: 'str', provider: 'str', model: 'str', locality: ['local', 'cloud'], contextSha256: 'str', files: 'list', applied: 'bool', created: 'any', fullContext: 'bool' },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],

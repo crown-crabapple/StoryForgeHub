@@ -20,6 +20,9 @@ export function TopBar({ books, bookId }) {
       <SaveStatus bookId={bookId && (books === null || current) ? bookId : null} />
       <SearchBox />
       <IndexStatus />
+      <Link to="/settings" className="topbar-link">
+        Settings
+      </Link>
     </header>
   );
 }

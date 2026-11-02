@@ -1,6 +1,7 @@
 // HTTP server: loopback guard, JSON API (reads, plus guarded writes), static web app.
 import http from 'node:http';
 import { createLibraryHost } from '@storyforge/core';
+import { createAiService } from './ai-routes.mjs';
 import { handleApi, handleUpload, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
 import { hasUploadHeaders, hasWriteHeaders, isRequestAllowed } from './security.mjs';
 import { serveStatic } from './static.mjs';
@@ -93,6 +94,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
     lastRecover: recoverReport ?? { completed: [], rolledBack: [], needsAttention: [] },
     instance: instance ?? { pid: process.pid, started_at: new Date().toISOString(), lock: 'none' },
     host: libraryHost,
+    ai: createAiService(), // optional AI workshop (M05-J04): profiles, session keys and stored previews live in this process only
   };
   const current = () => /** @type {any} */ (libraryHost ? libraryHost.repository : repository);
   const server = http.createServer(async (req, res) => {
@@ -121,7 +123,8 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         if (read.tooLarge) return sendJson(res, 413, { error: 'too_large' });
         let parsed;
         try {
-          parsed = JSON.parse(read.buffer.toString('utf8'));
+          const text = read.buffer.toString('utf8');
+          parsed = req.method === 'DELETE' && text.trim() === '' ? {} : JSON.parse(text);
         } catch {
           return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
         }

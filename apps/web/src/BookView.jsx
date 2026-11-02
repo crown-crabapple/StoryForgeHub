@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { postJson, useApi } from './api.js';
 import { ProseView } from './ProseView.jsx';
 import { Outline } from './Outline.jsx';
+import { AiProvider, useAi } from './ai/AiContext.jsx';
 import { EditorBridgeProvider, useEditorBridge } from './editor/bridge.jsx';
 import { SceneEditorPage } from './editor/SceneEditorPage.jsx';
 import { parseView } from './planning/model.js';
@@ -132,18 +133,34 @@ export function InvalidBanner({ book }) {
   );
 }
 
+/** "AI workshop" in the book header: drawn only when the book has an active AI provider (Settings, Set up AI). */
+function AiWorkshopButton() {
+  const ai = useAi();
+  if (!ai.available) return null;
+  return (
+    <p className="ai-header-button">
+      <button type="button" className="btn" aria-pressed={ai.open} onClick={ai.toggle}>
+        AI workshop
+      </button>
+    </p>
+  );
+}
+
 export { Outline };
 
 /** Three-column book page: outline rail, main column, inspector. `onChanged` runs after a structure command wrote. */
 export function BookLayout({ book, activeId, inspector, onChanged, children }) {
   return (
     <EditorBridgeProvider>
-      <WritingProvider key={book.id} bookId={book.id}>
-        <InvalidBanner book={book} />
-        <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector}>
-          {children}
-        </Workspace>
-      </WritingProvider>
+      <AiProvider key={book.id} book={book}>
+        <WritingProvider key={book.id} bookId={book.id}>
+          <InvalidBanner book={book} />
+          <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector}>
+            <AiWorkshopButton />
+            {children}
+          </Workspace>
+        </WritingProvider>
+      </AiProvider>
     </EditorBridgeProvider>
   );
 }

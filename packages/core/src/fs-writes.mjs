@@ -33,10 +33,12 @@ import {
   setThreadFields,
   slugify,
   splitScene,
+  ulid,
   uploadAttachment,
 } from '@storyforge/manuscript';
 import { countWords } from '@storyforge/index';
 import { openStore } from '@storyforge/store';
+import { recordPath, renderAiRecord, selectRange, spliceReplacement } from './ai-rewrite.mjs';
 import { createSnapshotTracker, planRetention, splitRevision } from './revisions.mjs';
 import { localDate } from './writing-log.mjs';
 import { wordDelta } from './word-delta.mjs';
@@ -586,6 +588,81 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
         return fail('CONFLICT', { current: { sha256: r.current?.sha256 ?? cur.sha256, body: now.subarray(e < 0 ? 0 : e).toString('utf8') } });
       }
       return fail(r.code, r.message ? { message: r.message } : {});
+    },
+
+    // ---- M05-J04: optional AI workshop. Nothing here talks to a provider; it only reads a selection and writes through the store.
+
+    /**
+     * The text of a selection in a live scene (`from` / `to` are editor offsets into the body, line breaks counting 1), with the file hash it was read at.
+     * Refusals: NOT_FOUND, BAD_SELECTION, NOT_UTF8.
+     */
+    async readAiSelection(bookId, sceneId, { from, to } = {}) {
+      const ctx = await sceneContext(bookId, sceneId, { live: true });
+      if (!ctx || ctx.rel === null) return fail('NOT_FOUND');
+      const cur = await ctx.store.read(ctx.rel);
+      if (!cur) return fail('NOT_FOUND');
+      const end = frontMatterEnd(cur.bytes);
+      if (end < 0) return fail('NOT_A_SCENE', { message: 'front matter is not terminated' });
+      const sel = selectRange(cur.bytes, end, from, to);
+      if (!sel.ok) return fail(sel.code, { message: sel.message });
+      return { ok: true, code: 'OK', path: ctx.rel, sha256: cur.sha256, text: sel.text };
+    },
+
+    /**
+     * Replace one selected range of a live scene with `replacement`, only if the scene is still exactly as it was when the context was built
+     * (`baseSha256`) and the range still holds `original`: otherwise SCENE_CHANGED and nothing is written. Everything outside the range stays
+     * byte-identical. One journaled atomic write; `opId` undoes it (POST /ops/:opId/restore).
+     */
+    async applyAiRewrite(bookId, sceneId, { baseSha256, from, to, original, replacement } = {}) {
+      if (typeof baseSha256 !== 'string' || typeof original !== 'string' || typeof replacement !== 'string') return fail('BAD_ARGS', { message: 'baseSha256, original and replacement must be strings' });
+      const ctx = await sceneContext(bookId, sceneId, { live: true });
+      if (!ctx || ctx.rel === null) return fail('NOT_FOUND');
+      const cur = await ctx.store.read(ctx.rel);
+      if (!cur) return fail('NOT_FOUND');
+      const changed = fail('SCENE_CHANGED', { message: 'the scene changed after the preview; nothing was written' });
+      if (cur.sha256 !== baseSha256) return changed;
+      const end = frontMatterEnd(cur.bytes);
+      if (end < 0) return fail('NOT_A_SCENE', { message: 'front matter is not terminated' });
+      const sel = selectRange(cur.bytes, end, from, to);
+      if (!sel.ok || sel.text !== original) return changed;
+      const next = spliceReplacement(cur.bytes, sel, replacement);
+      const r = await ctx.store.write(ctx.rel, next, { baseSha256: cur.sha256 });
+      if (!r.ok) return r.code === 'CONFLICT' ? changed : fail(r.code, r.message ? { message: r.message } : {});
+      afterWrite(ctx.book.path);
+      return { ok: true, code: 'OK', sha256: r.sha256, opId: r.opId ?? null, path: ctx.rel };
+    },
+
+    /**
+     * Save (or, with `existing`, rewrite) one AI record file ai/<YYYY>/<YYYYMMDD-HHMMSS>-<task>.md through the store.
+     * `record` is what renderAiRecord() takes without `id` / `created`; `existing` is { path, id, created } from the first save.
+     */
+    async saveAiRecord(bookId, record, existing = undefined) {
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book));
+      let rel;
+      let id;
+      let created;
+      let base = null;
+      if (existing) {
+        if (typeof existing.path !== 'string' || !/^ai\/\d{4}\/[0-9a-z-]+\.md$/.test(existing.path)) return fail('BAD_ARGS', { message: 'not an AI record path' });
+        const cur = await store.read(existing.path);
+        if (!cur) return fail('NOT_FOUND');
+        ({ path: rel, id, created } = existing);
+        base = cur.sha256;
+      } else {
+        const at = new Date(nowMs());
+        const first = recordPath(at, record.task);
+        rel = first;
+        for (let n = 2; await store.read(rel); n++) rel = first.replace(/\.md$/, `-${n}.md`);
+        id = `note_${ulid()}`;
+        created = at.toISOString();
+      }
+      const bytes = Buffer.from(renderAiRecord({ ...record, id, created }), 'utf8');
+      const r = await store.write(rel, bytes, { baseSha256: base });
+      if (!r.ok) return fail(r.code, r.message ? { message: r.message } : {});
+      afterWrite(found.book.path);
+      return { ok: true, code: 'OK', path: rel, id, created, sha256: r.sha256 };
     },
 
     async recover() {

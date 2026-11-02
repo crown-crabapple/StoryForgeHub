@@ -9,6 +9,8 @@ import { Dialog } from '../shell/Dialog.jsx';
 import { SaveStatus } from '../shell/SaveStatus.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { bookUrl, send, slugify } from '../structure/helpers.js';
+import { useAi } from '../ai/AiContext.jsx';
+import { bookRelative } from '../ai/model.js';
 import { useFocus } from '../writing/FocusContext.jsx';
 import { useWriting } from '../writing/WritingContext.jsx';
 import { useEditorBridge } from './bridge.jsx';
@@ -76,6 +78,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const bridge = useEditorBridge();
   const { setEditor } = useWrites();
   const focus = useFocus();
+  const ai = useAi();
   const writing = useWriting();
   const writingRef = useRef(writing);
   const focusCompartment = useRef(new Compartment());
@@ -274,6 +277,11 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         v.focus();
       },
       baseSha: () => ctl.snapshot().baseSha256,
+      selection() {
+        const v = viewRef.current;
+        const r = v?.state.selection.main;
+        return v && r && !r.empty ? { from: r.from, to: r.to, text: v.state.sliceDoc(r.from, r.to) } : null;
+      },
       text: () => ctl.snapshot().text,
       async reload() {
         const r = await ctl.checkDisk();
@@ -387,6 +395,27 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     if (!view) return;
     insertLink(slug)(view);
     view.focus();
+  };
+  // ---- optional AI (only when the book has an active provider): tell the workshop which scene is open, and start a rewrite of the selection
+  const { setScene: setAiScene } = ai;
+  useEffect(() => {
+    if (isEntry) return undefined;
+    setAiScene({ id: scene.id, title: scene.title, path: bookRelative(book.path ?? '', scene.path ?? '') });
+    return () => setAiScene(null);
+  }, [isEntry, setAiScene, scene.id, scene.title, scene.path, book.path]);
+  const rewriteSelection = async () => {
+    const view = viewRef.current;
+    const range = view?.state.selection.main;
+    if (!view || !range || range.empty) {
+      flash('Select the text you want rewritten first.');
+      return;
+    }
+    const { saved } = await ctlRef.current.flush();
+    if (!saved) {
+      flash('The scene has changes that could not be saved yet. Try again once it is saved.');
+      return;
+    }
+    ai.startRewrite({ sceneId: scene.id, from: range.from, to: range.to, text: view.state.sliceDoc(range.from, range.to) });
   };
   const toggleMarks = () => {
     const next = !showMarks;
@@ -504,6 +533,8 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
           showMarks={showMarks}
           onToggleMarks={toggleMarks}
           onFocus={focus.toggle}
+          onRewrite={ai.available && !isEntry ? rewriteSelection : undefined}
+          onWorkshop={ai.available && !isEntry ? ai.toggle : undefined}
           disabled={mixed}
         />
       )}

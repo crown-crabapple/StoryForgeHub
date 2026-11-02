@@ -1,0 +1,17 @@
+{
+  "name": "@storyforge/ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge optional AI workshop: provider profiles, credentials, context packages and the only outbound network module",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@storyforge/store": "0.1.0"
+  }
+}

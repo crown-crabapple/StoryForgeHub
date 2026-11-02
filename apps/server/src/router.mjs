@@ -1,6 +1,7 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
 import pkg from '../package.json' with { type: 'json' };
+import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
 /** @typedef {{ status: number, body: unknown, raw?: { bytes: Buffer, headers: Record<string, string> } }} ApiResult  `raw` (cover images) is sent as is instead of `body`. */
@@ -61,6 +62,8 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       },
     };
   }
+  // M05-J04 (optional AI): provider profiles, and whether AI is on for a book
+  if (a === 'ai' && b === 'profiles' && c === undefined) return handleAiRead(repository, state, 'profiles');
   if (a === 'search' && b === undefined) return handleSearch(repository, params);
   if (a === 'index' && b === 'status' && c === undefined) {
     return { status: 200, body: await repository.indexStatus() };
@@ -167,6 +170,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       return notes ? { status: 200, body: notes } : NOT_FOUND;
     }
     if (c === 'attachments' && d === undefined) return handleAttachment(repository, b, params);
+    if (c === 'ai' && d === 'status' && e === undefined) return handleAiRead(repository, state, 'status', b);
     if (c === 'graph' && d === undefined) {
       const kindsParam = params.get('kinds');
       let kinds;
@@ -312,7 +316,7 @@ async function fromIndex(read) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string } | null}
+ * @returns {{ route: string, profileId?: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
@@ -325,7 +329,21 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && a === 'books' && b === undefined) return { route: 'book-create' };
   if (method === 'POST' && a === 'library' && b === 'open' && c === undefined) return { route: 'library-open' };
   if (method === 'POST' && a === 'library' && b === 'recent' && c === 'remove' && d === undefined) return { route: 'recent-remove' };
+  // M05-J04 optional AI workshop
+  if (a === 'ai' && b === 'profiles') {
+    if (method === 'POST' && c === undefined) return { route: 'ai-profile-create' };
+    if (method === 'PUT' && c !== undefined && d === undefined) return { route: 'ai-profile-update', profileId: c };
+    if (method === 'DELETE' && c !== undefined && d === undefined) return { route: 'ai-profile-delete', profileId: c };
+    if (method === 'POST' && c !== undefined && d === 'test' && e === undefined) return { route: 'ai-profile-test', profileId: c };
+    return null;
+  }
   if (a !== 'books' || b === undefined || c === undefined) return null;
+  if (c === 'ai' && e === undefined) {
+    if (method === 'PUT' && d === 'profile') return { route: 'ai-book-profile', bookId: b };
+    if (method === 'PUT' && d === 'records') return { route: 'ai-records', bookId: b };
+    if (method === 'POST' && ['context', 'send', 'apply', 'discard'].includes(d)) return { route: `ai-${d}`, bookId: b };
+    return null;
+  }
   if (method === 'POST' && c === 'repair' && d === undefined) return { route: 'repair', bookId: b };
   // M03-J04
   if (method === 'POST' && c === 'activity' && d === 'session' && e === undefined) return { route: 'activity-session', bookId: b };
@@ -524,6 +542,7 @@ export async function handleWrite(repository, match, body, state) {
       return respond(r, 200, (x) => ({ path: x.path }));
     }
     default:
+      if (match.route.startsWith('ai-')) return handleAiWrite(repository, match, body, state);
       return handleStructure(repository, match, body);
   }
 }

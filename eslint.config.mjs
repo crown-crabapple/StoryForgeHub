@@ -9,6 +9,37 @@ const fsPaths = FS_MODULES.map((name) => ({
     'Filesystem access is restricted: writes only in packages/store/src; reads in packages/format, packages/templates/src (its own template folder), packages/core/src/fs-repository.mjs and apps/server/src/static.mjs.',
 }));
 
+// M05-J04: outbound network I/O exists in ONE place, packages/ai/src/transport.mjs. Everywhere else in packages/** and apps/server/** these are errors:
+// the globals fetch / WebSocket (also as globalThis.x), node:https, node:net, node:tls, node:dgram, node:http2, undici, and node:http except
+// http.createServer in apps/server/src/server.mjs. Tests are exempt (they start mock servers and call the API under test).
+const NET_MESSAGE = 'Outbound network I/O is only allowed in packages/ai/src/transport.mjs (use postJson from @storyforge/ai).';
+const NET_MODULE_RE = '^((node:)?(https|http2|net|tls|dgram)|undici)$';
+const HTTP_MODULE_RE = '^(node:)?http$';
+const moduleSelectors = (re, message) => [
+  ...['ImportDeclaration', 'ImportExpression', 'ExportNamedDeclaration', 'ExportAllDeclaration'].map((type) => ({ selector: `${type}[source.value=/${re}/]`, message })),
+  { selector: `CallExpression[callee.name='require'][arguments.0.value=/${re}/]`, message },
+];
+const NET_SELECTORS = moduleSelectors(NET_MODULE_RE, NET_MESSAGE);
+const NO_HTTP_SELECTORS = moduleSelectors(HTTP_MODULE_RE, NET_MESSAGE);
+// the narrow allowance for apps/server/src/server.mjs: node:http may be imported, but only to create the server
+const HTTP_CLIENT_SELECTORS = [
+  { selector: "ImportDeclaration[source.value=/^(node:)?http$/] > ImportSpecifier[imported.name=/^(request|get)$/]", message: NET_MESSAGE },
+  { selector: "MemberExpression[object.name='http'][property.name=/^(request|get)$/]", message: NET_MESSAGE },
+  { selector: "MemberExpression[object.name='http'][computed=true]", message: NET_MESSAGE },
+];
+const SQLITE_MESSAGE = 'node:sqlite is only for packages/index/src. Use @storyforge/index.';
+const SQLITE_SELECTORS = [
+  { selector: 'ImportDeclaration[source.value=/^(node:)?sqlite$/]', message: SQLITE_MESSAGE },
+  { selector: 'ImportExpression[source.value=/^(node:)?sqlite$/]', message: SQLITE_MESSAGE },
+  { selector: "CallExpression[callee.name='require'][arguments.0.value=/^(node:)?sqlite$/]", message: SQLITE_MESSAGE },
+];
+const NET_GLOBALS = ['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource'].map((name) => ({ name, message: NET_MESSAGE }));
+const NET_PROPERTIES = ['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource'].flatMap((property) =>
+  ['globalThis', 'global', 'self', 'window'].map((object) => ({ object, property, message: NET_MESSAGE })),
+);
+const NET_SCOPE = ['packages/**/*.mjs', 'apps/server/**/*.mjs'];
+const NET_IGNORES = ['**/test/**', 'packages/ai/src/transport.mjs', 'apps/server/src/server.mjs'];
+
 export default [
   { ignores: ['**/node_modules/**', '**/dist/**', 'packages/format/fixtures/**', 'packages/manuscript/fixtures/**'] },
   js.configs.recommended,
@@ -85,6 +116,12 @@ export default [
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
+  // packages/ai: no direct filesystem access; settings go through the store's user-config functions.
+  {
+    files: ['packages/ai/src/**/*.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
+  },
+
   // node:sqlite belongs to the index package alone (its tests may open the database to check tables).
   // Uses no-restricted-syntax so it is not overridden by the per-folder no-restricted-imports blocks.
   {
@@ -106,6 +143,36 @@ export default [
           message: 'node:sqlite is only for packages/index/src. Use @storyforge/index.',
         },
       ],
+    },
+  },
+
+  // M05-J04: no outbound network outside packages/ai/src/transport.mjs. These blocks restate the node:sqlite selectors because a later
+  // no-restricted-syntax setting replaces the earlier one (packages/index keeps its own freedom to use node:sqlite).
+  {
+    files: NET_SCOPE,
+    ignores: [...NET_IGNORES, 'packages/index/**'],
+    rules: {
+      'no-restricted-globals': ['error', ...NET_GLOBALS],
+      'no-restricted-properties': ['error', ...NET_PROPERTIES],
+      'no-restricted-syntax': ['error', ...SQLITE_SELECTORS, ...NET_SELECTORS, ...NO_HTTP_SELECTORS],
+    },
+  },
+  {
+    files: ['packages/index/**/*.mjs'],
+    ignores: NET_IGNORES,
+    rules: {
+      'no-restricted-globals': ['error', ...NET_GLOBALS],
+      'no-restricted-properties': ['error', ...NET_PROPERTIES],
+      'no-restricted-syntax': ['error', ...NET_SELECTORS, ...NO_HTTP_SELECTORS],
+    },
+  },
+  {
+    // the one http exception: createServer in the server entry file
+    files: ['apps/server/src/server.mjs'],
+    rules: {
+      'no-restricted-globals': ['error', ...NET_GLOBALS],
+      'no-restricted-properties': ['error', ...NET_PROPERTIES],
+      'no-restricted-syntax': ['error', ...SQLITE_SELECTORS, ...NET_SELECTORS, ...HTTP_CLIENT_SELECTORS],
     },
   },
 

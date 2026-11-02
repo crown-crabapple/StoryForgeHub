@@ -17,7 +17,7 @@ import { parseText } from './frontmatter.mjs';
  */
 
 const FILENAME_RE = /^[0-9a-z-]+\.md$/;
-const SCHEMA_RE = /^storyforge\.([a-z]+|codex-type|continuity-exception)\/v(\d+)$/;
+const SCHEMA_RE = /^storyforge\.([a-z]+|codex-type|continuity-exception|ai-record)\/v(\d+)$/;
 
 /**
  * @param {string} absPath

@@ -5,6 +5,7 @@ import { CodexView } from './codex/CodexView.jsx';
 import { NotesView } from './notes/NotesView.jsx';
 import { TimelineView } from './timeline/TimelineView.jsx';
 import { useApi } from './api.js';
+import { SettingsView } from './ai/SettingsView.jsx';
 import { parseRoute } from './routes.js';
 import { AppShell } from './shell/AppShell.jsx';
 import { WritesProvider } from './shell/writes.jsx';
@@ -59,6 +60,7 @@ function Routes() {
   let bookId = null;
   let tab = 'manuscript';
   if (route.name === 'library') view = <LibraryView />;
+  else if (route.name === 'settings') view = <SettingsView />;
   else if (route.name === 'book') {
     bookId = route.bookId;
     view = <BookView bookId={route.bookId} sceneId={route.sceneId} file={route.file} />;

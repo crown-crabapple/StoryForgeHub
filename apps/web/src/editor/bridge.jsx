@@ -4,7 +4,7 @@ import { createContext, useContext, useMemo, useRef } from 'react';
 
 /**
  * @typedef {{ sceneId: string, caretLine: () => number | null, flush: () => Promise<{ saved: boolean }>, isConflict?: () => boolean,
- *   jumpToLine?: (line: number) => void, baseSha?: () => string | null, text?: () => string,
+ *   jumpToLine?: (line: number) => void, baseSha?: () => string | null, text?: () => string, selection?: () => { from: number, to: number, text: string } | null,
  *   reload?: () => Promise<{ action: string }> }} EditorHandle
  *   `jumpToLine` moves the caret to a 1-based line and focuses the editor; `baseSha` / `text` are the file hash and text the editor last saved
  *   or loaded / its current text; `reload` re-reads the file after something else changed it (a restored revision).
