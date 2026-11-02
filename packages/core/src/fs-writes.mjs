@@ -159,11 +159,22 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       const bytes = Buffer.from(content, 'utf8');
       const r = await store.batch('writeSceneRaw', { bookId, path: toLibRel(book, rel) }, (tx) => tx.write(rel, bytes, { baseSha256 }), {
         verify: async () => {
-          const after = (await validate(root)).diagnostics;
-          const fresh = after.filter((d) => d.severity === 'error' && !known.has(errKey(d)));
+          const result = await validate(root);
+          const fresh = result.diagnostics.filter((d) => d.severity === 'error' && !known.has(errKey(d)));
           if (fresh.length) {
             const err = new Error('the change would introduce new errors');
             /** @type {any} */ (err).diagnostics = fresh;
+            throw err;
+          }
+          // A raw edit must leave the file a readable scene with the same id in the manuscript.
+          // Otherwise (front matter removed, schema or id changed, turned into a variant) the
+          // scene would silently drop out of the book even though no error is reported.
+          const stillHere = result.books
+            .find((b) => b.path === book.path)
+            ?.order.some((/** @type {any} */ s) => s.id === sceneId && s.path === entry.path);
+          if (!stillHere) {
+            const err = new Error('the scene would no longer be part of the manuscript (keep its front matter, schema and id)');
+            /** @type {any} */ (err).diagnostics = [];
             throw err;
           }
         },

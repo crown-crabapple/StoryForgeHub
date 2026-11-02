@@ -292,6 +292,25 @@ test('PUT raw: unterminated front matter is also refused with 422 and the file i
   assert.equal(await read(root, scene.path), file);
 });
 
+test('PUT raw: an edit that would drop the scene out of the manuscript is a 422 and the file is unchanged', async () => {
+  const { root, port } = await fresh();
+  const scene = await getScene(port);
+  const file = await read(root, scene.path);
+  const cases = {
+    'front matter removed (text before the opening ---)': 'x' + file,
+    'id changed to a fresh valid id': file.replace(/^id: .*$/m, 'id: scene_01ZZZZZZZZZZZZZZZZZZZZZZZZ'),
+    'schema changed to a plain note': file.replace(/^schema: .*$/m, 'schema: storyforge.doc/v1'),
+    'turned into a variant of another scene': file.replace(/^status: .*$/m, (l) => `${l}\nvariant_of: ${scene.id}`),
+  };
+  for (const [label, content] of Object.entries(cases)) {
+    const r = await putRaw(port, SCENE, content, scene.sha256);
+    assert.equal(r.status, 422, `${label}: ${r.text}`);
+    assert.equal(await read(root, scene.path), file, `${label}: file unchanged`);
+  }
+  const still = await getScene(port);
+  assert.equal(still.id, scene.id);
+});
+
 test('PUT raw: stale base is a 409 and the external version stays on disk', async () => {
   const { root, port } = await fresh();
   const scene = await getScene(port);
