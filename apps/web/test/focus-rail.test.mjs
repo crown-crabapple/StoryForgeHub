@@ -646,8 +646,10 @@ test('rail: status select shows the scene status as selected', () => {
   assert.match(rail(), /<option value="drafting" selected=""/);
 });
 
-test('rail: Continuity is a placeholder card pointing to M05', () => {
-  assert.match(rail(), /Continuity checks arrive in M05\./);
+test('rail: Continuity is a real section (loading until the findings arrive), not the M05 placeholder', () => {
+  const html = rail();
+  assert.ok(!/arrive in M05/.test(html));
+  assert.match(html, /Continuity<\/h2>[\s\S]{0,40}Loading/);
 });
 
 test('rail: the body-only link is tagged mentioned and the note shows its line number', () => {
@@ -657,11 +659,11 @@ test('rail: the body-only link is tagged mentioned and the note shows its line n
   assert.match(html, /Line 3[\s\S]*check the tide times against chapter 3/);
 });
 
-test('rail: problems for this scene are still listed beside the continuity placeholder', () => {
+test('rail: problems for this scene are still listed beside the continuity section', () => {
   const diag = { items: [{ code: 'W301', severity: 'warning', file: RAIL_SCENE.path, location: 'body', message: 'resolves only through a previous slug' }], error: null, loading: false };
   const html = rail(RAIL_SCENE, diag);
   assert.match(html, /W301/);
-  assert.match(html, /Continuity checks arrive in M05\./);
+  assert.match(html, />Continuity</);
 });
 
 test('rail: the revisions section carries the safety note and a Save a revision button', () => {
