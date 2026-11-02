@@ -79,6 +79,9 @@ export default [
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
+  // packages/export (M05-J03) reads book folders directly (export and backup only read) and has no fs restriction of its own; every write it
+  // causes (a restored backup, an output file) goes through @storyforge/store (writeNewTree, writeOutFile). It never imports node:sqlite (rule below).
+
   // node:sqlite belongs to the index package alone (its tests may open the database to check tables).
   // Uses no-restricted-syntax so it is not overridden by the per-folder no-restricted-imports blocks.
   {

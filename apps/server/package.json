@@ -12,6 +12,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@storyforge/core": "0.1.0"
+    "@storyforge/core": "0.1.0",
+    "@storyforge/export": "0.1.0"
   }
 }

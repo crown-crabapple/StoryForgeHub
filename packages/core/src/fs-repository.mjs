@@ -780,6 +780,17 @@ export function createFsRepository(libraryRoot, options = {}) {
       },
     }),
 
+    /** Absolute folder of a book (for export and backup, which read the files directly), or null for an unknown book. @param {string} bookId */
+    async bookRoot(bookId) {
+      const book = await bookById(bookId);
+      return book ? (book.path === '' ? root : abs(book.path)) : null;
+    },
+
+    /** Look for books that appeared or went since the last look (after a restore put a new folder into the library). */
+    async rescan() {
+      await watcher.rescan();
+    },
+
     async close() {
       await activity.close().catch(() => {});
       await watcher.ready;
