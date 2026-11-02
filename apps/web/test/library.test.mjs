@@ -182,7 +182,7 @@ test('no-results state: "No books match" + "Clear filters" button once a filter 
   // `initial` seeds the filter state (LibraryPage prop); the text filter matches nothing
   const html = page([FIRST, NORTH], { initial: { text: 'zzz-no-such-book' } });
   assert.match(html, /No books match/);
-  assert.match(html, /<buttonb[^>]*>s*Clear filterss*</);
+  assert.match(html, /<button\b[^>]*>\s*Clear filters\s*</);
   assert.doesNotMatch(html, /No books here yet/);
   assert.equal(cardLinks(html).length, 0);
   // a library holding only an archived book (hidden by default) is not the empty-library state
