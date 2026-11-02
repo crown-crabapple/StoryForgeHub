@@ -1,7 +1,6 @@
 // A tiny client-side router: History API, no dependency.
 import { useCallback, useEffect, useState } from 'react';
-
-const NAV_EVENT = 'storyforge:navigate';
+import { NAV_EVENT } from './nav-event.js';
 
 /** Current location as { pathname, search }, updated on navigation. */
 export function useLocation() {
