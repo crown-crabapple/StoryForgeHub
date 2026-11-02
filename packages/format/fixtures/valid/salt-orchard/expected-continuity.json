@@ -1,0 +1,49 @@
+{
+  "findings": [
+    {
+      "fingerprint": "cf1-e85d78f4354c4ffc",
+      "rule": "CF1",
+      "rule_version": 1,
+      "severity": "warning",
+      "title": "Maren Hollis: Eyes Grey in the codex, green in the text",
+      "message": "The codex says Maren Hollis's Eyes is \"Grey\", but the text of \"Arrival\" says \"green\": In the glass of the ticket hut she caught her own face, green eyes ringed with salt, and looked away.",
+      "subject": {
+        "kind": "entry",
+        "id": "entry_01S5000000000000000000000G",
+        "slug": "maren-hollis",
+        "name": "Maren Hollis"
+      },
+      "sources": [
+        {
+          "role": "canon",
+          "kind": "entry",
+          "id": "entry_01S5000000000000000000000G",
+          "file": "codex/characters/maren-hollis.md",
+          "heading": "Maren Hollis",
+          "location": "fields.Eyes",
+          "line": 13,
+          "range": {
+            "from": 2,
+            "to": 12
+          },
+          "excerpt": "Eyes: Grey"
+        },
+        {
+          "role": "text",
+          "kind": "scene",
+          "id": "scene_01S50000000000000000000002",
+          "file": "manuscript/act-01-low-water/ch-001-the-drowned-rows/0010-arrival.md",
+          "heading": "Arrival",
+          "location": "line 17",
+          "line": 17,
+          "range": {
+            "from": 56,
+            "to": 66
+          },
+          "excerpt": "In the glass of the ticket hut she caught her own face, green eyes ringed with salt, and looked away."
+        }
+      ]
+    }
+  ],
+  "suppressed": []
+}

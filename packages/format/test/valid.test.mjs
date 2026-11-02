@@ -8,11 +8,11 @@ import { VALID, listDirs, readExpected, keyOf } from './helpers.mjs';
 
 const dirOf = (n) => path.join(VALID, n);
 
-test('valid fixture folders are exactly codex-graph, covers, library, salt-orchard, spec-example', () => {
-  assert.deepEqual(listDirs(VALID), ['codex-graph', 'covers', 'library', 'salt-orchard', 'spec-example']);
+test('valid fixture folders are exactly codex-graph, continuity-cases, continuity-exception, covers, library, salt-orchard, spec-example', () => {
+  assert.deepEqual(listDirs(VALID), ['codex-graph', 'continuity-cases', 'continuity-exception', 'covers', 'library', 'salt-orchard', 'spec-example']);
 });
 
-for (const name of ['salt-orchard', 'library', 'spec-example', 'covers', 'codex-graph']) {
+for (const name of ['salt-orchard', 'library', 'spec-example', 'covers', 'codex-graph', 'continuity-cases', 'continuity-exception']) {
   test(`valid/${name}: diagnostics equal expected`, async () => {
     const expected = readExpected(dirOf(name));
     const result = await validate(dirOf(name));

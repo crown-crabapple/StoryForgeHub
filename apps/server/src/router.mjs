@@ -85,6 +85,11 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
     }
+    // M05-J01: continuity findings, computed from the files on every call (read-only)
+    if (c === 'continuity' && d === undefined) {
+      const continuity = await repository.getContinuity(b);
+      return continuity ? { status: 200, body: continuity } : NOT_FOUND;
+    }
     if (c === 'repair' && d === 'plan' && e === undefined) {
       const plan = await repository.planRepair(b);
       return plan ? { status: 200, body: plan } : NOT_FOUND;

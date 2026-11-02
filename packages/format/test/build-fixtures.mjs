@@ -526,6 +526,52 @@ bookCase('W201-scene-outside-manuscript', (b, ids) => {
   return [D('W201', p, 'schema')];
 });
 
+// ---- M05-J01: event state and continuity exceptions
+const eventDoc = (ids, slug, order, state, extra = {}) => ({
+  fm: { schema: 'storyforge.event/v1', id: ids('event'), slug, title: 'The flood', order, ...extra, ...(state ? { state: { block: state } } : {}) },
+  body: 'The sea wall fails.\n',
+});
+
+bookCase('E102-event-state', (b, ids) => {
+  const p = 'planning/timeline/the-flood.md';
+  b.files.set(p, eventDoc(ids, 'the-flood', 100, ['  - { slug: maren-hollis, event: vanished }']));
+  return [D('E102', p, 'state[0].event')];
+});
+
+bookCase('E301-event-state', (b, ids) => {
+  const p = 'planning/timeline/the-flood.md';
+  b.files.set(p, eventDoc(ids, 'the-flood', 100, ['  - { slug: nobody, event: died }']));
+  return [D('E301', p, 'state[0].slug')];
+});
+
+bookCase('E302-event-state', (b, ids) => {
+  const p = 'planning/timeline/the-flood.md';
+  // a location value must be a location entry; maren-hollis is a character
+  b.files.set(p, eventDoc(ids, 'the-flood', 100, ['  - { slug: maren-hollis, event: location, value: maren-hollis }']));
+  return [D('E302', p, 'state[0].value')];
+});
+
+const exceptionDoc = (ids, slug, fingerprint, body = 'The author wants it this way.\n') => ({
+  fm: {
+    schema: 'storyforge.continuity-exception/v1',
+    id: ids('note'),
+    slug,
+    fingerprint,
+    rule: 'CF1',
+    title: 'Kept on purpose',
+    created: '"2026-11-02"',
+  },
+  body,
+});
+
+bookCase('W307-duplicate-exception', (b, ids) => {
+  const p1 = 'planning/continuity/eyes-one.md';
+  const p2 = 'planning/continuity/eyes-two.md';
+  b.files.set(p1, exceptionDoc(ids, 'eyes-one', 'cf1-0123456789abcdef'));
+  b.files.set(p2, exceptionDoc(ids, 'eyes-two', 'cf1-0123456789abcdef'));
+  return [D('W307', p1, 'fingerprint'), D('W307', p2, 'fingerprint')];
+});
+
 // ---- library cases: root is a library, books live under it
 function addBookTo(files, ids, prefix, slug, series_number) {
   const b = newBook(ids, { prefix, slug, series_number });
@@ -884,12 +930,145 @@ function buildSaltOrchard() {
     { id: sid.cut, path: `archive/${C2}0030-the-cut-scene.md`, reason: 'archived' },
   ];
   return {
+    ids,
     files,
     expected: {
       diagnostics: [],
       order,
       timeline: ['the-first-grafting', 'the-flood', 'the-key-found-twice', 'the-return', 'the-wall-falls'],
       excluded,
+    },
+  };
+}
+
+// ---------------------------------------------------------------- valid: continuity-cases (M05-J01)
+// One positive and one near-miss negative per continuity rule. Every name and sentence is invented.
+function buildContinuityCases() {
+  const ids = mkIds('C7');
+  const files = new Map();
+  const doc = (p, fm, body = '') => files.set(p, { fm, body });
+  const CH2 = 'manuscript/act-01-one/ch-002-two/';
+  const CH3 = 'manuscript/act-01-one/ch-003-three/';
+
+  doc('book.md', { schema: 'storyforge.book/v1', id: ids('book'), slug: 'lantern-ledger', title: 'The Lantern Ledger', profile: 'fiction', status: 'drafting' }, 'A synthetic book that exercises every continuity rule.\n');
+
+  // ---- codex
+  const entry = (p, fm, body = '') => doc(p, { schema: 'storyforge.entry/v1', id: ids('entry'), status: 'canon', ...fm }, body);
+  const fieldsOf = (...lines) => ({ block: lines.map((l) => `  ${l}`) });
+  doc('codex/_types/character.md', {
+    schema: 'storyforge.codex-type/v1', id: ids('note'), type: 'character', name: 'Character', plural: 'Characters',
+    fields: ['Eyes', 'Hair', 'Build'], values: '{ Build: [slight, stocky] }',
+  }, 'People of the book. Build has its own vocabulary.\n');
+  entry('codex/characters/ana-voss.md', { slug: 'ana-voss', type: 'character', name: 'Ana Voss', aliases: ['Ana'], fields: fieldsOf('Eyes: Brown') });
+  entry('codex/characters/bram-keel.md', { slug: 'bram-keel', type: 'character', name: 'Bram Keel', aliases: ['Bram'], fields: fieldsOf('Eyes: Blue', 'Hair: Grey') });
+  entry('codex/characters/cleo-marsh.md', { slug: 'cleo-marsh', type: 'character', name: 'Cleo Marsh', aliases: ['Cleo'], fields: fieldsOf('Hair: Red', 'Build: Slight') });
+  entry('codex/characters/dov-ellis.md', { slug: 'dov-ellis', type: 'character', name: 'Dov Ellis', aliases: ['Dov'] });
+  for (const [slug, name] of [['lighthouse', 'The Lighthouse'], ['market', 'The Market'], ['harbour-town', 'Harbour Town']]) {
+    entry(`codex/locations/${slug}.md`, { slug, type: 'location', name });
+  }
+  for (const [slug, name] of [['silver-lamp', 'Silver Lamp'], ['tin-whistle', 'Tin Whistle'], ['clay-jar', 'Clay Jar'], ['copper-kettle', 'Copper Kettle'], ['brass-bell', 'Brass Bell']]) {
+    entry(`codex/objects/${slug}.md`, { slug, type: 'object', name });
+  }
+
+  // ---- scenes (book order: lamp-room, the-dock, tide-office, the-stairs, the-last-light)
+  const sid = { lamp: ids('scene'), dock: ids('scene'), tide: ids('scene'), stairs: ids('scene'), last: ids('scene') };
+  const scene = (p, id, fm, body) => doc(p, { schema: 'storyforge.scene/v1', id, status: 'drafting', act: 1, ...fm }, body);
+  scene(`${CH1}0010-lamp-room.md`, sid.lamp, { title: 'Lamp Room', chapter: 1, sequence: 10, pov: 'ana-voss', characters: ['ana-voss', 'bram-keel'], plot_threads: ['lamp-oil'] }, [
+    'Her green eyes caught the lamplight.',
+    '',
+    'She wore a green scarf, the green of old bottles.',
+    '',
+    "Bram's blue eyes narrowed as he counted the steps.",
+    '',
+  ].join('\n'));
+  scene(`${CH1}0020-the-dock.md`, sid.dock, { title: 'The Dock', chapter: 1, sequence: 20, pov: 'bram-keel', characters: ['bram-keel'], plot_threads: ['ledger-seal'] }, [
+    'His gray hair stuck to his forehead in the wet.',
+    '',
+  ].join('\n'));
+  scene(`${CH2}0010-tide-office.md`, sid.tide, { title: 'Tide Office', chapter: 2, sequence: 10, pov: 'cleo-marsh', characters: ['cleo-marsh'], plot_threads: ['hollow-bell'] }, [
+    'Her stocky build filled the doorway of the tide office.',
+    '',
+  ].join('\n'));
+  scene(`${CH2}0020-the-stairs.md`, sid.stairs, { title: 'The Stairs', chapter: 2, sequence: 20, pov: 'ana-voss', characters: ['ana-voss', 'dov-ellis'], plot_threads: [] }, [
+    'Forty steps up, and the ledger seal was still warm.',
+    '',
+  ].join('\n'));
+  scene(`${CH3}0010-the-last-light.md`, sid.last, { title: 'The Last Light', chapter: 3, sequence: 10, pov: 'ana-voss', characters: ['ana-voss', 'cleo-marsh'], plot_threads: ['late-letter', 'lamp-oil'] }, [
+    'She did not look away when the lamp went out.',
+    '',
+  ].join('\n'));
+
+  // ---- threads: TH1a (ledger-seal: payoff first), TH1b (hollow-bell: open, book ends later)
+  const thread = (slug, title, status, fm = {}) => doc(`planning/threads/${slug}.md`, {
+    schema: 'storyforge.thread/v1', id: ids('thread'), slug, title, kind: 'mystery', status, setup: [], payoff: [], ...fm,
+  }, `${title}.\n`);
+  thread('ledger-seal', 'The ledger seal', 'paid', { setup: [sid.stairs], payoff: [sid.dock] });
+  thread('lamp-oil', 'The lamp oil', 'paid', { setup: [sid.lamp], payoff: [sid.last] });
+  thread('hollow-bell', 'The hollow bell', 'open');
+  thread('old-grudge', 'The old grudge', 'unresolved');
+  thread('late-letter', 'The late letter', 'open');
+
+  // ---- events
+  const ev = (slug, title, order, o = {}) => {
+    const { state, ...rest } = o;
+    doc(`planning/timeline/${slug}.md`, {
+      schema: 'storyforge.event/v1', id: ids('event'), slug, title, order, ...rest, ...(state ? { state: { block: state.map((x) => `  - ${x}`) } } : {}),
+    }, `${title}.\n`);
+  };
+  // TL1a: a character who died is present later; near-misses: same order as the death, and a revival in between
+  ev('dov-dies', 'Dov dies', 100, { characters: ['dov-ellis'], state: ['{ slug: dov-ellis, event: died }'] });
+  ev('dov-returns', 'Dov at the door', 200, { characters: ['dov-ellis'] });
+  ev('cleo-dies', 'Cleo is struck down', 110, { state: ['{ slug: cleo-marsh, event: died }'] });
+  ev('cleo-farewell', 'Cleo says goodbye', 110, { characters: ['cleo-marsh'] });
+  ev('cleo-wakes', 'Cleo wakes', 115, { state: ['{ slug: cleo-marsh, event: revived }'] });
+  ev('cleo-back', 'Cleo at the market', 130, { characters: ['cleo-marsh'] });
+  // TL1a (objects): a destroyed object is used later
+  ev('whistle-breaks', 'The whistle breaks', 140, { state: ['{ slug: tin-whistle, event: destroyed }'] });
+  ev('whistle-held', 'Bram takes the whistle', 150, { state: ['{ slug: tin-whistle, event: holder, value: bram-keel }'] });
+  // TL1b: one character in two places at the same order; near-misses: same place, different orders
+  ev('ana-tower', 'Ana in the tower', 300, { state: ['{ slug: ana-voss, event: location, value: lighthouse }'] });
+  ev('ana-stall', 'Ana at the stall', 300, { state: ['{ slug: ana-voss, event: location, value: market }'] });
+  ev('meet-a', 'Bram on the quay', 310, { characters: ['bram-keel'], locations: ['harbour-town'] });
+  ev('meet-b', 'Bram still on the quay', 310, { characters: ['bram-keel'], locations: ['harbour-town'] });
+  ev('walk-a', 'Ana climbs', 320, { state: ['{ slug: ana-voss, event: location, value: lighthouse }'] });
+  ev('walk-b', 'Ana descends', 330, { state: ['{ slug: ana-voss, event: location, value: market }'] });
+  // TL1c: a later event with an earlier date; near-miss: equal at the shorter precision
+  ev('dated-a', 'The spring inspection', 400, { date: '2020-05' });
+  ev('dated-b', 'The earlier inspection', 410, { date: '2020-03' });
+  ev('dated-c', 'The year of the fog', 420, { date: 2021 });
+  ev('dated-d', 'The fog lifts', 430, { date: '2021-02-10' });
+  // KN1: knows before learns; near-misses: learns at the same order, learns earlier
+  ev('bram-suspects', 'Bram suspects', 500, { state: ['{ slug: bram-keel, event: knows, value: the-lamp-is-hollow }'] });
+  ev('bram-told', 'Bram is told', 600, { state: ['{ slug: bram-keel, event: learns, value: the-lamp-is-hollow }'] });
+  ev('cleo-reads', 'Cleo reads the tables', 700, { state: ['{ slug: cleo-marsh, event: learns, value: tide-times }'] });
+  ev('cleo-recalls', 'Cleo recalls the tables', 700, { state: ['{ slug: cleo-marsh, event: knows, value: tide-times }'] });
+  ev('ana-learns', 'Ana learns the moon', 710, { state: ['{ slug: ana-voss, event: learns, value: moon-phase }'] });
+  ev('ana-knows', 'Ana knows the moon', 720, { state: ['{ slug: ana-voss, event: knows, value: moon-phase }'] });
+  // ST1a: a lost object is held; near-miss: found first
+  ev('jar-lost', 'The jar is lost', 800, { state: ['{ slug: clay-jar, event: lost }'] });
+  ev('jar-held', 'Ana holds the jar', 810, { state: ['{ slug: clay-jar, event: holder, value: ana-voss }'] });
+  ev('lamp-lost', 'The lamp is lost', 820, { state: ['{ slug: silver-lamp, event: lost }'] });
+  ev('lamp-found', 'The lamp is found', 830, { state: ['{ slug: silver-lamp, event: found }'] });
+  ev('lamp-held', 'Bram holds the lamp', 840, { state: ['{ slug: silver-lamp, event: holder, value: bram-keel }'] });
+  // ST1b: two holders at the same order; near-miss: the same holder twice
+  ev('kettle-ana', 'Ana has the kettle', 900, { state: ['{ slug: copper-kettle, event: holder, value: ana-voss }'] });
+  ev('kettle-bram', 'Bram has the kettle', 900, { state: ['{ slug: copper-kettle, event: holder, value: bram-keel }'] });
+  ev('bell-a', 'Cleo rings the bell', 910, { state: ['{ slug: brass-bell, event: holder, value: cleo-marsh }'] });
+  ev('bell-b', 'Cleo still has the bell', 910, { state: ['{ slug: brass-bell, event: holder, value: cleo-marsh }'] });
+
+  // ---- research: a canon note that disagrees (CF1), a non-canon note that is ignored
+  doc('research/cleo-notes.md', {
+    schema: 'storyforge.research/v1', id: ids('note'), title: 'Cleo, canon notes', canon: true, links: ['cleo-marsh'],
+  }, '## Appearance\nHair: Black\n');
+  doc('research/ana-rumours.md', {
+    schema: 'storyforge.research/v1', id: ids('note'), title: 'Rumours about Ana', canon: false, links: ['ana-voss'],
+  }, 'Eyes: Blue\n');
+
+  return {
+    files,
+    expected: {
+      diagnostics: [],
+      order: [sid.lamp, sid.dock, sid.tide, sid.stairs, sid.last],
     },
   };
 }
@@ -941,5 +1120,39 @@ for (const [name, build] of Object.entries(invalid)) {
     ],
   };
   fs.writeFileSync(path.join(FIXTURES, 'valid', 'spec-example', 'expected.json'), json(expected));
+}
+
+// ---- M05-J01: continuity expectations. expected-continuity.json is what the engine reports for the book as it
+// was just written; it is reviewed by hand and then pinned by packages/continuity/test.
+const { checkContinuity } = await import('../../continuity/src/index.mjs');
+const continuityOf = async (dir) => {
+  const r = await checkContinuity(dir);
+  return { findings: r.findings, suppressed: r.suppressed, stale_exceptions: r.stale_exceptions };
+};
+const SALT = path.join(FIXTURES, 'valid', 'salt-orchard');
+const saltExpected = await continuityOf(SALT);
+fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: saltExpected.findings, suppressed: [] }));
+
+{
+  const { files, expected } = buildContinuityCases();
+  checkIds(files);
+  const dir = path.join(FIXTURES, 'valid', 'continuity-cases');
+  writeTree(dir, files);
+  fs.writeFileSync(path.join(dir, 'expected.json'), json(expected));
+  const got = await continuityOf(dir);
+  fs.writeFileSync(path.join(dir, 'expected-continuity.json'), json({ findings: got.findings, suppressed: [] }));
+}
+{
+  // salt-orchard plus two exceptions: one names the CF1 fingerprint, one names nothing
+  const { files, expected, ids } = buildSaltOrchard();
+  if (saltExpected.findings.length !== 1) throw new Error('salt-orchard must have exactly one finding');
+  files.set('planning/continuity/maren-eyes.md', exceptionDoc(ids, 'maren-eyes', saltExpected.findings[0].fingerprint, 'Maren sees herself in the ticket-hut glass, which turns everything green.\n'));
+  files.set('planning/continuity/old-note.md', exceptionDoc(ids, 'old-note', 'cf1-00000000deadbeef', 'Written for a conflict that was fixed long ago.\n'));
+  checkIds(files);
+  const dir = path.join(FIXTURES, 'valid', 'continuity-exception');
+  writeTree(dir, files);
+  fs.writeFileSync(path.join(dir, 'expected.json'), json(expected));
+  const got = await continuityOf(dir);
+  fs.writeFileSync(path.join(dir, 'expected-continuity.json'), json(got));
 }
 console.log('fixtures written');

@@ -121,3 +121,6 @@ export { isFile, walkMarkdown } from './fs.mjs';
 export { proseLines, REFERENCES, NAMED, WIKI_RE, CITE_RE, MDLINK_RE } from './links.mjs';
 export { ID_PREFIX_RE } from './ids.mjs';
 export { escapesRoot } from './schema.mjs';
+// Building blocks for the continuity engine (@storyforge/continuity). Re-exports only.
+export { readText } from './fs.mjs';
+export { STATE_EVENTS, FINGERPRINT_RE } from './schema.mjs';

@@ -117,6 +117,8 @@
  *   getCover(bookId: string): Promise<{ bytes: Buffer, contentType: string, sha256: string } | { error: 'too_large' } | null>,
  *   getScene(bookId: string, sceneId: string): Promise<SceneDoc | null>,
  *   getDiagnostics(bookId?: string): Promise<Diagnostic[]>,
+ *   getContinuity(bookId: string): Promise<import('@storyforge/continuity').ContinuityResult | null>,
+ *   continuityBooks(): Promise<{ id: string, slug: string | null, path: string, title: string | null }[]>,
  *   updateSceneBody(bookId: string, sceneId: string, body: string, opts: { baseSha256: string }):
  *     Promise<WriteResult & { sha256?: string, current?: SceneDoc | null }>,
  *   writeSceneRaw(bookId: string, sceneId: string, content: string, opts: { baseSha256: string }):

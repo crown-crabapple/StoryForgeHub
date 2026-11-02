@@ -14,6 +14,8 @@ export function checkPlacement(docs, add) {
       }
     } else if (d.kind === 'thread' && !logical.startsWith('planning/threads/')) {
       add('W201', d.file, 'schema', 'thread file is not under planning/threads/');
+    } else if (d.kind === 'continuity-exception' && !logical.startsWith('planning/continuity/')) {
+      add('W201', d.file, 'schema', 'continuity exception is not under planning/continuity/');
     } else if (d.kind === 'event' && !logical.startsWith('planning/timeline/')) {
       add('W201', d.file, 'schema', 'event file is not under planning/timeline/');
     }

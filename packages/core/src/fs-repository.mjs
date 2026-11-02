@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
+import { checkContinuity } from '@storyforge/continuity';
 import { discover, escapesRoot, extractDocs, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts, buildGraph, subGraph } from '@storyforge/index';
 import { MAX_ATTACHMENT_BYTES, applyRepair, planRepair } from '@storyforge/manuscript';
@@ -1019,6 +1020,15 @@ export function createFsRepository(libraryRoot, options = {}) {
       const image = str(doc.fm.image);
       const big = c.state === 'unsupported' && image !== null && COVER_TYPES[path.posix.extname(image.replace(/\\/g, '/')).toLowerCase()];
       return big ? await oversized(book.path, image) : null;
+    },
+
+    async getContinuity(bookId) {
+      const book = await bookById(bookId);
+      return book ? checkContinuity(abs(book.path)) : null;
+    },
+
+    async continuityBooks() {
+      return (await validate(root)).books.filter((/** @type {any} */ b) => b.id).map((/** @type {any} */ b) => ({ id: b.id, slug: b.slug, path: b.path, title: b.title }));
     },
 
     async getDiagnostics(bookId) {

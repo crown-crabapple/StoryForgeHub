@@ -39,6 +39,15 @@ export const REFERENCES = {
   research: [{ field: 'links', kinds: null, list: true }],
 };
 
+/** Event `state` links (spec 6.2): which entry `type` each slug / value must have, per `event` word. */
+const STATE_TYPES = {
+  died: { slug: ['character'] }, revived: { slug: ['character'] },
+  destroyed: { slug: null }, lost: { slug: null }, found: { slug: null },
+  holder: { slug: ['object'], value: ['character'] },
+  location: { slug: ['character', 'object'], value: ['location'] },
+  learns: { slug: ['character'] }, knows: { slug: ['character'] },
+};
+
 export const WIKI_RE = /\[\[([^\]\n]+?)\]\]/g;
 export const CITE_RE = /\[@([^\]\s]+)\](?!\()/g;
 export const MDLINK_RE = /(!?)\[([^\]\n]*)\]\(([^)\n]+)\)/g;
@@ -194,6 +203,23 @@ export async function resolveLinks(docs, bookDir, add) {
         if (!target) return;
         if (d.kind === 'scene' && ref.field === 'events' && target.kind === 'event') link(target, d);
         if (d.kind === 'event' && ref.field === 'scenes' && target.kind === 'scene') link(d, target);
+      });
+    }
+    if (d.kind === 'event' && Array.isArray(fm.state)) {
+      fm.state.forEach((item, i) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+        const types = Object.hasOwn(STATE_TYPES, item.event) ? STATE_TYPES[item.event] : null;
+        /** @param {string} part @param {any} raw @param {string[]|null|undefined} allowed */
+        const check = (part, raw, allowed) => {
+          if (typeof raw !== 'string' || raw === '') return;
+          const location = `state[${i}].${part}`;
+          const target = resolveTarget(d, location, raw, ENTRY);
+          if (target && target.kind === 'entry' && allowed && !allowed.includes(target.fm.type)) {
+            add('E302', d.file, location, `${raw} is a ${target.fm.type}, expected ${allowed.join(' or ')}`);
+          }
+        };
+        check('slug', item.slug, types?.slug);
+        if (types?.value) check('value', item.value, types.value);
       });
     }
     if (d.kind === 'entry' && Array.isArray(fm.related)) {

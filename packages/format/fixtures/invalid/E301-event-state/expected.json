@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E301",
+      "file": "planning/timeline/the-flood.md",
+      "location": "state[0].slug"
+    }
+  ]
+}
