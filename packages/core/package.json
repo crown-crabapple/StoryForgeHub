@@ -19,6 +19,7 @@
     "@storyforge/manuscript": "0.1.0",
     "@storyforge/index": "0.1.0",
     "@storyforge/templates": "0.1.0",
-    "@storyforge/suggestions": "0.1.0"
+    "@storyforge/suggestions": "0.1.0",
+    "@storyforge/receipts": "0.1.0"
   }
 }

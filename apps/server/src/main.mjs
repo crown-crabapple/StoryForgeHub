@@ -6,16 +6,18 @@
 //   node apps/server/src/main.mjs export --library <path> --book <slug> --format markdown|docx|epub|pdf --out <file> [--force]
 //   node apps/server/src/main.mjs backup --library <path> --book <slug> --out <file.zip> [--provenance] [--force]
 //   node apps/server/src/main.mjs restore --from <file.zip> --to <new or empty folder>
+//   node apps/server/src/main.mjs receipts verify --library <path> --book <slug> [--json]   check the provenance receipts (read-only; exit 1 on integrity problems)
 // Exit codes: 0 ok, 1 failed / needs hand repair / continuity errors found, 2 usage or cannot open the library, 3 another instance holds the library.
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ConfigError, LOCK_FILE, acquireLock, createFsRepository, createLibraryHost, loadConfig, releaseLock, releaseLockSync, updateLock } from '@storyforge/core';
 import { FILE_COMMANDS, runFileCommand } from './export-cli.mjs';
+import { runReceiptsCommand } from './receipts-cli.mjs';
 import { createServer } from './server.mjs';
 
 const webRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const argv = process.argv.slice(2);
-const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', ...FILE_COMMANDS];
+const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'receipts', ...FILE_COMMANDS];
 const command = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'serve';
 const apply = argv.includes('--apply');
 
@@ -25,7 +27,10 @@ function fail(message, code) {
   process.exit(code);
 }
 
-if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, export, backup or restore)`, 2);
+if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, export, backup or restore)`, 2);
+
+// receipts verify is read-only too: no lock, no server
+if (command === 'receipts') process.exit(await runReceiptsCommand(argv.slice(1)));
 
 // export, backup and restore work on files only: no library config, no lock, no server
 if (FILE_COMMANDS.includes(command)) process.exit(await runFileCommand(command, argv.slice(1)));

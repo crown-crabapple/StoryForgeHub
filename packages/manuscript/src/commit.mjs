@@ -40,9 +40,9 @@ export function orderChanges(changes) {
 
 /**
  * Apply changes with trash + verification + rollback.
- * @param {{store:any, bookRoot:string, root:string, op:string, args:object, changes:Change[], beforeDiagnostics:object[]}} p
+ * @param {{store:any, bookRoot:string, root:string, op:string, args:object, changes:Change[], beforeDiagnostics:object[], stage?:(tx:any, changes:Change[]) => Promise<void>}} p
  */
-export async function commit({ store, bookRoot, op, args, changes, beforeDiagnostics }) {
+export async function commit({ store, bookRoot, op, args, changes, beforeDiagnostics, stage }) {
   const pub = publicChanges(changes);
   const ordered = orderChanges(changes);
   if (!ordered) {
@@ -61,6 +61,14 @@ export async function commit({ store, bookRoot, op, args, changes, beforeDiagnos
         else if (c.from === c.to) r = await tx.write(c.to, c.content, { baseSha256: sha256(c.before) });
         else r = await tx.move(c.from, c.to, { baseSha256: sha256(c.before), bytes: c.content });
         if (!r.ok) return r;
+      }
+      // M05-J07: the caller's receipts ride in this batch (target change and receipt land together or not at all); a receipt problem never blocks the change
+      if (typeof stage === 'function') {
+        try {
+          await stage(tx, ordered);
+        } catch {
+          // advisory
+        }
       }
       return null;
     },

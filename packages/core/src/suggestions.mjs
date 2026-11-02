@@ -8,7 +8,8 @@ import { slugify, ulid } from '@storyforge/manuscript';
 import { openStore } from '@storyforge/store';
 import { applyHunk, buildSuggestion, parseSuggestion, setHunkStatus, suggestionPath } from '@storyforge/suggestions';
 import { selectRange, spliceReplacement } from './ai-rewrite.mjs';
-import { recordProvenance } from './provenance.mjs';
+import { notifyProvenance, recordProvenance } from './provenance.mjs';
+import { createReceiptEngine } from './receipts.mjs';
 
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
 const errKey = (d) => `${d.code}|${d.file}|${d.location ?? ''}`;
@@ -49,19 +50,20 @@ function diffOf(parsed, ids) {
   return out.join('\n');
 }
 
-/** A provenance event must never break the change it reports on. */
-async function emit(event) {
+/** A provenance event must never break the change it reports on. `bookRoot` (with the engine) says where its receipt goes. */
+async function emit(event, ctx) {
   try {
-    await recordProvenance(event);
+    await recordProvenance(event, ctx);
   } catch {
     // the hook is advisory
   }
 }
 
 /**
- * @param {{ root: string, afterWrite?: (bookPath: string) => void, reconcile?: (bookPath: string) => Promise<any>, now?: () => number | Date }} p
+ * @param {{ root: string, afterWrite?: (bookPath: string) => void, reconcile?: (bookPath: string) => Promise<any>, now?: () => number | Date,
+ *   receipts?: ReturnType<typeof createReceiptEngine> }} p
  */
-export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile, now = () => Date.now() }) {
+export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile, now = () => Date.now(), receipts = createReceiptEngine({ root, now }) }) {
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
   const nowMs = () => Number(now());
 
@@ -169,7 +171,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
     const r = await store.create(rel, Buffer.from(built.text, 'utf8'));
     if (!r.ok) return fail(r.code, r.message ? { message: r.message } : {});
     await refresh(found.book);
-    await emit({ kind: 'suggestion.create', bookId, suggestionId: id, target, source, mode, path: rel, hunkIds: built.hunks.map((h) => h.id), base_sha256: cur.sha256, after_sha256: r.sha256, ...(source === 'ai' && ai ? { ai } : {}) });
+    await emit({ kind: 'suggestion.create', bookId, suggestionId: id, target, source, mode, path: rel, hunkIds: built.hunks.map((h) => h.id), base_sha256: cur.sha256, after_sha256: r.sha256, ...(source === 'ai' && ai ? { ai } : {}) }, { engine: receipts, bookRoot: bookRootOf(found.book) });
     return { ok: true, code: 'OK', id, path: rel, status: 'pending', created, hunks: built.hunks.map((h) => ({ id: h.id, line: h.line, lines: h.lines, status: h.status })), opId: r.opId ?? null };
   }
 
@@ -285,6 +287,15 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
         if (decision === 'decline') {
           const text = setHunkStatus(sugCur.bytes.toString('utf8'), ids, 'declined', decidedAt);
           await tx.write(doc.rel, Buffer.from(text, 'utf8'), { baseSha256: sugCur.sha256 });
+          // M05-J07: the decline receipt (and the flush of the target's pending author changes) is part of this batch
+          if (targetDoc) {
+            try {
+              const t = await tx.read(targetDoc.rel);
+              if (t) await receipts.stageDecision(store, tx, { decision: 'decline', parsed, ids, suggestionId, source: String(doc.fm.source), targetId, targetRel: targetDoc.rel, before: t.bytes, after: t.bytes });
+            } catch {
+              // a receipt problem never blocks the author's decision
+            }
+          }
           return { ok: true, ids, parsed, before: null, after: null, target: targetId };
         }
 
@@ -292,6 +303,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
         let targetRel;
         let bytes;
         let before = null;
+        let beforeBytes = null;
         if (targetId === '') {
           targetRel = typeof doc.fm.target_path === 'string' ? doc.fm.target_path : '';
           if (!/\.md$/i.test(targetRel) || targetRel.startsWith('/') || targetRel.includes('..') || targetRel.includes('\\') || NEW_FILE_BLOCKED.some((p) => targetRel.startsWith(p))) {
@@ -305,6 +317,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
           const cur = await tx.read(targetRel);
           if (!cur) return fail('TARGET_MISSING', { message: 'the file this suggestion is for is gone' });
           before = cur.sha256;
+          beforeBytes = cur.bytes;
           bytes = cur.bytes;
         }
         // the last hunk first, so the lines of the hunks still to apply keep their numbers
@@ -319,6 +332,12 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
         else await tx.write(targetRel, bytes, { baseSha256: /** @type {string} */ (before) });
         const text = setHunkStatus(sugCur.bytes.toString('utf8'), ids, 'accepted', decidedAt);
         await tx.write(doc.rel, Buffer.from(text, 'utf8'), { baseSha256: sugCur.sha256 });
+        // M05-J07: the accept receipt (and the flush of the author's pending changes before it) is part of this batch: target and receipt land together
+        try {
+          await receipts.stageDecision(store, tx, { decision: 'accept', parsed, ids, suggestionId, source: String(doc.fm.source), targetId, targetRel, before: beforeBytes, after: bytes });
+        } catch {
+          // a receipt problem never blocks the author's decision
+        }
         const sha = createHash('sha256').update(bytes).digest('hex');
         return { ok: true, ids, parsed, before, after: sha, target: targetId === '' ? targetRel : targetId, targetRel };
       },
@@ -343,7 +362,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
     if (!v.ok) return v;
     await refresh(found.book);
     const base = typeof doc.fm.base_sha256 === 'string' && doc.fm.base_sha256 !== '' ? doc.fm.base_sha256 : null;
-    await emit({
+    notifyProvenance({
       kind: decision === 'accept' ? 'suggestion.accept' : 'suggestion.decline',
       bookId,
       suggestionId,

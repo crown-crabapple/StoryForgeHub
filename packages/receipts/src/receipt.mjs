@@ -110,10 +110,11 @@ export function buildReceipt(fields) {
   else fm.push('parents:', ...parents.map((p) => `  - { id: ${p.id}, sha256: ${JSON.stringify(p.sha256)} }`));
   if (f.ai) {
     fm.push('ai:');
-    for (const key of ['provider', 'model', 'locality', 'settings_sha256', 'prompt_sha256', 'context_sha256', 'suggestion', 'hunks', 'acceptance']) {
+    for (const key of ['provider', 'model', 'locality', 'settings_sha256', 'prompt_sha256', 'context_sha256', 'files_sha256', 'suggestion', 'hunks', 'acceptance']) {
       const v = f.ai[key];
       if (v === undefined || v === null) continue;
-      fm.push(`  ${key}: ${/_sha256$/.test(key) ? JSON.stringify(String(v)) : flow(v)}`);
+      const hash = (x) => JSON.stringify(String(x));
+      fm.push(`  ${key}: ${/_sha256$/.test(key) ? (Array.isArray(v) ? `[${v.map(hash).join(', ')}]` : hash(v)) : flow(v)}`);
     }
   }
   fm.push('---');

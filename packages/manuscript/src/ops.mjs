@@ -77,12 +77,12 @@ async function checkPaths(store, changes) {
   return null;
 }
 
-export async function finish({ bookRoot, store, lb, op, args, changes, dryRun, extra = {}, withDiff = false }) {
+export async function finish({ bookRoot, store, lb, op, args, changes, dryRun, extra = {}, withDiff = false, stage }) {
   const taken = await checkPaths(store, changes);
   if (taken) return taken;
   if (dryRun) return { ok: true, code: 'OK', dryRun: true, changes: publicChanges(changes, { diff: withDiff }), ...extra };
   if (changes.length === 0) return { ok: true, code: 'OK', changes: [], ...extra };
-  const res = await commit({ store, bookRoot, root: lb.root, op, args, changes, beforeDiagnostics: lb.diagnostics });
+  const res = await commit({ store, bookRoot, root: lb.root, op, args, changes, beforeDiagnostics: lb.diagnostics, stage });
   return { ...res, ...extra };
 }
 

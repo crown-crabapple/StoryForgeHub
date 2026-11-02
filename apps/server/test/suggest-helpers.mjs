@@ -97,6 +97,8 @@ export async function tree(root, { skip = ['.storyforge'] } = {}) {
   async function walk(dir) {
     for (const e of await fs.readdir(dir, { withFileTypes: true })) {
       if (skip.includes(e.name)) continue;
+      // M05-J07: provenance/ (receipts and objects) is the intended new effect of AI, suggestion and adapter actions; the receipts-*.test.mjs files check it directly.
+      if (dir === root && e.name === 'provenance') continue;
       const full = path.join(dir, e.name);
       const rel = path.relative(root, full).split(path.sep).join('/');
       if (e.isDirectory()) {

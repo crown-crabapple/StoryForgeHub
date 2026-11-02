@@ -1,7 +1,8 @@
 // The AI routes (M05-J04). Nothing here opens a connection itself: the one outbound call is @storyforge/ai's sendPackage / testConnection.
 // With no active provider profile for a book every AI route answers 409 AI_NOT_CONFIGURED and nothing is sent. The key never appears in a response.
 import { buildContext, createAiSettings, createContextStore, hostOf, localityOf, publicProfile, redact, sendPackage, testConnection } from '@storyforge/ai';
-import { recordProvenance } from '@storyforge/core';
+import { createHash } from 'node:crypto';
+import { promptText, recordProvenance } from '@storyforge/core';
 
 const MAX_FILES = 100;
 const MAX_INSTRUCTION_CHARS = 20_000;
@@ -24,10 +25,11 @@ function serviceOf(state) {
   return (fallback ??= createAiService());
 }
 
-/** A provenance event must never break the request it reports on. */
-async function emit(event) {
+/** A provenance event must never break the request it reports on. The repository writes its receipt (M05-J07); a repository without that falls back to the hook. */
+async function emit(repository, event) {
   try {
-    await recordProvenance(event);
+    if (typeof repository.recordProvenance === 'function') await repository.recordProvenance(event);
+    else await recordProvenance(event);
   } catch {
     // the hook is advisory
   }
@@ -203,6 +205,7 @@ async function sendStored(repository, service, bookId, active, body) {
   if (refusal) return refusal;
   if (body.confirmCloud !== undefined && typeof body.confirmCloud !== 'boolean') return badRequest('confirmCloud must be true or false');
   if (body.includeContext !== undefined && typeof body.includeContext !== 'boolean') return badRequest('includeContext must be true or false');
+  if (body.keepPrompt !== undefined && typeof body.keepPrompt !== 'boolean') return badRequest('keepPrompt must be true or false');
   if (active.id !== ctx.profileId) return notConfigured();
   if (active.model !== ctx.provider.model || active.baseUrl !== ctx.provider.baseUrl) {
     return refuse(409, 'CONTEXT_STALE', 'the provider settings changed after the preview; preview the context again');
@@ -226,13 +229,16 @@ async function sendStored(repository, service, bookId, active, body) {
   ctx.replacement = replacement;
 
   const provider = { name: ctx.provider.name, model: ctx.provider.model, locality: ctx.provider.locality };
-  await emit({
+  // M05-J07: the receipt keeps hashes; the full prompt only when the author ticked "Keep the full prompt in the receipt" for this send (keys are redacted)
+  await emit(repository, {
     kind: rewrite ? 'ai.proposal' : 'ai.chat',
     bookId,
-    ...(rewrite ? { sceneId: ctx.selection.sceneId, before: ctx.selection.text, after: replacement, range: { from: ctx.selection.from, to: ctx.selection.to } } : {}),
+    ...(rewrite ? { sceneId: ctx.selection.sceneId, before: ctx.selection.text, after: replacement, range: { from: ctx.selection.from, to: ctx.selection.to } } : { files: ctx.files.map((f) => f.sha256) }),
     contextSha256: ctx.contextSha256,
     provider,
     settings: ctx.settings,
+    promptSha256: createHash('sha256').update(ctx.instruction, 'utf8').digest('hex'),
+    ...(body.keepPrompt === true ? { fullPrompt: redact(promptText(ctx.messages), await settings.allKeys(), Infinity) } : {}),
   });
 
   // M05-J06: a rewrite is held as a pending suggestion in the book (nothing is written to the scene). If the scene changed since the preview, or the reply
@@ -247,7 +253,8 @@ async function sendStored(repository, service, bookId, active, body) {
       proposedRange: { from: ctx.selection.from, to: ctx.selection.to, replacement },
       source: 'ai',
       mode: 'suggest',
-      rationale: `Instruction: ${ctx.instruction.replace(/\s+/g, ' ').trim().slice(0, 500)}`,
+      // (the instruction text is not copied into the suggestion document: prompts stay out of the book unless the author keeps them in the receipt)
+      rationale: `Suggested by an AI rewrite (${ctx.provider.name}, ${ctx.provider.model}). Nothing in the scene changes until you accept a change.`,
       ai: { provider: ctx.provider.name, model: ctx.provider.model, locality: ctx.provider.locality, context_sha256: ctx.contextSha256 },
       expectSha256: ctx.selection.sha256,
     });
@@ -313,7 +320,7 @@ async function applyStored(repository, service, bookId, body) {
     return refuse(r.code === 'CONFLICT' ? 409 : 400, r.code, r.message ?? 'the rewrite could not be applied');
   }
   ctx.applied = true;
-  await emit({
+  await emit(repository, {
     kind: 'ai.apply',
     bookId,
     sceneId: sel.sceneId,
@@ -334,7 +341,7 @@ async function applyStored(repository, service, bookId, body) {
 async function discardStored(repository, service, bookId, body) {
   const { ctx, refusal } = storedContext(service, bookId, body);
   if (refusal) return refusal;
-  await emit({
+  await emit(repository, {
     kind: 'ai.discard',
     bookId,
     ...(ctx.selection ? { sceneId: ctx.selection.sceneId, range: { from: ctx.selection.from, to: ctx.selection.to } } : {}),

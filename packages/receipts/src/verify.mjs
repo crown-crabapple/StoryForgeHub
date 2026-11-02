@@ -30,6 +30,9 @@ export function verifyChain({ receipts, objectBytes }) {
       byId.set(receipt.id, item);
     } catch (e) {
       problems.push({ code: 'RCPT_MALFORMED', file: r.path, detail: String(e?.message ?? e) });
+      // an unreadable receipt is still the parent its children name (matched by the id in its file name), so a child reports PARENT_ALTERED, not PARENT_MISSING
+      const named = /(rcpt_[^/]+).md$/.exec(r.path)?.[1];
+      if (named && !byId.has(named)) byId.set(named, { path: r.path, bytes: asBuffer(r.bytes), receipt: null });
     }
   }
 

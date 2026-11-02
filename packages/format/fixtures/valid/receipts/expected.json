@@ -1,0 +1,31 @@
+{
+  "diagnostics": [],
+  "order": [
+    "scene_01S50000000000000000000001",
+    "scene_01S50000000000000000000002",
+    "scene_01S50000000000000000000003",
+    "scene_01S50000000000000000000005",
+    "scene_01S50000000000000000000006",
+    "scene_01S50000000000000000000008",
+    "scene_01S50000000000000000000009"
+  ],
+  "timeline": [
+    "the-first-grafting",
+    "the-flood",
+    "the-key-found-twice",
+    "the-return",
+    "the-wall-falls"
+  ],
+  "excluded": [
+    {
+      "id": "scene_01S50000000000000000000004",
+      "path": "manuscript/act-01-low-water/ch-001-the-drowned-rows/0020-the-key-alt.md",
+      "reason": "variant"
+    },
+    {
+      "id": "scene_01S50000000000000000000007",
+      "path": "archive/manuscript/act-01-low-water/ch-002-the-grafting/0030-the-cut-scene.md",
+      "reason": "archived"
+    }
+  ]
+}

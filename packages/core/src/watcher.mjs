@@ -30,9 +30,12 @@ export function isIgnored(rel, eventType = 'rename') {
 }
 
 /**
- * @param {{ root: string, manager: ReturnType<typeof import('./index-manager.mjs').createIndexManager>, options?: WatchOptions }} p
+ * @param {{ root: string, manager: ReturnType<typeof import('./index-manager.mjs').createIndexManager>, options?: WatchOptions,
+ *   onExternalChange?: (bookPath: string, rels: string[] | null) => Promise<void> }} p
+ *   `onExternalChange(bookPath, rels)` (M05-J07) runs before the index is reconciled for changes made outside the app: `rels` are the book-relative files the
+ *   watch event named, or null for the catch-up when watching starts (every scene).
  */
-export function createWatcher({ root, manager, options = {} }) {
+export function createWatcher({ root, manager, options = {}, onExternalChange }) {
   const watchOpt = options.watch ?? true;
   const pollMs = options.pollMs ?? DEFAULTS.pollMs;
   const debounceMs = options.debounceMs ?? DEFAULTS.debounceMs;
@@ -98,10 +101,19 @@ export function createWatcher({ root, manager, options = {} }) {
 
   const reconcileBooks = (bookPaths, why) => Promise.all(bookPaths.map((b) => manager.reconcile(b, why)));
 
+  /** Files named by watch events since the last run, by book (for the external-change receipts). */
+  const touched = new Map();
+
   function onBookEvent(bookPath, e) {
     if (closed || e.own || isIgnored(e.rel, e.eventType)) return;
     lastEventAt = new Date().toISOString();
-    debounce(`book:${bookPath}`, () => manager.reconcile(bookPath, 'watch'));
+    if (e.rel !== null) (touched.get(bookPath) ?? touched.set(bookPath, new Set()).get(bookPath)).add(e.rel);
+    debounce(`book:${bookPath}`, async () => {
+      const rels = [...(touched.get(bookPath) ?? [])];
+      touched.delete(bookPath);
+      if (rels.length > 0) await onExternalChange?.(bookPath, rels).catch(noop); // receipts first: the change is attributed before anything else acts on it
+      await manager.reconcile(bookPath, 'watch');
+    });
   }
 
   function onTopEvent(dir, e) {
@@ -255,6 +267,7 @@ export function createWatcher({ root, manager, options = {} }) {
     }
     startPolling();
     // catch anything that changed before the watches were in place
+    if (onExternalChange) for (const b of books) await onExternalChange(b, null).catch(noop);
     if (pollMs > 0) pollOnce().catch(noop);
   }
 

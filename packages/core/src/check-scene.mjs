@@ -1,19 +1,20 @@
 // "Check my scene" (M05-J06 section 2): a read-only report on one scene. The validator's diagnostics for the scene file and the files it links, plus the
-// continuity findings that quote the scene. No model call and no write; the only side effect is the provenance event (a no-op hook until M05-J07).
+// continuity findings that quote the scene. No model call and no write; the only side effect is the provenance event (its receipt, M05-J07).
 import path from 'node:path';
 import { checkContinuity } from '@storyforge/continuity';
 import { extractDocs, extractLinks, validate } from '@storyforge/format';
 import { openStore } from '@storyforge/store';
 import { recordProvenance } from './provenance.mjs';
+import { createReceiptEngine } from './receipts.mjs';
 
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
 const RANK = { error: 0, warning: 1, info: 2 };
 const clip = (s) => (s.length <= 160 ? s : `${s.slice(0, 159)}…`);
 
 /**
- * @param {{ root: string, now?: () => number | Date }} p
+ * @param {{ root: string, now?: () => number | Date, receipts?: ReturnType<typeof createReceiptEngine> }} p
  */
-export function createCheckMethods({ root, now = () => Date.now() }) {
+export function createCheckMethods({ root, now = () => Date.now(), receipts = createReceiptEngine({ root, now }) }) {
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
 
   /**
@@ -80,7 +81,7 @@ export function createCheckMethods({ root, now = () => Date.now() }) {
     };
     const report = { ok: true, code: 'OK', scene: { id: sceneId, title: String(scene.fm.title ?? ''), path: scene.rel }, at: new Date(Number(now())).toISOString(), findings, summary };
     try {
-      await recordProvenance({ kind: 'check.report', bookId, sceneId, scene: scene.rel, at: report.at, summary });
+      await recordProvenance({ kind: 'check.report', bookId, sceneId, scene: scene.rel, at: report.at, summary }, { engine: receipts, bookRoot: bookRootOf(book) });
     } catch {
       // the hook is advisory
     }

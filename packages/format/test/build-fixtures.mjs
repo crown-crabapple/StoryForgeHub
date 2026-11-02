@@ -1195,4 +1195,29 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
   writeTree(dir, files);
   fs.writeFileSync(path.join(dir, 'expected.json'), json(expected));
 }
+{
+  // salt-orchard plus the first two receipts of Arrival (M05-J07): a baseline and an author edit, with the content objects they name (provenance/objects has no extension)
+  const { buildReceipt, objectPath, receiptPath, sha256Hex } = await import('../../receipts/src/index.mjs');
+  const { files, expected } = buildSaltOrchard();
+  const arrivalPath = 'manuscript/act-01-low-water/ch-001-the-drowned-rows/0010-arrival.md';
+  const arrival = files.get(arrivalPath);
+  const v0 = Buffer.from(render(arrival).toString());
+  const v1 = Buffer.from(v0.toString().replace('green eyes ringed', 'grey eyes ringed'));
+  const target = { id: arrival.fm.id, path: arrivalPath };
+  const at0 = '2026-11-02T14:05:00.000Z';
+  const at1 = '2026-11-02T14:09:30.250Z';
+  const r0 = buildReceipt({ id: `rcpt_${ulid('RC', 1)}`, at: at0, actor: 'system', operation: 'baseline', workflow: 'editor', target, before_sha256: '', after_sha256: sha256Hex(v0), beforeBytes: Buffer.alloc(0), afterBytes: v0 });
+  const r1 = buildReceipt({ id: `rcpt_${ulid('RC', 2)}`, at: at1, actor: 'author', operation: 'author.edit', workflow: 'editor', target, before_sha256: sha256Hex(v0), after_sha256: sha256Hex(v1), beforeBytes: v0, afterBytes: v1, parents: [{ id: `rcpt_${ulid('RC', 1)}`, sha256: r0.sha256 }] });
+  const dir = path.join(FIXTURES, 'valid', 'receipts');
+  writeTree(dir, files);
+  const put = (rel, bytes) => {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), bytes);
+  };
+  put(receiptPath(at0, `rcpt_${ulid('RC', 1)}`), r0.text);
+  put(receiptPath(at1, `rcpt_${ulid('RC', 2)}`), r1.text);
+  put(objectPath(sha256Hex(v0)), v0);
+  put(objectPath(sha256Hex(v1)), v1);
+  fs.writeFileSync(path.join(dir, 'expected.json'), json(expected));
+}
 console.log('fixtures written');

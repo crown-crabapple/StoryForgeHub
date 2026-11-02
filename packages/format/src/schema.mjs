@@ -98,6 +98,18 @@ export const KINDS = {
       created: 'any', status: ['pending', 'accepted', 'declined', 'partial'], ai: 'map', hunks: 'list',
     },
   },
+  // Added 2026-11-02, M05-J07 (additive within v1): a provenance receipt, under provenance/<YYYY>/<MM>/. A record of what happened; never story text or canon.
+  // (provenance/objects/** holds raw bytes with no extension and is not read as documents.)
+  receipt: {
+    prefix: 'rcpt',
+    required: ['at', 'actor', 'operation', 'workflow', 'target', 'before_sha256', 'after_sha256', 'parents'],
+    fields: {
+      at: 'str', actor: ['author', 'ai', 'external', 'system'],
+      operation: ['baseline', 'author.edit', 'external.change', 'ai.proposal', 'ai.generation', 'suggestion.accept', 'suggestion.decline', 'undo', 'revision.restore', 'publish', 'check.report', 'ai.chat'],
+      workflow: ['editor', 'ai-rewrite', 'ai-chat', 'suggestion', 'claude-book', 'watcher', 'revision', 'undo', 'export', 'check'],
+      target: 'map', before_sha256: 'str', after_sha256: 'str', ranges: 'list', parents: 'list', ai: 'map',
+    },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],

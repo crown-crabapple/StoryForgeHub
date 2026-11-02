@@ -116,6 +116,26 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const r = await repository.getSuggestion(b, d);
       return r.ok ? { status: 200, body: r.suggestion } : NOT_FOUND;
     }
+    // M05-J07: receipts (the provenance ledger). Reads only: GET /receipts?scene= (lineage, receipts, integrity status), /receipts/blame?scene=&from=&to=, /receipts/verify
+    if (c === 'receipts' && d === undefined) {
+      const scene = params.get('scene');
+      if (scene === null || scene === '') return badRequest('scene is required');
+      const r = await repository.getReceipts(b, scene);
+      return r.ok ? { status: 200, body: { receipts: r.receipts, lineage: r.lineage, status: r.status } } : NOT_FOUND;
+    }
+    if (c === 'receipts' && d === 'blame' && e === undefined) {
+      const scene = params.get('scene');
+      const from = params.get('from');
+      const to = params.get('to');
+      if (scene === null || scene === '') return badRequest('scene is required');
+      if ((from !== null && !/^[1-9][0-9]*$/.test(from)) || (to !== null && !/^[1-9][0-9]*$/.test(to))) return badRequest('from and to must be line numbers (1 or more)');
+      const r = await repository.blame(b, scene, from === null ? 1 : Number(from), to === null ? Infinity : Number(to));
+      return r.ok ? { status: 200, body: { lines: r.lines } } : NOT_FOUND;
+    }
+    if (c === 'receipts' && d === 'verify' && e === undefined) {
+      const r = await repository.verifyReceipts(b);
+      return r ? { status: 200, body: r } : NOT_FOUND;
+    }
     if (c === 'repair' && d === 'plan' && e === undefined) {
       const plan = await repository.planRepair(b);
       return plan ? { status: 200, body: plan } : NOT_FOUND;
@@ -258,6 +278,11 @@ async function handleExport(repository, bookId, params) {
   const statusParam = params.get('excludeStatuses');
   const excludeStatuses = statusParam === null || statusParam === '' ? [] : statusParam.split(',').map((x) => x.trim());
   if (excludeStatuses.some((x) => !/^[A-Za-z0-9_-]{1,40}$/.test(x))) return badRequest('excludeStatuses must be a comma-separated list of status names');
+  const include = params.get('include') ?? 'manuscript';
+  if (!INCLUDE_MODES.includes(include)) return badRequest(`include must be one of: ${INCLUDE_MODES.join(', ')}`);
+  const sceneParam = params.get('scenes');
+  const sceneIds = sceneParam === null || sceneParam === '' ? undefined : sceneParam.split(',').map((x) => x.trim());
+  if (sceneIds?.some((x) => !/^[A-Za-z0-9_-]{1,80}$/.test(x))) return badRequest('scenes must be a comma-separated list of scene ids');
   const root = await repository.bookRoot(bookId);
   if (!root) return NOT_FOUND;
   try {
@@ -278,11 +303,6 @@ async function handleBackup(repository, bookId, params) {
   if (!root) return NOT_FOUND;
   const { bytes, filename } = await createBackup(root, { includeProvenance: provenance });
   return download({ bytes, filename, mime: 'application/zip' });
-  const include = params.get('include') ?? 'manuscript';
-  if (!INCLUDE_MODES.includes(include)) return badRequest(`include must be one of: ${INCLUDE_MODES.join(', ')}`);
-  const sceneParam = params.get('scenes');
-  const sceneIds = sceneParam === null || sceneParam === '' ? undefined : sceneParam.split(',').map((x) => x.trim());
-  if (sceneIds?.some((x) => !/^[A-Za-z0-9_-]{1,80}$/.test(x))) return badRequest('scenes must be a comma-separated list of scene ids');
 }
 
 /** GET /api/books/:b/cover[?v=<sha8>]: the cover image bytes. Only a supported image under the book's assets/ is ever served. */
@@ -481,6 +501,8 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'suggestions' && d !== undefined && e === undefined) return { route: 'suggestion-decide', bookId: b, suggestionId: d };
   if (method === 'POST' && c === 'suggestions' && d !== undefined && e === 'hunks' && f !== undefined) return { route: 'suggestion-hunk-decide', bookId: b, suggestionId: d, hunkId: f };
   if (method === 'POST' && c === 'check' && d === undefined) return { route: 'check-scene', bookId: b };
+  // M05-J07: "Record now" (flush the author's pending changes to a scene into a receipt)
+  if (method === 'POST' && c === 'receipts' && d === 'flush' && e === undefined) return { route: 'receipts-flush', bookId: b };
   if (method === 'POST' && c === 'attachments' && d === undefined) return { route: 'attachment-upload', bookId: b };
   return null;
 }
@@ -657,6 +679,11 @@ export async function handleWrite(repository, match, body, state) {
       if (typeof body.sceneId !== 'string' || body.sceneId === '') return badRequest('expected { sceneId: string }');
       const r = await repository.checkScene(bookId, body.sceneId);
       return respond(r, 200, (x) => ({ scene: x.scene, at: x.at, findings: x.findings, summary: x.summary }));
+    }
+    case 'receipts-flush': {
+      if (typeof body.sceneId !== 'string' || body.sceneId === '') return badRequest('expected { sceneId: string }');
+      const r = await repository.flushReceipts(bookId, body.sceneId);
+      return respond(r, 200, (x) => ({ flushed: x.flushed, baseline: x.baseline, receipt: x.receipt }));
     }
     default:
       if (match.route.startsWith('ai-')) return handleAiWrite(repository, match, body, state);

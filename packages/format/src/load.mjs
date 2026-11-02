@@ -59,7 +59,8 @@ export async function loadDoc(absPath, rel, file, add) {
   }
 
   if (parsed.bom) add('W204', file, '', 'byte-order mark found and ignored');
-  if (!FILENAME_RE.test(path.posix.basename(rel)) || path.posix.basename(rel).length > 80) {
+  // (a receipt is named by its id: rcpt_<ULID>.md)
+  if (kind !== 'receipt' && (!FILENAME_RE.test(path.posix.basename(rel)) || path.posix.basename(rel).length > 80)) {
     add('W203', file, '', 'filename breaks the naming rules (a-z, 0-9, hyphen, .md, max 80 chars)');
   }
 

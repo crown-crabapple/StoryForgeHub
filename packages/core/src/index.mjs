@@ -8,7 +8,8 @@ export { KEEP_DAYS, KEEP_LATEST, createSnapshotTracker, planRetention } from './
 export { FLUSH_MS, createActivity } from './activity.mjs';
 export { loadConfig, ConfigError, DEFAULT_PORT, HOST, LOCK_FILE } from './config.mjs';
 export { __hooks } from './hooks.mjs';
-export { recordProvenance } from './provenance.mjs';
+export { recordProvenance, recordProvenanceAt, publishWithReceipt, notifyProvenance } from './provenance.mjs';
+export { createReceiptEngine, FLUSH_AFTER_MS, promptText } from './receipts.mjs';
 export { renderAiRecord, selectRange, spliceReplacement } from './ai-rewrite.mjs';
 export { acquireLock, releaseLock, releaseLockSync, updateLock } from '@storyforge/store';
 export { readUserConfig, userConfigDir, writeUserConfig } from '@storyforge/store';

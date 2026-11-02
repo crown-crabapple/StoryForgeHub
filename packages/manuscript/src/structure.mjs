@@ -580,9 +580,11 @@ const CREATION_UNDOABLE = new Set(['createContinuityException', 'decideSuggestio
 /**
  * Undo one earlier operation from its trash copies, but only if every file it wrote still has the hash the
  * operation gave it. Operations that created files, or touched one path twice, are not undoable this way.
- * @param {string} bookRoot @param {string} opId @param {{dryRun?:boolean}} [args]
+ * Receipts (M05-J07) are records and are never undone: the files under provenance/ that the operation wrote are left as they are, and when the operation
+ * had receipts `hooks.stage(tx, changes)` lets the caller write the undo's own receipt in the undo's batch.
+ * @param {string} bookRoot @param {string} opId @param {{dryRun?:boolean}} [args] @param {{ stage?: (tx: any, changes: any[]) => Promise<void> }} [hooks]
  */
-export function restoreOp(bookRoot, opId, args = {}) {
+export function restoreOp(bookRoot, opId, args = {}, hooks = {}) {
   return guarded(async () => {
     const { dryRun = false } = args ?? {};
     if (typeof opId !== 'string') return fail('REFUSED_BAD_ARGS', 'opId must be a string');
@@ -597,7 +599,9 @@ export function restoreOp(bookRoot, opId, args = {}) {
     } catch {
       return fail('REFUSED_UNKNOWN_OP', `the record of ${opId} cannot be read`);
     }
-    const recorded = Array.isArray(record?.changes) ? record.changes : [];
+    const isReceiptFile = (c) => typeof c.to === 'string' && c.to.startsWith('provenance/');
+    const hadReceipts = (Array.isArray(record?.changes) ? record.changes : []).some(isReceiptFile);
+    const recorded = (Array.isArray(record?.changes) ? record.changes : []).filter((c) => !isReceiptFile(c));
     if (recorded.length === 0) return fail('REFUSED_NOT_UNDOABLE', `${opId} changed no files`);
     // A move that renumbers neighbours may write a file at a path another of its changes vacated (a chain); that is
     // undone in the reverse order. Only a path read twice or written twice makes an operation not undoable.
@@ -626,6 +630,6 @@ export function restoreOp(bookRoot, opId, args = {}) {
       if (!old || sha256(old) !== c.before_sha256) return fail('REFUSED_TRASH_MISSING', `the saved copy of ${c.from} is missing or does not match`, { file: c.from });
       changes.push({ from: c.to, to: c.from, content: old, before: now.bytes });
     }
-    return finish({ bookRoot, store, lb, op: 'restoreOp', args: { opId }, changes, dryRun, withDiff: true, extra: { restored: opId } });
+    return finish({ bookRoot, store, lb, op: 'restoreOp', args: { opId }, changes, dryRun, withDiff: true, extra: { restored: opId }, stage: hadReceipts ? hooks?.stage : undefined });
   });
 }

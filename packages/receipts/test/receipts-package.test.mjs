@@ -107,3 +107,10 @@ test('lineage and blame', () => {
   const pending = blame({ receipts, objectBytes, currentBytes: `${texts[2]}extra\n` });
   assert.equal(pending.at(-1).unrecorded, true);
 });
+
+test('verifyChain: a receipt edited until it no longer parses is still the parent its child names (PARENT_ALTERED, not PARENT_MISSING)', () => {
+  const { objects, files } = chain();
+  const broken = files.map((f, i) => (i === 0 ? { ...f, bytes: Buffer.from(f.bytes.toString().replace('actor: system', 'actor: nobody')) } : f));
+  const codes = verifyChain({ receipts: broken, objectBytes: (sha) => objects.get(sha) ?? null }).problems.map((p) => p.code).sort();
+  assert.deepEqual(codes, ['RCPT_MALFORMED', 'RCPT_PARENT_ALTERED']);
+});

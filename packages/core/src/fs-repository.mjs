@@ -14,6 +14,8 @@ import { createActivity } from './activity.mjs';
 import { createIndexManager } from './index-manager.mjs';
 import { createWatcher } from './watcher.mjs';
 import { createWriteMethods } from './fs-writes.mjs';
+import { registerReceiptEngine } from './provenance.mjs';
+import { createReceiptEngine } from './receipts.mjs';
 import { createTimelineReads } from './fs-timeline.mjs';
 import { countWords } from './word-count.mjs';
 
@@ -193,7 +195,10 @@ function explain(d) {
 export function createFsRepository(libraryRoot, options = {}) {
   const root = path.resolve(libraryRoot);
   const manager = createIndexManager(root);
-  const watcher = createWatcher({ root, manager, options: { ...options, ...(options.watcher ?? {}) } });
+  // M05-J07: the receipt writer of this library (staged into the batches of the changes themselves; the watcher attributes outside changes)
+  const receipts = createReceiptEngine({ root, now: options.clock });
+  const unregisterReceipts = registerReceiptEngine(receipts);
+  const watcher = createWatcher({ root, manager, options: { ...options, ...(options.watcher ?? {}) }, onExternalChange: (bookPath, rels) => receipts.externalCheck(bookPath, rels) });
   watcher.start();
 
   /** The questions createBook asks about the library (reads only). @type {import('./create-book.mjs').CreateProbe} */
@@ -796,6 +801,7 @@ export function createFsRepository(libraryRoot, options = {}) {
       await activity.close().catch(() => {});
       await watcher.ready;
       watcher.close();
+      unregisterReceipts();
     },
 
     /**
@@ -1124,6 +1130,6 @@ export function createFsRepository(libraryRoot, options = {}) {
       }
     },
   }));
-  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }), activity, now: options.clock }));
+  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }), activity, now: options.clock, receipts }));
   return repository;
 }

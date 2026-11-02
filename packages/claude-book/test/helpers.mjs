@@ -131,6 +131,8 @@ export function snapshot(root) {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, e.name);
       const rel = path.relative(root, full).split(path.sep).join('/');
+      // M05-J07: provenance/ (receipts and objects) is the intended new effect of AI, suggestion and adapter actions; the receipts-*.test.mjs files check it directly.
+      if (rel === 'provenance') continue;
       if (e.isDirectory()) {
         out.set(rel, { type: 'dir' });
         walk(full);

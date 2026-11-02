@@ -42,6 +42,8 @@ import { recordPath, renderAiRecord, selectRange, spliceReplacement } from './ai
 import { createCheckMethods } from './check-scene.mjs';
 import { createContinuityExceptionMethods } from './continuity-exceptions.mjs';
 import { createSuggestionMethods } from './suggestions.mjs';
+import { createReceiptEngine } from './receipts.mjs';
+import { recordProvenance } from './provenance.mjs';
 import { createSnapshotTracker, planRetention, splitRevision } from './revisions.mjs';
 import { localDate } from './writing-log.mjs';
 import { wordDelta } from './word-delta.mjs';
@@ -75,10 +77,11 @@ const errKey = (d) => `${d.code}\0${d.file}\0${d.location}`;
 /**
  * @param {{ root: string, getScene: (bookId: string, sceneId: string) => Promise<any>,
  *           afterWrite?: (bookPath: string) => void, reconcile?: (bookPath: string) => Promise<any>,
- *           activity?: ReturnType<typeof import('./activity.mjs').createActivity>, now?: () => number | Date }} deps
+ *           activity?: ReturnType<typeof import('./activity.mjs').createActivity>, now?: () => number | Date,
+ *           receipts?: ReturnType<typeof import('./receipts.mjs').createReceiptEngine> }} deps
  *   `afterWrite` runs after every successful change; `reconcile` (structure commands) brings the book's index up to date before the call returns
  */
-export function createWriteMethods({ root, getScene, afterWrite = () => {}, reconcile, activity, now = () => Date.now() }) {
+export function createWriteMethods({ root, getScene, afterWrite = () => {}, reconcile, activity, now = () => Date.now(), receipts = createReceiptEngine({ root, now }) }) {
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
   const toLibRel = (book, p) => (book.path === '' ? p : `${book.path}/${p}`);
   const toBookRel = (book, p) => (book.path === '' ? p : p.startsWith(`${book.path}/`) ? p.slice(book.path.length + 1) : null);
@@ -231,12 +234,17 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       if (end < 0) return fail('NOT_A_SCENE', { message: 'front matter is not terminated' });
       const next = Buffer.concat([cur.bytes.subarray(0, end), Buffer.from(body, 'utf8')]);
       const changing = !next.equals(cur.bytes);
+      let revisionSaved = false;
       if (changing && cur.sha256 === baseSha256) {
         // a safety copy of the file as it is, before it is overwritten (never blocks the save)
         const reason = tracker.due(sceneId, nowMs());
-        if (reason) await snapshot(store, sceneId, cur.bytes, reason).catch(() => {});
+        if (reason) {
+          revisionSaved = true;
+          await snapshot(store, sceneId, cur.bytes, reason).catch(() => {});
+        }
       }
-      const r = await store.write(rel, next, { baseSha256 });
+      // M05-J07: the save, the first-seen baseline and (when a revision was just saved, or 10 minutes have passed) the author's flush are one batch
+      const r = changing ? await receipts.saveWithReceipts(store, { rel, sceneId, next, baseSha256, flushFirst: revisionSaved }) : await store.write(rel, next, { baseSha256 });
       if (r.ok) {
         const words = count && changing ? wordDelta(cur.bytes.subarray(end).toString('utf8'), body) : { added: 0, removed: 0 };
         activity?.record(found.book.path, words);
@@ -262,7 +270,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       const store = await openStore(bookRootOf(book));
       const known = new Set(before.filter((d) => d.severity === 'error').map(errKey));
       const bytes = Buffer.from(content, 'utf8');
-      const r = await store.batch('writeSceneRaw', { bookId, path: toLibRel(book, rel) }, (tx) => tx.write(rel, bytes, { baseSha256 }), {
+      const r = await store.batch('writeSceneRaw', { bookId, path: toLibRel(book, rel) }, (tx) => receipts.authorWrite(store, tx, { rel, sceneId, next: bytes, baseSha256 }), {
         verify: async () => {
           const result = await validate(root);
           const fresh = result.diagnostics.filter((d) => d.severity === 'error' && !known.has(errKey(d)));
@@ -368,6 +376,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       if (!ctx || ctx.rel === null) return fail('NOT_FOUND');
       const cur = await ctx.store.read(ctx.rel);
       if (!cur) return fail('NOT_FOUND');
+      await receipts.flushDoc(ctx.store, sceneId, ctx.rel).catch(() => {}); // a revision is saved: the author's pending changes become a receipt first
       const r = await snapshot(ctx.store, sceneId, cur.bytes, reason, reason === 'manual' && label ? { label } : {});
       return r.ok ? { ok: true, code: 'OK', stored: r.stored, revision: r.entry } : fail(r.code, r.message ? { message: r.message } : {});
     },
@@ -422,7 +431,15 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       const saved = await snapshot(store, sceneId, cur.bytes, 'restore');
       if (!saved.ok) return fail(saved.code, saved.message ? { message: saved.message } : {});
       const next = Buffer.concat([curHead, revBody]);
-      const w = await store.write(rel, next, { baseSha256: cur.sha256 });
+      const w = await receipts.writeWithReceipt(store, {
+        opName: 'write',
+        args: { rel },
+        rel,
+        targetId: sceneId,
+        baseSha256: cur.sha256,
+        after: next,
+        receipt: { operation: 'revision.restore', actor: 'author', workflow: 'revision', summary: `Author restored the revision saved ${entry.at}.` },
+      });
       if (!w.ok) return w.code === 'CONFLICT' ? conflict(w, bookId, sceneId) : fail(w.code, w.message ? { message: w.message } : {});
       afterWrite(ctx.book.path);
       return { ok: true, code: 'OK', mode, sha256: w.sha256, snapshot: saved.entry };
@@ -478,7 +495,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     renumberChapters: (bookId, args = {}) => structure(bookId, (b) => renumberChapters(b, args ?? {})),
     createAct: (bookId, args = {}) => structure(bookId, (b) => createAct(b, args ?? {})),
     setActFields: (bookId, act, args = {}) => structure(bookId, (b) => setActFields(b, act, args ?? {})),
-    restoreOp: (bookId, opId, args = {}) => structure(bookId, (b) => restoreOp(b, opId, args ?? {})),
+    restoreOp: (bookId, opId, args = {}) => structure(bookId, async (b) => restoreOp(b, opId, args ?? {}, { stage: await receipts.undoStager(b) })),
 
     // ---- M04-J02: Codex entries and types (canonical files only; dryRun previews with diffs)
     createEntry: (bookId, args = {}) => structure(bookId, (b) => createEntry(b, args ?? {})),
@@ -514,8 +531,15 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     // ---- M05-J02: continuity exceptions (planning/continuity/<slug>.md, through the store) and the context lines of a finding
     ...createContinuityExceptionMethods({ root, afterWrite, reconcile, now }),
     // ---- M05-J06: suggestions (suggestions/<YYYY>/*.md, through the store; a target changes only on accept) and the read-only scene check
-    ...createSuggestionMethods({ root, afterWrite, reconcile, now }),
-    ...createCheckMethods({ root, now }),
+    ...createSuggestionMethods({ root, afterWrite, reconcile, now, receipts }),
+    ...createCheckMethods({ root, now, receipts }),
+    // ---- M05-J07: receipts (provenance ledger): reads, flush and verification; the writer is shared with the changes above
+    getReceipts: receipts.getReceipts,
+    blame: receipts.blame,
+    flushReceipts: receipts.flushReceipts,
+    verifyReceipts: receipts.verifyReceipts,
+    /** Write the receipt(s) of a provenance event (the AI routes report through here). */
+    recordProvenance: (event) => recordProvenance(event, { engine: receipts }),
 
     createNote: (bookId, args = {}) => structure(bookId, (b) => createNote(b, args ?? {})),
     setNoteFields: (bookId, id, args = {}) => structure(bookId, (b) => setNoteFields(b, id, args ?? {})),
@@ -635,7 +659,22 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       const sel = selectRange(cur.bytes, end, from, to);
       if (!sel.ok || sel.text !== original) return changed;
       const next = spliceReplacement(cur.bytes, sel, replacement);
-      const r = await ctx.store.write(ctx.rel, next, { baseSha256: cur.sha256 });
+      const hint = receipts.hintFor(ctx.book, sceneId);
+      const r = await receipts.writeWithReceipt(ctx.store, {
+        opName: 'write',
+        args: { rel: ctx.rel },
+        rel: ctx.rel,
+        targetId: sceneId,
+        baseSha256: cur.sha256,
+        after: next,
+        receipt: {
+          operation: 'suggestion.accept',
+          actor: 'ai',
+          workflow: 'ai-rewrite',
+          ai: { ...hint, acceptance: 'accepted' },
+          summary: 'Author applied an AI rewrite of a selected passage.',
+        },
+      });
       if (!r.ok) return r.code === 'CONFLICT' ? changed : fail(r.code, r.message ? { message: r.message } : {});
       afterWrite(ctx.book.path);
       return { ok: true, code: 'OK', sha256: r.sha256, opId: r.opId ?? null, path: ctx.rel };

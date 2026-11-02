@@ -99,8 +99,10 @@ async function writeManifest(work, model, command, chapter) {
 /**
  * @param {string[]} argv arguments after `node sf-claude-book.mjs`
  * @param {{ stdout?: (s: string) => void, stderr?: (s: string) => void, env?: Record<string, string|undefined>,
- *   provenance?: (event: Record<string, unknown>) => void }} [io] `provenance` is the M05-J04 hook seam (check.report,
- *   suggestion.create and publish events). The adapter does not depend on @storyforge/core, so the caller wires it (M05-J07).
+ *   provenance?: (event: Record<string, unknown>) => void | Promise<void>,
+ *   publishFile?: (a: { bookRoot: string, rel: string, sceneId: string, before: Buffer, beforeSha: string, after: Buffer, fromSha256: string, fromBodySha256: string }) => Promise<{ ok: true, sha256: string } | { ok: false, code: string }> }} [io]
+ *   `provenance` is the M05-J04 hook seam (check.report, ai.generation, suggestion.create and publish events); it is awaited. `publishFile` (M05-J07) replaces the plain
+ *   store write of `publish` so the scene and its receipt land in one batch. The adapter does not depend on @storyforge/core: the caller (bin/sf-claude-book.mjs) wires both.
  * @returns {Promise<number>} exit code
  */
 export async function run(argv, io = {}) {
@@ -122,7 +124,7 @@ export async function run(argv, io = {}) {
     const model = await loadModel(opts.book);
     const bookId = model.bookDoc.fm.id;
 
-    if (bookOnly) return await runBookCommand(command, opts, model, { out, provenance });
+    if (bookOnly) return await runBookCommand(command, opts, model, { out, provenance, publishFile: io.publishFile });
 
     const workId = opts['work-id'] ?? String(model.bookDoc.fm.slug ?? '');
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(workId)) throw new UsageError(`invalid --work-id "${workId}" (letters, digits, . _ - only)`);
@@ -148,6 +150,7 @@ export async function run(argv, io = {}) {
       const rel = `drafts/chapter-${pad2(n)}-draft.md`;
       await work.write(rel, renderCoWriteDraft({ chapter: n, from: opts.from, sha256: createHash('sha256').update(text).digest('hex'), text }));
       await writeManifest(work, model, command, n);
+      await provenance({ kind: 'ai.generation', bookId, chapter: n, draft: path.relative(framework, work.abs(rel)).split(path.sep).join('/'), draft_sha256: createHash('sha256').update(text).digest('hex'), text });
       out(`draft proposal: ${work.abs(rel)}\n`);
       return 0;
     }
@@ -191,7 +194,7 @@ export async function run(argv, io = {}) {
       await work.write(mdRel, renderCheckReport(report));
       await work.write(jsonRel, `${JSON.stringify(report, null, 2)}\n`);
       await writeManifest(work, model, command, n);
-      provenance({ kind: 'check.report', bookId, chapter: n, sceneId, report: jsonRel, summary: report.summary });
+      await provenance({ kind: 'check.report', bookId, chapter: n, sceneId, report: jsonRel, summary: report.summary });
       out(`check: ${report.summary.errors} error(s), ${report.summary.warnings} warning(s), ${report.summary.info} info\nreport: ${work.abs(mdRel)}\n`);
       return report.summary.errors > 0 ? 1 : 0;
     }
@@ -247,9 +250,9 @@ export async function run(argv, io = {}) {
 /**
  * suggest, propose-state and publish: the commands that write into the book (always through the store).
  * @param {string} command @param {Record<string, string>} opts @param {import('./model.mjs').Model} model
- * @param {{ out: (s: string) => void, provenance: (e: Record<string, unknown>) => void }} o
+ * @param {{ out: (s: string) => void, provenance: (e: Record<string, unknown>) => void | Promise<void>, publishFile?: NonNullable<Parameters<typeof run>[1]>['publishFile'] }} o
  */
-async function runBookCommand(command, opts, model, { out, provenance }) {
+async function runBookCommand(command, opts, model, { out, provenance, publishFile }) {
   const bookId = model.bookDoc.fm.id;
   if (command === 'propose-state') {
     const n = chapterOf(opts.chapter);
@@ -270,7 +273,7 @@ async function runBookCommand(command, opts, model, { out, provenance }) {
     const { files, notes } = proposeState({ model, chapter: n, data });
     if (files.length > 0) await createSuggestionFiles(model.root, files);
     for (const f of files) {
-      provenance({ kind: 'suggestion.create', bookId, suggestionId: f.id, target: f.target, path: f.rel, mode: f.mode, source: f.source });
+      await provenance({ kind: 'suggestion.create', bookId, suggestionId: f.id, target: f.target, path: f.rel, mode: f.mode, source: f.source });
       out(`suggestion (${f.mode}): ${path.join(model.root, ...f.rel.split('/'))}\n`);
     }
     for (const note of notes) out(`note: ${note}\n`);
@@ -286,7 +289,7 @@ async function runBookCommand(command, opts, model, { out, provenance }) {
   if (command === 'suggest') {
     const f = suggestForScene({ model, scene: hit, fromText });
     await createSuggestionFiles(model.root, [f]);
-    provenance({ kind: 'suggestion.create', bookId, suggestionId: f.id, target: f.target, path: f.rel, mode: f.mode, source: f.source });
+    await provenance({ kind: 'suggestion.create', bookId, suggestionId: f.id, target: f.target, path: f.rel, mode: f.mode, source: f.source });
     out(`suggestion: ${path.join(model.root, ...f.rel.split('/'))}\n`);
     return 0;
   }
@@ -304,9 +307,16 @@ async function runBookCommand(command, opts, model, { out, provenance }) {
   const fromSplit = splitFrontMatter(fromText);
   const after = Buffer.from(`${split.head}${withEol(fromSplit ? fromSplit.body : fromText, eolOf(baseText))}`, 'utf8');
   if (after.equals(before)) throw new RefusedError('the text in --from is identical to the scene; nothing written');
-  const r = await replaceBookFile(model.root, hit.doc.rel, after, beforeSha);
+  const fromSha256 = createHash('sha256').update(fromText).digest('hex');
+  const fromBodySha256 = createHash('sha256').update(fromSplit ? fromSplit.body : fromText).digest('hex');
+  const r = publishFile
+    ? await publishFile({ bookRoot: model.root, rel: hit.doc.rel, sceneId: String(hit.doc.fm.id), before, beforeSha, after, fromSha256, fromBodySha256 })
+    : await replaceBookFile(model.root, hit.doc.rel, after, beforeSha);
   if (!r.ok) throw new RefusedError(`the store refused the write (${r.code}); nothing written`);
-  provenance({ kind: 'publish', bookId, sceneId: hit.doc.fm.id, target: hit.doc.fm.id, path: hit.doc.rel, before_sha256: beforeSha, after_sha256: r.sha256 });
+  await provenance({
+    kind: 'publish', bookId, sceneId: hit.doc.fm.id, target: hit.doc.fm.id, path: hit.doc.rel, before_sha256: beforeSha, after_sha256: r.sha256,
+    from_sha256: fromSha256, from_body_sha256: fromBodySha256, ...(publishFile ? { recorded: true } : {}),
+  });
   out(`published ${hit.doc.rel}\nbefore sha256: ${beforeSha}\nafter sha256: ${r.sha256}\n`);
   return 0;
 }
