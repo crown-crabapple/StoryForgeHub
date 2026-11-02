@@ -1,0 +1,18 @@
+{
+  "name": "@storyforge/receipts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge provenance receipts: build, parse, line diff, chain verification, lineage and blame (pure, no filesystem)",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@storyforge/suggestions": "0.1.0",
+    "yaml": "2.9.1"
+  }
+}

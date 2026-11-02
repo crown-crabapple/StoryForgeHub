@@ -132,6 +132,12 @@ export default [
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
+  // packages/receipts (M05-J07): pure; builds, parses, diffs and verifies receipt text. No filesystem access (core writes through the store).
+  {
+    files: ['packages/receipts/src/**/*.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
+  },
+
   // packages/ai: no direct filesystem access; settings go through the store's user-config functions.
   {
     files: ['packages/ai/src/**/*.mjs'],
