@@ -142,6 +142,14 @@ export function selectionLines(text, from, to) {
   return { from: a, to: Math.max(a, lineOf(end)) };
 }
 
+/**
+ * The file lines to ask the server about for a selection in the editor text, and the answer's rows back in editor lines.
+ * The server counts lines of the file (front matter included); the editor shows only the body. @param {number} front front-matter line count
+ */
+export const fileLinesOf = (lines, front) => ({ from: lines.from + front, to: lines.to + front });
+/** @param {ReturnType<typeof readBlame>} rows @param {number} front */
+export const editorRowsOf = (rows, front) => rows.map((r) => ({ ...r, from: r.from - front, to: r.to - front }));
+
 /** Blame rows from an answer (`[{ line, receiptId, actor, label }]` or `{ lines: [...] }`), consecutive lines with the same receipt and label joined. @param {any} data */
 export function readBlame(data) {
   const rows = Array.isArray(data) ? data : list(data?.lines ?? data?.blame);

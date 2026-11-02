@@ -1,7 +1,9 @@
 // "Rewrite with AI..." from an editor selection: instruction, preview, send, then the result as a diff against the selection.
 // Nothing is written until Apply; Discard (or closing) writes nothing. Apply can be undone.
 import { useState } from 'react';
+import { continuityHref } from '../continuity/model.js';
 import { useEditorBridge } from '../editor/bridge.jsx';
+import { useNavigate } from '../router.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { FilePicker } from './FilePicker.jsx';
 import { hostOf } from './model.js';
@@ -16,6 +18,7 @@ import { useExchange } from './useExchange.js';
 export function RewriteDialog({ book, active, records, scene, rewrite, onClose }) {
   const bridge = useEditorBridge();
   const ex = useExchange(book.id);
+  const navigate = useNavigate();
   const [files, setFiles] = useState(/** @type {{ path: string, title: string }[]} */ (scene ? [{ path: scene.path, title: scene.title }] : []));
   const [instruction, setInstruction] = useState('');
   const [includeContext, setIncludeContext] = useState(false);
@@ -128,7 +131,7 @@ export function RewriteDialog({ book, active, records, scene, rewrite, onClose }
           {applied && <p role="status">Applied to the scene.</p>}
           {!applied && ex.result?.suggestion && (
             <p className="muted">
-              Saved as a suggestion: the scene is unchanged. Apply accepts every change; to take only some, choose Review changes and use Suggestions in the right panel.
+              Saved as a suggestion: the scene is unchanged. Apply accepts every change; to take only some, choose Review changes.
             </p>
           )}
         </section>
@@ -162,7 +165,15 @@ export function RewriteDialog({ book, active, records, scene, rewrite, onClose }
               Apply
             </button>
             {ex.result?.suggestion && (
-              <button type="button" className="btn" disabled={working} onClick={onClose}>
+              <button
+                type="button"
+                className="btn"
+                disabled={working}
+                onClick={() => {
+                  onClose();
+                  navigate(continuityHref(book.id, { suggestion: ex.result.suggestion.id }));
+                }}
+              >
                 Review changes
               </button>
             )}

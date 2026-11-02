@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useApi } from '../api.js';
 import { useEditorBridge } from '../editor/bridge.jsx';
-import { sendRequest } from '../continuity/requests.js';
+import { frontMatterLines } from '../continuity/model.js';
+import { RAW_URL, sendRequest } from '../continuity/requests.js';
+import { pathsOf } from '../structure/helpers.js';
 import { InspectorSection } from '../shell/InspectorSection.jsx';
 import { useWrites } from '../shell/writes.jsx';
-import { RECEIPTS_NOTE, actorLabel, badgeText, blameUrl, flushRequest, problemWords, rangesText, readBlame, readReceipt, readStatus, readSteps, receiptsUrl, selectionLines } from './model.js';
+import { RECEIPTS_NOTE, actorLabel, badgeText, blameUrl, editorRowsOf, fileLinesOf, flushRequest, problemWords, rangesText, readBlame, readReceipt, readStatus, readSteps, receiptsUrl, selectionLines } from './model.js';
 
 /** The integrity badge and, when something is off, the list of problems. Report only: nothing is repaired. @param {{ status: ReturnType<typeof readStatus> }} props */
 export function IntegrityStatus({ status }) {
@@ -186,7 +188,10 @@ export function RailReceipts({ book, scene, version = '', onChanged }) {
   const [asked, setAsked] = useState(/** @type {{ from: number, to: number } | null} */ (null));
   const [message, setMessage] = useState(/** @type {string | null} */ (null));
   const { data, error } = useApi(receiptsUrl(book.id, scene.id), `${version}|${stamp}`);
-  const blame = useApi(asked ? blameUrl(book.id, scene.id, asked.from, asked.to) : null, `${version}|${stamp}`);
+  // `asked` is in lines of the editor text; the server counts lines of the file, front matter included
+  const raw = useApi(!scene.problem && !scene.raw ? RAW_URL(book.id, pathsOf(book, scene.path).bookRel) : null, scene.sha256 ?? '');
+  const front = raw.data?.body === undefined ? null : frontMatterLines(raw.data.body);
+  const blame = useApi(asked && front !== null ? blameUrl(book.id, scene.id, fileLinesOf(asked, front).from, fileLinesOf(asked, front).to) : null, `${version}|${stamp}|${front}`);
   const steps = data ? readSteps(data) : null;
   const status = data ? readStatus(data.status) : null;
   const receipts = data ? (Array.isArray(data.receipts) ? data.receipts : []).map(readReceipt) : [];
@@ -217,7 +222,8 @@ export function RailReceipts({ book, scene, version = '', onChanged }) {
     }
   }
 
-  const blameRows = asked && blame.data !== undefined ? (blame.data ? readBlame(blame.data) : []) : null;
+  const blameRows =
+    asked && front !== null && blame.data !== undefined ? (blame.data ? editorRowsOf(readBlame(blame.data), front) : []) : null;
   return (
     <InspectorSection title="Receipts">
       {steps === null ? <p className="muted">{error ?? 'Loading…'}</p> : <LineageList steps={steps} />}
