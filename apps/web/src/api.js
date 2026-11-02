@@ -1,4 +1,4 @@
-// The only way the UI talks to the server: GET /api/*.
+// The only way the UI talks to the server: GET /api/*, plus the guarded write calls.
 import { useEffect, useState } from 'react';
 
 async function getJson(url, signal) {
@@ -31,4 +31,23 @@ export function useApi(url) {
     error: ready ? state.error : null,
     loading: url !== null && !ready,
   };
+}
+
+/**
+ * POST JSON to a write route. The x-storyforge header is required by the server's write guard.
+ * @returns {Promise<{ status: number, json: any }>}
+ */
+export async function postJson(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-storyforge': '1', accept: 'application/json' },
+    body: JSON.stringify(body),
+  });
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    // no body
+  }
+  return { status: res.status, json };
 }

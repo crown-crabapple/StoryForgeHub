@@ -1,6 +1,6 @@
 // insertScene, moveScene, renumberChapter, planRepair, applyRepair.
-import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { openStore } from '@storyforge/store';
 import { loadBook, manuscriptErrors } from './book.mjs';
 import { commit, publicChanges } from './commit.mjs';
 import { hasSimpleField, setFields, yamlQuote } from './frontmatter.mjs';
@@ -10,16 +10,13 @@ import { newSceneId, SCENE_ID_RE, SLUG_RE } from './util.mjs';
 
 const STATUSES = ['outline', 'drafting', 'revised', 'final'];
 const isInt = (v, min = 0) => Number.isInteger(v) && v >= min;
-const abs = (root, rel) => path.join(root, ...rel.split('/'));
 const fail = (code, message, extra = {}) => ({ ok: false, code, changes: [], message, ...extra });
 
-async function exists(p) {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
+/** Bytes of a book file via the store; a missing file is an error (the caller just validated the book). */
+async function readBytes(store, rel) {
+  const r = await store.read(rel);
+  if (!r) throw new Error(`cannot read ${rel}`);
+  return r.bytes;
 }
 
 /** Never throw on bad input: wrap every operation. */
@@ -32,27 +29,29 @@ async function guarded(fn) {
 }
 
 /**
- * Load + rule 5. Returns {lb} or {result} (a refusal).
+ * Open the store (which first recovers any interrupted op), load + rule 5.
+ * Returns {lb, store} or {result} (a refusal).
  * @param {string} bookRoot
- * @param {{allowCodes?:string[], onInvalid?:(lb:any, errs:object[])=>Promise<object|null>}} [opts]
+ * @param {{allowCodes?:string[], onInvalid?:(lb:any, errs:object[], store:any)=>Promise<object|null>}} [opts]
  */
 async function prepare(bookRoot, { allowCodes = [], onInvalid } = {}) {
+  const store = typeof bookRoot === 'string' && bookRoot !== '' ? await openStore(path.resolve(bookRoot)) : null;
   const lb = await loadBook(bookRoot);
   if ('error' in lb) return { result: fail(lb.error.code, lb.error.message) };
   const errs = manuscriptErrors(lb.diagnostics, allowCodes);
   if (errs.length) {
-    const special = onInvalid ? await onInvalid(lb, errs) : null;
+    const special = onInvalid ? await onInvalid(lb, errs, store) : null;
     return { result: special ?? fail('REFUSED_INVALID_BOOK', 'book has manuscript errors', { diagnostics: errs }) };
   }
-  return { lb };
+  return { lb, store };
 }
 
 /**
  * Build a Change for a scene: apply front-matter edits, target path. Null if nothing changes.
  * @returns {Promise<{change:object|null} | {unsimple:{file:string, field:string}}>}
  */
-async function sceneChange(root, scene, edits, to) {
-  const before = await readFile(abs(root, scene.path));
+async function sceneChange(store, scene, edits, to) {
+  const before = await readBytes(store, scene.path);
   const r = setFields(before, edits);
   if ('error' in r) return { unsimple: { file: scene.path, field: r.error.field } };
   if (to === scene.path && r.buf.equals(before)) return { change: null };
@@ -63,37 +62,37 @@ const unsimpleResult = ({ file, field }) =>
   fail('REFUSED_UNSIMPLE_FIELD', `${file}: front-matter line for "${field}" is not a simple "${field}: <integer>"`, { file, field });
 
 /** Reject targets that already exist (unless vacated by another change) or are claimed twice. */
-async function checkPaths(root, changes) {
+async function checkPaths(store, changes) {
   const seen = new Set();
   for (const c of changes) {
     if (c.to === c.from) continue;
     if (seen.has(c.to)) return fail('REFUSED_PATH_TAKEN', `two changes target ${c.to}`, { path: c.to });
     seen.add(c.to);
     const vacated = changes.some((o) => o !== c && o.from === c.to);
-    if (!vacated && (await exists(abs(root, c.to)))) {
+    if (!vacated && (await store.exists(c.to))) {
       return fail('REFUSED_PATH_TAKEN', `target path already exists: ${c.to}`, { path: c.to });
     }
   }
   return null;
 }
 
-async function finish({ bookRoot, lb, op, args, changes, dryRun, extra = {} }) {
-  const taken = await checkPaths(lb.root, changes);
+async function finish({ bookRoot, store, lb, op, args, changes, dryRun, extra = {} }) {
+  const taken = await checkPaths(store, changes);
   if (taken) return taken;
   if (dryRun) return { ok: true, code: 'OK', dryRun: true, changes: publicChanges(changes), ...extra };
   if (changes.length === 0) return { ok: true, code: 'OK', changes: [], ...extra };
-  const res = await commit({ bookRoot, root: lb.root, op, args, changes, beforeDiagnostics: lb.diagnostics });
+  const res = await commit({ store, bookRoot, root: lb.root, op, args, changes, beforeDiagnostics: lb.diagnostics });
   return { ...res, ...extra };
 }
 
 /** Renumber step-wise within the same directory; scenes whose sequence and filename already match are skipped. */
-async function renumberChanges(root, list, step) {
+async function renumberChanges(store, list, step) {
   const changes = [];
   for (let i = 0; i < list.length; i++) {
     const s = list[i];
     const seq = step * (i + 1);
     const to = `${path.posix.dirname(s.path)}/${sceneFileName(seq, sceneSlugOf(s.path))}`;
-    const r = await sceneChange(root, s, seq === s.sequence ? {} : { sequence: seq }, to);
+    const r = await sceneChange(store, s, seq === s.sequence ? {} : { sequence: seq }, to);
     if ('unsimple' in r) return { unsimple: r.unsimple };
     if (r.change) changes.push(r.change);
   }
@@ -104,7 +103,7 @@ async function renumberChanges(root, list, step) {
  * Neighbour changes for a placement. When no free integer exists the chapter is renumbered first
  * (10, 20, ...; mover excluded) and the mover then takes the midpoint of its new neighbours.
  */
-async function placementNeighbours(root, list, place) {
+async function placementNeighbours(store, list, place) {
   if (!place.renumber) return { moverSequence: place.sequence, changes: [] };
   const changes = [];
   const renumbered = [];
@@ -114,7 +113,7 @@ async function placementNeighbours(root, list, place) {
     renumbered.push({ id: s.id, sequence: seq });
     if (seq === s.sequence) continue;
     const to = `${path.posix.dirname(s.path)}/${sceneFileName(seq, sceneSlugOf(s.path))}`;
-    const r = await sceneChange(root, s, { sequence: seq }, to);
+    const r = await sceneChange(store, s, { sequence: seq }, to);
     if ('unsimple' in r) return { unsimple: r.unsimple };
     if (r.change) changes.push(r.change);
   }
@@ -147,7 +146,7 @@ export function insertScene(bookRoot, args = {}) {
 
     const prep = await prepare(bookRoot);
     if (prep.result) return prep.result;
-    const { lb } = prep;
+    const { lb, store } = prep;
     const { order, excluded } = lb.book;
 
     const list = order.filter((s) => s.chapter === chapter);
@@ -160,10 +159,10 @@ export function insertScene(bookRoot, args = {}) {
 
     const place = placeInChapter(list, after);
     if ('error' in place) return fail('REFUSED_BAD_ANCHOR', `scene ${after} is not in chapter ${chapter}`);
-    const nb = await placementNeighbours(lb.root, list, place);
+    const nb = await placementNeighbours(store, list, place);
     if (nb.unsimple) return unsimpleResult(nb.unsimple);
 
-    const resolver = await makePathResolver(lb.root);
+    const resolver = await makePathResolver(store);
     const to = resolver.scenePath(sceneAct, chapter, nb.moverSequence, slug);
     const text =
       `---\nschema: storyforge.scene/v1\nid: ${newId}\ntitle: ${yamlQuote(title)}\nact: ${sceneAct}\n` +
@@ -173,6 +172,7 @@ export function insertScene(bookRoot, args = {}) {
 
     return finish({
       bookRoot,
+      store,
       lb,
       op: 'insertScene',
       args: { ...args, body: `<${Buffer.byteLength(body)} bytes>` },
@@ -201,15 +201,12 @@ export function moveScene(bookRoot, sceneId, args = {}) {
     }
 
     // A scene whose act/chapter/sequence line is unreadable shows up as E102; report the real cause.
-    const onInvalid = async (lb, errs) => {
+    const onInvalid = async (lb, errs, store) => {
       for (const d of errs) {
         if (d.code !== 'E102' || !['act', 'chapter', 'sequence'].includes(d.location)) continue;
-        let buf;
-        try {
-          buf = await readFile(abs(lb.root, d.file));
-        } catch {
-          continue;
-        }
+        const read = await store.read(d.file);
+        if (!read) continue;
+        const buf = read.bytes;
         if (new RegExp(`^id:[ \\t]*${sceneId}[ \\t]*\\r?$`, 'm').test(buf.toString('utf8'))) {
           return unsimpleResult({ file: d.file, field: d.location });
         }
@@ -218,7 +215,7 @@ export function moveScene(bookRoot, sceneId, args = {}) {
     };
     const prep = await prepare(bookRoot, { onInvalid });
     if (prep.result) return prep.result;
-    const { lb } = prep;
+    const { lb, store } = prep;
 
     const scene = lb.book.order.find((s) => s.id === sceneId);
     if (!scene) return fail('REFUSED_UNKNOWN_SCENE', `no scene ${sceneId} in the book order`);
@@ -233,26 +230,27 @@ export function moveScene(bookRoot, sceneId, args = {}) {
     if ('error' in place) return fail('REFUSED_BAD_ANCHOR', `scene ${after} is not in chapter ${chapter}`);
 
     // The mover's three lines must all be simple (conservative reading of rule 2).
-    const src = await readFile(abs(lb.root, scene.path));
+    const src = await readBytes(store, scene.path);
     for (const f of ['act', 'chapter', 'sequence']) {
       if (!hasSimpleField(src, f)) return unsimpleResult({ file: scene.path, field: f });
     }
 
-    const nb = await placementNeighbours(lb.root, list, place);
+    const nb = await placementNeighbours(store, list, place);
     if (nb.unsimple) return unsimpleResult(nb.unsimple);
 
-    const resolver = await makePathResolver(lb.root);
+    const resolver = await makePathResolver(store);
     const to = resolver.scenePath(targetAct, chapter, nb.moverSequence, sceneSlugOf(scene.path));
     const edits = {};
     if (targetAct !== scene.act) edits.act = targetAct;
     if (chapter !== scene.chapter) edits.chapter = chapter;
     if (nb.moverSequence !== scene.sequence) edits.sequence = nb.moverSequence;
-    const r = await sceneChange(lb.root, scene, edits, to);
+    const r = await sceneChange(store, scene, edits, to);
     if ('unsimple' in r) return unsimpleResult(r.unsimple);
     const changes = [...nb.changes, ...(r.change ? [r.change] : [])];
 
     return finish({
       bookRoot,
+      store,
       lb,
       op: 'moveScene',
       args: { sceneId, ...args },
@@ -277,12 +275,12 @@ export function renumberChapter(bookRoot, chapter, args = {}) {
     if (!isInt(step, 1)) return fail('REFUSED_BAD_ARGS', 'step must be an integer >= 1');
     const prep = await prepare(bookRoot);
     if (prep.result) return prep.result;
-    const { lb } = prep;
+    const { lb, store } = prep;
     const list = lb.book.order.filter((s) => s.chapter === chapter);
     if (list.length === 0) return fail('REFUSED_UNKNOWN_CHAPTER', `chapter ${chapter} has no scenes`);
-    const r = await renumberChanges(lb.root, list, step);
+    const r = await renumberChanges(store, list, step);
     if (r.unsimple) return unsimpleResult(r.unsimple);
-    return finish({ bookRoot, lb, op: 'renumberChapter', args: { chapter, step }, changes: r.changes, dryRun });
+    return finish({ bookRoot, store, lb, op: 'renumberChapter', args: { chapter, step }, changes: r.changes, dryRun });
   });
 }
 
@@ -297,10 +295,11 @@ const diagKey = (d) => `${d.file}\0${d.location}`;
  */
 export function planRepair(bookRoot) {
   return guarded(async () => {
+    const store = typeof bookRoot === 'string' && bookRoot !== '' ? await openStore(path.resolve(bookRoot)) : null;
     const lb = await loadBook(bookRoot);
     if ('error' in lb) return { ...fail(lb.error.code, lb.error.message), actions: [], unrepairable: [] };
     const byPath = new Map(lb.book.order.map((s) => [s.path, s]));
-    const resolver = await makePathResolver(lb.root);
+    const resolver = await makePathResolver(store);
 
     const renumberChapters = new Set();
     const w201 = new Set();
@@ -359,7 +358,7 @@ export function applyRepair(bookRoot, actions, opts = {}) {
     const renumbers = actions.filter((a) => a.kind === 'renumber');
     const prep = await prepare(bookRoot, { allowCodes: renumbers.length ? ['E204'] : [] });
     if (prep.result) return prep.result;
-    const { lb } = prep;
+    const { lb, store } = prep;
 
     const changes = [];
     const touched = new Set();
@@ -369,7 +368,7 @@ export function applyRepair(bookRoot, actions, opts = {}) {
       renumberedChapters.add(a.chapter);
       const list = lb.book.order.filter((s) => s.chapter === a.chapter);
       if (list.length === 0) return fail('REFUSED_UNKNOWN_CHAPTER', `chapter ${a.chapter} has no scenes`);
-      const r = await renumberChanges(lb.root, list, 10);
+      const r = await renumberChanges(store, list, 10);
       if (r.unsimple) return unsimpleResult(r.unsimple);
       for (const c of r.changes) {
         touched.add(c.from);
@@ -384,10 +383,10 @@ export function applyRepair(bookRoot, actions, opts = {}) {
       }
       touched.add(a.from);
       if (a.to === a.from) continue;
-      const before = await readFile(abs(lb.root, a.from));
+      const before = await readBytes(store, a.from);
       changes.push({ from: a.from, to: a.to, content: before, before });
     }
 
-    return finish({ bookRoot, lb, op: 'applyRepair', args: { actions }, changes, dryRun });
+    return finish({ bookRoot, store, lb, op: 'applyRepair', args: { actions }, changes, dryRun });
   });
 }

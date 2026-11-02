@@ -1,8 +1,11 @@
-// FsRepository: the only module that reads project files. Read-only; caches nothing.
+// FsRepository: the only core module that reads project files. Reads only; caches nothing.
+// Every change goes through fs-writes.mjs -> @storyforge/store.
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { validate } from '@storyforge/format';
+import { createWriteMethods } from './fs-writes.mjs';
 import { countWords } from './word-count.mjs';
 
 /** @typedef {import('./repository.mjs').FileRepository} FileRepository */
@@ -42,10 +45,11 @@ function splitFile(text) {
   return { fm: {}, body: t };
 }
 
-/** @param {string} file @returns {Promise<{ fm: Record<string, any>, body: string } | null>} */
+/** @param {string} file @returns {Promise<{ fm: Record<string, any>, body: string, sha256: string } | null>} */
 async function readParsed(file) {
   try {
-    return splitFile(await readFile(file, 'utf8'));
+    const bytes = await readFile(file);
+    return { ...splitFile(bytes.toString('utf8')), sha256: createHash('sha256').update(bytes).digest('hex') };
   } catch {
     return null;
   }
@@ -84,6 +88,7 @@ export function createFsRepository(libraryRoot) {
         const parsed = await readParsed(abs(s.path));
         const body = parsed ? parsed.body : '';
         const fm = parsed ? parsed.fm : {};
+        const sha256 = parsed ? parsed.sha256 : null;
         /** @type {SceneSummary} */
         const summary = {
           id: s.id,
@@ -97,7 +102,7 @@ export function createFsRepository(libraryRoot) {
           word_count: countWords(body),
           path: s.path,
         };
-        return { summary, fm, body };
+        return { summary, fm, body, sha256 };
       }),
     );
   }
@@ -139,7 +144,8 @@ export function createFsRepository(libraryRoot) {
     return cmp(a.title ?? '', b.title ?? '');
   }
 
-  return {
+  /** @type {FileRepository} */
+  const repository = {
     async libraryInfo() {
       const result = await validate(root);
       const lib = await readParsed(path.join(root, 'library.md'));
@@ -193,8 +199,8 @@ export function createFsRepository(libraryRoot) {
       if (!book) return null;
       const entry = book.order.find((/** @type {any} */ s) => s.id === sceneId);
       if (!entry) return null;
-      const [{ summary, fm, body }] = await loadScenes([entry]);
-      return { ...summary, front_matter: fm, body };
+      const [{ summary, fm, body, sha256 }] = await loadScenes([entry]);
+      return { ...summary, front_matter: fm, body, sha256 };
     },
 
     async getDiagnostics(bookId) {
@@ -204,4 +210,6 @@ export function createFsRepository(libraryRoot) {
       return book ? forBook(result.diagnostics, book.path) : [];
     },
   };
+  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s) }));
+  return repository;
 }

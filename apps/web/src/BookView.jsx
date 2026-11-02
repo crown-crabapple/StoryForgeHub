@@ -1,4 +1,5 @@
-import { useApi } from './api.js';
+import { useState } from 'react';
+import { postJson, useApi } from './api.js';
 import { Link } from './router.jsx';
 
 function Tree({ book, activeId }) {
@@ -32,6 +33,42 @@ function Tree({ book, activeId }) {
   );
 }
 
+function ArchiveButton({ bookId, scene }) {
+  const [message, setMessage] = useState(null);
+  const [busy, setBusy] = useState(false);
+  async function archive() {
+    if (!window.confirm(`Archive "${scene.title}"? The file moves to the archive folder; nothing is deleted.`)) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const { status } = await postJson(
+        `/api/books/${encodeURIComponent(bookId)}/scenes/${encodeURIComponent(scene.id)}/archive`,
+        { base_sha256: scene.sha256 },
+      );
+      if (status === 200) {
+        window.location.assign(`/books/${encodeURIComponent(bookId)}`);
+        return;
+      }
+      setMessage(
+        status === 409
+          ? 'Not archived: the scene changed on disk (or archiving would break the book). Reload the page and try again.'
+          : `Not archived (${status}).`,
+      );
+    } catch {
+      setMessage('Not archived: the server could not be reached.');
+    }
+    setBusy(false);
+  }
+  return (
+    <p>
+      <button type="button" onClick={archive} disabled={busy}>
+        Archive
+      </button>
+      {message && <span className="error"> {message}</span>}
+    </p>
+  );
+}
+
 function SceneText({ bookId, sceneId }) {
   const { data: scene, error, loading } = useApi(
     sceneId ? `/api/books/${encodeURIComponent(bookId)}/scenes/${encodeURIComponent(sceneId)}` : null,
@@ -43,6 +80,7 @@ function SceneText({ bookId, sceneId }) {
   return (
     <article>
       <h2>{scene.title}</h2>
+      <ArchiveButton bookId={bookId} scene={scene} />
       <p className="muted">
         {scene.status ?? 'no status'}
         {scene.pov ? ` · POV ${scene.pov}` : ''} · {scene.word_count} words

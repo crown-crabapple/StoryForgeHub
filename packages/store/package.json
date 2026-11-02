@@ -1,0 +1,14 @@
+{
+  "name": "@storyforge/store",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge single writer: journaled atomic saves, trash, conflict detection and recovery",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

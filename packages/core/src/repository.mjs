@@ -1,5 +1,5 @@
-// FileRepository: the read-only interface between the app and the project files.
-// This module holds types only; implementations live in fs-repository.mjs.
+// FileRepository: the interface between the app and the project files.
+// This module holds types only; implementations live in fs-repository.mjs (reads) and fs-writes.mjs (writes).
 
 /**
  * @typedef {{
@@ -68,8 +68,19 @@
  */
 
 /**
- * @typedef {SceneSummary & { front_matter: Record<string, any>, body: string }} SceneDoc
- *   `body` is the text after the front matter, exactly as on disk.
+ * @typedef {SceneSummary & { front_matter: Record<string, any>, body: string, sha256: string | null }} SceneDoc
+ *   `body` is the text after the front matter, exactly as on disk. `sha256` is the hash of the whole file.
+ */
+
+/**
+ * @typedef {{ opId: string, op: string | null, files: string[], reason?: string, book?: string }} RecoverItem
+ * @typedef {{ completed: RecoverItem[], rolledBack: RecoverItem[], needsAttention: RecoverItem[] }} RecoverReport
+ */
+
+/**
+ * @typedef {{ ok: boolean, code: string, message?: string, diagnostics?: Diagnostic[] }} WriteResult
+ *   Write methods never throw on expected failures. Codes: OK, CONFLICT (with `current`), NOT_FOUND,
+ *   EXISTS, ROLLED_BACK, BAD_ARGS, NOT_A_SCENE, or a manuscript REFUSED_* code.
  */
 
 /**
@@ -83,6 +94,15 @@
  *   getBook(bookId: string): Promise<BookDetail | null>,
  *   getScene(bookId: string, sceneId: string): Promise<SceneDoc | null>,
  *   getDiagnostics(bookId?: string): Promise<Diagnostic[]>,
+ *   updateSceneBody(bookId: string, sceneId: string, body: string, opts: { baseSha256: string }):
+ *     Promise<WriteResult & { sha256?: string, current?: SceneDoc | null }>,
+ *   createScene(bookId: string, args: { chapter: number, act?: number, after: string | null, title: string, slug: string, body: string }):
+ *     Promise<WriteResult & { id?: string, path?: string }>,
+ *   archiveScene(bookId: string, sceneId: string, opts: { baseSha256: string }):
+ *     Promise<WriteResult & { path?: string, current?: SceneDoc | null }>,
+ *   restoreScene(bookId: string, archivedPath: string, opts: { baseSha256: string }):
+ *     Promise<WriteResult & { path?: string }>,
+ *   recover(): Promise<RecoverReport>,
  * }} FileRepository
  */
 

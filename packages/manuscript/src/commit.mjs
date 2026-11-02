@@ -1,8 +1,7 @@
-// Atomic writes, trash, op.json, post-validation and rollback (contract rules 3, 4, 6).
-import { copyFile, mkdir, open, readFile, rename, rmdir, stat } from 'node:fs/promises';
-import path from 'node:path';
+// Applies a list of changes through the single writer (@storyforge/store): one batch = one opId,
+// one journal entry, one trash folder; post-validation and rollback (contract rules 3, 4, 6).
 import { loadBook, newErrors } from './book.mjs';
-import { makeOpId, sha256 } from './util.mjs';
+import { sha256 } from './util.mjs';
 
 /** Test seam: `afterWrite(book, changes)` runs after files are written, before verification. */
 export const __testHooks = { afterWrite: undefined };
@@ -12,17 +11,6 @@ export const __testHooks = { afterWrite: undefined };
  *   from === null: file created; from === to: edited in place; otherwise moved (and maybe edited).
  */
 
-const abs = (root, rel) => path.join(root, ...rel.split('/'));
-
-async function exists(p) {
-  try {
-    await stat(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /** Public shape of a change. */
 export function publicChanges(changes) {
   return changes.map((c) => ({
@@ -31,26 +19,6 @@ export function publicChanges(changes) {
     before_sha256: c.before ? sha256(c.before) : null,
     after_sha256: sha256(c.content),
   }));
-}
-
-/** Write `<dir>/.<name>.sf-tmp`, fsync, rename over the target. Returns dirs it created. */
-export async function atomicWrite(target, content) {
-  const created = [];
-  const dir = path.dirname(target);
-  const missing = [];
-  for (let d = dir; !(await exists(d)); d = path.dirname(d)) missing.unshift(d);
-  await mkdir(dir, { recursive: true });
-  created.push(...missing);
-  const tmp = path.join(dir, `.${path.basename(target)}.sf-tmp`);
-  const fh = await open(tmp, 'w');
-  try {
-    await fh.writeFile(content);
-    await fh.sync();
-  } finally {
-    await fh.close();
-  }
-  await rename(tmp, target);
-  return created;
 }
 
 /**
@@ -68,98 +36,61 @@ export function orderChanges(changes) {
   return ordered;
 }
 
-async function copyInto(srcAbs, destAbs) {
-  await mkdir(path.dirname(destAbs), { recursive: true });
-  await copyFile(srcAbs, destAbs);
-}
-
 /**
  * Apply changes with trash + verification + rollback.
- * @param {{bookRoot:string, root:string, op:string, args:object, changes:Change[], beforeDiagnostics:object[]}} p
+ * @param {{store:any, bookRoot:string, root:string, op:string, args:object, changes:Change[], beforeDiagnostics:object[]}} p
  */
-export async function commit({ bookRoot, root, op, args, changes, beforeDiagnostics }) {
-  const opId = makeOpId();
-  const trashDir = path.join(root, '.storyforge', 'trash', opId);
+export async function commit({ store, bookRoot, op, args, changes, beforeDiagnostics }) {
   const pub = publicChanges(changes);
   const ordered = orderChanges(changes);
   if (!ordered) {
     return { ok: false, code: 'REFUSED_PATH_TAKEN', changes: pub, message: 'cyclic path dependency between changes' };
   }
 
-  await atomicWrite(
-    path.join(trashDir, 'op.json'),
-    Buffer.from(`${JSON.stringify({ op, args, at: new Date().toISOString(), changes: pub }, null, 2)}\n`),
+  let after;
+  const res = await store.batch(
+    op,
+    args,
+    async (tx) => {
+      for (const c of ordered) {
+        let r;
+        if (c.from === null) r = await tx.create(c.to, c.content);
+        else if (c.from === c.to) r = await tx.write(c.to, c.content, { baseSha256: sha256(c.before) });
+        else r = await tx.move(c.from, c.to, { baseSha256: sha256(c.before), bytes: c.content });
+        if (!r.ok) return r;
+      }
+      return null;
+    },
+    {
+      verify: async () => {
+        if (typeof __testHooks.afterWrite === 'function') await __testHooks.afterWrite(bookRoot, pub);
+        after = await loadBook(bookRoot);
+        if ('error' in after) throw new Error(after.error.message);
+        const fresh = newErrors(beforeDiagnostics, after.diagnostics);
+        if (fresh.length) {
+          const err = new Error('post-write validation found new errors');
+          err.diagnostics = fresh;
+          throw err;
+        }
+      },
+    },
   );
 
-  const applied = [];
-  const createdDirs = [];
-  try {
-    for (const c of ordered) {
-      applied.push({ c, wrote: false });
-      const state = applied[applied.length - 1];
-      const toAbs = abs(root, c.to);
-      if (c.from !== null && c.from === c.to) await copyInto(toAbs, path.join(trashDir, ...c.from.split('/')));
-      createdDirs.push(...(await atomicWrite(toAbs, c.content)));
-      state.wrote = true;
-      if (c.from !== null && c.from !== c.to) {
-        const trashed = path.join(trashDir, ...c.from.split('/'));
-        await mkdir(path.dirname(trashed), { recursive: true });
-        await rename(abs(root, c.from), trashed);
-      }
-    }
-    if (typeof __testHooks.afterWrite === 'function') await __testHooks.afterWrite(bookRoot, pub);
-    const after = await loadBook(bookRoot);
-    if ('error' in after) throw new Error(after.error.message);
-    const fresh = newErrors(beforeDiagnostics, after.diagnostics);
-    if (fresh.length) {
-      const err = new Error('post-write validation found new errors');
-      err.diagnostics = fresh;
-      throw err;
-    }
-    return { ok: true, code: 'OK', changes: pub, opId, diagnostics: after.diagnostics.filter((d) => d.severity !== 'info') };
-  } catch (e) {
-    const rollbackErrors = await rollback(root, trashDir, applied, createdDirs);
+  if (res.ok) {
+    return { ok: true, code: 'OK', changes: pub, opId: res.opId, diagnostics: (after?.diagnostics ?? beforeDiagnostics).filter((d) => d.severity !== 'info') };
+  }
+  if (res.code === 'ROLLED_BACK') {
     return {
       ok: false,
       code: 'ROLLED_BACK',
       changes: pub,
-      opId,
-      message: String(e?.message ?? e),
-      diagnostics: e?.diagnostics ?? [],
-      ...(rollbackErrors.length ? { rollbackErrors } : {}),
+      opId: res.opId,
+      message: res.message,
+      diagnostics: res.diagnostics ?? [],
+      ...(res.rollbackErrors ? { rollbackErrors: res.rollbackErrors } : {}),
     };
   }
-}
-
-async function rollback(root, trashDir, applied, createdDirs) {
-  const errors = [];
-  for (const { c, wrote } of [...applied].reverse()) {
-    try {
-      const toAbs = abs(root, c.to);
-      if (c.from === c.to) {
-        const saved = path.join(trashDir, ...c.from.split('/'));
-        if (await exists(saved)) await atomicWrite(toAbs, await readFile(saved));
-        continue;
-      }
-      if (wrote && (await exists(toAbs))) {
-        const parked = path.join(trashDir, 'rolled-back', ...c.to.split('/'));
-        await mkdir(path.dirname(parked), { recursive: true });
-        await rename(toAbs, parked);
-      }
-      if (c.from !== null) {
-        const saved = path.join(trashDir, ...c.from.split('/'));
-        if (await exists(saved)) await atomicWrite(abs(root, c.from), await readFile(saved));
-      }
-    } catch (e) {
-      errors.push(`${c.to}: ${e?.message ?? e}`);
-    }
-  }
-  for (const d of [...createdDirs].reverse()) {
-    try {
-      await rmdir(d);
-    } catch {
-      // not empty or already gone; leave it
-    }
-  }
-  return errors;
+  // Nothing was written: a target appeared, or a source changed on disk since it was read.
+  const code = res.code === 'EXISTS' ? 'REFUSED_PATH_TAKEN' : res.code;
+  return { ok: false, code, changes: pub, message: res.message ?? `store refused the change (${res.code})` };
 }

@@ -26,7 +26,15 @@ try {
   fail(`cannot open library ${config.libraryRoot}: ${e instanceof Error ? e.message : e}`, 2);
 }
 
-const server = createServer({ repository, webRoot });
+// Settle any operation a crash left half-done before serving; the UI shows what happened.
+let recoverReport;
+try {
+  recoverReport = await repository.recover();
+} catch (e) {
+  fail(`recovery failed for ${config.libraryRoot}: ${e instanceof Error ? e.message : e}`, 2);
+}
+
+const server = createServer({ repository, webRoot, recoverReport });
 server.on('error', (e) => fail(`cannot listen on ${config.host}:${config.port}: ${e.message}`, 1));
 server.listen(config.port, config.host, () => {
   const addr = server.address();

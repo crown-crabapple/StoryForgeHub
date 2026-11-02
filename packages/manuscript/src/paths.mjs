@@ -1,5 +1,4 @@
 // Canonical scene paths (contract: act-<NN>-<slug>/ch-<NNN>-<slug>/<NNNN>-<slug>.md).
-import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { readSimpleLine } from './frontmatter.mjs';
 import { pad, slugify } from './util.mjs';
@@ -7,15 +6,11 @@ import { pad, slugify } from './util.mjs';
 const ACT_DIR_RE = /^act-(\d+)(?:-|$)/;
 const CHAP_DIR_RE = /^ch-(\d+)(?:-|$)/;
 
-async function subdirs(abs) {
-  try {
-    return (await readdir(abs, { withFileTypes: true }))
-      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
-      .map((e) => e.name)
-      .sort();
-  } catch {
-    return [];
-  }
+async function subdirs(store, rel) {
+  return (await store.list(rel))
+    .filter((e) => e.isDirectory && !e.name.startsWith('.'))
+    .map((e) => e.name)
+    .sort();
 }
 
 /** Scene filename slug: the current filename minus its numeric prefix and `.md`. */
@@ -27,34 +22,30 @@ export const sceneFileName = (sequence, slug) => `${pad(sequence, 4)}-${slug}.md
 
 /**
  * Scan manuscript/ once and return a resolver for folder names.
- * @param {string} root book root (absolute)
+ * @param {{ read(rel:string):Promise<{bytes:Buffer}|null>, list(rel:string):Promise<{name:string,isDirectory:boolean}[]> }} store
  */
-export async function makePathResolver(root) {
-  const ms = path.join(root, 'manuscript');
+export async function makePathResolver(store) {
   /** @type {Map<number,string>} titles from act.md / chapter.md, by number */
   const actTitles = new Map();
   const chapTitles = new Map();
-  const actDirs = await subdirs(ms);
+  const actDirs = await subdirs(store, 'manuscript');
   /** @type {Map<string,string[]>} act dir name -> chapter dir names */
   const chapDirsByAct = new Map();
 
-  async function readMeta(file, key, table) {
-    let buf;
-    try {
-      buf = await readFile(file);
-    } catch {
-      return;
-    }
+  async function readMeta(rel, key, table) {
+    const read = await store.read(rel);
+    if (!read) return;
+    const buf = read.bytes;
     const n = readSimpleLine(buf, key);
     const title = readSimpleLine(buf, 'title');
     if (n !== null && /^\d+$/.test(n) && title !== null && !table.has(Number(n))) table.set(Number(n), title);
   }
 
   for (const a of actDirs) {
-    const chaps = await subdirs(path.join(ms, a));
+    const chaps = await subdirs(store, `manuscript/${a}`);
     chapDirsByAct.set(a, chaps);
-    await readMeta(path.join(ms, a, 'act.md'), 'act', actTitles);
-    for (const c of chaps) await readMeta(path.join(ms, a, c, 'chapter.md'), 'chapter', chapTitles);
+    await readMeta(`manuscript/${a}/act.md`, 'act', actTitles);
+    for (const c of chaps) await readMeta(`manuscript/${a}/${c}/chapter.md`, 'chapter', chapTitles);
   }
 
   const unique = (names, re, n) => {

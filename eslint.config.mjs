@@ -5,7 +5,8 @@ import reactHooks from 'eslint-plugin-react-hooks';
 const FS_MODULES = ['node:fs', 'node:fs/promises', 'fs', 'fs/promises'];
 const fsPaths = FS_MODULES.map((name) => ({
   name,
-  message: 'Filesystem access belongs in packages/core/src/fs-repository.mjs (or apps/server/src/static.mjs).',
+  message:
+    'Filesystem access is restricted: writes only in packages/store/src; reads in packages/format, packages/core/src/fs-repository.mjs and apps/server/src/static.mjs.',
 }));
 
 export default [
@@ -47,7 +48,7 @@ export default [
     },
   },
 
-  // apps/server: routes go through the FileRepository; static.mjs is the one exception.
+  // apps/server: routes go through the FileRepository; static.mjs is the one exception (reads only).
   // Tests are exempt: they copy fixtures to temp folders.
   {
     files: ['apps/server/**/*.mjs'],
@@ -55,10 +56,18 @@ export default [
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
-  // packages/core: only fs-repository.mjs reads files.
+  // packages/core: only fs-repository.mjs reads files (no write calls; enforced by a test). All
+  // writes go through @storyforge/store, the only package that writes project files.
   {
     files: ['packages/core/src/**/*.mjs'],
     ignores: ['packages/core/src/fs-repository.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
+  },
+
+  // packages/manuscript: no direct filesystem access; reads and writes go through @storyforge/store.
+  // (bin/ is the CLI shell and may read its own arguments, e.g. --body-file.)
+  {
+    files: ['packages/manuscript/src/**/*.mjs'],
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
