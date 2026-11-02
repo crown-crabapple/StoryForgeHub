@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@storyforge/format": "0.1.0",
-    "@storyforge/manuscript": "0.1.0"
+    "@storyforge/manuscript": "0.1.0",
+    "@storyforge/store": "0.1.0"
   },
   "devDependencies": {}
 }
