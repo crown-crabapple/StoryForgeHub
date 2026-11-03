@@ -12,7 +12,9 @@ export {
   mergeScenes,
   restoreOp,
 } from './structure.mjs';
-export { createEntry, setEntryFields, changeEntrySlug, archiveEntry, restoreEntry, createCodexType, replaceFrontMatterBlock, entryFolder, ENTRY_STATUSES } from './codex.mjs';
+export { createEntry, setEntryFields, changeEntrySlug, archiveEntry, restoreEntry, createCodexType, replaceFrontMatterBlock, entryFolder, fieldLabels, ENTRY_STATUSES } from './codex.mjs';
+export { setLabels } from './labels.mjs';
+export { loadSeries } from './book.mjs';
 export { createThread, setThreadFields, THREAD_STATUSES, THREAD_KINDS, THREAD_LISTS } from './threads.mjs';
 export { editFrontMatterLine } from './frontmatter.mjs';
 export { unifiedDiff } from './diff.mjs';

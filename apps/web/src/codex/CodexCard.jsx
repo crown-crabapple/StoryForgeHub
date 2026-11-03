@@ -1,3 +1,5 @@
+import { LabelChip } from '../world/LabelChip.jsx';
+import { sharedBadge } from '../world/model.js';
 import { blurbOf, chapterShort, explicitScenes, firstSeen, initialOf, roleLabel, scenesLabel, statusLabel } from './model.js';
 
 /** The round avatar: the entry's image (when it has a usable one) or the initial of its name. @param {{ entry: any, size?: 'card' | 'large' }} props */
@@ -23,9 +25,10 @@ export function StatusChip({ entry }) {
  * One card of the grid: avatar, name, role (or type), a one-line blurb, "First seen Ch N", "N scenes" and the status. The whole card is a
  * button that selects the entry (`aria-pressed`). Presentational.
  * @param {{ entry: any, chapters?: { chapter: number, scene_ids?: string[] }[], types?: { type: string, name: string }[], selected?: boolean,
- *   tabIndex?: number, onSelect?: (entry: any) => void }} props
+ *   tabIndex?: number, onSelect?: (entry: any) => void, labelDefs?: any[] | null }} props
+ *   A shared entry of the series carries a "Shared · <series title>" badge; its labels show as chips.
  */
-export function CodexCard({ entry, chapters = [], types = [], selected = false, tabIndex = 0, onSelect }) {
+export function CodexCard({ entry, chapters = [], types = [], selected = false, tabIndex = 0, onSelect, labelDefs = null }) {
   const seen = firstSeen(entry, chapters);
   const scenes = explicitScenes(entry).length;
   return (
@@ -39,6 +42,14 @@ export function CodexCard({ entry, chapters = [], types = [], selected = false, 
         <StatusChip entry={entry} />
       </span>
       <span className="codex-card-blurb">{blurbOf(entry.sections)}</span>
+      {(entry.shared || (entry.labels ?? []).length > 0) && (
+        <span className="codex-card-tags">
+          {entry.shared && <span className="shared-badge">{sharedBadge(entry)}</span>}
+          {(entry.labels ?? []).map((n) => (
+            <LabelChip key={n} name={n} defs={labelDefs} />
+          ))}
+        </span>
+      )}
       <span className="codex-card-foot">
         <span>{seen ? `First seen ${seen.label}` : 'Not seen yet'}</span>
         <span>{scenesLabel(scenes)}</span>

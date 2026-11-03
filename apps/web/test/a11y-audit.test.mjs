@@ -3,7 +3,10 @@
 //   no button or link without an accessible name, no img without alt, every field labelled, no duplicate id, no positive tabindex, landmarks present,
 //   headings in order, dialogs named and modal, errors tied to their fields, the skip link first, and no two controls sharing one aria-label.
 // Views: Library (with books and first run), New book, Open folder, Editor (rail, inspector), Board, Outline, Threads, Matrix, Codex, Timeline, Notes,
-// Continuity, Suggestions review, Export / Backup / Restore dialogs, Settings. What a render cannot show (the dialog focus trap, Escape and focus return in shell/Dialog.jsx; focus rings; layout) is checked in a11y-styles.test.mjs where it lives in the
+// Continuity, Suggestions review, Export / Backup / Restore dialogs, Settings. M07-J01b adds, rendered with a copy of the tidewater fixture (a book in a series with
+// shared entries, labels and typed fields): the Codex of a series book, a shared entry open, the Edit dialog with typed fields and W312, New entry with Where, the
+// preview with the shared notice, the label manager, Save as template, the link picker with other books, New book with library templates, the Board and Outline with
+// label chips and filters, and the problems list with the Series badge. What a render cannot show (the dialog focus trap, Escape and focus return in shell/Dialog.jsx; focus rings; layout) is checked in a11y-styles.test.mjs where it lives in the
 // stylesheet and by the manual browser walk; the Alt+Up/Down reorder path in the rail, the Board and the Timeline is covered by tree.test.mjs, planning.test.mjs and timeline-notes.test.mjs.
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
@@ -20,6 +23,8 @@ const webDir = fileURLToPath(new URL('..', import.meta.url));
 let vite;
 const m = {};
 const d = {};
+const T = {}; // the tidewater library (M07-J01b)
+const TIDE = { so: 'book_01W10000000000000000000006', lt: 'book_01W1000000000000000000000A', ilse: 'entry_01W10000000000000000000003', vessel: 'entry_01W10000000000000000000009' };
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const noop = () => {};
@@ -33,6 +38,7 @@ before(async () => {
     '/src/suggestions/SuggestionReview.jsx', '/src/export/ExportDialog.jsx', '/src/export/BackupDialog.jsx', '/src/export/RestoreDialog.jsx', '/src/ai/SettingsView.jsx',
     '/src/structure/MoveDialog.jsx', '/src/PlaceholderView.jsx', '/src/editor/SceneEditorPage.jsx',
     '/src/shared/LoginPage.jsx', '/src/shared/SetupPage.jsx', '/src/shared/InvitePage.jsx', '/src/shared/MembersPage.jsx', '/src/shared/UserMenu.jsx', '/src/shared/ShareReader.jsx', '/src/shared/ShareEntry.jsx',
+    '/src/codex/dialogs.jsx', '/src/codex/model.js', '/src/editor/LinkPicker.jsx', '/src/structure/PreviewDialog.jsx', '/src/world/LabelManager.jsx', '/src/world/SaveAsTemplateDialog.jsx', '/src/world/model.js',
   ]) await load(p);
 
   const root = await copyFixture('valid/salt-orchard');
@@ -58,6 +64,27 @@ before(async () => {
     d.suggestion = clone((await repo.getSuggestion(BOOK_ID, (await repo.listSuggestions(BOOK_ID)).suggestions[0].id)).suggestion);
     const firstNote = d.notes.notes[0];
     d.note = firstNote ? clone(await repo.getNote(BOOK_ID, firstNote.id)) : null;
+  } finally {
+    await repo.close?.();
+  }
+});
+before(async () => {
+  const root = await copyFixture('valid/tidewater');
+  const repo = createFsRepository(root, { watch: false, pollMs: 0 });
+  try {
+    const list = await repo.listCodexEntries(TIDE.so);
+    T.entries = clone(list.entries);
+    T.chapters = clone(list.chapters);
+    T.series = clone(list.series);
+    T.types = clone(await repo.getCodexTypes(TIDE.so));
+    T.labels = clone(await repo.getLabels(TIDE.so));
+    T.targets = clone(await repo.getLinkTargets(TIDE.lt));
+    T.books = clone(await repo.listBooks());
+    T.book = clone(await repo.getBook(TIDE.so));
+    T.planning = clone(await repo.listThreads(TIDE.so));
+    T.objects = clone(await repo.getObjects(TIDE.so, ['entry', 'thread', 'event']));
+    T.templates = clone(await repo.listTemplates());
+    T.diagnostics = [...clone(await repo.getDiagnostics(TIDE.lt)), { code: 'W312', severity: 'warning', file: 'tidewater/codex/vessels/the-gull.md', location: 'fields.Tonnage', message: 'Tonnage should be a number value', scope: 'series', series: 'tidewater' }];
   } finally {
     await repo.close?.();
   }
@@ -90,6 +117,10 @@ const MEMBERS = {
 };
 const membersPage = (extra = {}) => h(m.MembersPage, { ...MEMBERS, books: d.books.map((b) => ({ id: b.id, title: b.title })), ...extra });
 
+const tshell = (children, { tab = 'manuscript' } = {}) => h(m.AppShell, { books: T.books, bookId: TIDE.so, tab }, children);
+const defs = () => [...T.labels.book.labels.map((l) => ({ ...l, scope: 'book' })), ...T.labels.series.labels.map((l) => ({ ...l, scope: 'series' }))];
+const tcodex = (props = {}) => h(m.CodexPage, { bookId: TIDE.so, types: T.types, entries: T.entries, chapters: T.chapters, typeKey: 'all', series: T.series, labelDefs: defs(), onLabel: noop, onScope: noop, ...props });
+const tplanning = (view) => h(m.PlanningWorkspace, { book: T.book, planning: T.planning, objects: T.objects, view, render: ({ main, inspector }) => h(m.BookLayout, { book: T.book, activeId: null, inspector }, main) });
 const PAGE = { page: true, landmarks: ['banner', 'navigation', 'main'] };
 const WITH_BOOK_ASIDE = { ...PAGE, landmarks: [...PAGE.landmarks, 'complementary'] };
 /** A dialog drawn over a page that is not under test: the dialog itself, the landmarks of the shell and no page-level rules. */
@@ -133,6 +164,27 @@ const VIEWS = {
   'Account menu open': () => [h('main', { id: 'main' }, h('h1', null, 'Page'), h(m.UserMenuView, { user: { display_name: 'Ilse', role: 'owner' }, onLogout: noop, defaultOpen: true })), LONE_MAIN],
   'Change password dialog': () => [shell(h(Fragment, null, h(m.LibraryPage, { books: d.books }), h(m.ChangePasswordDialog, { onClose: noop })), { bookId: null }), PAGE],
   'Placeholder tab': () => [shell(h(m.PlaceholderView, { bookId: BOOK_ID, tab: 'places' }), { tab: 'places' }), PAGE],
+  // ---- M07-J01b
+  'Codex of a book in a series (shared badge, Where filter, label chips and filter)': () => [tshell(tcodex({ scope: 'shared' }), { tab: 'codex' }), WITH_BOOK_ASIDE],
+  'Codex, a shared entry open (series path, notice, Copy into this book)': () => [tshell(tcodex({ selectedId: TIDE.ilse, actions: () => ({ onEdit: noop, onEditText: noop, onCopyIntoBook: noop, onArchive: noop }) }), { tab: 'codex' }), WITH_BOOK_ASIDE],
+  'Codex, an entry of the book open (Move to series)': () => [tshell(tcodex({ selectedId: TIDE.vessel, actions: () => ({ onEdit: noop, onMoveToSeries: noop }) }), { tab: 'codex' }), WITH_BOOK_ASIDE],
+  'Edit entry dialog (typed fields, W312 inline, shared notice)': () => [
+    tshell(h(Fragment, null, tcodex(), h(m.EditFieldsDialog, { bookId: TIDE.so, entry: { ...T.entries.find((e) => e.id === TIDE.vessel), fields: { Master: 'Captain Pell', Tonnage: 'heavy', Launched: '1891-04-12', 'Home port': '[[port-aldine]]', Rig: 'junk', Cargoes: ['salt', 'tar'] } }, entries: T.entries, types: T.types, labelDefs: defs(), onClose: noop, onPreview: noop })), { tab: 'codex' }),
+    WITH_BOOK_ASIDE,
+  ],
+  'Edit entry dialog (a shared entry)': () => [tshell(h(Fragment, null, tcodex(), h(m.EditFieldsDialog, { bookId: TIDE.so, entry: T.entries.find((e) => e.id === TIDE.ilse), entries: T.entries, types: T.types, labelDefs: defs(), onClose: noop, onPreview: noop })), { tab: 'codex' }), WITH_BOOK_ASIDE],
+  'New entry dialog (Where: This book / Series)': () => [tshell(h(Fragment, null, tcodex(), h(m.NewEntryDialog, { bookId: TIDE.so, types: T.types, takenSlugs: new Set(), series: T.series, sharedSlugs: new Set(), onClose: noop, onPreview: noop })), { tab: 'codex' }), WITH_BOOK_ASIDE],
+  'Preview dialog (shared notice and warnings)': () => [
+    tshell(h(Fragment, null, tcodex(), h(m.PreviewDialog, { preview: { title: 'Copy Ilse Hollis into this book', changes: [{ from: null, to: 'tidewater/low-tide/codex/characters/ilse-hollis.md' }], notice: m.SHARED_NOTICE, warnings: ['W309: this entry shadows the series entry ilse-hollis'] }, busy: false, onApply: noop, onCancel: noop })), { tab: 'codex' }),
+    WITH_BOOK_ASIDE,
+  ],
+  'Label manager (book and series)': () => [tshell(h(Fragment, null, tcodex(), h(m.LabelManager, { bookId: TIDE.so, data: T.labels, onClose: noop })), { tab: 'codex' }), WITH_BOOK_ASIDE],
+  'Save as template dialog': () => [tshell(h(Fragment, null, tcodex(), h(m.SaveAsTemplateDialog, { bookId: TIDE.so, bookTitle: 'Salt Orchard Two', onClose: noop })), { tab: 'codex' }), WITH_BOOK_ASIDE],
+  'Link picker (this book, series, other books)': () => [tshell(h(Fragment, null, tcodex(), h(m.LinkPicker, { objects: null, targets: T.targets, selectedText: 'the ledger', onPick: noop, onClose: noop })), { tab: 'codex' }), WITH_BOOK_ASIDE],
+  'New book dialog (library templates after the built-in ones)': () => [shell(h(Fragment, null, h(m.LibraryPage, { books: d.books }), h(m.NewBookDialog, { templates: T.templates, series: [{ slug: 'tidewater', title: 'The Tidewater Books' }], penNames: [], onClose: noop })), { bookId: null }), PAGE],
+  'Board with label chips and filter': () => [tshell(tplanning('board')), WITH_BOOK_ASIDE],
+  'Outline with label chips and filter': () => [tshell(tplanning('outline')), WITH_BOOK_ASIDE],
+  'Book problems with the Series badge': () => [tshell(h(m.BookLayout, { book: T.book, activeId: null, inspector: h(m.SceneInspector, { book: T.book, scene: null, diagnostics: { items: T.diagnostics, error: null, loading: false }, objects: T.objects }) }, h('p', null, 'x'))), OVER_PAGE],
 };
 
 describe('every core view passes the render-level audit', () => {

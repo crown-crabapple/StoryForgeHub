@@ -38,6 +38,7 @@ export async function loadShared(rootDir, seriesPath, add) {
   checkDuplicateSlugs(typed, add);
   checkPlacement(typed, add);
   checkCodex(typed, add);
+  checkTypedValues(typed, typed, [], add);
   return typed;
 }
 

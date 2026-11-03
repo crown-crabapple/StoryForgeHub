@@ -96,8 +96,11 @@ export function createBookMethod({ root, probe, afterCreate }) {
     }
 
     // ---- template
-    const known = (await listTemplates()).map((t) => t.name);
-    if (typeof args.template !== 'string' || !known.includes(args.template)) return refuse('NO_SUCH_TEMPLATE', 'Pick one of the templates on offer.');
+    // a template is picked by name, and by `templateSource` ('builtin' | 'library') when a library template shares a built-in's name (M07-J01)
+    const known = await listTemplates({ libraryRoot: root });
+    const source = args.templateSource === 'library' || args.templateSource === 'builtin' ? args.templateSource : undefined;
+    const picked = typeof args.template === 'string' ? known.find((t) => t.name === args.template && (source === undefined ? t.source === 'builtin' : t.source === source)) ?? (source === undefined ? known.find((t) => t.name === args.template) : undefined) : undefined;
+    if (!picked) return refuse('NO_SUCH_TEMPLATE', 'Pick one of the templates on offer.');
 
     // ---- where it goes
     if ((series && !series.real) || (await escapesRoot(root, relDir))) {
@@ -106,7 +109,7 @@ export function createBookMethod({ root, probe, afterCreate }) {
     if (await probe.exists(relDir)) return refuse('FOLDER_EXISTS', `A folder named "${slug}" already exists there.`);
 
     // ---- write
-    const files = await renderTemplate(args.template, { book_title: title, book_slug: slug, pen_name: penName, series_number: seriesNumber });
+    const files = await renderTemplate(picked.name, { book_title: title, book_slug: slug, pen_name: penName, series_number: seriesNumber }, { libraryRoot: root, source: picked.source });
     const made = await createTree(root, relDir, files);
     if (!made.ok) {
       if (made.code === 'FOLDER_EXISTS') return refuse('FOLDER_EXISTS', `A folder named "${slug}" already exists there.`);

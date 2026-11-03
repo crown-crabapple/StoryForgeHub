@@ -6,6 +6,8 @@
 //     related: [{ id, name, as, direction }], problems: [{ code, severity, location, message }] }
 // `chapters` is the other half of that answer: [{ chapter, label, scene_ids }] in manuscript order.
 
+import { hasLabel, inScope } from '../world/model.js';
+
 export const BUILTIN_TYPES = ['character', 'location', 'faction', 'object', 'lore'];
 
 export const STATUS_FILTERS = [
@@ -217,11 +219,13 @@ export function matchesQuery(entry, query) {
 /**
  * The entries a view shows: the sidebar row, the status chip and the search. `textIds` (optional Set) are entries the server's full-text
  * search found; they count as matches even when name, aliases and fields do not.
+ * `scope` (M07-J01b): 'all', 'book' (this book's own entries) or 'shared' (the series'); `label`: only entries that carry that label ('' = any).
  * @param {any[]} entries
- * @param {{ type?: string, status?: string, query?: string, textIds?: Set<string> | null }} f
+ * @param {{ type?: string, status?: string, query?: string, textIds?: Set<string> | null, scope?: string, label?: string }} f
  */
-export function filterEntries(entries, { type = 'all', status = 'all', query = '', textIds = null } = {}) {
-  return entries.filter((e) => {
+export function filterEntries(entries, { type = 'all', status = 'all', query = '', textIds = null, scope = 'all', label = '' } = {}) {
+  return inScope(entries, scope).filter((e) => {
+    if (!hasLabel(e, label)) return false;
     if (type === 'archived' ? !e.archived : e.archived) return false;
     if (type !== 'all' && type !== 'archived' && e.type !== type) return false;
     if (status === 'review' ? !needsReview(e) : status !== 'all' && e.status !== status) return false;
@@ -285,6 +289,9 @@ export function slugOf(text) {
 /** A type word (a to z only) from a name the author typed: "Magic Item" becomes "magicitem". @param {string} text */
 export const typeWordOf = (text) => text.normalize('NFKD').replace(MARKS, '').toLowerCase().replace(/[^a-z]/g, '').slice(0, 40);
 
+/** Do two lists of label names hold the same names (ignoring order and capitals)? @param {string[]} a @param {string[]} b */
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.some((y) => y.toLowerCase() === x.toLowerCase()));
+
 /**
  * The body of the fields request: only what changed. `before` / `after`: { name, status, role, aliases, fields: [{ label, value }],
  * related: [{ to, as? }] }.
@@ -299,5 +306,6 @@ export function fieldsPatch(before, after) {
   const pairsOf = (f) => f.map((p) => [p.label, p.value]);
   if (JSON.stringify(pairsOf(after.fields)) !== JSON.stringify(pairsOf(before.fields ?? []))) patch.fields = after.fields.map((p) => ({ label: p.label, value: p.value }));
   if (JSON.stringify(after.related) !== JSON.stringify(before.related ?? [])) patch.related = after.related;
+  if (after.labels !== undefined && !sameSet(after.labels, before.labels ?? [])) patch.labels = after.labels;
   return patch;
 }

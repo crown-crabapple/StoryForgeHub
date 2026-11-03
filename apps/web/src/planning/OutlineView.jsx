@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { PovChip } from '../Outline.jsx';
 import { Link } from '../router.jsx';
 import { STATUSES } from '../structure/helpers.js';
+import { LabelChips } from '../world/LabelChip.jsx';
+import { LabelFilter } from '../world/LabelChip.jsx';
 import { ThreadTags } from './BoardView.jsx';
 import { chapterShort, outlineRows, sceneHref } from './model.js';
 
@@ -64,16 +66,16 @@ function SummaryCell({ card, onSave }) {
 
 /**
  * The outline as a table: Chapter, Scene, Summary, POV, Status, Words, Threads, grouped by act and chapter (each chapter row has its totals). Rows link to
- * the scene in the Write view. Summary and status can be edited in place (`onSetFields(card, { summary } | { status })`). Filters: status, POV, thread.
+ * the scene in the Write view. Summary and status can be edited in place (`onSetFields(card, { summary } | { status })`). Filters: status, POV, thread, label. A scene's labels show as chips.
  * @param {{ bookId: string, model: ReturnType<typeof import('./model.js').buildModel>, initialFilters?: { status?: string, pov?: string, thread?: string },
  *   onSetFields?: (card: any, patch: { summary?: string, status?: string }) => void }} props
  */
 export function OutlineView({ bookId, model, initialFilters = {}, onSetFields }) {
-  const [filters, setFilters] = useState({ status: initialFilters.status ?? '', pov: initialFilters.pov ?? '', thread: initialFilters.thread ?? '' });
+  const [filters, setFilters] = useState({ status: initialFilters.status ?? '', pov: initialFilters.pov ?? '', thread: initialFilters.thread ?? '', label: initialFilters.label ?? '' });
   const set = (key, value) => setFilters((f) => ({ ...f, [key]: value }));
   const groups = outlineRows(model, filters);
   const shown = groups.reduce((n, g) => n + g.chapters.reduce((m, c) => m + c.scenes.length, 0), 0);
-  const filtering = Boolean(filters.status || filters.pov || filters.thread);
+  const filtering = Boolean(filters.status || filters.pov || filters.thread || filters.label);
   return (
     <div className="outline-view">
       <form className="filter-bar" onSubmit={(e) => e.preventDefault()} aria-label="Outline filters">
@@ -110,8 +112,9 @@ export function OutlineView({ bookId, model, initialFilters = {}, onSetFields })
             ))}
           </select>
         </label>
+        <LabelFilter defs={model.labelDefs} used={model.scenes.map((s) => s.labels)} value={filters.label} onChange={(v) => set('label', v)} />
         {filtering && (
-          <button type="button" className="btn" onClick={() => setFilters({ status: '', pov: '', thread: '' })}>
+          <button type="button" className="btn" onClick={() => setFilters({ status: '', pov: '', thread: '', label: '' })}>
             Clear filters
           </button>
         )}
@@ -140,7 +143,7 @@ export function OutlineView({ bookId, model, initialFilters = {}, onSetFields })
               </th>
             </tr>
             {chapters.map(({ chapter, scenes, words }) => (
-              <ChapterRows key={chapter.chapter} bookId={bookId} chapter={chapter} scenes={scenes} words={words} onSetFields={onSetFields} />
+              <ChapterRows key={chapter.chapter} bookId={bookId} chapter={chapter} scenes={scenes} words={words} onSetFields={onSetFields} labelDefs={model.labelDefs} />
             ))}
           </tbody>
         ))}
@@ -150,7 +153,7 @@ export function OutlineView({ bookId, model, initialFilters = {}, onSetFields })
   );
 }
 
-function ChapterRows({ bookId, chapter, scenes, words, onSetFields }) {
+function ChapterRows({ bookId, chapter, scenes, words, onSetFields, labelDefs }) {
   return (
     <>
       <tr className="outline-table-chapter" data-chapter={chapter.chapter}>
@@ -166,6 +169,7 @@ function ChapterRows({ bookId, chapter, scenes, words, onSetFields }) {
           <td>{chapterShort(card.chapter)}</td>
           <th scope="row">
             <Link to={sceneHref(bookId, card.id)}>{card.title || <span className="muted">Untitled scene</span>}</Link>
+            <LabelChips labels={card.labels} defs={labelDefs} label={`Labels of ${card.title || 'Untitled scene'}`} />
           </th>
           <td>
             <SummaryCell card={card} onSave={onSetFields ? (c, summary) => onSetFields(c, { summary }) : undefined} />

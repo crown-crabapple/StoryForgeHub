@@ -232,7 +232,9 @@ const KEEP = {
  * Pure: reads the book and returns the template's files, it writes nothing. Paths are relative to the template folder
  * (`template.md` and `book/...`), ready for `writeNewTree` at `<library>/_templates/<name>/`.
  * @param {string} bookRoot absolute path of a book folder
- * @param {{ name: string, title: string, description?: string }} meta the template's own `name` (a slug), `title` and `description`
+ * @param {{ name: string, title: string, description?: string, seriesLabels?: { name: string, color: string }[] }} meta the template's own `name` (a slug), `title` and `description`.
+ *   `seriesLabels` (the labels the book's series defines): a label a kept document uses that only the series defines is written into the template's book.md,
+ *   so a book made from the template has every label it names (a template is validated on its own, without the series).
  * @returns {Promise<Map<string, Buffer>>}
  */
 export async function templateFromBook(bookRoot, meta) {
@@ -289,6 +291,17 @@ export async function templateFromBook(bookRoot, meta) {
     kept.push({ rel, kind, fm, parsed });
   }
 
+  // labels the kept documents use that the book does not define: copied from the series' definitions (book.md of the template), so the template stands alone
+  const fold = (n) => String(n).trim().toLowerCase();
+  const bookLabels = Array.isArray(kept.find((k) => k.kind === 'book')?.fm.labels) ? kept.find((k) => k.kind === 'book')?.fm.labels.filter((l) => l && typeof l.name === 'string') : [];
+  const have = new Set(bookLabels.map((l) => fold(l.name)));
+  /** @type {{ name: string, color: string }[]} */
+  const addLabels = [];
+  for (const def of Array.isArray(meta.seriesLabels) ? meta.seriesLabels : []) {
+    if (!def || typeof def.name !== 'string' || typeof def.color !== 'string' || have.has(fold(def.name))) continue;
+    if (kept.some((k) => k.kind !== 'book' && Array.isArray(k.fm.labels) && k.fm.labels.some((l) => typeof l === 'string' && fold(l) === fold(def.name)))) addLabels.push(def);
+  }
+
   // pass 2: rewrite
   const out = new Map();
   const beats = [];
@@ -311,6 +324,12 @@ export async function templateFromBook(bookRoot, meta) {
     set('id', `id: {{id:${idKey}}}`);
     let body = '';
     if (kind === 'book') {
+      if (addLabels.length > 0) {
+        const lines = ['labels:', ...[...bookLabels, ...addLabels].flatMap((l) => [`  - name: ${JSON.stringify(l.name)}`, `    color: ${JSON.stringify(l.color)}`])];
+        const at = blocks.findIndex((b) => b.key === 'labels');
+        if (at >= 0) blocks[at].lines = lines;
+        else blocks.push({ key: 'labels', lines });
+      }
       set('slug', 'slug: {{book_slug}}');
       set('title', 'title: {{book_title}}');
       set('status', 'status: planning');

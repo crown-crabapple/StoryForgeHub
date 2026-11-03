@@ -28,6 +28,9 @@ function slugProblem(slug) {
 
 const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
+/** What a template radio carries: the plain name for a built-in one, `library:<name>` for the library's (a library template may share a built-in's name). */
+export const templateValue = (t) => (t.source === 'library' ? `library:${t.name}` : t.name);
+
 function FieldError({ id, message }) {
   if (!message) return null;
   return (
@@ -38,10 +41,10 @@ function FieldError({ id, message }) {
 }
 
 /**
- * The New book dialog: title, folder name, pen name, series, template. Creating goes to POST /api/books;
+ * The New book dialog: title, folder name, pen name, series, template (the built-in ones, then the library's own from _templates/, M07-J01b). Creating goes to POST /api/books;
  * an error that names a field is shown next to that field.
  * @param {{
- *   templates: { name: string, title: string, description: string, beats: string[], chapters: number, scenes: number }[],
+ *   templates: { name: string, title: string, description: string, beats: string[], chapters: number, scenes: number, source?: 'builtin' | 'library', shadows_builtin?: boolean }[],
  *   series?: { slug: string, title: string | null }[],
  *   penNames?: { name: string, slug: string }[],
  *   onClose: () => void,
@@ -56,7 +59,7 @@ export function NewBookDialog({ templates, series = [], penNames = [], onClose, 
   const [penName, setPenName] = useState('');
   const [seriesSlug, setSeriesSlug] = useState('');
   const [seriesNumber, setSeriesNumber] = useState('');
-  const [template, setTemplate] = useState(templates[0]?.name ?? '');
+  const [template, setTemplate] = useState(templates[0] ? templateValue(templates[0]) : '');
   const [busy, setBusy] = useState(false);
   const [apiError, setApiError] = useState(error);
   const [titleMissing, setTitleMissing] = useState(false);
@@ -95,7 +98,8 @@ export function NewBookDialog({ templates, series = [], penNames = [], onClose, 
     if (slugProblem(slug)) return;
     setBusy(true);
     setApiError(null);
-    const body = { title, template };
+    const picked = templates.find((t) => templateValue(t) === template);
+    const body = { title, template: picked?.name ?? template, ...(picked?.source ? { templateSource: picked.source } : {}) };
     if (slug !== '') body.slug = slug;
     if (penName !== '') body.penName = penName;
     if (seriesSlug !== '') {
@@ -221,20 +225,23 @@ export function NewBookDialog({ templates, series = [], penNames = [], onClose, 
           <legend>Template</legend>
           <ul className="template-cards">
             {templates.map((t) => (
-              <li key={t.name} className="template-card" data-selected={template === t.name ? 'true' : 'false'}>
+              <li key={templateValue(t)} className="template-card" data-selected={template === templateValue(t) ? 'true' : 'false'} data-source={t.source ?? 'builtin'}>
                 <label className="template-card-label">
                   <input
                     type="radio"
                     name="template"
-                    value={t.name}
-                    checked={template === t.name}
+                    value={templateValue(t)}
+                    checked={template === templateValue(t)}
                     onChange={() => {
-                      setTemplate(t.name);
+                      setTemplate(templateValue(t));
                       clearField('template');
                     }}
                   />
                   <span className="template-card-body">
-                    <strong>{t.title}</strong>
+                    <strong>
+                      {t.title}
+                      {t.source === 'library' && <span className="template-source"> Your template{t.shadows_builtin ? ' (same name as a built-in one)' : ''}</span>}
+                    </strong>
                     <span className="secondary">{t.description}</span>
                     <span className="muted">{`${plural(t.chapters, 'chapter')} · ${plural(t.scenes, 'scene')}`}</span>
                   </span>

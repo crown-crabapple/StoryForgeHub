@@ -2,9 +2,9 @@
 // goes through the store (one batch, one opId), is refused when it would add a validation error, and never deletes.
 // Front matter is edited by lines: a scalar line through editFrontMatterLine, a list / map key by replacing only that
 // key's own lines. YAML is never re-serialised.
-import { extractDocs, extractLinks, validate } from '@storyforge/format';
 import path from 'node:path';
 import { openStore } from '@storyforge/store';
+import { loadBook, loadSeries } from './book.mjs';
 import { editFrontMatterLine, formatYamlText, frontMatterRange } from './frontmatter.mjs';
 import { fail, finish, guarded, readBytes } from './ops.mjs';
 import { sha256, SLUG_RE, slugify, ulid } from './util.mjs';
@@ -30,8 +30,11 @@ function formatKey(label) {
   return `"${label.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
 }
 
-/** A scalar field value: a number or boolean plain, a string through formatYamlText. Null for an unwritable value. */
+/**
+ * A field value: a number or boolean plain, a string through formatYamlText, a list of strings (a `list` field) as a flow list. Null for an unwritable value.
+ */
 function formatScalar(v) {
+  if (Array.isArray(v)) return v.length <= 100 && v.every((i) => isText(i) && i.trim() !== '' && i.length <= 300) ? `[${v.map((i) => formatYamlText(i, { flow: true })).join(', ')}]` : null;
   if (typeof v === 'boolean') return String(v);
   if (typeof v === 'number') return Number.isFinite(v) && /^-?\d+(\.\d+)?$/.test(String(v)) ? String(v) : null;
   if (typeof v === 'string' && isText(v)) return v === '' ? '""' : formatYamlText(v);
@@ -133,16 +136,28 @@ export function replaceFrontMatterBlock(bytes, key, newLines, { after = [] } = {
 
 // ------------------------------------------------------------------ shared
 
-/** Open the store, validate the book. Codex commands do not need a clean manuscript: the post-write check refuses *new* errors. */
-export async function prepareCodex(bookRoot) {
-  if (typeof bookRoot !== 'string' || bookRoot === '') return { result: fail('REFUSED_NOT_A_BOOK', 'bookRoot must be a path') };
+/**
+ * Open the store, validate the book. Codex commands do not need a clean manuscript: the post-write check refuses *new* errors.
+ * `scope: 'series'` (M07-J01): `bookRoot` is a series folder and the documents are its shared entries and type files (paths relative to the series folder);
+ * the check then covers every book of the series, since a shared entry can break a book's link. A book in a series is read together with its series.
+ * @param {string} bookRoot @param {'book' | 'series'} [scope]
+ */
+export async function prepareCodex(bookRoot, scope = 'book') {
+  if (typeof bookRoot !== 'string' || bookRoot === '') return { result: fail(scope === 'series' ? 'REFUSED_NOT_A_SERIES' : 'REFUSED_NOT_A_BOOK', 'bookRoot must be a path') };
   const root = path.resolve(bookRoot);
   const store = await openStore(root);
-  const result = await validate(root);
-  if (result.books.length !== 1 || result.books[0].path !== '') return { result: fail('REFUSED_NOT_A_BOOK', `${bookRoot} is not a single book root (book.md missing)`) };
-  const lb = { root, diagnostics: result.diagnostics, book: result.books[0] };
-  return { lb, store, docs: extractDocs(result, ''), links: extractLinks(result, '') };
+  if (scope === 'series') {
+    const s = await loadSeries(root);
+    if ('error' in s) return { result: fail(s.error.code, s.error.message) };
+    return { lb: { root, diagnostics: s.diagnostics, book: null, reload: () => loadSeries(root) }, store, docs: s.docs, links: s.links, shared: null };
+  }
+  const lb = await loadBook(root);
+  if ('error' in lb) return { result: fail(lb.error.code, lb.error.message) };
+  return { lb, store, docs: lb.docs, links: lb.links, shared: lb.shared };
 }
+
+/** The labels of a type's `fields` list: a plain string is its own label, a typed `{ label, kind, choices? }` item gives its `label`. @param {any} fields */
+export const fieldLabels = (fields) => (Array.isArray(fields) ? fields.map((f) => (typeof f === 'string' ? f : isMap(f) && typeof f.label === 'string' ? f.label : '')).filter((f) => f.trim() !== '' && isText(f)) : []);
 
 /** The live (or archived) entry document for an id or slug. */
 const findEntry = (docs, ref, archived) => docs.find((d) => d.kind === 'entry' && d.archived === archived && (d.fm.id === ref || d.fm.slug === ref || (archived && d.rel === ref))) ?? null;
@@ -208,7 +223,7 @@ const notUsable = (rel) => fail('REFUSED_UNSIMPLE_FIELD', `${rel}: its front mat
  */
 export function createEntry(bookRoot, args = {}) {
   return guarded(async () => {
-    const { type, name, slug: given, status = 'seed', fields, dryRun = false } = args ?? {};
+    const { type, name, slug: given, status = 'seed', fields, dryRun = false, scope = 'book' } = args ?? {};
     if (typeof type !== 'string' || !TYPE_RE.test(type) || type.length > 40) return fail('REFUSED_BAD_ARGS', 'type must be a lower-case word (a-z)');
     if (!isText(name) || name.trim() === '' || name.length > 300) return fail('REFUSED_BAD_ARGS', 'name must be a non-empty string without control characters (max 300)');
     if (!ENTRY_STATUSES.includes(status)) return fail('REFUSED_BAD_ARGS', `status must be one of ${ENTRY_STATUSES.join(', ')}`);
@@ -222,13 +237,14 @@ export function createEntry(bookRoot, args = {}) {
       if (typeof n === 'string') return fail('REFUSED_BAD_ARGS', n);
       override = n;
     }
-    const prep = await prepareCodex(bookRoot);
+    const prep = await prepareCodex(bookRoot, scope);
     if (prep.result) return prep.result;
-    const { lb, store, docs } = prep;
+    const { lb, store, docs, shared } = prep;
     if (slugTaken(docs, slug)) return fail('SLUG_TAKEN', `the slug "${slug}" is already used by another entry, thread or event`, { slug });
 
-    const def = docs.find((d) => d.kind === 'codex-type' && !d.archived && d.fm.type === type);
-    const defaults = Array.isArray(def?.fm.fields) ? def.fm.fields.filter((f) => typeof f === 'string' && f.trim() !== '' && isText(f)) : [];
+    // a book's own type file wins; a book in a series falls back to the series' type
+    const def = docs.find((d) => d.kind === 'codex-type' && !d.archived && d.fm.type === type) ?? (shared?.docs ?? []).find((d) => d.kind === 'codex-type' && !d.archived && d.fm.type === type);
+    const defaults = fieldLabels(def?.fm.fields);
     const merged = new Map(defaults.map((label) => [label, '']));
     for (const p of override) merged.set(p.label, p.value);
     const pairs = [...merged].map(([label, value]) => ({ label, value }));
@@ -239,7 +255,7 @@ export function createEntry(bookRoot, args = {}) {
       `---\nschema: storyforge.entry/v1\nid: ${id}\nslug: ${formatYamlText(slug)}\ntype: ${type}\nname: ${formatYamlText(name)}\nstatus: ${status}\n` +
       `${pairs.length > 0 ? `${fieldsLines(pairs).join('\n')}\n` : ''}---\n## Overview\n\n`;
     const changes = [{ from: null, to, content: Buffer.from(text, 'utf8'), before: null }];
-    return finish({ bookRoot, store, lb, op: 'createEntry', args: { type, name, slug, status }, changes, dryRun, withDiff: true, extra: { id, slug, type, path: to } });
+    return finish({ bookRoot, store, lb, op: 'createEntry', args: { type, name, slug, status, ...(scope === 'series' ? { scope } : {}) }, changes, dryRun, withDiff: true, extra: { id, slug, type, path: to } });
   });
 }
 
@@ -254,14 +270,17 @@ export function createEntry(bookRoot, args = {}) {
  */
 export function setEntryFields(bookRoot, ref, args = {}) {
   return guarded(async () => {
-    const { name, status, role, aliases, fields, related, dryRun = false, baseSha256 } = args ?? {};
+    const { name, status, role, aliases, fields, related, labels, dryRun = false, baseSha256, scope = 'book' } = args ?? {};
     if (typeof ref !== 'string' || ref === '') return fail('REFUSED_BAD_ARGS', 'the entry must be an id or slug');
-    if ([name, status, role, aliases, fields, related].every((v) => v === undefined)) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+    if ([name, status, role, aliases, fields, related, labels].every((v) => v === undefined)) return fail('REFUSED_BAD_ARGS', 'nothing to change');
     if (name !== undefined && (!isText(name) || name.trim() === '' || name.length > 300)) return fail('REFUSED_BAD_ARGS', 'name must be a non-empty string without control characters (max 300)');
     if (status !== undefined && !ENTRY_STATUSES.includes(status)) return fail('REFUSED_BAD_ARGS', `status must be one of ${ENTRY_STATUSES.join(', ')}`);
     if (role !== undefined && (!isText(role) || role.length > 300)) return fail('REFUSED_BAD_ARGS', 'role must be a string without control characters (max 300)');
     if (aliases !== undefined && (!Array.isArray(aliases) || aliases.length > 100 || aliases.some((a) => !isText(a) || a.trim() === '' || a.length > 300))) {
       return fail('REFUSED_BAD_ARGS', 'aliases must be a list of up to 100 non-empty strings without control characters');
+    }
+    if (labels !== undefined && (!Array.isArray(labels) || labels.length > 50 || labels.some((l) => !isText(l) || l.trim() === '' || l.length > 100))) {
+      return fail('REFUSED_BAD_ARGS', 'labels must be a list of up to 50 label names');
     }
     let pairs;
     if (fields !== undefined) {
@@ -273,7 +292,7 @@ export function setEntryFields(bookRoot, ref, args = {}) {
       const ok = Array.isArray(related) && related.length <= 200 && related.every((r) => isMap(r) && typeof r.to === 'string' && SLUG_RE.test(r.to) && r.to.length <= 60 && (r.as === undefined || (isText(r.as) && r.as.length <= 300)));
       if (!ok) return fail('REFUSED_BAD_ARGS', 'related must be a list of { to: slug, as?: text }');
     }
-    const prep = await prepareCodex(bookRoot);
+    const prep = await prepareCodex(bookRoot, scope);
     if (prep.result) return prep.result;
     const { lb, store, docs } = prep;
     const doc = findEntry(docs, ref, false);
@@ -316,8 +335,12 @@ export function setEntryFields(bookRoot, ref, args = {}) {
       const bad = block('related', relatedLines(related), []);
       if (bad) return bad;
     }
+    if (labels !== undefined && (labels.length > 0 || has('labels'))) {
+      const bad = block('labels', flowList('labels', labels), ['aliases', 'role', 'status', 'name']);
+      if (bad) return bad;
+    }
     const changes = buf.equals(before) ? [] : [{ from: doc.rel, to: doc.rel, content: buf, before }];
-    return finish({ bookRoot, store, lb, op: 'setEntryFields', args: { ref, name, status, role, aliases: aliases?.length, fields: pairs?.length, related: related?.length }, changes, dryRun, withDiff: true, extra: { id: doc.fm.id, path: doc.rel } });
+    return finish({ bookRoot, store, lb, op: 'setEntryFields', args: { ref, name, status, role, aliases: aliases?.length, fields: pairs?.length, related: related?.length, labels: labels?.length, ...(scope === 'series' ? { scope } : {}) }, changes, dryRun, withDiff: true, extra: { id: doc.fm.id, path: doc.rel } });
   });
 }
 
@@ -336,10 +359,10 @@ export function frontOf(buf) {
  */
 export function changeEntrySlug(bookRoot, ref, args = {}) {
   return guarded(async () => {
-    const { slug, dryRun = false, baseSha256 } = args ?? {};
+    const { slug, dryRun = false, baseSha256, scope = 'book' } = args ?? {};
     if (typeof ref !== 'string' || ref === '') return fail('REFUSED_BAD_ARGS', 'the entry must be an id or slug');
     if (typeof slug !== 'string' || !SLUG_RE.test(slug) || slug.length > 60) return fail('REFUSED_BAD_ARGS', 'slug must be lower-case letters, digits and single hyphens (1-60 characters)');
-    const prep = await prepareCodex(bookRoot);
+    const prep = await prepareCodex(bookRoot, scope);
     if (prep.result) return prep.result;
     const { lb, store, docs } = prep;
     const doc = findEntry(docs, ref, false);
@@ -365,7 +388,7 @@ export function changeEntrySlug(bookRoot, ref, args = {}) {
       store,
       lb,
       op: 'changeEntrySlug',
-      args: { ref, slug },
+      args: { ref, slug, ...(scope === 'series' ? { scope } : {}) },
       changes: [{ from: doc.rel, to: doc.rel, content: r.buf, before }],
       dryRun,
       withDiff: true,
@@ -397,9 +420,9 @@ function linkSources(docs, links, id) {
  */
 export function archiveEntry(bookRoot, ref, args = {}) {
   return guarded(async () => {
-    const { dryRun = false, baseSha256 } = args ?? {};
+    const { dryRun = false, baseSha256, scope = 'book' } = args ?? {};
     if (typeof ref !== 'string' || ref === '') return fail('REFUSED_BAD_ARGS', 'the entry must be an id or slug');
-    const prep = await prepareCodex(bookRoot);
+    const prep = await prepareCodex(bookRoot, scope);
     if (prep.result) return prep.result;
     const { lb, store, docs, links } = prep;
     const doc = findEntry(docs, ref, false);
@@ -427,9 +450,9 @@ export function archiveEntry(bookRoot, ref, args = {}) {
  */
 export function restoreEntry(bookRoot, ref, args = {}) {
   return guarded(async () => {
-    const { dryRun = false, baseSha256 } = args ?? {};
+    const { dryRun = false, baseSha256, scope = 'book' } = args ?? {};
     if (typeof ref !== 'string' || ref === '') return fail('REFUSED_BAD_ARGS', 'the entry must be an id or slug');
-    const prep = await prepareCodex(bookRoot);
+    const prep = await prepareCodex(bookRoot, scope);
     if (prep.result) return prep.result;
     const { lb, store, docs } = prep;
     const doc = findEntry(docs, ref, true);
@@ -456,27 +479,49 @@ export function restoreEntry(bookRoot, ref, args = {}) {
 
 // ------------------------------------------------------------------ createCodexType
 
+/** The field kinds a type can declare (FORMAT 5.1). */
+export const FIELD_KINDS = ['text', 'number', 'date', 'link', 'choice', 'list'];
+
+/** Lines of a type's `fields:`: a flow list when every field is a plain label, else a block list with the typed items spelled out. @param {(string | { label: string, kind: string, choices?: string[] })[]} fields */
+function typeFieldLines(fields) {
+  if (fields.every((f) => typeof f === 'string')) return flowList('fields', fields);
+  return [
+    'fields:',
+    ...fields.flatMap((f) =>
+      typeof f === 'string'
+        ? [`  - ${formatYamlText(f)}`]
+        : [`  - label: ${formatYamlText(f.label)}`, `    kind: ${f.kind}`, ...(f.kind === 'choice' ? [`    choices: [${(f.choices ?? []).map((c) => formatYamlText(c, { flow: true })).join(', ')}]`] : [])],
+    ),
+  ];
+}
+
 /**
  * New type definition codex/_types/<type>.md (FORMAT-v1 5.1). A type that already has a definition file: TYPE_EXISTS.
- * @param {string} bookRoot @param {{ type: string, name: string, plural?: string, fields?: string[], dryRun?: boolean }} args
+ * `fields` are labels, or typed items `{ label, kind, choices? }` (kind: text, number, date, link, choice, list; `choices` for a choice). `scope: 'series'`
+ * writes the type file in a series folder (shared by every book of the series).
+ * @param {string} bookRoot @param {{ type: string, name: string, plural?: string, fields?: (string | { label: string, kind: string, choices?: string[] })[], dryRun?: boolean, scope?: 'book' | 'series' }} args
  */
 export function createCodexType(bookRoot, args = {}) {
   return guarded(async () => {
-    const { type, name, plural, fields = [], dryRun = false } = args ?? {};
+    const { type, name, plural, fields = [], dryRun = false, scope = 'book' } = args ?? {};
     if (typeof type !== 'string' || !TYPE_RE.test(type) || type.length > 40) return fail('REFUSED_BAD_ARGS', 'type must be a lower-case word (a-z)');
     if (!isText(name) || name.trim() === '' || name.length > 100) return fail('REFUSED_BAD_ARGS', 'name must be 1 to 100 characters without control characters');
     if (plural !== undefined && (!isText(plural) || plural.trim() === '' || plural.length > 100)) return fail('REFUSED_BAD_ARGS', 'plural must be 1 to 100 characters without control characters');
-    if (!Array.isArray(fields) || fields.length > 50 || fields.some((f) => !isText(f) || f.trim() === '' || f.length > 100)) {
-      return fail('REFUSED_BAD_ARGS', 'fields must be a list of up to 50 labels (1 to 100 characters)');
+    const labelOk = (l) => isText(l) && l.trim() !== '' && l.length <= 100;
+    const itemOk = (f) =>
+      labelOk(f) ||
+      (isMap(f) && labelOk(f.label) && FIELD_KINDS.includes(f.kind) && (f.kind === 'choice' ? Array.isArray(f.choices) && f.choices.length > 0 && f.choices.length <= 50 && f.choices.every(labelOk) : f.choices === undefined));
+    if (!Array.isArray(fields) || fields.length > 50 || !fields.every(itemOk)) {
+      return fail('REFUSED_BAD_ARGS', 'fields must be a list of up to 50 labels (1 to 100 characters), or { label, kind, choices } items (a choice needs its choices)');
     }
-    const prep = await prepareCodex(bookRoot);
+    const prep = await prepareCodex(bookRoot, scope);
     if (prep.result) return prep.result;
     const { lb, store, docs } = prep;
     if (docs.some((d) => d.kind === 'codex-type' && !d.archived && d.fm.type === type)) return fail('TYPE_EXISTS', `the type "${type}" already has a definition`, { type });
     const to = `codex/_types/${type}.md`;
     const text =
       `---\nschema: storyforge.codex-type/v1\nid: note_${ulid()}\ntype: ${type}\nname: ${formatYamlText(name)}\nplural: ${formatYamlText(plural ?? (type === 'lore' ? name : `${name}s`))}\n` +
-      `${fields.length > 0 ? `${flowList('fields', fields).join('\n')}\n` : ''}---\n`;
-    return finish({ bookRoot, store, lb, op: 'createCodexType', args: { type, name }, changes: [{ from: null, to, content: Buffer.from(text, 'utf8'), before: null }], dryRun, withDiff: true, extra: { type, path: to } });
+      `${fields.length > 0 ? `${typeFieldLines(fields).join('\n')}\n` : ''}---\n`;
+    return finish({ bookRoot, store, lb, op: 'createCodexType', args: { type, name, ...(scope === 'series' ? { scope } : {}) }, changes: [{ from: null, to, content: Buffer.from(text, 'utf8'), before: null }], dryRun, withDiff: true, extra: { type, path: to } });
   });
 }

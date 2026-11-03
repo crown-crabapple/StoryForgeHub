@@ -38,10 +38,11 @@ export function DiffView({ diff, label }) {
 
 /**
  * The list of files a command would change, each with its diff (when the server gave one).
- * `preview`: { title, changes, notes?, error?, code?, extraAction? }. Nothing is written until Apply.
+ * `preview`: { title, changes, notes?, error?, code?, extraAction?, notice?, warnings? }. Nothing is written until Apply.
+ * `notice` (M07-J01b) is said before the files: "Changes apply to every book in this series." for a shared entry; `warnings` are what the change will report (W309 of a copy).
  */
 export function PreviewDialog({ preview, busy, onApply, onCancel }) {
-  const { title, changes = [], notes = [], error = null, extraAction = null } = preview;
+  const { title, changes = [], notes = [], error = null, extraAction = null, notice = null, warnings = [] } = preview;
   return (
     <Dialog label={`Preview: ${title}`} onClose={onCancel} className="preview-dialog">
       <h2>{title}</h2>
@@ -49,6 +50,20 @@ export function PreviewDialog({ preview, busy, onApply, onCancel }) {
         <p role="alert" className="error">
           {error}
         </p>
+      )}
+      {notice && (
+        <p className="shared-notice" role="note">
+          {notice}
+        </p>
+      )}
+      {warnings.length > 0 && (
+        <ul className="preview-warnings" aria-label="Warnings this change will show">
+          {warnings.map((w) => (
+            <li key={w} className="diag-warning">
+              {w}
+            </li>
+          ))}
+        </ul>
       )}
       {!error && changes.length === 0 && <p className="muted">Nothing would change.</p>}
       {changes.length > 0 && (

@@ -5,11 +5,12 @@ import { useWrites } from '../shell/writes.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
 import { send } from '../structure/helpers.js';
 import { PreviewDialog } from '../structure/PreviewDialog.jsx';
+import { SHARED_NOTICE, crossBookTarget } from '../world/model.js';
 import { CodexPage } from './CodexPage.jsx';
 import { ChangeSlugDialog, EditFieldsDialog, NewEntryDialog, NewTypeDialog } from './dialogs.jsx';
 import { EntryBodyEditor } from './EntryBodyEditor.jsx';
 import { codexHref, defaultTypeKey, parseCodexSearch, placesHref, sidebarRows } from './model.js';
-import { archiveRequest, explainCodexFailure, restoreRequest } from './requests.js';
+import { archiveRequest, copyToBookRequest, explainCodexFailure, moveToSeriesRequest, restoreRequest } from './requests.js';
 
 const enc = encodeURIComponent;
 const SEARCH_DELAY_MS = 250;
@@ -31,11 +32,16 @@ export function CodexView({ bookId, search = '', places = false }) {
   const { data: list, error, loading } = useApi(`${api}/codex/entries`, version);
   const { data: objects } = useApi(`${api}/objects?kinds=entry,thread,event`, version);
   const { data: notesData } = useApi(`${api}/notes`, version);
+  const { data: labelData } = useApi(`${api}/labels`, version); // the label chips and the label filter
+  const { data: targets } = useApi(`${api}/link-targets`, version); // where a link into another book leads
 
   const [query, setQuery] = useState('');
   const [statusKey, setStatusKey] = useState('all');
   const [sort, setSort] = useState('name');
   const [searchText, setSearchText] = useState(false);
+  const [scope, setScope] = useState('all'); // All / This book / Shared (books in a series)
+  const [labelFilter, setLabelFilter] = useState('');
+  const [banner, setBanner] = useState(null); // what the last change reported (the W309 of a copy)
   const [textIds, setTextIds] = useState(null);
   const [dialog, setDialog] = useState(null); // { kind: 'new' | 'type' } or { kind: 'edit' | 'slug', entry }
   const [flow, setFlow] = useState(null); // the preview: { title, requests, changes, notes, error, then }
@@ -44,6 +50,11 @@ export function CodexView({ bookId, search = '', places = false }) {
 
   const entries = useMemo(() => list?.entries ?? [], [list]);
   const chapters = list?.chapters ?? [];
+  const series = list?.series ?? null;
+  const labelDefs = useMemo(
+    () => (labelData ? [...labelData.book.labels.map((l) => ({ ...l, scope: 'book' })), ...(labelData.series?.labels ?? []).map((l) => ({ ...l, scope: 'series' }))] : null),
+    [labelData],
+  );
   const typeList = types ?? [];
   const url = parseCodexSearch(search);
   const urlEntry = url.entry ? (entries.find((e) => e.id === url.entry || e.slug === url.entry) ?? null) : null;
@@ -72,13 +83,16 @@ export function CodexView({ bookId, search = '', places = false }) {
     return e ? { id: e.id, name: e.name } : null;
   };
   const takenSlugs = new Set((objects ?? []).map((o) => o.slug).filter(Boolean));
+  const sharedSlugs = new Set(entries.filter((e) => e.shared).map((e) => e.slug).filter(Boolean));
+  const linkOf = (ref) => crossBookTarget(ref, targets, bookId, (b, id) => codexHref(b, { entry: id }));
   const go = (next) => navigate(places ? placesHref(bookId, { entry: next.entry ?? null }) : codexHref(bookId, next));
 
   /** Dry-run every request, then show the preview. */
-  async function startPreview(title, requests, then = {}) {
+  async function startPreview(title, requests, then = {}, { shared = false } = {}) {
     setBusy(true);
     const changes = [];
     const sources = [];
+    const warnings = [];
     let failure = null;
     for (const r of requests) {
       const { status: code, json } = await send(r.url, { ...r.body, dryRun: true });
@@ -88,6 +102,7 @@ export function CodexView({ bookId, search = '', places = false }) {
       }
       changes.push(...(json.changes ?? []));
       for (const s of json.linked_from ?? []) if (!sources.includes(s.path)) sources.push(s.path);
+      for (const w of json.warnings ?? []) if (!warnings.includes(w.message)) warnings.push(`${w.code}: ${w.message}`);
     }
     setBusy(false);
     setFlow({
@@ -96,6 +111,8 @@ export function CodexView({ bookId, search = '', places = false }) {
       changes,
       notes: sources.length > 0 ? [{ heading: 'These scenes and entries link to it. They keep working, but will show a warning (W303):', items: sources }] : [],
       error: failure,
+      notice: shared ? SHARED_NOTICE : null,
+      warnings,
       then,
     });
   }
@@ -115,6 +132,7 @@ export function CodexView({ bookId, search = '', places = false }) {
       last = res.json;
     }
     const then = flow.then;
+    setBanner(last?.warnings?.length > 0 ? last.warnings.map((w) => `${w.code}: ${w.message}`).join(' ') : null);
     setBusy(false);
     setFlow(null);
     setDialog(null);
@@ -154,8 +172,11 @@ export function CodexView({ bookId, search = '', places = false }) {
     onEdit: () => setDialog({ kind: 'edit', entry }),
     onEditText: () => setEditing(entry.id),
     onChangeSlug: () => setDialog({ kind: 'slug', entry }),
-    onArchive: () => startPreview(`Archive ${entry.name}`, [archiveRequest(bookId, entry.id)], { entry: null, type: typeKey }),
-    onRestore: () => startPreview(`Restore ${entry.name}`, [restoreRequest(bookId, entry.id)], { entry: entry.id, type: entry.type }),
+    onArchive: () => startPreview(`Archive ${entry.name}`, [archiveRequest(bookId, entry.id)], { entry: null, type: typeKey }, { shared: entry.shared }),
+    onRestore: () => startPreview(`Restore ${entry.name}`, [restoreRequest(bookId, entry.id)], { entry: entry.id, type: entry.type }, { shared: entry.shared }),
+    // a book's own entry can move into its series' codex; a shared one can be copied into the book (it then shadows the shared entry, W309)
+    onMoveToSeries: series && !entry.shared ? () => startPreview(`Move ${entry.name} to the series`, [moveToSeriesRequest(bookId, entry.id)], { entry: entry.id, type: entry.type }) : undefined,
+    onCopyIntoBook: entry.shared ? () => startPreview(`Copy ${entry.name} into this book`, [copyToBookRequest(bookId, entry.id)], { entry: 'result', type: entry.type }) : undefined,
   });
 
   return (
@@ -186,6 +207,20 @@ export function CodexView({ bookId, search = '', places = false }) {
         onNewEntry={() => setDialog({ kind: 'new' })}
         onNewType={() => setDialog({ kind: 'type' })}
         resolve={resolve}
+        linkOf={linkOf}
+        series={series}
+        scope={scope}
+        onScope={setScope}
+        labelDefs={labelDefs}
+        label={labelFilter}
+        onLabel={setLabelFilter}
+        banner={
+          banner && (
+            <p className="banner banner-warning" role="status">
+              {banner}
+            </p>
+          )
+        }
         notes={notesData?.notes ?? null}
         lockedType={places ? 'location' : null}
         actions={actionsFor}
@@ -210,22 +245,32 @@ export function CodexView({ bookId, search = '', places = false }) {
           bookId={bookId}
           types={typeList}
           takenSlugs={takenSlugs}
+          series={series}
+          sharedSlugs={sharedSlugs}
           defaultType={typeKey !== 'all' && typeKey !== 'archived' ? typeKey : null}
           onClose={() => setDialog(null)}
-          onPreview={(title, requests, then) => startPreview(title, requests, { entry: 'result', type: null, ...then })}
+          onPreview={(title, requests, then) => startPreview(title, requests, { entry: 'result', type: null, ...then }, { shared: then?.where === 'series' })}
         />
       )}
       {dialog?.kind === 'type' && <NewTypeDialog bookId={bookId} types={typeList} onClose={() => setDialog(null)} onPreview={(title, requests) => startPreview(title, requests, {})} />}
       {dialog?.kind === 'edit' && (
-        <EditFieldsDialog bookId={bookId} entry={dialog.entry} entries={entries} onClose={() => setDialog(null)} onPreview={(title, requests) => startPreview(title, requests, {})} />
+        <EditFieldsDialog
+          bookId={bookId}
+          entry={dialog.entry}
+          entries={entries}
+          types={typeList}
+          labelDefs={labelDefs}
+          onClose={() => setDialog(null)}
+          onPreview={(title, requests) => startPreview(title, requests, {}, { shared: dialog.entry.shared })}
+        />
       )}
       {dialog?.kind === 'slug' && (
         <ChangeSlugDialog
           bookId={bookId}
           entry={dialog.entry}
-          takenSlugs={takenSlugs}
+          takenSlugs={dialog.entry.shared ? sharedSlugs : takenSlugs}
           onClose={() => setDialog(null)}
-          onPreview={(title, requests) => startPreview(title, requests, {})}
+          onPreview={(title, requests) => startPreview(title, requests, {}, { shared: dialog.entry.shared })}
         />
       )}
       {flow && <PreviewDialog preview={flow} busy={busy} onApply={apply} onCancel={() => setFlow(null)} />}

@@ -2,6 +2,8 @@ import { ProseView } from '../ProseView.jsx';
 import { Link } from '../router.jsx';
 import { Avatar, StatusChip } from './CodexCard.jsx';
 import { LinkedText } from './LinkedText.jsx';
+import { LabelChips } from '../world/LabelChip.jsx';
+import { SHARED_NOTICE, sharedBadge } from '../world/model.js';
 import { PresenceBars } from './PresenceBars.jsx';
 import { ResearchList } from '../notes/RailResearch.jsx';
 import { codexHref, factsOf, roleLabel, sceneHref, sceneRows } from './model.js';
@@ -42,10 +44,13 @@ function Relation({ bookId, rel, onSelect }) {
  * the page gives a handler for them. Presentational: `entry` is one entry of GET /codex/entries (or GET /entries/:id).
  * @param {{ bookId: string, entry: any | null, chapters?: { chapter: number, scene_ids?: string[] }[], types?: { type: string, name: string }[],
  *   resolve?: (ref: string) => { id: string } | null, onSelect?: (entryId: string) => void, onEdit?: () => void, onEditText?: () => void,
- *   onChangeSlug?: () => void, onArchive?: () => void, onRestore?: () => void, research?: { id: string, title: string | null }[] | null }} props
+ *   onChangeSlug?: () => void, onArchive?: () => void, onRestore?: () => void, research?: { id: string, title: string | null }[] | null,
+ *   onMoveToSeries?: () => void, onCopyIntoBook?: () => void, labelDefs?: any[] | null, linkOf?: (ref: string) => { href: string, name?: string | null } | null }} props
+ *   A shared entry shows its badge, the path of the series file and the notice that changes apply to every book of the series. `onMoveToSeries` is the menu entry
+ *   "Move to series…" of a book's own entry, `onCopyIntoBook` "Copy into this book…" of a shared one.
  *   `research` (M04-J04): the research notes whose `links` name the entry; when given (even empty) the inspector shows a "Research" section.
  */
-export function EntryInspector({ bookId, entry, chapters = [], types = [], resolve, onSelect, onEdit, onEditText, onChangeSlug, onArchive, onRestore, research = null }) {
+export function EntryInspector({ bookId, entry, chapters = [], types = [], resolve, onSelect, onEdit, onEditText, onChangeSlug, onArchive, onRestore, research = null, onMoveToSeries, onCopyIntoBook, labelDefs = null, linkOf }) {
   if (!entry) return <p className="muted">Select an entry to see its details.</p>;
   const facts = factsOf(entry.fields);
   const rows = sceneRows(entry.appears_in);
@@ -55,7 +60,7 @@ export function EntryInspector({ bookId, entry, chapters = [], types = [], resol
   const related = entry.related ?? [];
   const problems = entry.problems ?? [];
   const sections = entry.sections ?? [];
-  const hasActions = onEdit || onEditText || onChangeSlug || onArchive || onRestore;
+  const hasActions = onEdit || onEditText || onChangeSlug || onArchive || onRestore || onMoveToSeries || onCopyIntoBook;
   return (
     <div className="codex-inspector">
       <div className="codex-detail-head">
@@ -67,12 +72,25 @@ export function EntryInspector({ bookId, entry, chapters = [], types = [], resol
         </div>
       </div>
 
+      {entry.shared && (
+        <div className="shared-info">
+          <span className="shared-badge">{sharedBadge(entry)}</span>
+          <p className="muted shared-path">
+            Series file: <code>{entry.path}</code>
+          </p>
+          <p className="muted" role="note">
+            {SHARED_NOTICE}
+          </p>
+        </div>
+      )}
+      <LabelChips labels={entry.labels} defs={labelDefs} />
+
       {facts.length > 0 && (
         <dl className="codex-facts">
           {facts.map((f) => (
             <div key={f.label}>
               <dt>{f.label}</dt>
-              <dd>{f.value === '' ? <span className="muted">—</span> : <LinkedText text={f.value} bookId={bookId} resolve={resolve} />}</dd>
+              <dd>{f.value === '' ? <span className="muted">—</span> : <LinkedText text={f.value} bookId={bookId} resolve={resolve} linkOf={linkOf} />}</dd>
             </div>
           ))}
         </dl>
@@ -87,7 +105,7 @@ export function EntryInspector({ bookId, entry, chapters = [], types = [], resol
       {sections.map((s, i) => (
         <Section key={`${s.heading}-${i}`} title={s.heading}>
           <div className="codex-section-text">
-            {(s.markdown ?? s.text ?? '') === '' ? <p className="muted">Nothing written yet.</p> : <ProseView source={s.markdown ?? s.text} />}
+            {(s.markdown ?? s.text ?? '') === '' ? <p className="muted">Nothing written yet.</p> : <ProseView source={s.markdown ?? s.text} linkOf={linkOf} />}
           </div>
         </Section>
       ))}
@@ -164,6 +182,16 @@ export function EntryInspector({ bookId, entry, chapters = [], types = [], resol
           {onChangeSlug && (
             <button type="button" className="btn" onClick={onChangeSlug}>
               Change slug…
+            </button>
+          )}
+          {onMoveToSeries && (
+            <button type="button" className="btn" onClick={onMoveToSeries}>
+              Move to series…
+            </button>
+          )}
+          {onCopyIntoBook && (
+            <button type="button" className="btn" onClick={onCopyIntoBook}>
+              Copy into this book…
             </button>
           )}
           {onArchive && (

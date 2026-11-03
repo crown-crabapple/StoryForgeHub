@@ -5,9 +5,9 @@ import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { checkContinuity } from '@storyforge/continuity';
-import { discover, escapesRoot, extractDocs, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
+import { discover, escapesRoot, extractDocs, extractShared, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts, buildGraph, subGraph } from '@storyforge/index';
-import { MAX_ATTACHMENT_BYTES, applyRepair, planRepair } from '@storyforge/manuscript';
+import { MAX_ATTACHMENT_BYTES, applyRepair, fieldLabels, planRepair } from '@storyforge/manuscript';
 import { onWrite } from '@storyforge/store';
 import { listTemplates } from '@storyforge/templates';
 import { createBookMethod } from './create-book.mjs';
@@ -16,6 +16,7 @@ import { createIndexManager } from './index-manager.mjs';
 import { createWatcher } from './watcher.mjs';
 import { createValidateCache } from './validate-cache.mjs';
 import { createWriteMethods } from './fs-writes.mjs';
+import { createWorldMethods, fieldDefsOf, labelDefsOf, labelsOfDoc } from './fs-world.mjs';
 import { registerReceiptEngine } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
 import { createTimelineReads } from './fs-timeline.mjs';
@@ -292,6 +293,7 @@ export function createFsRepository(libraryRoot, options = {}) {
           pov: str(fm.pov),
           word_count: countWords(body),
           path: s.path,
+          ...(labelsOfDoc(fm).length > 0 ? { labels: labelsOfDoc(fm) } : {}),
         };
         return { summary, fm, body, sha256 };
       }),
@@ -378,6 +380,18 @@ export function createFsRepository(libraryRoot, options = {}) {
     const seriesFm = inSeries && segs.length > 0 ? await fmOf([...segs.slice(0, -1), 'series.md'].join('/')) : null;
     const rootIsLibrary = bookPath !== '' && !(await readParsed(abs('series.md')));
     return { seriesFm, libraryFm: rootIsLibrary ? await fmOf('library.md') : null };
+  }
+
+  /** The labels a book and its series define, [{ name, color, scope: 'book' | 'series' }] (the book's first). @param {any} result validate() @param {any} book */
+  async function labelDefinitions(result, book) {
+    const bookDoc = extractDocs(result, book.path).find((d) => d.kind === 'book');
+    const out = labelDefsOf(bookDoc?.fm).map((l) => ({ ...l, scope: 'book' }));
+    const series = extractShared(result, book.path)?.series;
+    if (series) {
+      const { doc } = await loadDoc(abs(series.path === '' ? 'series.md' : `${series.path}/series.md`), 'series.md', 'series.md', noop);
+      for (const l of labelDefsOf(doc?.fm)) if (!out.some((o) => o.name.toLowerCase() === l.name.toLowerCase())) out.push({ ...l, scope: 'series' });
+    }
+    return out;
   }
 
   /** @type {Map<string, { size: number, mtimeMs: number, sha256: string }>} real image path -> its hash at that size and mtime */
@@ -792,7 +806,7 @@ export function createFsRepository(libraryRoot, options = {}) {
       return r;
     },
 
-    listTemplates: () => listTemplates(),
+    listTemplates: () => listTemplates({ libraryRoot: root }),
 
     /** Create a book from a template: see create-book.mjs. Resolves with { ok, bookId, path } or { ok: false, code, field, message }. */
     createBook: createBookMethod({
@@ -848,12 +862,23 @@ export function createFsRepository(libraryRoot, options = {}) {
       const defs = new Map();
       /** @type {Map<string, number>} */
       const counts = new Map();
+      /** @type {Set<string>} types whose definition comes from the series */
+      const fromSeries = new Set();
       for (const rel of await walkMarkdown(bookRoot)) {
         if (!rel.startsWith('codex/')) continue;
         const { doc } = await loadDoc(path.join(bookRoot, ...rel.split('/')), rel, rel, noop);
         if (!doc || doc.archived) continue;
         if (doc.kind === 'codex-type' && typeof doc.fm.type === 'string' && /^[a-z]+$/.test(doc.fm.type) && !defs.has(doc.fm.type)) defs.set(doc.fm.type, doc);
         else if (doc.kind === 'entry' && typeof doc.fm.type === 'string') counts.set(doc.fm.type, (counts.get(doc.fm.type) ?? 0) + 1);
+      }
+      // the series' shared world (M07-J01): its type files apply to every book unless the book has a type file of its own; its entries count too
+      const shared = extractShared(await readValidate(), book.path);
+      for (const doc of shared?.docs ?? []) {
+        if (doc.archived) continue;
+        if (doc.kind === 'codex-type' && typeof doc.fm.type === 'string' && /^[a-z]+$/.test(doc.fm.type) && !defs.has(doc.fm.type)) {
+          defs.set(doc.fm.type, doc);
+          fromSeries.add(doc.fm.type);
+        } else if (doc.kind === 'entry' && typeof doc.fm.type === 'string') counts.set(doc.fm.type, (counts.get(doc.fm.type) ?? 0) + 1);
       }
       const types = [...new Set([...BUILTIN_TYPES, ...[...defs.keys(), ...counts.keys()].sort()])];
       return types.map((type) => {
@@ -864,11 +889,13 @@ export function createFsRepository(libraryRoot, options = {}) {
           type,
           name,
           plural: str(doc?.fm.plural) ?? (type === 'lore' ? name : `${name}s`),
-          fields: Array.isArray(doc?.fm.fields) ? doc.fm.fields.filter((f) => typeof f === 'string') : [],
+          fields: fieldLabels(doc?.fm.fields),
+          field_defs: fieldDefsOf(doc?.fm.fields),
           description: doc ? doc.body.trim() : '',
           builtin: BUILTIN_TYPES.includes(type),
           defined: doc !== undefined,
           count: counts.get(type) ?? 0,
+          ...(fromSeries.has(type) ? { shared: true } : {}),
         };
       });
     },
@@ -882,9 +909,21 @@ export function createFsRepository(libraryRoot, options = {}) {
       const book = await bookById(bookId);
       if (!book || typeof ref !== 'string' || ref === '') return null;
       const bookRoot = book.path === '' ? root : abs(book.path);
+      const sharedDocs = extractShared(await readValidate(), book.path);
+      /** @type {any[]} the book's own entries first (they win), then the series' shared ones */
+      const candidates = [];
       for (const rel of await walkMarkdown(bookRoot)) {
         const { doc } = await loadDoc(path.join(bookRoot, ...rel.split('/')), rel, rel, noop);
-        if (!doc || doc.kind !== 'entry' || doc.archived || (doc.fm.id !== ref && doc.fm.slug !== ref)) continue;
+        if (doc && doc.kind === 'entry' && !doc.archived && (doc.fm.id === ref || doc.fm.slug === ref)) {
+          candidates.push({ doc, abs: path.join(bookRoot, ...rel.split('/')), shared: false });
+          break;
+        }
+      }
+      if (candidates.length === 0 && sharedDocs) {
+        const doc = sharedDocs.docs.find((d) => d.kind === 'entry' && !d.archived && (d.fm.id === ref || d.fm.slug === ref));
+        if (doc) candidates.push({ doc, abs: abs(doc.file), shared: true });
+      }
+      for (const { doc, abs: file0, shared } of candidates) {
         const id = str(doc.fm.id);
         const links = id ? await graphOf(bookId) : null;
         const appearsIn = [];
@@ -900,7 +939,7 @@ export function createFsRepository(libraryRoot, options = {}) {
           }
           appearsIn.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'explicit' ? -1 : 1) || a.position - b.position);
         }
-        const file = await readParsed(path.join(bookRoot, ...rel.split('/')));
+        const file = await readParsed(file0);
         return {
           id,
           slug: str(doc.fm.slug),
@@ -914,6 +953,7 @@ export function createFsRepository(libraryRoot, options = {}) {
           sections: entrySections(doc.body),
           appears_in: appearsIn,
           related,
+          ...(shared && sharedDocs ? { shared: true, series: { slug: sharedDocs.series.slug, title: sharedDocs.series.title, path: sharedDocs.series.path } } : {}),
         };
       }
       return null;
@@ -943,8 +983,12 @@ export function createFsRepository(libraryRoot, options = {}) {
       }
       chapters.sort((a, b) => a.chapter - b.chapter);
       const entries = [];
-      for (const doc of extractDocs(result, book.path)) {
+      const sharedWorld = extractShared(result, book.path);
+      const series = sharedWorld ? { id: sharedWorld.series.id, slug: sharedWorld.series.slug, title: sharedWorld.series.title, path: sharedWorld.series.path } : null;
+      const seriesDocs = new Set(sharedWorld?.docs ?? []);
+      for (const doc of [...extractDocs(result, book.path), ...(sharedWorld?.docs ?? [])]) {
         if (doc.kind !== 'entry' || typeof doc.fm.id !== 'string') continue;
+        const isShared = seriesDocs.has(doc);
         const id = doc.fm.id;
         /** @type {Map<string, any>} */
         const byScene = new Map();
@@ -964,9 +1008,11 @@ export function createFsRepository(libraryRoot, options = {}) {
         }
         const appearsIn = [...byScene.values()].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'explicit' ? -1 : 1) || a.position - b.position);
         const image = str(doc.fm.image);
-        const c = await resolveCover(book.path, image);
+        const c = isShared ? { state: 'none' } : await resolveCover(book.path, image);
         const st = await stat(abs(doc.file)).catch(() => null);
         entries.push({
+          ...(isShared && series ? { shared: true, series: { slug: series.slug, title: series.title } } : {}),
+          ...(labelsOfDoc(doc.fm).length > 0 ? { labels: labelsOfDoc(doc.fm) } : {}),
           id,
           slug: str(doc.fm.slug),
           type: str(doc.fm.type),
@@ -988,7 +1034,7 @@ export function createFsRepository(libraryRoot, options = {}) {
         });
       }
       entries.sort((a, b) => cmp((a.name ?? '').toLowerCase(), (b.name ?? '').toLowerCase()) || cmp(a.id, b.id));
-      return { entries, chapters };
+      return { entries, chapters, ...(series ? { series } : {}) };
     },
 
     /**
@@ -1033,7 +1079,9 @@ export function createFsRepository(libraryRoot, options = {}) {
         plot_threads: [...new Set(ids(fm.plot_threads).map((ref) => threadOf(ref)?.id).filter((x) => typeof x === 'string'))],
         sha256,
       }));
-      return { threads, scenes };
+      // the labels the book and its series define (M07-J01): the Board and the Outline draw chips and filter by them
+      const defs = await labelDefinitions(result, book);
+      return { threads, scenes, ...(defs.length > 0 ? { labels: defs } : {}) };
     },
 
     /** One thread with its text: the thread of `listThreads` plus `body` (the text after the front matter, exactly as on disk). `ref` is the id or slug. Null if there is none. */
@@ -1074,7 +1122,16 @@ export function createFsRepository(libraryRoot, options = {}) {
       const result = await readValidate();
       if (bookId === undefined) return result.diagnostics;
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
-      return book ? forBook(result.diagnostics, book.path) : [];
+      if (!book) return [];
+      const own = forBook(result.diagnostics, book.path);
+      // the shared entries' own problems (M07-J01): shown in the problems list of every book of the series, badged "Series"
+      const series = extractShared(result, book.path)?.series;
+      if (!series) return own;
+      const at = series.path === '' ? '' : `${series.path}/`;
+      const shared = result.diagnostics
+        .filter((d) => d.file === `${at}series.md` || d.file.startsWith(`${at}codex/`) || d.file.startsWith(`${at}archive/`))
+        .map((d) => ({ ...d, scope: 'series', series: series.slug }));
+      return [...own, ...shared];
     },
   };
   // Act titles and scene-less acts / chapters come from act.md / chapter.md (FORMAT-v1 4.5: metadata without
@@ -1156,5 +1213,22 @@ export function createFsRepository(libraryRoot, options = {}) {
   // test hook: the cache itself (not enumerable, so it is not part of the repository's surface)
   Object.defineProperty(repository, '__validateCache', { value: vcache, enumerable: false });
   Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }), activity, now: options.clock, receipts, readValidate }));
+  // M07-J01b: shared worlds, labels, link targets and templates. Wraps the entry writes (a shared entry is written in the series folder).
+  Object.assign(
+    repository,
+    createWorldMethods({
+      root,
+      repository,
+      readValidate,
+      reconcile: (p) => manager.reconcile(p, 'write', { full: true }),
+      afterWrite: (p) => manager.afterWrite(p),
+      libraryKind: () => createProbe.libraryKind(),
+      exists: (rel) => createProbe.exists(rel),
+      async readDoc(libRel) {
+        const { doc } = await loadDoc(abs(libRel), libRel, libRel, noop);
+        return doc ?? null;
+      },
+    }),
+  );
   return repository;
 }

@@ -19,7 +19,7 @@ export function TopBar({ books, bookId }) {
         <span className="logo-word">StoryForge</span>
       </Link>
       <BookSwitcher books={books} current={current} />
-      {current && <BookActions bookId={current.id} slug={current.slug ?? null} />}
+      {current && <BookActions bookId={current.id} slug={current.slug ?? null} title={current.title ?? null} />}
       <SaveStatus bookId={bookId && (books === null || current) ? bookId : null} />
       <SearchBox />
       <IndexStatus />
