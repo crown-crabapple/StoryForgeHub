@@ -31,11 +31,25 @@ export function isInsecureCloud(baseUrl) {
   }
 }
 
+/** Offered first, and only when the server reports a secure backend (Settings shows which one). */
+export const SECURE_CHOICE = { value: 'secure', label: 'Keep the key in secure storage (recommended)' };
+
 export const KEY_STORAGE_CHOICES = [
   { value: 'none', label: 'No key (typical for a server on this computer)' },
   { value: 'session', label: 'Keep the key for this session only (forgotten when StoryForge restarts)' },
   { value: 'config', label: 'Save the key in the settings file, as plain text' },
 ];
+
+/** The key-storage radio choices: secure first when a secure backend is active. @param {string | null | undefined} backend */
+export const keyStorageChoices = (backend) => (backend ? [SECURE_CHOICE, ...KEY_STORAGE_CHOICES] : KEY_STORAGE_CHOICES);
+
+/** The backend names in words. @param {string | null | undefined} backend */
+export function backendText(backend) {
+  return { dpapi: 'Windows protected storage (DPAPI)', 'macos-keychain': 'the macOS keychain', 'secret-service': 'the Linux Secret Service', 'file-key': 'an encrypted file with its own key' }[backend ?? ''] ?? 'none';
+}
+
+/** "1,234 prompt + 56 reply tokens (estimated)". @param {{ promptTokens: number, completionTokens: number, estimated: boolean }} t */
+export const usageText = (t) => `${t.promptTokens.toLocaleString('en-US')} prompt + ${t.completionTokens.toLocaleString('en-US')} reply tokens (${t.estimated ? 'estimated: the provider reported none' : 'reported by the provider'})`;
 
 /** A scene's path inside its book: scene summaries carry the path from the library root. @param {string} bookPath @param {string} path */
 export function bookRelative(bookPath, path) {

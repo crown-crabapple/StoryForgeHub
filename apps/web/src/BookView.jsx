@@ -3,6 +3,7 @@ import { postJson, useApi } from './api.js';
 import { ProseView } from './ProseView.jsx';
 import { Outline } from './Outline.jsx';
 import { AiProvider, useAi } from './ai/AiContext.jsx';
+import { CoverDraftsButton } from './ai/CoverDrafts.jsx';
 import { EditorBridgeProvider, useEditorBridge } from './editor/bridge.jsx';
 import { SceneEditorPage } from './editor/SceneEditorPage.jsx';
 import { parseView } from './planning/model.js';
@@ -159,6 +160,7 @@ export function BookLayout({ book, activeId, inspector, onChanged, openPanel = n
           <InvalidBanner book={book} />
           <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector} openPanel={openPanel}>
             <AiWorkshopButton />
+            <CoverDraftsButton book={book} />
             {children}
           </Workspace>
         </WritingProvider>

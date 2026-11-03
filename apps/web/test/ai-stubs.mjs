@@ -17,5 +17,5 @@ export async function putJson() {
 }
 
 export function useExchange() {
-  return { pkg: null, result: null, busy: false, error: null, setError: noop, pendingCloud: false, preview: noop, send: noop, confirmCloud: noop, cancelCloud: noop, reset: noop, ...(globalThis.__sfExchange ?? {}) };
+  return { pkg: null, result: null, busy: false, error: null, setError: noop, pendingCloud: false, streaming: false, streamText: '', cancel: noop, preview: noop, send: noop, confirmCloud: noop, cancelCloud: noop, reset: noop, ...(globalThis.__sfExchange ?? {}) };
 }

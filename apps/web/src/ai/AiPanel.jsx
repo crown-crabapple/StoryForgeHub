@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { NoteProse } from '../notes/NoteProse.jsx';
 import { FilePicker } from './FilePicker.jsx';
 import { hostOf } from './model.js';
-import { CloudConfirm, ContextPreview, LocalityBadge } from './parts.jsx';
+import { CloudConfirm, ContextPreview, LocalityBadge, StreamingReply, TokensLine } from './parts.jsx';
 import { useExchange } from './useExchange.js';
 
 /**
@@ -84,7 +84,8 @@ export function AiPanel({ book, active, records, scene, onClose }) {
           <input type="checkbox" checked={includeContext} onChange={(e) => setIncludeContext(e.target.checked)} /> Include the full context in the saved record
         </label>
       )}
-      {ex.busy && <p role="status">Working…</p>}
+      {ex.busy && !ex.streaming && <p role="status">Working…</p>}
+      {ex.streaming && <StreamingReply text={ex.streamText} onCancel={ex.cancel} />}
       {ex.error && (
         <p role="alert" className="form-error">
           {ex.error}
@@ -95,6 +96,7 @@ export function AiPanel({ book, active, records, scene, onClose }) {
         <section className="ai-reply" aria-label="Reply">
           <h3>Reply</h3>
           <NoteProse source={ex.result.reply} notePath="" bookId={book.id} />
+          <TokensLine tokens={ex.result.tokens} />
           {ex.result.record && <p className="muted">Saved as {ex.result.record.path}</p>}
         </section>
       )}

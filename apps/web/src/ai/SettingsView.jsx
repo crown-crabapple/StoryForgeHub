@@ -6,14 +6,16 @@ import { WebhooksSettings } from '../integrations/WebhooksPanel.jsx';
 import { PreferencesSettings } from '../prefs/PreferencesSettings.jsx';
 import { Link } from '../router.jsx';
 import { useSession } from '../shared/session.jsx';
-import { KEY_STORAGE_CHOICES, hostOf, isInsecureCloud, localityOf } from './model.js';
+import { backendText, hostOf, isInsecureCloud, keyStorageChoices, localityOf } from './model.js';
 import { LocalityBadge } from './parts.jsx';
 import { aiRequest, aiUrl } from './requests.js';
 
-const EMPTY = { name: '', baseUrl: '', model: '', temperature: '', maxTokens: '', contextBudget: '8000', keyStorage: 'none', apiKey: '' };
+const IMAGE_KIND = 'openai-compatible-images';
+const EMPTY = { kind: 'openai-compatible', name: '', baseUrl: '', model: '', temperature: '', maxTokens: '', contextBudget: '8000', keyStorage: 'none', apiKey: '' };
 
 /** The form fields for a saved profile (the key is never sent back by the server, so it starts empty). @param {any} p */
 const fromProfile = (p) => ({
+  kind: p.kind ?? 'openai-compatible',
   name: p.name,
   baseUrl: p.baseUrl,
   model: p.model,
@@ -28,7 +30,7 @@ const fromProfile = (p) => ({
 function bodyOf(f) {
   return {
     name: f.name,
-    kind: 'openai-compatible',
+    kind: f.kind ?? 'openai-compatible',
     baseUrl: f.baseUrl,
     model: f.model,
     temperature: f.temperature.trim() === '' ? null : Number(f.temperature),
@@ -41,9 +43,9 @@ function bodyOf(f) {
 
 /**
  * Add or edit one provider profile. Locality is shown from the address (the server decides it for real); the key choices say plainly where a key would live.
- * @param {{ initial: typeof EMPTY, hasKey: boolean, configFile: string, saving: boolean, error: string | null, onSave: (f: typeof EMPTY) => void, onCancel: () => void, title: string }} props
+ * @param {{ initial: typeof EMPTY, hasKey: boolean, configFile: string, secureBackend?: string | null, saving: boolean, error: string | null, onSave: (f: typeof EMPTY) => void, onCancel: () => void, title: string }} props
  */
-export function ProfileForm({ initial, hasKey, configFile, saving, error, onSave, onCancel, title }) {
+export function ProfileForm({ initial, hasKey, configFile, secureBackend = null, saving, error, onSave, onCancel, title }) {
   const [f, setF] = useState(initial);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
   const insecure = isInsecureCloud(f.baseUrl);
@@ -58,6 +60,13 @@ export function ProfileForm({ initial, hasKey, configFile, saving, error, onSave
       }}
     >
       <h3>{title}</h3>
+      <div className="field">
+        <label htmlFor="ai-kind">Type</label>
+        <select id="ai-kind" value={f.kind ?? 'openai-compatible'} onChange={set('kind')}>
+          <option value="openai-compatible">Chat model (OpenAI-compatible)</option>
+          <option value={IMAGE_KIND}>Image model for cover drafts (OpenAI-compatible images)</option>
+        </select>
+      </div>
       <div className="field">
         <label htmlFor="ai-name">Name</label>
         <input id="ai-name" type="text" value={f.name} onChange={set('name')} required />
@@ -86,7 +95,7 @@ export function ProfileForm({ initial, hasKey, configFile, saving, error, onSave
       </div>
       <fieldset className="field">
         <legend>API key</legend>
-        {KEY_STORAGE_CHOICES.map((c) => (
+        {keyStorageChoices(secureBackend).map((c) => (
           <label key={c.value} className="ai-check">
             <input type="radio" name="ai-key-storage" value={c.value} checked={f.keyStorage === c.value} onChange={() => setF((x) => ({ ...x, keyStorage: c.value }))} /> {c.label}
           </label>
@@ -100,6 +109,11 @@ export function ProfileForm({ initial, hasKey, configFile, saving, error, onSave
         {f.keyStorage === 'config' && (
           <p className="ai-plain-text" role="note">
             This saves the key as <strong>plain text</strong> in <code>{configFile}</code>, outside your books. Anyone who can read your user folder can read it. It is never put in a book, a backup or an export.
+          </p>
+        )}
+        {f.keyStorage === 'secure' && (
+          <p className="muted">
+            The key is kept by {backendText(secureBackend)}, outside your books. It is never put in a book, a backup, an export or the settings file.
           </p>
         )}
         {f.keyStorage === 'session' && <p className="muted">The key stays in memory until StoryForge restarts, then it is forgotten. It is never saved to disk.</p>}
@@ -140,15 +154,35 @@ function BookAiRow({ book, profiles }) {
         <label htmlFor={`ai-book-${book.id}`}>AI provider for this book</label>
         <select id={`ai-book-${book.id}`} value={status.active?.id ?? ''} onChange={(e) => change(() => aiRequest('PUT', aiUrl.bookProfile(book.id), { profileId: e.target.value === '' ? null : e.target.value }))}>
           <option value="">None (AI is off)</option>
-          {profiles.map((p) => (
+          {profiles.filter((p) => p.kind !== IMAGE_KIND).map((p) => (
             <option key={p.id} value={p.id}>
               {p.name} ({p.locality})
             </option>
           ))}
         </select>
       </div>
+      {profiles.some((p) => p.kind === IMAGE_KIND) && (
+        <div className="field">
+          <label htmlFor={`ai-image-${book.id}`}>Image provider for cover drafts</label>
+          <select
+            id={`ai-image-${book.id}`}
+            value={status.image?.id ?? ''}
+            onChange={(e) => change(() => aiRequest('PUT', aiUrl.bookProfile(book.id), e.target.value === '' ? { profileId: null, kind: 'image' } : { profileId: e.target.value }))}
+          >
+            <option value="">None (no cover generation)</option>
+            {profiles.filter((p) => p.kind === IMAGE_KIND).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} ({p.locality})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <label className="ai-check">
         <input type="checkbox" checked={status.records} onChange={(e) => change(() => aiRequest('PUT', aiUrl.bookRecords(book.id), { enabled: e.target.checked }))} /> Save each chat and rewrite as a file in this book (ai/ folder)
+      </label>
+      <label className="ai-check">
+        <input type="checkbox" checked={status.usage === true} onChange={(e) => change(() => aiRequest('PUT', aiUrl.bookRecords(book.id), { usage: e.target.checked }))} /> Keep a daily token table for this book (activity/ai-usage.md; counts only, never sent anywhere)
       </label>
       {error && <p className="form-error">{error}</p>}
     </li>
@@ -156,9 +190,39 @@ function BookAiRow({ book, profiles }) {
 }
 
 /** One saved profile: what it is, where requests go, and the actions on it. */
-function ProfileRow({ profile, onEdit, onDelete, onChanged }) {
+function ProfileRow({ profile, secureBackend = null, onEdit, onDelete, onChanged }) {
   const [test, setTest] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [found, setFound] = useState(/** @type {any} */ (profile.capabilities ?? null));
+  const [moved, setMoved] = useState(/** @type {string | null} */ (null));
+  const image = profile.kind === IMAGE_KIND;
+  /** Test connection: list the models and learn whether streaming and usage are reported. No book text is sent. */
+  async function runDiscover() {
+    const note = image ? 'asks it for its list of models' : 'asks it for its list of models and streams the message "Reply with OK."';
+    if (profile.locality === 'cloud' && !window.confirm(`This ${note} from ${profile.host}, which is not on this computer. No part of your book is sent. Continue?`)) return;
+    setBusy(true);
+    setTest(null);
+    try {
+      const r = await aiRequest('POST', aiUrl.discover(profile.id), profile.locality === 'cloud' ? { confirmCloud: true } : {});
+      if (r.status === 200) setFound(r.json);
+      else setTest(r.json?.message ?? `The connection test failed (${r.status}).`);
+    } catch {
+      setTest('The server could not be reached.');
+    }
+    setBusy(false);
+  }
+  async function moveKey() {
+    setBusy(true);
+    setMoved(null);
+    try {
+      const r = await aiRequest('POST', aiUrl.secure(profile.id), {});
+      setMoved(r.status === 200 ? 'The key is now in secure storage and the plain-text copy is deleted.' : (r.json?.message ?? `The key was not moved (${r.status}).`));
+      if (r.status === 200) onChanged();
+    } catch {
+      setMoved('The server could not be reached.');
+    }
+    setBusy(false);
+  }
   async function runTest() {
     if (profile.locality === 'cloud' && !window.confirm(`This sends the message "Reply with OK." to ${profile.host}, which is not on this computer. Continue?`)) return;
     setBusy(true);
@@ -172,7 +236,7 @@ function ProfileRow({ profile, onEdit, onDelete, onChanged }) {
     setBusy(false);
     onChanged();
   }
-  const storage = profile.keyStorage === 'none' ? 'no key' : profile.keyStorage === 'session' ? (profile.hasKey ? 'key kept for this session' : 'key not entered (session)') : profile.hasKey ? 'key saved in the settings file (plain text)' : 'key not entered (settings file)';
+  const storage = profile.keyStorage === 'none' ? 'no key' : profile.keyStorage === 'session' ? (profile.hasKey ? 'key kept for this session' : 'key not entered (session)') : profile.keyStorage === 'secure' ? (profile.hasKey ? 'key kept in secure storage' : 'key not entered (secure storage)') : profile.hasKey ? 'key saved in the settings file (plain text)' : 'key not entered (settings file)';
   return (
     <li className="ai-profile-row">
       <div>
@@ -185,14 +249,38 @@ function ProfileRow({ profile, onEdit, onDelete, onChanged }) {
         <button type="button" className="btn" onClick={() => onEdit(profile)}>
           Edit
         </button>
-        <button type="button" className="btn" disabled={busy} onClick={runTest}>
-          Send a test message
+        {!image && (
+          <button type="button" className="btn" disabled={busy} onClick={runTest}>
+            Send a test message
+          </button>
+        )}
+        <button type="button" className="btn" disabled={busy} onClick={runDiscover}>
+          Test connection
         </button>
+        {profile.keyStorage === 'config' && profile.hasKey && secureBackend && (
+          <button type="button" className="btn" disabled={busy} onClick={moveKey}>
+            Move key to secure storage
+          </button>
+        )}
         <button type="button" className="btn" onClick={() => onDelete(profile)}>
           Delete
         </button>
       </div>
       {test && <p role="status">{test}</p>}
+      {moved && <p role="status">{moved}</p>}
+      {found && (
+        <div className="ai-capabilities" aria-label={`Connection test for ${profile.name}`}>
+          <p>
+            {found.models.length === 0 ? 'The provider lists no models.' : `${found.models.length} model${found.models.length === 1 ? '' : 's'}: ${found.models.slice(0, 12).join(', ')}${found.models.length > 12 ? ', ...' : ''}`}
+            {found.ollama ? ' (Ollama detected)' : ''}
+          </p>
+          {found.streaming !== null && found.streaming !== undefined && (
+            <p className="muted">
+              Streaming: {found.streaming ? 'yes' : 'no'} · Token usage: {found.usageReported ? 'reported by the provider' : 'not reported (shown as estimated)'}
+            </p>
+          )}
+        </div>
+      )}
     </li>
   );
 }
@@ -207,6 +295,8 @@ export function SettingsView() {
   const [error, setError] = useState(/** @type {string | null} */ (null));
   const profiles = data?.profiles ?? [];
   const configFile = data?.configFile ?? '';
+  const keystore = data?.keystore ?? null; // M08-J03: where keys are kept (and whether they can be unlocked)
+  const secureBackend = keystore?.backend ?? null;
 
   async function save(f) {
     setSaving(true);
@@ -250,12 +340,19 @@ export function SettingsView() {
           server that speaks the OpenAI chat format) or a cloud provider. Every request is shown to you before it is sent, and nothing a model writes changes your book until you click Apply.
         </p>
         {loadError && <p className="error">{loadError}</p>}
+        {keystore && <p className="muted ai-keystore">Keys are kept by: {backendText(keystore.backend)}.</p>}
+        {keystore?.locked && (
+          <p role="alert" className="form-error">
+            {keystore.message ?? 'cannot unlock stored keys'}. Saved keys cannot be read, so requests that need one will not be sent. Enter the key again, or restore the key file or secrets setting that was used.
+          </p>
+        )}
         {profiles.length === 0 && !editing && <p className="muted">No providers yet.</p>}
         <ul className="ai-profile-list">
           {profiles.map((p) => (
             <ProfileRow
               key={p.id}
               profile={p}
+              secureBackend={secureBackend}
               onEdit={(x) => {
                 setError(null);
                 setEditing({ id: x.id, form: fromProfile(x), hasKey: x.hasKey });
@@ -272,6 +369,7 @@ export function SettingsView() {
             initial={editing.form}
             hasKey={editing.hasKey}
             configFile={configFile}
+            secureBackend={secureBackend}
             saving={saving}
             error={error}
             onSave={save}
@@ -283,7 +381,7 @@ export function SettingsView() {
             className="btn"
             onClick={() => {
               setError(null);
-              setEditing({ id: null, form: EMPTY, hasKey: false });
+              setEditing({ id: null, form: { ...EMPTY, keyStorage: secureBackend ? 'secure' : 'none' }, hasKey: false });
             }}
           >
             Add a provider
