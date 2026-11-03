@@ -313,22 +313,25 @@ test('events permission: a plugin subscribes for itself, sees only its own, cann
   const { token } = await t.grant({ plugin: 'hooker', permissions: ['read', 'events'], books: [a.slug] });
   const other = await t.grant({ plugin: 'other', permissions: ['events'], books: 'all' });
   const mk = (tok, body) => t.plugin(tok, 'POST', '/api/v1/webhooks', { body });
-  const made = await mk(token, { url: 'http://127.0.0.1:9/hook', events: ['scene.saved'] });
+  const made = await mk(token, { url: 'https://hooks.example.org/hook', events: ['scene.saved'] });
   assert.equal(made.status, 201, made.text);
+  for (const url of ['http://127.0.0.1:9/hook', 'http://localhost:4317/api/books', 'http://[::1]:9/x']) {
+    assert.equal((await mk(token, { url, events: ['scene.saved'] })).json.code, 'LOCAL_NOT_ALLOWED', `a plugin cannot subscribe ${url}`);
+  }
   assert.match(made.json.secret, /^[0-9a-f]{64}$/);
   assert.equal(made.json.webhook.plugin, 'hooker');
   assert.deepEqual(made.json.webhook.books, [a.slug], 'defaults to the granted books');
   assert.equal(made.json.webhook.include_content, false);
-  assert.equal((await mk(token, { url: 'http://127.0.0.1:9/hook', events: ['scene.saved'], include_content: true })).json.code, 'CONTENT_NOT_ALLOWED');
+  assert.equal((await mk(token, { url: 'https://hooks.example.org/hook', events: ['scene.saved'], include_content: true })).json.code, 'CONTENT_NOT_ALLOWED');
   assert.equal((await mk(token, { url: 'http://10.0.0.5/hook', events: ['scene.saved'], allow_local: true })).json.code, 'LOCAL_NOT_ALLOWED');
-  assert.equal((await mk(token, { url: 'http://127.0.0.1:9/hook', events: ['scene.saved'], books: [b.slug] })).status, 403);
-  assert.equal((await mk(token, { url: 'http://127.0.0.1:9/hook', events: ['scene.saved'], books: 'all' })).status, 403);
+  assert.equal((await mk(token, { url: 'https://hooks.example.org/hook', events: ['scene.saved'], books: [b.slug] })).status, 403);
+  assert.equal((await mk(token, { url: 'https://hooks.example.org/hook', events: ['scene.saved'], books: 'all' })).status, 403);
   assert.equal((await mk(token, { url: 'http://example.com/hook', events: ['scene.saved'] })).json.code, 'REFUSED_INSECURE');
-  assert.equal((await mk(token, { url: 'http://127.0.0.1:9/hook', events: ['nope'] })).status, 400);
+  assert.equal((await mk(token, { url: 'https://hooks.example.org/hook', events: ['nope'] })).status, 400);
   const mine = await t.plugin(token, 'GET', '/api/v1/webhooks');
   assert.equal(mine.json.webhooks.length, 1);
   assert.equal(mine.text.includes(made.json.secret), false, 'the secret is never shown again');
-  const theirs = await mk(other.token, { url: 'http://127.0.0.1:9/other', events: ['scene.saved'] });
+  const theirs = await mk(other.token, { url: 'https://hooks.example.org/other', events: ['scene.saved'] });
   assert.equal((await t.plugin(token, 'DELETE', `/api/v1/webhooks/${theirs.json.webhook.id}`)).status, 404, 'another plugin\'s subscription is not yours to revoke');
   assert.equal((await t.plugin(token, 'DELETE', `/api/v1/webhooks/${made.json.webhook.id}`)).status, 200);
   // a read-only token has no webhook routes

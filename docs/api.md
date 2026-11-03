@@ -112,7 +112,7 @@ Webhooks send events *out*. The author creates them in **Settings, then Webhooks
 | `POST /api/v1/webhooks` | `{ url, events: [...], books?: [slug, …] }` gives `201 { webhook, secret }`. The secret is shown once. `books` defaults to the token's books and can never be wider. |
 | `DELETE /api/v1/webhooks/:id` | Revoke one of its own |
 
-A plugin cannot set `include_content` or `allow_local`; asking for either is `400`. Only the author does that, in Settings.
+A plugin cannot set `include_content` or `allow_local`; asking for either is `400`. Only the author does that, in Settings. A plugin also cannot subscribe an address on this computer (`localhost`, `127.0.0.0/8`, `::1`): `400 LOCAL_NOT_ALLOWED`. Plugins send only to public `https://` addresses.
 
 ### Events
 

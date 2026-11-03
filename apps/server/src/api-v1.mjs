@@ -1,6 +1,7 @@
 // API v1 (contract M08-J02 section 3): the versioned read and proposal API a plugin reaches with `Authorization: Bearer <token>`. Nothing here runs plugin code
 // and nothing here writes a canonical file: a proposal becomes a suggestion (source: plugin) that changes nothing until the author accepts a hunk in the normal
 // review. Reads are projections with stable field names (within API major 1 fields are only added). Who may call what is decided by plugin-policy.mjs first.
+import { checkWebhookUrl } from '@storyforge/integrations';
 import { loadPlugins } from '@storyforge/format';
 import pkg from '../package.json' with { type: 'json' };
 import { decidePlugin } from './plugin-policy.mjs';
@@ -262,6 +263,9 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       const ok = Array.isArray(wanted) && wanted.every((/** @type {unknown} */ x) => typeof x === 'string' && grant.books.includes(x));
       if (!ok) return out(403, { error: 'forbidden', code: 'PLUGIN_SCOPE', message: 'a plugin can subscribe only to the books its token was granted' }, grant);
     }
+    // a plugin may send only to public https addresses: a loopback target would let it make signed blind POSTs to any port on this computer
+    const target = checkWebhookUrl(b.url);
+    if (target.ok && target.loopback) return out(400, badRequest('a plugin cannot subscribe this computer (localhost); only the author can, in Settings', 'LOCAL_NOT_ALLOWED').body, grant);
     const r = await store.create({ url: b.url, events: b.events, books: wanted, plugin: grant.plugin });
     if (!r.ok) return out(400, { error: 'bad_request', code: r.code, message: r.message }, grant);
     return out(201, { webhook: r.webhook, secret: r.secret }, grant, r.webhook.id);
