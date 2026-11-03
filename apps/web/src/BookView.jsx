@@ -6,6 +6,7 @@ import { AiProvider, useAi } from './ai/AiContext.jsx';
 import { EditorBridgeProvider, useEditorBridge } from './editor/bridge.jsx';
 import { SceneEditorPage } from './editor/SceneEditorPage.jsx';
 import { parseView } from './planning/model.js';
+import { noticeText, parseSelect } from './tasks/model.js';
 import { PlanningWorkspace, ViewSwitch } from './planning/PlanningWorkspace.jsx';
 import { Link, useLocation } from './router.jsx';
 import { SceneInspector } from './shell/Inspector.jsx';
@@ -209,6 +210,7 @@ export function BookView({ bookId, sceneId, file }) {
         view={view}
         mode={mode}
         threadId={threadId}
+        outlineFilters={{ status: new URLSearchParams(search).get('status') ?? '' }}
         version={version}
         onChanged={onChanged}
         fallbackInspector={<SceneInspector book={book} scene={null} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} onChanged={onChanged} />}
@@ -245,6 +247,7 @@ export function BookView({ bookId, sceneId, file }) {
         chapterLabel={chapterLabel}
         objects={objects}
         initialLine={/^[1-9][0-9]{0,6}$/.test(new URLSearchParams(search).get('line') ?? '') ? Number(new URLSearchParams(search).get('line')) : null}
+        initialSelection={parseSelect(search)}
         footerExtra={<ArchiveButton bookId={book.id} scene={scene} />}
         onStructureChanged={() => setBump((n) => n + 1)}
       />
@@ -259,6 +262,11 @@ export function BookView({ bookId, sceneId, file }) {
       inspector={<SceneInspector book={book} scene={file ? null : scene} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} planning={planning ?? null} timeline={timeline ?? null} notes={notes ?? null} continuity={continuity ?? null} version={version} onChanged={() => setBump((n) => n + 1)} />}
     >
       {!file && <ViewSwitch bookId={book.id} view="write" scene={activeId} />}
+      {noticeText(search) && (
+        <p className="muted" role="status">
+          {noticeText(search)}
+        </p>
+      )}
       {main}
     </BookLayout>
   );

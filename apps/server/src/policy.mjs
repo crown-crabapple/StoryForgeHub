@@ -32,6 +32,8 @@ export const WRITE_CLASSES = Object.freeze({
   'ai-records': 'admin',
   // M07-J01b series worlds: shared-entry moves and labels are ordinary edits; saving a library template writes library-level files
   'entry-move-to-series': 'write', 'entry-copy-to-book': 'write', 'labels-set': 'write', 'template-save': 'admin',
+  // M07-J02 goals and revision tasks (book files; never prose)
+  'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
   // shared-mode administration (shared-routes.mjs)
   'shared-member-role': 'admin', 'shared-member-remove': 'admin', 'shared-invite-create': 'admin', 'shared-invite-revoke': 'admin',
   'shared-share-create': 'admin', 'shared-share-revoke': 'admin', 'shared-settings': 'admin',

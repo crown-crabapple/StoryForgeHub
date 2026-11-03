@@ -5,6 +5,7 @@ import { SuggestionReview } from '../suggestions/SuggestionReview.jsx';
 import { SuggestionsGroup } from '../suggestions/SuggestionsGroup.jsx';
 import { ShowBoth, SourceLink } from './ShowBoth.jsx';
 import { RAW_URL } from './requests.js';
+import { MakeTaskButton } from '../tasks/MakeTaskButton.jsx';
 import { RULE_INFO, SEVERITY_LABEL, STATUS_FILTERS, findByFingerprint, nextRowIndex, queueModel, rationaleOf, ruleName, sourceLabel, subjectLabel } from './model.js';
 
 /** A small severity marker: a dot and always the word, so colour is never the only cue. */
@@ -113,6 +114,11 @@ export function FindingDetail({ bookId, finding, version = '', handlers = {} }) 
           )
         )}
       </div>
+      {!finding.exception && (
+        <p className="cf-task">
+          <MakeTaskButton bookId={bookId} source={{ from: 'continuity', fingerprint: finding.fingerprint }} />
+        </p>
+      )}
       {both && <ShowBoth bookId={bookId} finding={finding} version={version} />}
       {finding.exception && <ExceptionNote bookId={bookId} exception={finding.exception} version={version} />}
     </article>

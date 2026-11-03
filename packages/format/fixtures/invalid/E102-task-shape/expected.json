@@ -1,0 +1,19 @@
+{
+  "diagnostics": [
+    {
+      "code": "E102",
+      "file": "planning/tasks/bad.md",
+      "location": "status"
+    },
+    {
+      "code": "E102",
+      "file": "planning/tasks/bad.md",
+      "location": "source.kind"
+    },
+    {
+      "code": "E102",
+      "file": "planning/tasks/bad.md",
+      "location": "targets[0].line"
+    }
+  ]
+}

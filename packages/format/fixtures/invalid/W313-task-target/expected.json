@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W313",
+      "file": "planning/tasks/fix-it.md",
+      "location": "targets[0].id"
+    }
+  ]
+}

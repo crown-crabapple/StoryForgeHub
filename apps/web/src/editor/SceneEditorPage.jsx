@@ -73,11 +73,11 @@ function InfoDialog({ title, children, onClose, actions }) {
  *   onStructureChanged?: (info?: any) => void, resource?: { url: string, label: string, meta: string[], attach?: { noteId: string } } }} props
  *   `resource` makes the same editor edit something else with a body: a Codex entry (`scene` is then `{ id, title, body, sha256 }`, `url` is
  *   GET /entries/:id, saved with PUT <url>/body). `label` names the text area, `meta` replaces the meta line under the title. `attach` (a note's text) adds "Attach file..." and drag-and-drop of files: each file is
- *   uploaded to the book and the returned Markdown link is inserted at the caret (or where it was dropped). `initialLine`: a 1-based line to put the caret on when the scene opens.
+ *   uploaded to the book and the returned Markdown link is inserted at the caret (or where it was dropped). `initialLine`: a 1-based line to put the caret on when the scene opens. `initialSelection` ({ from, to }, offsets in the text): select that range instead (a task's quote, M07-J02).
  *   Render with `key={scene.id}`: one editor (and one save controller) per open scene. `scene` is the GET scene answer; when its
  *   `sha256` changes later (the book was reconciled) the editor asks the server whether the file changed outside.
  */
-export function SceneEditorPage({ book, scene, chapterLabel = null, objects = null, footerExtra = null, onStructureChanged, resource = undefined, initialLine = null }) {
+export function SceneEditorPage({ book, scene, chapterLabel = null, objects = null, footerExtra = null, onStructureChanged, resource = undefined, initialLine = null, initialSelection = null }) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
   const ctlRef = useRef(null);
@@ -371,6 +371,17 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     view.dispatch({ selection: { anchor: line.from }, effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
     view.focus();
   }, [initialLine, scene.id]);
+
+  // ---- opened from a task: select its quote
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!initialSelection || !view) return;
+    const size = view.state.doc.length;
+    const from = Math.min(initialSelection.from, size);
+    const to = Math.min(initialSelection.to, size);
+    view.dispatch({ selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
+    view.focus();
+  }, [initialSelection?.from, initialSelection?.to, scene.id]); // eslint-disable-line react-hooks/exhaustive-deps -- selecting is keyed by the range, not the object
 
   // ---- tell the top bar what the editor is doing
   useEffect(() => {
@@ -729,7 +740,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
 
       {reviewId && <SuggestionDialog key={reviewId} bookId={book.id} suggestionId={reviewId} version={String(snap?.baseSha256 ?? '')} actions={suggestionActions} canDecide={can.decide} onClose={() => setReviewId(null)} />}
       {suggestionActions.ui}
-      {check && <CheckDialog bookId={book.id} sceneTitle={scene.title} report={check.report} error={check.error} onClose={() => setCheck(null)} />}
+      {check && <CheckDialog bookId={book.id} sceneTitle={scene.title} report={check.report} error={check.error} makeTask onClose={() => setCheck(null)} />}
       {dialog === 'picker' && <LinkPicker objects={objects} bookId={book.id ?? null} selectedText={pickerText} onPick={pick} onClose={() => setDialog(null)} />}
       {dialog === 'normalise' && preview && (
         <InfoDialog

@@ -1,0 +1,19 @@
+{
+  "diagnostics": [
+    {
+      "code": "E102",
+      "file": "activity/goals.md",
+      "location": "goals[0].target"
+    },
+    {
+      "code": "E102",
+      "file": "activity/goals.md",
+      "location": "goals[1].kind"
+    },
+    {
+      "code": "E102",
+      "file": "activity/goals.md",
+      "location": "goals[2].due"
+    }
+  ]
+}

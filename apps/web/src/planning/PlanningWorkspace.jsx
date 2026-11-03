@@ -54,10 +54,10 @@ export function ViewSwitch({ bookId, view, mode = 'list', scene = null }) {
  * Writes: a move is the manuscript tree's move (checked against what you saw, previewed when neighbours renumber, Undo restores it exactly); a single
  * line (card fields, a thread's state) is written at once with Undo; a new card, a new thread and a change of a thread's scene lists show the dry-run diff first.
  * @param {{ book: any, planning: { threads: any[], scenes: any[] } | null, objects?: any[] | null, view: 'board' | 'outline' | 'threads', mode?: 'list' | 'matrix',
- *   threadId?: string | null, version?: string, fallbackInspector?: import('react').ReactNode, onChanged?: (info?: any) => void,
+ *   threadId?: string | null, outlineFilters?: { status?: string }, version?: string, fallbackInspector?: import('react').ReactNode, onChanged?: (info?: any) => void,
  *   render: (parts: { main: import('react').ReactNode, inspector: import('react').ReactNode }) => import('react').ReactNode }} props
  */
-export function PlanningWorkspace({ book, planning, objects = null, view, mode = 'list', threadId = null, version = '', fallbackInspector = null, onChanged, render }) {
+export function PlanningWorkspace({ book, planning, objects = null, view, mode = 'list', threadId = null, outlineFilters = {}, version = '', fallbackInspector = null, onChanged, render }) {
   const navigate = useNavigate();
   const { track } = useWrites();
   const structure = useStructure({ book, activeId: null, onChanged });
@@ -137,7 +137,7 @@ export function PlanningWorkspace({ book, planning, objects = null, view, mode =
       />
     );
   } else if (view === 'outline') {
-    body = <OutlineView bookId={bookId} model={model} onSetFields={setCardFields} />;
+    body = <OutlineView key={outlineFilters.status ?? ''} bookId={bookId} model={model} initialFilters={outlineFilters} onSetFields={setCardFields} />;
   } else if (editing) {
     body = <ThreadBodyEditor key={editing.id} bookId={bookId} thread={editing} objects={objects} onDone={() => { setEditing(null); onChanged?.(); }} />;
   } else if (mode === 'matrix') {

@@ -24,6 +24,8 @@ export function checkPlacement(docs, add) {
       add('W201', d.file, 'schema', 'comment is not under comments/');
     } else if (d.kind === 'receipt' && !logical.startsWith('provenance/')) {
       add('W201', d.file, 'schema', 'receipt is not under provenance/');
+    } else if (d.kind === 'task' && !logical.startsWith('planning/tasks/')) {
+      add('W201', d.file, 'schema', 'task is not under planning/tasks/');
     } else if (d.kind === 'event' &&!logical.startsWith('planning/timeline/')) {
       add('W201', d.file, 'schema', 'event file is not under planning/timeline/');
     }

@@ -11,6 +11,8 @@ const SPEC_CODES = [
   'I402',
   // M07-J01 (additive within v1)
   'E210', 'E303', 'W309', 'W311', 'W312', 'I403',
+  // M07-J02 (additive within v1)
+  'W313',
 ];
 
 const covered = new Map(); // code -> case names

@@ -116,6 +116,18 @@ export const KINDS = {
     required: ['target', 'anchor', 'status'],
     fields: { target: 'str', anchor: 'map', status: ['open', 'resolved'], by: 'map', created: 'any' },
   },
+  // Added 2026-11-02, M07-J02 (additive within v1): the author's goals, at activity/goals.md.
+  goals: {
+    prefix: 'note',
+    required: [],
+    fields: { goals: 'list', title: 'str' },
+  },
+  // Added 2026-11-02, M07-J02 (additive within v1): a revision task made from a finding or by hand, under planning/tasks/. Never story text or canon.
+  task: {
+    prefix: 'note',
+    required: ['slug', 'title', 'status'],
+    fields: { slug: 'slug', title: 'str', status: ['open', 'doing', 'done', 'dropped'], source: 'map', targets: 'list', created: 'any' },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],
@@ -137,7 +149,7 @@ export const KINDS = {
 };
 
 // Added 2026-11-02, M07-J01 (additive within v1): `labels` on book/series (definitions) and on documents (names).
-for (const k of ['series', 'book', 'act', 'chapter', 'scene', 'entry', 'thread', 'event', 'doc']) KINDS[k].fields.labels = 'list';
+for (const k of ['series', 'book', 'act', 'chapter', 'scene', 'entry', 'thread', 'event', 'doc', 'task']) KINDS[k].fields.labels = 'list';
 
 /** Kinds of a typed field in a codex type file (spec 5.1). */
 export const FIELD_KINDS = ['text', 'number', 'date', 'link', 'choice', 'list'];
@@ -301,6 +313,74 @@ function checkTypeFields(items, file, add) {
   });
 }
 
+export const GOAL_KINDS = ['words', 'scenes', 'chapters', 'minutes'];
+export const GOAL_PERIODS = ['day', 'week', 'month', 'total'];
+export const TASK_SOURCE_KINDS = ['continuity', 'check', 'manual'];
+
+/**
+ * Goals (M07-J02 section 1): every item is a mapping with id, kind, target (>= 1) and period; `due` only with period total (ISO date); `scope` a string.
+ * E102 at `goals[i].<key>`. Whether `scope` resolves (E301) is checked with the book's documents.
+ * @param {any[]} items @param {string} file
+ * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ */
+function checkGoals(items, file, add) {
+  const seen = new Set();
+  items.forEach((g, i) => {
+    const at = (k) => `goals[${i}].${k}`;
+    if (!isPlainMap(g)) {
+      add('E102', file, `goals[${i}]`, 'goal must be a mapping with id, kind, target and period');
+      return;
+    }
+    if (typeof g.id !== 'string' || g.id === '') add('E102', file, at('id'), 'goal id must be a non-empty string');
+    else {
+      if (seen.has(g.id)) add('E102', file, at('id'), `goal id ${g.id} is used twice`);
+      seen.add(g.id);
+    }
+    if (typeof g.kind !== 'string' || !GOAL_KINDS.includes(g.kind)) add('E102', file, at('kind'), `kind must be one of ${GOAL_KINDS.join(', ')}`);
+    if (!isInt(g.target) || g.target < 1) add('E102', file, at('target'), 'target must be an integer >= 1');
+    if (typeof g.period !== 'string' || !GOAL_PERIODS.includes(g.period)) add('E102', file, at('period'), `period must be one of ${GOAL_PERIODS.join(', ')}`);
+    if (!isAbsent(g.due)) {
+      if (g.period !== 'total') add('E102', file, at('due'), 'due is only for a goal with period total');
+      else if (!isDueDate(g.due)) add('E102', file, at('due'), 'due must be an ISO date: YYYY-MM-DD');
+    }
+    if (!isAbsent(g.scope) && (typeof g.scope !== 'string' || g.scope === '')) add('E102', file, at('scope'), 'scope must be a chapter or act ID');
+  });
+}
+
+/** A goal `due` value: a YYYY-MM-DD string (YAML may have read an unquoted date as a string already; this parser keeps it a string). @param {any} v */
+const isDueDate = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && isIsoDate(v);
+
+/**
+ * Task shape (M07-J02 section 4): `source` { kind, code?, fingerprint? }, `targets` a list of { id, line?, quote?, sha256? }.
+ * E102 at `source.<key>` / `targets[i].<key>`.
+ * @param {{fm:any, file:string}} doc
+ * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ */
+function checkTask(doc, add) {
+  const { fm, file } = doc;
+  if (isPlainMap(fm.source)) {
+    const s = fm.source;
+    if (typeof s.kind !== 'string' || !TASK_SOURCE_KINDS.includes(s.kind)) add('E102', file, 'source.kind', `source kind must be one of ${TASK_SOURCE_KINDS.join(', ')}`);
+    if (!isAbsent(s.code) && typeof s.code !== 'string') add('E102', file, 'source.code', 'source code must be a string');
+    if (!isAbsent(s.fingerprint) && (typeof s.fingerprint !== 'string' || !FINGERPRINT_RE.test(s.fingerprint))) {
+      add('E102', file, 'source.fingerprint', 'fingerprint must look like cf1-0123456789abcdef');
+    }
+  }
+  if (Array.isArray(fm.targets)) {
+    fm.targets.forEach((t, i) => {
+      const at = (k) => `targets[${i}].${k}`;
+      if (!isPlainMap(t)) {
+        add('E102', file, `targets[${i}]`, 'target must be a mapping with id, and optionally line, quote and sha256');
+        return;
+      }
+      if (typeof t.id !== 'string' || t.id === '') add('E102', file, at('id'), 'target id must be a string');
+      if (!isAbsent(t.line) && (!isInt(t.line) || t.line < 1)) add('E102', file, at('line'), 'line must be an integer >= 1');
+      if (!isAbsent(t.quote) && typeof t.quote !== 'string') add('E102', file, at('quote'), 'quote must be a string');
+      if (!isAbsent(t.sha256) && (typeof t.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(t.sha256))) add('E102', file, at('sha256'), 'sha256 must be 64 hex characters');
+    });
+  }
+}
+
 const HUNK_STATUSES = ['pending', 'accepted', 'declined'];
 const DIFF_HEADER_RE = /^@@ -(\d+),(\d+) \+(\d+),(\d+) @@ (\S+)$/;
 
@@ -449,6 +529,8 @@ export function checkFields(doc, ctx, add) {
   if (doc.kind === 'suggestion') checkSuggestion(doc, add);
   if (doc.kind === 'comment') checkComment(doc, add);
   if (Object.hasOwn(fm, 'by') && isPlainMap(fm.by) && (doc.kind === 'suggestion' || doc.kind === 'receipt' || doc.kind === 'comment')) checkBy(fm.by, file, add);
+  if (doc.kind === 'goals' && Array.isArray(fm.goals)) checkGoals(fm.goals, file, add);
+  if (doc.kind === 'task') checkTask(doc, add);
 
   for (const key of ['cover', 'image']) {
     if (Object.hasOwn(spec.fields, key) && typeof fm[key] === 'string' && escapesRoot(fm[key])) {

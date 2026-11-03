@@ -17,6 +17,9 @@ import { createWatcher } from './watcher.mjs';
 import { createValidateCache } from './validate-cache.mjs';
 import { createWriteMethods } from './fs-writes.mjs';
 import { createWorldMethods, fieldDefsOf, labelDefsOf, labelsOfDoc } from './fs-world.mjs';
+import { createGoalMethods } from './fs-goals.mjs';
+import { createTaskMethods } from './fs-tasks.mjs';
+import { createInsightReads } from './fs-insights.mjs';
 import { registerReceiptEngine } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
 import { createTimelineReads } from './fs-timeline.mjs';
@@ -1230,5 +1233,10 @@ export function createFsRepository(libraryRoot, options = {}) {
       },
     }),
   );
+  // M07-J02: goals and session rows, revision tasks, the Insights numbers
+  const reconcileBook = (p) => manager.reconcile(p, 'write', { full: true });
+  Object.assign(repository, createGoalMethods({ root, activity, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook }));
+  Object.assign(repository, createTaskMethods({ root, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook, now: options.clock }));
+  Object.assign(repository, createInsightReads({ root, manager, readValidate, activity, now: options.clock }));
   return repository;
 }

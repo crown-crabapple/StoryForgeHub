@@ -5,3 +5,5 @@ export { ftsQuery, stripForSearch } from './text.mjs';
 export { SCHEMA_VERSION, TABLES } from './schema.mjs';
 export { bookFacts, blurbOf } from './book-facts.mjs';
 export { buildGraph, mentionRows, subGraph, GRAPH_KINDS } from './graph.mjs';
+export { computeInsights, addDays, weekStart, monthStart, periodStart, sortKeys } from './insights.mjs';
+export { structureFromResult } from './insights-source.mjs';

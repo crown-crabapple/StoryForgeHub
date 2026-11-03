@@ -3,9 +3,10 @@ import { SourceLink } from '../continuity/ShowBoth.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { SEVERITY_LABEL } from '../continuity/model.js';
 import { checkOpenHref } from './model.js';
+import { MakeTaskButton } from '../tasks/MakeTaskButton.jsx';
 
-/** One finding of the report: severity word, code, message, the evidence line, and an Open link to file:line. Presentational. */
-export function CheckFinding({ bookId, scene, finding: f }) {
+/** One finding of the report: severity word, code, message, the evidence line, and an Open link to file:line. Presentational. `makeTask` adds "Make a task" (a task file; the text is never changed). */
+export function CheckFinding({ bookId, scene, finding: f, makeTask = false }) {
   const where = f.line ? `${f.file}:${f.line}` : f.file;
   const open =
     f.file === scene.path ? (
@@ -30,6 +31,11 @@ export function CheckFinding({ bookId, scene, finding: f }) {
       <p className="muted ck-where">
         <code>{where}</code> {open}
       </p>
+      {makeTask && (
+        <p>
+          <MakeTaskButton bookId={bookId} source={{ from: 'check', sceneId: scene.id, finding: f }} />
+        </p>
+      )}
     </li>
   );
 }
@@ -38,7 +44,7 @@ export function CheckFinding({ bookId, scene, finding: f }) {
  * The report of "Check scene": counts, then every finding with its evidence and an Open link. It only reports: nothing here changes text, and the check wrote nothing.
  * @param {{ bookId: string, report: { scene: { id: string, title: string, path: string }, at: string, findings: any[], summary: any } }} props
  */
-export function CheckReport({ bookId, report }) {
+export function CheckReport({ bookId, report, makeTask = false }) {
   const s = report.summary;
   return (
     <div className="ck-report" aria-label="Check report">
@@ -49,7 +55,7 @@ export function CheckReport({ bookId, report }) {
       {report.findings.length > 0 && (
         <ul className="cf-cards" aria-label="Check findings">
           {report.findings.map((f, i) => (
-            <CheckFinding key={`${f.code}|${f.file}|${f.line}|${i}`} bookId={bookId} scene={report.scene} finding={f} />
+            <CheckFinding key={`${f.code}|${f.file}|${f.line}|${i}`} bookId={bookId} scene={report.scene} finding={f} makeTask={makeTask} />
           ))}
         </ul>
       )}
@@ -58,7 +64,7 @@ export function CheckReport({ bookId, report }) {
 }
 
 /** The report in a window. `report` is null while the check runs; `error` is a failure text. @param {{ bookId: string, sceneTitle: string, report: any | null, error?: string | null, onClose: () => void }} props */
-export function CheckDialog({ bookId, sceneTitle, report, error = null, onClose }) {
+export function CheckDialog({ bookId, sceneTitle, report, error = null, makeTask = false, onClose }) {
   return (
     <Dialog label="Check report" onClose={onClose} className="dialog-wide">
       <h2>Check scene: {sceneTitle || 'Untitled scene'}</h2>
@@ -67,7 +73,7 @@ export function CheckDialog({ bookId, sceneTitle, report, error = null, onClose 
           {error}
         </p>
       ) : report ? (
-        <CheckReport bookId={bookId} report={report} />
+        <CheckReport bookId={bookId} report={report} makeTask={makeTask} />
       ) : (
         <p role="status" className="muted">
           Checking…

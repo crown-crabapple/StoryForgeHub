@@ -179,6 +179,20 @@ export function makeQueries(db) {
       return subGraph({ nodes, edges }, { node, kinds });
     },
 
+    /**
+     * The structural inputs of the Insights numbers (M07-J02): scenes, chapters, the chapter / act folders, and the graph's nodes and edges.
+     * The same value insights-source.mjs builds from the files.
+     */
+    insightsStructure() {
+      const scenes = all('SELECT id, title, position, act, chapter, sequence, status, pov, word_count, path FROM scenes ORDER BY position');
+      const chapters = this.chapters();
+      const containers = all("SELECT id, kind, path FROM objects WHERE archived = 0 AND kind IN ('chapter', 'act') ORDER BY rowid").map((r) => ({ id: r.id, kind: r.kind, dir: path.posix.dirname(r.path) === '.' ? '' : path.posix.dirname(r.path) }));
+      const g = this.graph() ?? { nodes: [], edges: [] };
+      const nodes = g.nodes.map((n) => ({ id: n.id, kind: n.kind, type: n.type ?? null, name: n.name ?? null, ...(n.owner ? { owner: n.owner } : {}), ...(n.external ? { external: true } : {}) }));
+      const edges = g.edges.map((e) => ({ from: e.from, to: e.to, kind: e.kind, rel: e.rel, location: e.source.location }));
+      return { scenes, chapters, containers, nodes, edges };
+    },
+
     /** Live (not archived) objects of the given kinds, for pickers: [{ id, kind, slug, title, type }], by kind then title. */
     objects(kinds) {
       if (!Array.isArray(kinds) || kinds.length === 0) return [];
