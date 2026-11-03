@@ -1,6 +1,8 @@
 // HTTP server: loopback guard, JSON API (reads, plus guarded writes), static web app.
 import http from 'node:http';
+import { createKeystore } from '@storyforge/ai';
 import { createLibraryHost, runAs } from '@storyforge/core';
+import { userConfigDir } from '@storyforge/store';
 import { handlePluginRequest } from './api-v1.mjs';
 import { createAiService } from './ai-routes.mjs';
 import { bearerOf } from './plugin-policy.mjs';
@@ -114,16 +116,18 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
       libraryHost = null; // a repository without a root cannot be switched away from
     }
   }
+  // M08-J03: ONE key store for every secret of this process (AI keys, webhook signing secrets): in the user config folder, or the shared-data folder in shared mode
+  const keystore = createKeystore({ dir: shared?.dir ?? userConfigDir() });
   const state = {
     lastRecover: recoverReport ?? { completed: [], rolledBack: [], needsAttention: [] },
     instance: instance ?? { pid: process.pid, started_at: new Date().toISOString(), lock: 'none' },
     host: libraryHost,
-    ai: createAiService(), // optional AI workshop (M05-J04): profiles, session keys and stored previews live in this process only
+    ai: createAiService({ settings: { keystore } }), // optional AI workshop (M05-J04): profiles, session keys and stored previews live in this process only
     presence: createPresence(), // advisory "also in this scene" (M07-J03b): in memory only, expires after 60 s, never blocks a save
     profile,
     moduleOn: (/** @type {any} */ repo, /** @type {string} */ id, /** @type {any} */ which) => moduleOn(repo, state, id, which),
     // plugin tokens, webhook subscriptions and delivery (M08-J02): opened lazily; delivery is gated by the integrations module
-    integrations: createPluginService({ shared, enabled: (/** @type {string} */ bookId) => moduleOn(current(), state, 'integrations', { bookId }), dispatcher: integrations }),
+    integrations: createPluginService({ shared, keystore, enabled: (/** @type {string} */ bookId) => moduleOn(current(), state, 'integrations', { bookId }), dispatcher: integrations }),
   };
   const hookEvents = createWebhookEvents({ service: state.integrations });
   /** @type {WeakSet<object>} repositories that already know which modules are on (M07-J04: receipts are asked per book) */

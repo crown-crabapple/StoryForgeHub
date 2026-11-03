@@ -7,7 +7,7 @@ import { useNavigate } from '../router.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { FilePicker } from './FilePicker.jsx';
 import { hostOf } from './model.js';
-import { CloudConfirm, ContextPreview, DiffView, LocalityBadge } from './parts.jsx';
+import { CloudConfirm, ContextPreview, DiffView, LocalityBadge, StreamingReply, TokensLine } from './parts.jsx';
 import { aiRequest, aiUrl, problemText } from './requests.js';
 import { useExchange } from './useExchange.js';
 
@@ -128,6 +128,7 @@ export function RewriteDialog({ book, active, records, scene, rewrite, onClose }
         <section aria-label="Result">
           <h3>Proposed rewrite</h3>
           <DiffView before={original} after={replacement} />
+          <TokensLine tokens={ex.result?.tokens} />
           {applied && <p role="status">Applied to the scene.</p>}
           {!applied && ex.result?.suggestion && (
             <p className="muted">
@@ -137,7 +138,8 @@ export function RewriteDialog({ book, active, records, scene, rewrite, onClose }
         </section>
       )}
 
-      {(ex.busy || working) && <p role="status">Working…</p>}
+      {((ex.busy && !ex.streaming) || working) && <p role="status">Working…</p>}
+      {ex.streaming && <StreamingReply text={ex.streamText} onCancel={ex.cancel} />}
       {ex.error && (
         <p role="alert" className="form-error">
           {ex.error}

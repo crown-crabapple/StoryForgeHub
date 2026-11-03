@@ -210,7 +210,7 @@ export function resolveModules(layers) {
 
 /** The module a write route belongs to, by route name (null: always on). J02's `insights` and `tasks` routes are classified by the coordinator when they merge. @param {string} route */
 export function moduleOfRoute(route) {
-  if (route.startsWith('ai-') && !['ai-profile-create', 'ai-profile-update', 'ai-profile-delete', 'ai-book-profile', 'ai-records'].includes(route)) return 'ai';
+  if (route.startsWith('ai-') && !['ai-profile-create', 'ai-profile-update', 'ai-profile-delete', 'ai-book-profile', 'ai-records', 'ai-profile-secure'].includes(route)) return 'ai';
   if (route.startsWith('continuity-')) return 'continuity';
   if (route === 'receipts-flush') return 'receipts';
   if (route.startsWith('suggestion-')) return 'suggestions';

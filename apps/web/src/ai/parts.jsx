@@ -1,7 +1,7 @@
 // Small shared pieces of the AI workshop: the locality badge, the context preview, the cloud confirmation and the word diff.
 import { useState } from 'react';
 import { Dialog } from '../shell/Dialog.jsx';
-import { rememberCloud, tokensText } from './model.js';
+import { rememberCloud, tokensText, usageText } from './model.js';
 import { wordDiff } from './diff.js';
 
 /** Where a request would go: "Local" (this computer) or "Cloud" with the host. Shown wherever a request can be sent. @param {{ locality: 'local' | 'cloud', host?: string }} props */
@@ -134,5 +134,34 @@ export function DiffView({ before, after }) {
         )}
       </pre>
     </div>
+  );
+}
+
+/** The tokens one request used, as the provider reported them or (marked) estimated. @param {{ tokens?: { promptTokens: number, completionTokens: number, estimated: boolean } | null }} props */
+export function TokensLine({ tokens }) {
+  if (!tokens) return null;
+  return (
+    <p className="muted ai-tokens" data-estimated={tokens.estimated ? 'true' : 'false'}>
+      Tokens: {usageText(tokens)}
+    </p>
+  );
+}
+
+/**
+ * A reply that is still arriving. It is shown as plain text and is NOT final: nothing is applied, suggested or saved until the reply is complete, and Cancel throws it away.
+ * @param {{ text: string, onCancel: () => void }} props
+ */
+export function StreamingReply({ text, onCancel }) {
+  return (
+    <section className="ai-reply ai-streaming" aria-label="Reply arriving">
+      <h3>Reply arriving</h3>
+      <p className="muted">Not final: nothing is applied or saved until the reply is complete.</p>
+      <pre className="ai-stream-text" aria-live="polite">
+        {text}
+      </pre>
+      <button type="button" className="btn" onClick={onCancel}>
+        Cancel
+      </button>
+    </section>
   );
 }

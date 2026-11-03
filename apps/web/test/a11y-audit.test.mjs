@@ -46,6 +46,8 @@ before(async () => {
     '/src/insights/InsightsPage.jsx', '/src/insights/GoalsPanel.jsx', '/src/tasks/TasksPage.jsx', '/src/writing/TimerPanel.jsx', '/src/suggestions/CheckReport.jsx',
     // M08-J02: Settings -> Plugins and Webhooks
     '/src/integrations/PluginsPanel.jsx', '/src/integrations/WebhooksPanel.jsx',
+    // M08-J03: secure key storage in the provider form, and the cover draft dialogs (list, prompt editor, consent)
+    '/src/ai/CoverDrafts.jsx',
   ]) await load(p);
 
   const root = await copyFixture('valid/salt-orchard');
@@ -157,6 +159,18 @@ const WEBHOOKS = {
     { id: 'whk_01S8000000000000000000CCCC', url: 'https://old.example.org/h', events: ['export.done'], books: 'all', include_content: false, allow_local: false, plugin: null, secret_hash: 'c'.repeat(64), created: 1_790_000_000_000, revoked: true, disabled: false, failures: 0, last_delivery: null },
   ],
 };
+// M08-J03: the provider form with the secure choice and an image provider, and the cover draft dialogs (the consent dialog names the text, the provider, its host and where that is).
+const AI_FORM = { kind: 'openai-compatible-images', name: 'Pictures', baseUrl: 'https://images.example.com/v1', model: 'image-1', temperature: '', maxTokens: '', contextBudget: '8000', keyStorage: 'secure', apiKey: '' };
+const COVER_INFO = {
+  available: true,
+  provider: { id: 'prof_img', name: 'Pictures', model: 'image-1', host: 'images.example.com', locality: 'cloud' },
+  prompt: 'A book cover illustration for the literary novel "The Salt Orchard". No lettering or text in the picture.',
+  maxPromptChars: 4000,
+  drafts: [
+    { name: 'cover-20261103-091500-1.png', path: 'assets/drafts/cover-20261103-091500-1.png', created: '2026-11-03T09:15:00.000Z', prompt: 'A drowned orchard at dusk', provider: 'Pictures', model: 'image-1', locality: 'cloud', sha256: 'a'.repeat(64), isCover: false },
+    { name: 'cover-20261103-091600-1.png', path: 'assets/drafts/cover-20261103-091600-1.png', created: '2026-11-03T09:16:00.000Z', prompt: 'A lighthouse', provider: 'Pictures', model: 'image-1', locality: 'cloud', sha256: 'b'.repeat(64), isCover: true },
+  ],
+};
 const settingsPart = (...parts) => shell(h('main', { id: 'main', tabIndex: -1, className: 'page settings-page' }, h('h1', null, 'Settings'), ...parts), { bookId: null });
 
 const tshell = (children, { tab = 'manuscript' } = {}) => h(m.AppShell, { books: T.books, bookId: TIDE.so, tab }, children);
@@ -232,6 +246,13 @@ const VIEWS = {
   'Backup dialog': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.BackupDialog, { book: d.book, onClose: noop }))), OVER_PAGE],
   'Restore dialog': () => [shell(h(Fragment, null, h(m.LibraryPage, { books: d.books }), h(m.RestoreDialog, { onClose: noop })), { bookId: null }), PAGE],
   'Settings': () => [shell(h(m.SettingsView), { bookId: null }), PAGE],
+  'Settings, provider form with secure key storage (an image provider)': () => [settingsPart(h('h2', null, 'Set up AI (optional)'), h(m.ProfileForm, { initial: AI_FORM, hasKey: true, configFile: 'ai.json', secureBackend: 'dpapi', saving: false, error: null, onSave: noop, onCancel: noop, title: 'Edit provider' })), PAGE],
+  'Settings, provider form with the plain-text warning and a secure backend available': () => [settingsPart(h('h2', null, 'Set up AI (optional)'), h(m.ProfileForm, { initial: { ...AI_FORM, kind: 'openai-compatible', keyStorage: 'config' }, hasKey: true, configFile: 'ai.json', secureBackend: 'file-key', saving: false, error: 'Not saved.', onSave: noop, onCancel: noop, title: 'Edit provider' })), PAGE],
+  'Cover drafts dialog (drafts with Use as cover and Delete, Generate a draft)': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.CoverDraftsDialog, { book: d.book, info: COVER_INFO, onChanged: noop, onClose: noop })), {}), OVER_PAGE],
+  'Cover drafts dialog, no drafts yet': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.CoverDraftsDialog, { book: d.book, info: { ...COVER_INFO, drafts: [] }, onChanged: noop, onClose: noop })), {}), OVER_PAGE],
+  'Cover prompt editor dialog': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.PromptDialog, { info: COVER_INFO, initial: COVER_INFO.prompt, onNext: noop, onClose: noop })), {}), OVER_PAGE],
+  'Cover consent dialog (the exact text, the provider and host, cloud)': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.ConsentDialog, { info: COVER_INFO, prompt: COVER_INFO.prompt, sending: false, error: null, onSend: noop, onClose: noop })), {}), OVER_PAGE],
+  'Cover consent dialog, local provider, with an error': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.ConsentDialog, { info: { ...COVER_INFO, provider: { ...COVER_INFO.provider, host: '127.0.0.1:8188', locality: 'local' } }, prompt: 'A lighthouse', sending: false, error: 'the provider answered 500', onSend: noop, onClose: noop })), {}), OVER_PAGE],
   'Settings, Plugins (manifests, a newer-StoryForge warning, a broken manifest, grants active and revoked)': () => [settingsPart(h(m.PluginsView, { data: PLUGINS, onAsk: noop, onRevoke: noop })), PAGE],
   'Settings, Plugins, confirming a grant from a manifest (permissions and books)': () => [settingsPart(h(m.PluginsView, { data: PLUGINS, ask: { plugin: 'tidy-notes', name: 'Tidy notes', permissions: ['read', 'propose'], books: ['salt-orchard'], manual: false } })), PAGE],
   'Settings, Plugins, granting to a plugin with no manifest, with an error': () => [settingsPart(h(m.PluginsView, { data: PLUGINS, ask: { plugin: '', name: '', permissions: ['read'], books: 'all', manual: true }, error: 'books names a book that is not in this library' })), PAGE],

@@ -19,7 +19,8 @@ my-library/                  any folder; holds one or more books
     codex/                   characters, locations, factions, objects, lore (one file each)
     planning/                plot threads, timeline events, plans
     research/                research notes and sources
-    assets/                  images and attachments
+    assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
+    activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
     suggestions/             suggested changes, never applied until you accept them
     provenance/              receipts (the record of who changed what)
     ai/                      AI records, only if you turned them on

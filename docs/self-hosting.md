@@ -149,7 +149,8 @@ If the setup link ran out (30 minutes) before it was used, see "Re-issuing a set
 **Back up** (a plain copy of the folders is enough, taken while the server is stopped or by a snapshot of the disk):
 
 - the `library/` folder: it is the canonical copy of everything the writers wrote;
-- the `shared-data/` folder: accounts, invites, share links and the audit log.
+- the `shared-data/` folder: accounts, invites, share links, the audit log and `secrets.json` (AI keys and webhook secrets, encrypted; see "Secrets" below). If the key lives in
+  `shared-data/secrets-key.json`, a copy of the folder holds both the lock and its key: set `STORYFORGE_SECRETS_KEY` instead and back the key up somewhere else.
 
 **Do not back up** `.storyforge/` inside the books: it is a cache.
 
@@ -167,6 +168,20 @@ node apps/server/src/main.mjs backup --library /srv/storyforge/library --book my
    `node apps/server/src/main.mjs --library /tmp/restored` and check the book opens and the diagnostics list is empty.
 4. To restore accounts, put the `shared-data/` copy back with the server stopped. Check it afterwards with
    `node apps/server/src/main.mjs audit verify --shared-data <the restored folder>`.
+
+## Secrets (AI provider keys and webhook secrets)
+
+Every secret StoryForge keeps goes into one key store, never into a book, a backup, an export, a receipt or a log. In shared mode (and in the container image) the store is the
+`shared-data/` folder, so it works with no operating-system key store:
+
+- `shared-data/secrets.json` holds the secrets **encrypted** (AES-256-GCM).
+- The 32-byte key is `STORYFORGE_SECRETS_KEY` (base64; make one with `openssl rand -base64 32`), set in `storyforge.env`. If it is not set, StoryForge creates
+  `shared-data/secrets-key.json` (readable by the service user only) on first use.
+- **Back the key up separately.** If the key is lost or wrong, Settings shows "cannot unlock stored keys", nothing that needs a key is sent, and the owner enters the AI keys again
+  (webhook secrets: revoke and create the webhook again). Nothing else is lost, and a key is never silently replaced by an empty one.
+- On a Windows, macOS or Linux desktop (personal mode) the operating system's own store is used instead (DPAPI, the keychain, the Secret Service) and the files live in the user
+  settings folder. `STORYFORGE_SECRETS_BACKEND=file-key` forces the encrypted-file store.
+- Moving a key from the plain-text settings file to the store ("Move key to secure storage") is recorded in the audit log, without the key.
 
 ## Authentication and session security
 
@@ -235,4 +250,4 @@ Remove the member in the app (all their sessions end at once) and invite them ag
 - **AI is off until the owner sets it up.** Only then is text that the author was shown in a preview sent to the provider the owner chose. In shared mode the owner decides whether
   members may use it.
 - **Where every byte lives:** books and share links' content in the library folder on your disk; accounts, sessions, invites and the audit log in `shared-data/`; the index cache
-  in each book's `.storyforge/`; settings (and a provider key, only if saved in the settings file) in `config/`. Nothing is kept anywhere else, and the container image holds none of it.
+  in each book's `.storyforge/`; settings (and a provider key, only if saved in the settings file) in `config/`; provider keys and webhook secrets, encrypted, in `shared-data/secrets.json` (shared mode). Nothing is kept anywhere else, and the container image holds none of it.

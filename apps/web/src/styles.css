@@ -3725,6 +3725,7 @@ label.form-check {
 }
 .ai-message-text,
 .ai-selection,
+.ai-stream-text,
 .ai-diff-body {
   margin: var(--s1) 0 var(--s3);
   padding: var(--s2) var(--s3);
@@ -4771,4 +4772,29 @@ kbd {
 }
 .integrations-indent {
   margin-left: var(--s5);
+}
+
+/* M08-J03: cover drafts and the connection test */
+.ai-drafts {
+  display: grid;
+  gap: var(--s3);
+  margin: var(--s2) 0;
+  padding: 0;
+  list-style: none;
+}
+.ai-drafts li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  align-items: flex-start;
+}
+.ai-drafts img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--divider);
+  border-radius: var(--r-input);
+}
+.ai-capabilities p {
+  margin: var(--s1) 0;
+  overflow-wrap: anywhere;
 }

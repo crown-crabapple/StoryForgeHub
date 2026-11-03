@@ -18,6 +18,8 @@ export function checkPlacement(docs, add) {
       add('W201', d.file, 'schema', 'continuity exception is not under planning/continuity/');
     } else if (d.kind === 'ai-record' && !logical.startsWith('ai/')) {
       add('W201', d.file, 'schema', 'AI record is not under ai/');
+    } else if (d.kind === 'asset-note' && !logical.startsWith('assets/drafts/')) {
+      add('W201', d.file, 'schema', 'asset note is not under assets/drafts/');
     } else if (d.kind === 'suggestion' && !logical.startsWith('suggestions/')) {
       add('W201', d.file, 'schema', 'suggestion is not under suggestions/');
     } else if (d.kind === 'comment' && !logical.startsWith('comments/')) {

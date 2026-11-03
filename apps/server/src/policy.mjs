@@ -27,10 +27,12 @@ export const WRITE_CLASSES = Object.freeze({
   'comment-create': 'comment', 'comment-reply': 'comment', 'comment-resolve': 'comment', 'suggestion-create': 'suggest', presence: 'read',
   // AI workshop: sending is 'ai'; applying a result changes prose, so it also needs write (ai already implies editor)
   'ai-context': 'ai', 'ai-send': 'ai', 'ai-apply': 'ai', 'ai-discard': 'ai',
+  // M08-J03: stopping a streamed reply and asking for a cover draft are AI use; choosing or deleting a draft is an ordinary edit of the book
+  'ai-cancel': 'ai', 'ai-cover-generate': 'ai', 'ai-cover-use': 'write', 'ai-cover-delete': 'write',
   // library-level and machine-level operations
   'library-open': 'admin', 'recent-remove': 'admin', recover: 'admin', repair: 'admin', 'backup-restore': 'admin', 'book-create': 'admin',
   'ai-profile-create': 'admin', 'ai-profile-update': 'admin', 'ai-profile-delete': 'admin', 'ai-profile-test': 'admin', 'ai-book-profile': 'admin',
-  'ai-records': 'admin',
+  'ai-records': 'admin', 'ai-profile-secure': 'admin', 'ai-profile-discover': 'admin',
   // M07-J01b series worlds: shared-entry moves and labels are ordinary edits; saving a library template writes library-level files
   'entry-move-to-series': 'write', 'entry-copy-to-book': 'write', 'labels-set': 'write', 'template-save': 'admin',
   // M07-J02 goals and revision tasks (book files; never prose)
@@ -69,6 +71,7 @@ export function classifyRead(pathname) {
     if (b === undefined) return { cls: 'read' };
     if (c === 'backup' || (c === 'repair' && d === 'plan')) return { cls: 'admin', book: b };
     if (c === 'export') return { cls: 'export', book: b };
+    if (c === 'ai' && d === 'stream') return { cls: 'ai', book: b }; // M08-J03: a reply in progress is AI use (editor, and only when the owner allows AI for members)
     // what a share link may read of its book: the book, a scene's text, the cover. Notes, receipts, suggestions, comments, revisions, raw
     // files, activity and AI state are private project data (DECISIONS 12) and stay member-only.
     const shareable = c === undefined || c === 'cover' || (c === 'scenes' && d !== undefined && parts.length === 5);

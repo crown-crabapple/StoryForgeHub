@@ -8,7 +8,7 @@ export const ACTORS = Object.freeze(['author', 'ai', 'external', 'system']);
 export const OPERATIONS = Object.freeze([
   'baseline', 'author.edit', 'external.change', 'ai.proposal', 'ai.generation', 'suggestion.accept', 'suggestion.decline', 'undo', 'revision.restore', 'publish', 'check.report', 'ai.chat',
 ]);
-export const WORKFLOWS = Object.freeze(['editor', 'ai-rewrite', 'ai-chat', 'suggestion', 'claude-book', 'watcher', 'revision', 'undo', 'export', 'check']);
+export const WORKFLOWS = Object.freeze(['editor', 'ai-rewrite', 'ai-chat', 'suggestion', 'claude-book', 'watcher', 'revision', 'undo', 'export', 'check', 'ai-cover']);
 const ACCEPTANCE = ['proposed', 'accepted', 'declined', 'partial'];
 
 export const sha256Hex = (bytes) => createHash('sha256').update(typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : bytes).digest('hex');

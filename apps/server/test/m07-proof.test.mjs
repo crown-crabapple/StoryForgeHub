@@ -131,6 +131,13 @@ const SAMPLES = {
   'ai-profile-test': ['POST', '/api/ai/profiles/prof_X/test'],
   'ai-book-profile': ['PUT', `${b}/ai/profile`],
   'ai-records': ['PUT', `${b}/ai/records`],
+  // M08-J03: stop a streamed reply, cover drafts, key move and model discovery
+  'ai-cancel': ['POST', `${b}/ai/cancel`],
+  'ai-cover-generate': ['POST', `${b}/ai/cover-generate`],
+  'ai-cover-use': ['POST', `${b}/ai/cover-use`],
+  'ai-cover-delete': ['POST', `${b}/ai/cover-delete`],
+  'ai-profile-secure': ['POST', '/api/ai/profiles/prof_X/secure'],
+  'ai-profile-discover': ['POST', '/api/ai/profiles/prof_X/discover'],
   'entry-move-to-series': ['POST', `${b}/entries/entry_X/move-to-series`],
   'entry-copy-to-book': ['POST', `${b}/entries/entry_X/copy-to-book`],
   'labels-set': ['POST', `${b}/labels`],

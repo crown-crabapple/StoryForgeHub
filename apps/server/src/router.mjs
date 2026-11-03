@@ -254,7 +254,8 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       return notes ? { status: 200, body: notes } : NOT_FOUND;
     }
     if (c === 'attachments' && d === undefined) return handleAttachment(repository, b, params);
-    if (c === 'ai' && d === 'status' && e === undefined) return handleAiRead(repository, state, 'status', b);
+    // M05-J04 status; M08-J03: the cover generator's state, a draft picture, and a streamed reply in progress
+    if (c === 'ai' && ['status', 'cover', 'cover-draft', 'stream'].includes(d) && e === undefined) return handleAiRead(repository, state, d, b, params);
     if (c === 'graph' && d === undefined) {
       const kindsParam = params.get('kinds');
       let kinds;
@@ -487,6 +488,9 @@ export function matchWriteRoute(method, pathname) {
     if (method === 'PUT' && c !== undefined && d === undefined) return { route: 'ai-profile-update', profileId: c };
     if (method === 'DELETE' && c !== undefined && d === undefined) return { route: 'ai-profile-delete', profileId: c };
     if (method === 'POST' && c !== undefined && d === 'test' && e === undefined) return { route: 'ai-profile-test', profileId: c };
+    // M08-J03: list the models and learn about streaming and usage; move a plain-text key into the key store
+    if (method === 'POST' && c !== undefined && d === 'discover' && e === undefined) return { route: 'ai-profile-discover', profileId: c };
+    if (method === 'POST' && c !== undefined && d === 'secure' && e === undefined) return { route: 'ai-profile-secure', profileId: c };
     return null;
   }
   // M07-J04 profiles: per-machine appearance settings (a file in the user config folder, never a library file)
@@ -509,6 +513,11 @@ export function matchWriteRoute(method, pathname) {
     if (method === 'PUT' && d === 'profile') return { route: 'ai-book-profile', bookId: b };
     if (method === 'PUT' && d === 'records') return { route: 'ai-records', bookId: b };
     if (method === 'POST' && ['context', 'send', 'apply', 'discard'].includes(d)) return { route: `ai-${d}`, bookId: b };
+    // M08-J03: stop a streamed reply; cover drafts (generate asks the image provider, only after consent; use and delete are edits of the book)
+    if (method === 'POST' && d === 'cancel') return { route: 'ai-cancel', bookId: b };
+    if (method === 'POST' && d === 'cover-generate') return { route: 'ai-cover-generate', bookId: b };
+    if (method === 'POST' && d === 'cover-use') return { route: 'ai-cover-use', bookId: b };
+    if (method === 'POST' && d === 'cover-delete') return { route: 'ai-cover-delete', bookId: b };
     return null;
   }
   if (method === 'POST' && c === 'repair' && d === undefined) return { route: 'repair', bookId: b };

@@ -142,6 +142,12 @@ export default [
   // packages/ai: no direct filesystem access; settings go through the store's user-config functions.
   {
     files: ['packages/ai/src/**/*.mjs'],
+    ignores: ['packages/ai/src/keystore.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: [...fsPaths, ...processPaths.map((p) => ({ ...p, message: 'In packages/ai only src/keystore.mjs starts a process (the OS key store).' }))] }] },
+  },
+  // M08-J03: the key store may start the OS key-store tools; it still has no direct filesystem access (secrets.json goes through @storyforge/store)
+  {
+    files: ['packages/ai/src/keystore.mjs'],
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
   // packages/integrations (M08-J02): no direct filesystem access; subscriptions go through the store's shared-file functions. Only src/webhook-transport.mjs touches the network.
