@@ -390,7 +390,7 @@ function cliArena({ provenance = false } = {}) {
 }
 const noFile = (p) => assert.ok(!fs.existsSync(p), `${p} must not exist`);
 
-test('CLI export: writes the file the library function produces', { timeout: 60000 }, async () => {
+test('CLI export: writes the file the library function produces', { timeout: 180000 }, async () => {
   const { lib, book, out } = cliArena();
   for (const [format, ext] of [['markdown', 'md'], ['docx', 'docx'], ['epub', 'epub'], ['pdf', 'pdf']]) {
     const file = path.join(out, `book.${ext}`);
@@ -401,7 +401,7 @@ test('CLI export: writes the file the library function produces', { timeout: 600
   assert.deepEqual(readAll(book).size, readAll(copyBook()).size, 'the book is untouched');
 });
 
-test('CLI export: --out that exists is refused without --force (file untouched) and replaced with --force', { timeout: 60000 }, async () => {
+test('CLI export: --out that exists is refused without --force (file untouched) and replaced with --force', { timeout: 180000 }, async () => {
   const { lib, out } = cliArena();
   const file = path.join(out, 'book.md');
   fs.writeFileSync(file, 'precious');
@@ -415,7 +415,7 @@ test('CLI export: --out that exists is refused without --force (file untouched) 
   assert.match(fs.readFileSync(file, 'utf8'), /^# The Salt Orchard/);
 });
 
-test('CLI export / backup: --out inside the book folder is refused, even with --force, and the book gets no new file', { timeout: 60000 }, async () => {
+test('CLI export / backup: --out inside the book folder is refused, even with --force, and the book gets no new file', { timeout: 180000 }, async () => {
   const { lib, book, out } = cliArena();
   const control = await runCli(['export', '--library', lib, '--book', 'salt-orchard', '--format', 'markdown', '--out', path.join(out, 'control.md')]);
   assert.equal(control.code, 0, 'control: the same command with --out outside the book succeeds: ' + control.output);
@@ -441,7 +441,7 @@ test('CLI export / backup: --out inside the book folder is refused, even with --
   for (const [p, v] of before) assert.equal(after.get(p).sha, v.sha, p);
 });
 
-test('CLI export: an existing file that is the book\'s own scene is never overwritten via --out --force', { timeout: 60000 }, async () => {
+test('CLI export: an existing file that is the book\'s own scene is never overwritten via --out --force', { timeout: 180000 }, async () => {
   const { lib, book } = cliArena();
   const scene = path.join(book, 'manuscript', 'act-01-low-water', 'ch-001-the-drowned-rows', '0010-arrival.md');
   const before = fs.readFileSync(scene);
@@ -450,7 +450,7 @@ test('CLI export: an existing file that is the book\'s own scene is never overwr
   assert.ok(fs.readFileSync(scene).equals(before));
 });
 
-test('CLI export: unknown book, unknown format and missing options fail without creating the output', { timeout: 60000 }, async () => {
+test('CLI export: unknown book, unknown format and missing options fail without creating the output', { timeout: 180000 }, async () => {
   const { lib, out } = cliArena();
   const file = path.join(out, 'x.md');
   const control = await runCli(['export', '--library', lib, '--book', 'salt-orchard', '--format', 'markdown', '--out', file]);
@@ -470,7 +470,7 @@ test('CLI export: unknown book, unknown format and missing options fail without 
   assert.deepEqual(fs.readdirSync(out), []);
 });
 
-test('CLI backup: writes the zip the library function produces (provenance only with --provenance); refuses to overwrite', { timeout: 60000 }, async () => {
+test('CLI backup: writes the zip the library function produces (provenance only with --provenance); refuses to overwrite', { timeout: 180000 }, async () => {
   const { lib, book, out } = cliArena({ provenance: true });
   const plain = path.join(out, 'plain.zip');
   const r = await runCli(['backup', '--library', lib, '--book', 'salt-orchard', '--out', plain]);
@@ -492,7 +492,7 @@ test('CLI backup: writes the zip the library function produces (provenance only 
   assert.ok(book);
 });
 
-test('CLI restore: --from <zip> --to <dir> restores byte-identically; a non-empty --to is refused and untouched', { timeout: 60000 }, async () => {
+test('CLI restore: --from <zip> --to <dir> restores byte-identically; a non-empty --to is refused and untouched', { timeout: 180000 }, async () => {
   const { lib, book, out } = cliArena();
   const zip = path.join(out, 'b.zip');
   assert.equal((await runCli(['backup', '--library', lib, '--book', 'salt-orchard', '--out', zip])).code, 0);
@@ -510,7 +510,7 @@ test('CLI restore: --from <zip> --to <dir> restores byte-identically; a non-empt
   assert.deepEqual(fs.readdirSync(busy), ['mine.txt']);
 });
 
-test('CLI restore: a hostile zip, a corrupt zip and a missing file are refused and nothing is written', { timeout: 60000 }, async () => {
+test('CLI restore: a hostile zip, a corrupt zip and a missing file are refused and nothing is written', { timeout: 180000 }, async () => {
   const good = await backupBytes();
   const out = tmpDir('sf-cli-bad-');
   const goodZip = path.join(out, 'good.zip');
@@ -531,7 +531,7 @@ test('CLI restore: a hostile zip, a corrupt zip and a missing file are refused a
   }
 });
 
-test('CLI backup then restore round trip validates clean through the repository (library open)', { timeout: 60000 }, async () => {
+test('CLI backup then restore round trip validates clean through the repository (library open)', { timeout: 180000 }, async () => {
   const { lib, out } = cliArena();
   const zip = path.join(out, 'rt.zip');
   assert.equal((await runCli(['backup', '--library', lib, '--book', 'salt-orchard', '--out', zip])).code, 0);

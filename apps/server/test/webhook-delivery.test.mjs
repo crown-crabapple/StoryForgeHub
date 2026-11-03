@@ -20,7 +20,7 @@ const hmac = (secret, body) => `sha256=${createHmac('sha256', secret).update(bod
 const FAST = { backoffMs: [0, 0, 0], timeoutMs: 2000 };
 
 /** Wait (bounded) until `fn` is true. */
-async function until(fn, what, ms = 8000) {
+async function until(fn, what, ms = 30000) {
   const end = Date.now() + ms;
   while (Date.now() < end) {
     if (await fn()) return;

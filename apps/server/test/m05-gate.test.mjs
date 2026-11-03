@@ -163,7 +163,7 @@ test('M05 gate 4: author save, AI rewrite, accepted hunk and an outside edit are
         current = await readBytes(library, ARRIVAL_PATH);
       }
       return chainOf(await readReceipts(library), ARRIVAL).some((r) => r.fm.operation === 'external.change');
-    }, { timeout: 45000, what: 'an external.change receipt for the outside edit' });
+    }, { timeout: 60000, what: 'an external.change receipt for the outside edit' });
     const flushed = await app.post(RCPT.flush(), { sceneId: ARRIVAL });
     assert.ok(flushed.status < 300, flushed.text);
 

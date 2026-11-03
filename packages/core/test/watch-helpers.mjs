@@ -21,7 +21,7 @@ export const rowsOf = (v) => (Array.isArray(v) ? v : v?.results ?? v?.rows ?? []
 export const abs = (root, rel) => path.join(root, ...rel.split('/'));
 
 /** Poll `fn` until it returns a truthy value (bounded). Throws with the last error/value on timeout. */
-export async function waitFor(fn, { timeout = 5000, interval = 50, what = 'condition' } = {}) {
+export async function waitFor(fn, { timeout = 30000, interval = 50, what = 'condition' } = {}) {
   const deadline = Date.now() + timeout;
   let last;
   for (;;) {

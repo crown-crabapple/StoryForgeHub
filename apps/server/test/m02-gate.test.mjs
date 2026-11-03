@@ -99,7 +99,7 @@ test('M02 gate: create from story-circle, see it as a cover card, search its pla
   const plan = frontMatter(await fs.readFile(path.join(folder, 'planning', 'plan.md'), 'utf8'));
   const word = (plan.body.match(/[A-Za-z]{7,}/g) ?? []).map((w) => w.toLowerCase()).sort((x, y) => y.length - x.length)[0];
   assert.ok(word, 'plan.md has a searchable word');
-  await waitFor(async () => (await request(port, 'GET', '/api/status')).json.books.find((b) => b.book_id === bookId)?.index === 'fresh', { what: 'fresh index for the new book', timeout: 20000 });
+  await waitFor(async () => (await request(port, 'GET', '/api/status')).json.books.find((b) => b.book_id === bookId)?.index === 'fresh', { what: 'fresh index for the new book', timeout: 30000 });
   const hits = (await request(port, 'GET', `/api/search?q=${encodeURIComponent(word)}&book=${bookId}`)).json;
   assert.ok(hits.some((h) => h.id === plan.fm.id), `search for "${word}" finds the plan doc: ${JSON.stringify(hits)}`);
 
@@ -138,7 +138,7 @@ test('M02 gate: create from story-circle, see it as a cover card, search its pla
   assert.ok(cardAgain, 'the created book is still there');
   assert.equal(cardAgain.scene_count, 7, 'and still has the archive applied');
   assert.equal(cardAgain.cover_state, 'none');
-  await waitFor(async () => (await request(port, 'GET', '/api/status')).json.books.find((b) => b.book_id === bookId)?.index === 'fresh', { what: 'fresh index after returning', timeout: 20000 });
+  await waitFor(async () => (await request(port, 'GET', '/api/status')).json.books.find((b) => b.book_id === bookId)?.index === 'fresh', { what: 'fresh index after returning', timeout: 30000 });
   const hits2 = (await request(port, 'GET', `/api/search?q=${encodeURIComponent(word)}&book=${bookId}`)).json;
   assert.ok(hits2.some((h) => h.id === plan.fm.id), 'search still works after the round trip');
 

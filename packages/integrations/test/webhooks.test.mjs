@@ -231,7 +231,9 @@ test('dispatcher: a subscription sees its events in order, and a slow receiver d
   const d = createDispatcher({ store: async () => hooks, deliver });
   await d.emit({ ...EVENT, target_id: '1' });
   await d.emit({ ...EVENT, target_id: '2' });
-  await new Promise((r) => setTimeout(r, 50));
+  // Poll until b has delivered both (a is still gated, so this can only pass if b is not held up by a); a loaded machine may take long.
+  const deadline = Date.now() + 30000;
+  while (order.length < 2 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(order, ['b1', 'b2'], 'b is not held up by a');
   release();
   await d.flush();

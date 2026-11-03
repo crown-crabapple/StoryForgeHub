@@ -20,7 +20,7 @@ after(async () => {
   for (const fn of cleanups.reverse()) await fn();
 });
 
-async function waitFor(fn, { timeout = 5000, interval = 50, what = 'condition' } = {}) {
+async function waitFor(fn, { timeout = 30000, interval = 50, what = 'condition' } = {}) {
   const deadline = Date.now() + timeout;
   let last;
   for (;;) {

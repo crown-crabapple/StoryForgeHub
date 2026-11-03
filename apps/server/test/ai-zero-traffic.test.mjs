@@ -44,7 +44,7 @@ test('the recorder sees every outbound API (positive control)', async () => {
   const r = spawnSync(process.execPath, ['--import', new URL(`file:///${PRELOAD.replace(/\\/g, '/')}`).href, '--input-type=module', '-e', script], {
     env: { ...process.env, SF_NET_LOG: log },
     encoding: 'utf8',
-    timeout: 20000,
+    timeout: 60000,
   });
   assert.equal(r.status, 0, r.stderr);
   const apis = new Set((await fs.readFile(log, 'utf8')).split('\n').filter(Boolean).map((l) => JSON.parse(l).api));

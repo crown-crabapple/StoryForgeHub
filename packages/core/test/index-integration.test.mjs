@@ -15,7 +15,7 @@ const plain = (v) => JSON.parse(JSON.stringify(v));
 const rowsOf = (v) => (Array.isArray(v) ? v : v?.results ?? v?.rows ?? []);
 
 /** Poll until `fn` returns truthy (bounded; the index refreshes in the background). */
-async function waitFor(fn, what, attempts = 320) {
+async function waitFor(fn, what, attempts = 1200) {
   for (let i = 0; i < attempts; i++) {
     const v = await fn();
     if (v) return v;

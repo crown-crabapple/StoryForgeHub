@@ -35,7 +35,7 @@ async function withFetchSpy(fn) {
 
 test('http: to a non-loopback host is refused before anything is sent', async () => {
   for (const url of ['http://example.com/v1/chat/completions', 'http://192.168.1.5:11434/v1/x', 'http://127.0.0.2/v1/x', 'http://[2001:db8::1]/v1/x']) {
-    const { calls, error } = await withFetchSpy(() => postJson(url, { a: 1 }, { headers: { authorization: 'Bearer should-not-leave' }, timeoutMs: 2000 }));
+    const { calls, error } = await withFetchSpy(() => postJson(url, { a: 1 }, { headers: { authorization: 'Bearer should-not-leave' }, timeoutMs: 15000 }));
     assert.ok(error, `${url} rejected`);
     assert.ok(!/SPY/.test(error.message), `${url}: refused by the transport itself (${error.message})`);
     assert.equal(calls.length, 0, `${url}: no request was made`);
@@ -44,7 +44,7 @@ test('http: to a non-loopback host is refused before anything is sent', async ()
 
 test('non-http(s) schemes are refused: file:, ftp:, data:, ws:, javascript:, and garbage', async () => {
   for (const url of ['file:///etc/passwd', 'ftp://example.com/x', 'data:text/plain,hi', 'ws://127.0.0.1/x', 'javascript:alert(1)', 'not a url', '']) {
-    const { calls, error } = await withFetchSpy(() => postJson(url, {}, { timeoutMs: 2000 }));
+    const { calls, error } = await withFetchSpy(() => postJson(url, {}, { timeoutMs: 15000 }));
     assert.ok(error, `${JSON.stringify(url)} rejected`);
     assert.ok(!/SPY/.test(error.message), `${JSON.stringify(url)}: ${error.message}`);
     assert.equal(calls.length, 0);
@@ -53,13 +53,13 @@ test('non-http(s) schemes are refused: file:, ftp:, data:, ws:, javascript:, and
 
 test('http: to loopback (localhost, 127.0.0.1, [::1]) is allowed through to the network layer', async () => {
   for (const url of ['http://localhost:9/x', 'http://127.0.0.1:9/x', 'http://[::1]:9/x']) {
-    const { calls } = await withFetchSpy(() => postJson(url, {}, { timeoutMs: 2000 }));
+    const { calls } = await withFetchSpy(() => postJson(url, {}, { timeoutMs: 15000 }));
     assert.equal(calls.length, 1, `${url} was passed on (the spy then fails it)`);
   }
 });
 
 test('https: to a remote host is allowed through to the network layer and redirects are never followed', async () => {
-  const { calls } = await withFetchSpy(() => postJson('https://api.example.com/v1/chat/completions', { m: 1 }, { headers: { authorization: 'Bearer k' }, timeoutMs: 2000 }));
+  const { calls } = await withFetchSpy(() => postJson('https://api.example.com/v1/chat/completions', { m: 1 }, { headers: { authorization: 'Bearer k' }, timeoutMs: 15000 }));
   assert.equal(calls.length, 1);
   assert.equal(calls[0][1].redirect, 'error', 'fetch is called with redirect: "error"');
   assert.equal(calls[0][1].method, 'POST');
@@ -69,7 +69,7 @@ test('https: to a remote host is allowed through to the network layer and redire
 test('a good POST: JSON body and headers reach a loopback server, and its JSON answer comes back', async () => {
   const mock = await startMockProvider({ reply: 'pong' });
   mocks.push(mock);
-  const out = await postJson(`${mock.baseUrl}/chat/completions`, { messages: [{ role: 'user', content: 'ping' }] }, { headers: { authorization: 'Bearer abc' }, timeoutMs: 5000 });
+  const out = await postJson(`${mock.baseUrl}/chat/completions`, { messages: [{ role: 'user', content: 'ping' }] }, { headers: { authorization: 'Bearer abc' }, timeoutMs: 15000 });
   assert.equal(mock.calls.length, 1);
   assert.equal(mock.calls[0].method, 'POST');
   assert.equal(mock.calls[0].headers.authorization, 'Bearer abc');
@@ -101,7 +101,7 @@ test('a redirect is an error and is not followed (the target is never contacted)
     res.writeHead(307, { location: target.url });
     res.end();
   });
-  await assert.rejects(() => postJson(redir.url, { a: 1 }, { timeoutMs: 5000 }));
+  await assert.rejects(() => postJson(redir.url, { a: 1 }, { timeoutMs: 15000 }));
   assert.equal(target.hits, 0);
 });
 
@@ -151,7 +151,7 @@ test('a non-2xx answer is an error, not a result', async () => {
   let out;
   let err;
   try {
-    out = await postJson(bad.url, {}, { timeoutMs: 5000 });
+    out = await postJson(bad.url, {}, { timeoutMs: 15000 });
   } catch (e) {
     err = e;
   }

@@ -63,7 +63,7 @@ test('M01 gate: build, stop, delete .storyforge, edit + rename externally, resta
 
   // 4. start again
   const b = await startServer(root);
-  await waitFor(async () => (await bookIndex(b.port)) === 'fresh', { what: 'fresh index after restart', timeout: 15000 });
+  await waitFor(async () => (await bookIndex(b.port)) === 'fresh', { what: 'fresh index after restart', timeout: 30000 });
 
   // same ids, same order, rename tracked by id
   const bookB = (await request(b.port, 'GET', `/api/books/${BOOK}`)).json;

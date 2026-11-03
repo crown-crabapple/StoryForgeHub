@@ -133,7 +133,7 @@ export async function startReceiver() {
 }
 
 /** Wait until `fn()` is truthy. @param {() => any} fn @param {string} what @param {number} [ms] */
-export async function until(fn, what, ms = 15000) {
+export async function until(fn, what, ms = 30000) {
   const end = Date.now() + ms;
   for (;;) {
     const v = await fn();

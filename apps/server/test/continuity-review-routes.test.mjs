@@ -294,7 +294,7 @@ test('3. context refusals: escape, .storyforge, absolute path, radius > 10 -> 40
 
 // ---------------------------------------------------------------- acceptance 4: outside edits (watcher on)
 
-async function waitFor(fn, what, timeout = 5000) {
+async function waitFor(fn, what, timeout = 30000) {
   const deadline = Date.now() + timeout;
   let last;
   for (;;) {

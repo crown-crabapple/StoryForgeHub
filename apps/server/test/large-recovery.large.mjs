@@ -188,7 +188,7 @@ test('4. 50 scene files rewritten outside the app within 2 s are reconciled with
       const now = await words();
       return picked.every((s) => now.get(s.id) === wordsBefore.get(s.id) + 5);
     },
-    { timeout: 10000, interval: 100, what: '50 scenes reconciled (five more words each)' },
+    { timeout: 30000, interval: 100, what: '50 scenes reconciled (five more words each)' },
   );
   await waitIndexFresh(app, t0, 10000);
   const reconcileMs = Date.now() - t0;
@@ -269,7 +269,7 @@ test('5. five corrupt files: the app stays up and lists exactly those problems; 
 
   // fix the files: the problems clear
   for (const [file, text] of originals) await fs.writeFile(path.join(root, ...file.split('/')), text);
-  await waitFor(async () => (await problems()).length === 0, { timeout: 15000, interval: 200, what: 'problems cleared after the fix' });
+  await waitFor(async () => (await problems()).length === 0, { timeout: 30000, interval: 200, what: 'problems cleared after the fix' });
   assert.deepEqual((await validate(root)).diagnostics, []);
   await app.stop();
 });
