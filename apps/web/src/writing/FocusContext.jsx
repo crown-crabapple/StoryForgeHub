@@ -1,6 +1,7 @@
 // Focus mode state for the whole app: on or off, the two options, and the keyboard shortcut. The scene editor registers itself as
 // "available"; the shortcut does nothing while no editor is open, and focus mode ends when the last editor goes away.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
 import { DEFAULT_FOCUS_OPTIONS, focusKeyAction, readFocusOptions, writeFocusOptions } from './focus.js';
 
 const FocusContext = createContext(null);
@@ -20,6 +21,11 @@ export function FocusProvider({ children }) {
   const [options, setOptions] = useState(() => readFocusOptions(storage()));
   const activeRef = useRef(false);
   const editors = useRef(0);
+  const shortcuts = useShortcuts();
+  const bindingsRef = useRef(shortcuts.bindings);
+  useEffect(() => {
+    bindingsRef.current = shortcuts.bindings;
+  });
   const set = useCallback((next) => {
     activeRef.current = next;
     setActive(next);
@@ -27,7 +33,7 @@ export function FocusProvider({ children }) {
 
   useEffect(() => {
     const onKeyDown = (e) => {
-      const action = focusKeyAction(e, { focus: activeRef.current, dialogOpen: dialogOpen() });
+      const action = focusKeyAction(e, { focus: activeRef.current, dialogOpen: dialogOpen() }, bindingsRef.current);
       if (action === 'toggle' && (activeRef.current || editors.current > 0)) {
         e.preventDefault();
         set(!activeRef.current);

@@ -510,6 +510,7 @@ mark {
   font-family: var(--font-prose);
   font-size: var(--fs-prose);
   line-height: var(--lh-prose);
+  letter-spacing: var(--ls-prose, 0em);
 }
 .paper h1 {
   margin: 0 0 var(--s2);
@@ -553,6 +554,7 @@ mark {
   font-family: var(--font-prose);
   font-size: var(--fs-prose);
   line-height: var(--lh-prose);
+  letter-spacing: var(--ls-prose, 0em);
 }
 .prose-comment {
   color: var(--muted);
@@ -4242,4 +4244,148 @@ label.form-check {
   border: 1px solid var(--warning);
   border-radius: 4px;
   font-size: var(--fs-13);
+}
+
+/* ---------- customization: panels, shortcuts, settings (M07-J04) ---------- */
+
+/* the manuscript's paragraph spacing and letter spacing are variables of the profile (typography); the defaults add nothing */
+.editor-surface .cm-content {
+  letter-spacing: var(--ls-prose, 0em);
+}
+.editor-surface .cm-line:has(> br:only-child) {
+  padding-bottom: var(--para-space, 0em);
+}
+
+.workspace {
+  position: relative;
+}
+.panel-separator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.panel-separator[data-panel='rail'] {
+  left: calc(var(--rail) - 4px);
+}
+.panel-separator[data-panel='inspector'] {
+  right: calc(var(--inspector) - 4px);
+}
+.panel-separator::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+}
+.panel-separator:hover::after,
+.panel-separator:focus-visible::after {
+  background: var(--accent);
+}
+@media (max-width: 1199px) {
+  .panel-separator[data-panel='inspector'] {
+    display: none;
+  }
+}
+@media (max-width: 899px) {
+  .panel-separator {
+    display: none;
+  }
+}
+
+.topbar-button {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  cursor: pointer;
+}
+.topbar-button:hover {
+  text-decoration: underline;
+}
+
+.pref-section {
+  margin-top: var(--s6);
+}
+.pref-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pref-table th,
+.pref-table td {
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--divider);
+  text-align: left;
+  vertical-align: top;
+}
+.pref-modules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pref-modules li {
+  padding: var(--s1) 0;
+}
+.pref-pins {
+  margin: 0;
+  padding-left: var(--s5);
+}
+.theme-tokens {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--s2) var(--s4);
+}
+.theme-token {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--s1) var(--s2);
+}
+.theme-token label {
+  grid-column: 1 / -1;
+}
+.theme-fails {
+  margin: 0 0 var(--s2);
+  padding-left: var(--s5);
+}
+kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--fs-13);
+  white-space: nowrap;
+}
+.shortcut-capture {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+}
+.shortcuts-dialog {
+  max-height: 85vh;
+  overflow: auto;
+}
+.shortcut-list {
+  margin: 0 0 var(--s3);
+}
+.shortcut-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s1) 0;
+  border-bottom: 1px solid var(--divider);
+}
+.shortcut-row dt,
+.shortcut-row dd {
+  margin: 0;
 }

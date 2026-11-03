@@ -2,12 +2,14 @@ import { BookActions } from '../export/BookActions.jsx';
 import { IndexStatus } from '../IndexStatus.jsx';
 import { Link } from '../router.jsx';
 import { SearchBox } from '../SearchBox.jsx';
+import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
 import { BookSwitcher } from './BookSwitcher.jsx';
 import { BookIcon } from './icons.jsx';
 import { SaveStatus } from './SaveStatus.jsx';
 
 /** Logo, book switcher, save status, search, index status. @param {{ books: any[] | null, bookId: string | null }} props */
 export function TopBar({ books, bookId }) {
+  const keys = useShortcuts();
   const current = bookId && books ? (books.find((b) => b.id === bookId) ?? null) : null;
   return (
     <header className="topbar">
@@ -23,6 +25,9 @@ export function TopBar({ books, bookId }) {
       <SearchBox />
       <IndexStatus />
       <nav aria-label="Application" className="topbar-nav">
+        <button type="button" className="topbar-button" aria-keyshortcuts={keys.aria('help.shortcuts')} onClick={keys.showCheatSheet}>
+          Shortcuts
+        </button>
         <Link to="/settings" className="topbar-link">
           Settings
         </Link>

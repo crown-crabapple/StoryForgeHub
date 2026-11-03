@@ -6,6 +6,7 @@ import { AiProvider, useAi } from './ai/AiContext.jsx';
 import { EditorBridgeProvider, useEditorBridge } from './editor/bridge.jsx';
 import { SceneEditorPage } from './editor/SceneEditorPage.jsx';
 import { parseView } from './planning/model.js';
+import { usePrefs } from './prefs/PrefsContext.jsx';
 import { PlanningWorkspace, ViewSwitch } from './planning/PlanningWorkspace.jsx';
 import { Link, useLocation } from './router.jsx';
 import { SceneInspector } from './shell/Inspector.jsx';
@@ -168,7 +169,11 @@ export function BookLayout({ book, activeId, inspector, onChanged, children }) {
 export function BookView({ bookId, sceneId, file }) {
   const { status } = useStatus();
   const { search } = useLocation();
-  const { view, mode, thread: threadId } = parseView(search);
+  const prefs = usePrefs();
+  const parsedView = parseView(search);
+  const { mode, thread: threadId } = parsedView;
+  // the Board and Threads views follow their modules (M07-J04): with one off its address shows the manuscript
+  const view = (parsedView.view === 'board' || parsedView.view === 'threads') && !prefs.moduleOn(parsedView.view) ? 'write' : parsedView.view;
   const [bump, setBump] = useState(0);
   const version = `${bookVersion(status, bookId)}|${bump}`;
   const { data: book, error, loading } = useApi(`/api/books/${encodeURIComponent(bookId)}`, version);

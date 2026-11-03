@@ -5,6 +5,7 @@ import { useWrites } from '../shell/writes.jsx';
 import { send, slugify } from '../structure/helpers.js';
 import { PreviewDialog } from '../structure/PreviewDialog.jsx';
 import { useStructure } from '../structure/useStructure.jsx';
+import { usePrefs } from '../prefs/PrefsContext.jsx';
 import { BoardView } from './BoardView.jsx';
 import { CardDialog, NewThreadDialog } from './dialogs.jsx';
 import { MatrixView } from './MatrixView.jsx';
@@ -20,10 +21,11 @@ import { explainPlanningFailure, newCardRequest, newThreadRequest, sceneFieldsRe
  * @param {{ bookId: string, view: string, mode?: string, scene?: string | null }} props
  */
 export function ViewSwitch({ bookId, view, mode = 'list', scene = null }) {
+  const prefs = usePrefs(); // Board and Threads follow their modules (M07-J04)
   return (
     <nav aria-label="Manuscript views" className="view-switch">
       <ul>
-        {VIEWS.map((v) => (
+        {VIEWS.filter((v) => (v.key !== 'board' && v.key !== 'threads') || prefs.moduleOn(v.key)).map((v) => (
           <li key={v.key}>
             <Link to={viewHref(bookId, v.key, { scene })} className="view-tab" aria-current={v.key === view ? 'page' : undefined}>
               {v.label}

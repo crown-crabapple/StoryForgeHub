@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from 'react';
 import { putJson } from '../api.js';
 import { DiagnosticList } from '../shell/Inspector.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
+import { registryKeymap } from '../shortcuts/editor-keymap.js';
+import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
 import { bookUrl, pathsOf } from '../structure/helpers.js';
 import { detectLineEnding, loadBuffer, serialise } from './buffer.js';
 import { plainSurface } from './extensions.js';
@@ -17,6 +19,11 @@ export function RawEditorDialog({ book, scene, onClose, onSaved }) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
   const saveRef = useRef(() => {});
+  const shortcuts = useShortcuts();
+  const shortcutsRef = useRef(shortcuts);
+  useEffect(() => {
+    shortcutsRef.current = shortcuts;
+  });
   const [loaded, setLoaded] = useState(null); // { text, sha256 } once read
   const [loadError, setLoadError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -44,7 +51,8 @@ export function RawEditorDialog({ book, scene, onClose, onSaved }) {
     const { state } = loadBuffer(loaded.text, [
       plainSurface(),
       history(),
-      keymap.of([{ key: 'Mod-s', run: () => (saveRef.current(), true), preventDefault: true }, ...historyKeymap, ...defaultKeymap]),
+      registryKeymap(() => shortcutsRef.current.bindings, { 'editor.save': () => (saveRef.current(), true) }),
+      keymap.of([...historyKeymap, ...defaultKeymap]),
       EditorView.contentAttributes.of({ 'aria-label': 'Whole scene file', spellcheck: 'false' }),
     ]);
     const view = new EditorView({ state, parent: hostRef.current });

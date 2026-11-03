@@ -4,6 +4,7 @@ import { BookIcon, ChevronDownIcon, FolderIcon } from './shell/icons.jsx';
 import { RowMenu } from './structure/RowMenu.jsx';
 import { actKey, chapterKey, readCollapsed, writeCollapsed } from './structure/collapse.js';
 import { STATUSES, actName, archivedName, archivedScenes, chapterName, povInitial, wordsOf } from './structure/helpers.js';
+import { useShortcuts } from './shortcuts/ShortcutsContext.jsx';
 import { dropTarget, halfOf, keyboardTarget } from './structure/move-target.js';
 import { useStructure } from './structure/useStructure.jsx';
 import { bookProgress, chapterProgress } from './writing/scene-context.js';
@@ -174,6 +175,7 @@ function ArchivedSection({ book, start }) {
  * @param {{ book: any, activeId?: string | null, onChanged?: (info: any) => void }} props
  */
 export function Outline({ book, activeId = null, onChanged }) {
+  const shortcuts = useShortcuts(); // outline.moveUp / outline.moveDown come from the shortcut registry (M07-J04)
   const [collapsed, setCollapsed] = useState(() => readCollapsed(book.id));
   const [dragId, setDragId] = useState(null);
   const [drop, setDrop] = useState(null);
@@ -304,16 +306,17 @@ export function Outline({ book, activeId = null, onChanged }) {
     }
   }
 
-  /** Alt+Up / Alt+Down on a scene row: one slot up or down in book order. */
+  /** outline.moveUp / outline.moveDown (Alt+Up / Alt+Down unless rebound) on a scene row: one slot up or down in book order. */
   function onKeyDown(e) {
-    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    const command = shortcuts.commandFor(e.nativeEvent ?? e, 'outline');
+    if (command === 'outline.moveUp' || command === 'outline.moveDown') {
       const el = e.target instanceof Element ? e.target : null;
       const row = el && !el.closest('[role="menu"]') ? el.closest('[data-scene-id]') : null;
       if (row) {
         e.preventDefault();
         const scene = findScene(book, row.dataset.sceneId);
         if (!scene) return;
-        const direction = e.key === 'ArrowUp' ? 'up' : 'down';
+        const direction = command === 'outline.moveUp' ? 'up' : 'down';
         const target = keyboardTarget(book, scene.id, direction);
         if (!target) setLive(`${scene.title || 'Untitled scene'} is already ${direction === 'up' ? 'first' : 'last'} in the book.`);
         else void move(scene, target);
