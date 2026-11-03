@@ -51,7 +51,8 @@ test('shared mode: STORYFORGE_OWNER creates the owner once and prints the setup 
   const token = tokenOf(links[0]);
 
   const health = await call(first.port, 'GET', '/api/health', viaProxy);
-  assert.equal(health.status, 401, 'in shared mode even /api/health needs a login (the HEALTHCHECK accepts this answer)');
+  assert.equal(health.status, 200, 'the liveness probe needs no login');
+  assert.deepEqual(health.json, { ok: true }, 'and tells a signed-out caller nothing else (no library path, no version)');
   assert.equal((await call(first.port, 'GET', '/api/health', { headers: { Host: 'elsewhere.example' } })).status, 403, 'a Host that is not the public one is refused');
   const me = await call(first.port, 'GET', '/api/auth/me', viaProxy);
   assert.equal(me.status, 200, me.text);

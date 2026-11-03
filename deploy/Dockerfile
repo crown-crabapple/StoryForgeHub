@@ -31,6 +31,6 @@ VOLUME ["/library", "/config", "/shared-data"]
 USER 10001:10001
 EXPOSE 4317
 # curl is not in the slim image. The shared-mode gate checks the Host header, so the check sends the one the server expects (the public URL's, else the bind address).
-# In shared mode /api/health answers 401 until someone is signed in: any answer that is not a refusal of the Host (403) or an error counts as alive.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "const e=process.env,p=e.STORYFORGE_PORT||'4317',m=e.STORYFORGE_MODE||'shared',h=e.STORYFORGE_HOST||(m==='personal'?'127.0.0.1':'0.0.0.0'),H=m==='shared'&&e.STORYFORGE_PUBLIC_URL?new URL(e.STORYFORGE_PUBLIC_URL).host:h+':'+p;require('node:http').get({host:'127.0.0.1',port:p,path:'/api/health',headers:{host:H},timeout:4000},r=>process.exit(r.statusCode===200||r.statusCode===401?0:1)).on('error',()=>process.exit(1)).on('timeout',function(){this.destroy()})"
+# /api/health answers 200 without a login (a signed-out caller gets only { ok: true }); a refused Host (403) or an error counts as down.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD node -e "const e=process.env,p=e.STORYFORGE_PORT||'4317',m=e.STORYFORGE_MODE||'shared',h=e.STORYFORGE_HOST||(m==='personal'?'127.0.0.1':'0.0.0.0'),H=m==='shared'&&e.STORYFORGE_PUBLIC_URL?new URL(e.STORYFORGE_PUBLIC_URL).host:h+':'+p;require('node:http').get({host:'127.0.0.1',port:p,path:'/api/health',headers:{host:H},timeout:4000},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1)).on('timeout',function(){this.destroy()})"
 ENTRYPOINT ["node", "deploy/entrypoint.mjs"]
