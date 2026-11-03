@@ -1,0 +1,268 @@
+/* Insights, sprint timers and revision tasks (M07-J02). Design tokens only; charts are plain SVG. */
+.ins-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.ins-page section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.ins-page h2 {
+  margin-top: var(--s4);
+}
+.ins-chart,
+.ins-goals,
+.ins-timer {
+  padding: var(--s4);
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-card);
+}
+.ins-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-bottom: var(--s2);
+}
+.ins-chart-head h3,
+.ins-timer h3 {
+  margin: 0;
+  font-size: var(--fs-15);
+}
+.ins-range {
+  display: flex;
+  gap: var(--s2);
+}
+.ins-note {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-13);
+}
+
+/* SVG parts */
+.ins-svg {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: auto;
+}
+.ins-axis {
+  stroke: var(--text-3);
+  stroke-width: 1;
+}
+.ins-tick,
+.ins-label,
+.ins-value,
+.ins-cell-n {
+  fill: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+.ins-label {
+  fill: var(--text-2);
+  font-size: 12px;
+}
+.ins-value {
+  fill: var(--text);
+}
+.ins-bar {
+  fill: var(--accent);
+}
+.ins-track {
+  fill: var(--border);
+}
+.ins-hit {
+  fill: transparent;
+  stroke: transparent;
+}
+.ins-link {
+  cursor: pointer;
+  outline: none;
+}
+.ins-link:hover .ins-hit,
+.ins-link:focus-visible .ins-hit {
+  fill: var(--surface-2);
+  stroke: var(--accent);
+}
+.ins-link:hover .ins-bar,
+.ins-link:focus-visible .ins-bar {
+  fill: var(--text);
+}
+.ins-link:hover .ins-label,
+.ins-link:focus-visible .ins-label {
+  fill: var(--text);
+  text-decoration: underline;
+}
+
+/* heat map and thread matrix */
+.ins-heat-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.ins-heat {
+  max-width: none;
+}
+.ins-cell {
+  fill: var(--surface-2);
+}
+.ins-cell[data-level='1'] {
+  fill: color-mix(in srgb, var(--accent) 25%, var(--surface));
+}
+.ins-cell[data-level='2'] {
+  fill: color-mix(in srgb, var(--accent) 45%, var(--surface));
+}
+.ins-cell[data-level='3'] {
+  fill: color-mix(in srgb, var(--accent) 70%, var(--surface));
+}
+.ins-cell[data-level='4'] {
+  fill: var(--accent);
+}
+.ins-cell[data-level='3'] ~ .ins-cell-n,
+.ins-cell[data-level='4'] ~ .ins-cell-n {
+  fill: var(--accent-ink);
+}
+.ins-cell-n {
+  fill: var(--text);
+  pointer-events: none;
+}
+.ins-cell[data-on='true'] {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+.ins-cell-btn {
+  cursor: pointer;
+  outline: none;
+}
+.ins-cell-btn:focus-visible .ins-cell {
+  stroke: var(--text);
+  stroke-width: 2;
+}
+.ins-cell-detail {
+  margin-top: var(--s3);
+  padding: var(--s3);
+  background: var(--surface-2);
+  border-radius: var(--r-control);
+}
+.ins-cell-detail p {
+  margin: 0 0 var(--s2);
+}
+.ins-scene-links {
+  margin: 0 0 var(--s2);
+  padding-left: var(--s5);
+}
+
+/* the table form */
+.ins-table-wrap {
+  overflow-x: auto;
+}
+.ins-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-13);
+}
+.ins-table caption {
+  margin-bottom: var(--s2);
+  text-align: left;
+}
+.ins-table th,
+.ins-table td {
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--divider);
+  text-align: left;
+  font-weight: 400;
+}
+.ins-table thead th {
+  color: var(--text-3);
+  font-weight: 600;
+}
+.ins-table tbody th {
+  color: var(--text);
+}
+
+/* goals and the timer */
+.ins-goal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ins-goal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  align-items: flex-start;
+}
+.ins-goal .progress {
+  max-width: 420px;
+}
+.ins-goal-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: center;
+}
+.ins-goal-text {
+  margin: 0;
+  font-size: var(--fs-13);
+}
+.ins-kinds {
+  display: flex;
+  gap: var(--s4);
+  margin: 0 0 var(--s3);
+  padding: 0;
+  border: 0;
+}
+.ins-radio {
+  display: inline-flex;
+  gap: var(--s2);
+  align-items: center;
+}
+.ins-clock {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-h3);
+  font-variant-numeric: tabular-nums;
+}
+.ins-timer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.ins-chip {
+  margin-left: auto;
+  padding: var(--s1) var(--s3);
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: var(--r-control);
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+.ins-chip:focus-visible {
+  outline: var(--focus);
+  outline-offset: var(--focus-offset);
+}
+.ins-task-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* tasks */
+.tk-notes {
+  white-space: pre-wrap;
+}
+.tk-warn {
+  display: block;
+}
+.cf-task {
+  margin: var(--s3) 0 0;
+}
+.mt-text {
+  font-size: var(--fs-13);
+}

@@ -37,7 +37,7 @@ test('3. goals: add, change, remove through the routes; the file is created on t
   assert.equal(a.status, 200, a.text);
   assert.equal(a.json.goal.id, 'g1');
   const t1 = await read(ctx.root, GOALS);
-  assert.match(t1, /^---\nschema: storyforge\.goals\/v1\nid: note_[0-9A-HJKMNP-TV-Z]{26}\ngoals:\n  - \{ id: g1, kind: words, target: 500, period: day \}\n---\n$/);
+  assert.match(t1, /^---\nschema: storyforge\.goals\/v1\nid: note_[0-9A-HJKMNP-TV-Z]{26}\ngoals:\n {2}- \{ id: g1, kind: words, target: 500, period: day \}\n---\n$/);
   const bb = await send(ctx.port, 'POST', b('/goals'), { body: { goal: { kind: 'words', target: 90000, period: 'total', due: '2027-03-01' } } });
   assert.equal(bb.json.goal.id, 'g2');
   const c = await send(ctx.port, 'POST', b('/goals'), { body: { goal: { kind: 'minutes', target: 300, period: 'week', scope: CHAP } } });
@@ -84,7 +84,7 @@ test('3. goals: items the app cannot read are kept as written when other goals c
 schema: storyforge.goals/v1
 id: note_01J00000000000000000000001
 goals:
-  - { id: g1, kind: words, target: 500, period: day }
+ {2}- { id: g1, kind: words, target: 500, period: day }
   - { id: g2, kind: pages, target: 3, period: day }
   - a note to myself
 ---

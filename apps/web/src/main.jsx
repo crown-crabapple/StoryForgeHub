@@ -9,6 +9,7 @@ import './theme/tokens.css';
 import './theme/base.css';
 import { App } from './App.jsx';
 import './styles.css';
+import './insights/insights.css';
 
 installFocusRestore();
 createRoot(document.getElementById('root')).render(

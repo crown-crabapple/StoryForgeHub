@@ -124,6 +124,17 @@ export function computeInsights(inp) {
     return new Set([...ids].map((id) => chapterKey(sceneById.get(id)))).size;
   }
 
+  // the chapters and acts a goal can be scoped to, by name (a container with no scenes keeps its id as its name)
+  const scopes = inp.containers
+    .map((c) => {
+      const inside = scenes.filter((s) => (c.kind === 'chapter' ? dir(s.path) === c.dir : s.path.startsWith(`${c.dir}/`)));
+      const first = inside[0];
+      const ch = first ? chapters[chapterIndex.get(chapterKey(first))] : null;
+      const name = c.kind === 'chapter' ? (ch ? (ch.title ? `${ch.label ?? `Chapter ${ch.chapter}`}: ${ch.title}` : (ch.label ?? `Chapter ${ch.chapter}`)) : c.id) : first ? `Act ${first.act}` : c.id;
+      return { id: c.id, kind: c.kind, name, at: first ? first.position : Infinity };
+    })
+    .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'act' ? -1 : 1) || a.at - b.at || cmp(a.id, b.id))
+    .map((x) => ({ id: x.id, kind: x.kind, name: x.name }));
   const earliest = [...logByDate.keys(), ...sessByDate.keys()].sort()[0] ?? today;
   function streakOf(g) {
     if (g.period !== 'day') return 0;
@@ -153,7 +164,7 @@ export function computeInsights(inp) {
     const out = {
       id: g.id, kind: g.kind, period: g.period, target: g.target, value,
       percent: Math.min(100, Math.floor((100 * value) / g.target)), met: value >= g.target,
-      scope: g.scope ?? null, scope_found: g.scope ? scopeName !== null : true,
+      scope: g.scope ?? null, scope_found: g.scope ? scopeName !== null : true, scope_name: scopes.find((x) => x.id === g.scope)?.name ?? null,
       due: g.due ?? null, legacy: g.legacy === true,
       period_start: from, streak: streakOf(g), projected_finish: null, on_track: null, reached: g.period === 'total' && value >= g.target,
     };
@@ -317,7 +328,7 @@ export function computeInsights(inp) {
     schema: 'storyforge.insights/v1',
     as_of: today,
     book: { id: inp.book.id, title: inp.book.title, word_target: inp.book.word_target, words: totalWords, scenes: scenes.length },
-    progress: { goals, days },
+    progress: { goals, days, scopes },
     manuscript: {
       chapters: perChapter,
       scenes: scenes.map((s) => ({ id: s.id, title: s.title, act: s.act, chapter: s.chapter, position: s.position, words: s.word_count, status: s.status, pov: s.pov })),

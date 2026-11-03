@@ -3,6 +3,7 @@ import { SourceLink } from '../continuity/ShowBoth.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { SEVERITY_LABEL } from '../continuity/model.js';
 import { checkOpenHref } from './model.js';
+import { MakeTaskButton } from '../tasks/MakeTaskButton.jsx';
 
 /** One finding of the report: severity word, code, message, the evidence line, and an Open link to file:line. Presentational. */
 export function CheckFinding({ bookId, scene, finding: f }) {
@@ -29,6 +30,9 @@ export function CheckFinding({ bookId, scene, finding: f }) {
       {f.evidence && <blockquote className="ck-evidence">{f.evidence}</blockquote>}
       <p className="muted ck-where">
         <code>{where}</code> {open}
+      </p>
+      <p>
+        <MakeTaskButton bookId={bookId} source={{ from: 'check', sceneId: scene.id, finding: f }} />
       </p>
     </li>
   );

@@ -10,11 +10,17 @@ export const PROJECT_TABS = [
   { key: 'notes', label: 'Notes', path: '/notes' },
 ];
 
-const PLACEHOLDER_TABS = PROJECT_TABS.filter((t) => t.path !== '').map((t) => t.key);
+/** Further project pages (M07-J02), shown after the tabs above: the Insights dashboard and the revision Tasks. */
+export const MORE_TABS = [
+  { key: 'insights', label: 'Insights', path: '/insights' },
+  { key: 'tasks', label: 'Tasks', path: '/tasks' },
+];
+
+const PLACEHOLDER_TABS = [...PROJECT_TABS.filter((t) => t.path !== ''), ...MORE_TABS].map((t) => t.key);
 
 /** @param {string} bookId @param {string} tab a PROJECT_TABS key */
 export function tabHref(bookId, tab) {
-  const t = PROJECT_TABS.find((x) => x.key === tab);
+  const t = [...PROJECT_TABS, ...MORE_TABS].find((x) => x.key === tab);
   return `/books/${encodeURIComponent(bookId)}${t ? t.path : ''}`;
 }
 
