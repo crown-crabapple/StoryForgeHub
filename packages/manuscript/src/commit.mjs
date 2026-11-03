@@ -40,9 +40,10 @@ export function orderChanges(changes) {
 
 /**
  * Apply changes with trash + verification + rollback.
- * @param {{store:any, bookRoot:string, root:string, op:string, args:object, changes:Change[], beforeDiagnostics:object[], stage?:(tx:any, changes:Change[]) => Promise<void>}} p
+ * `reload` (series files, M07-J01) reads the diagnostics again after the write in the same terms as `beforeDiagnostics`; by default the book at `bookRoot` is loaded.
+ * @param {{store:any, bookRoot:string, root:string, op:string, args:object, changes:Change[], beforeDiagnostics:object[], stage?:(tx:any, changes:Change[]) => Promise<void>, reload?:() => Promise<any>}} p
  */
-export async function commit({ store, bookRoot, op, args, changes, beforeDiagnostics, stage }) {
+export async function commit({ store, bookRoot, op, args, changes, beforeDiagnostics, stage, reload }) {
   const pub = publicChanges(changes);
   const ordered = orderChanges(changes);
   if (!ordered) {
@@ -75,7 +76,7 @@ export async function commit({ store, bookRoot, op, args, changes, beforeDiagnos
     {
       verify: async () => {
         if (typeof __testHooks.afterWrite === 'function') await __testHooks.afterWrite(bookRoot, pub);
-        after = await loadBook(bookRoot);
+        after = reload ? await reload() : await loadBook(bookRoot);
         if ('error' in after) throw new Error(after.error.message);
         const fresh = newErrors(beforeDiagnostics, after.diagnostics);
         if (fresh.length) {

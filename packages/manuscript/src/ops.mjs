@@ -82,7 +82,7 @@ export async function finish({ bookRoot, store, lb, op, args, changes, dryRun, e
   if (taken) return taken;
   if (dryRun) return { ok: true, code: 'OK', dryRun: true, changes: publicChanges(changes, { diff: withDiff }), ...extra };
   if (changes.length === 0) return { ok: true, code: 'OK', changes: [], ...extra };
-  const res = await commit({ store, bookRoot, root: lb.root, op, args, changes, beforeDiagnostics: lb.diagnostics, stage });
+  const res = await commit({ store, bookRoot, root: lb.root, op, args, changes, beforeDiagnostics: lb.diagnostics, stage, reload: lb.reload });
   return { ...res, ...extra };
 }
 
