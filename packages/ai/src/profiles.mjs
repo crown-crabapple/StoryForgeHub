@@ -140,6 +140,7 @@ export function createAiSettings({ read = readUserConfig, write = writeUserConfi
       bookProfiles: isObject(data.bookProfiles) ? { ...data.bookProfiles } : {},
       bookImageProfiles: isObject(data.bookImageProfiles) ? { ...data.bookImageProfiles } : {},
       recordBooks: isObject(data.recordBooks) ? { ...data.recordBooks } : {},
+      usageBooks: isObject(data.usageBooks) ? { ...data.usageBooks } : {},
       keys: isObject(data.keys) ? { ...data.keys } : {},
     };
   }
@@ -150,6 +151,7 @@ export function createAiSettings({ read = readUserConfig, write = writeUserConfi
       bookProfiles: d.bookProfiles,
       ...(Object.keys(d.bookImageProfiles).length > 0 ? { bookImageProfiles: d.bookImageProfiles } : {}),
       recordBooks: d.recordBooks,
+      ...(Object.keys(d.usageBooks).length > 0 ? { usageBooks: d.usageBooks } : {}),
       ...(Object.keys(d.keys).length > 0 ? { keys: d.keys } : {}),
     };
     const r = await write(CONFIG_FILE, out);
@@ -372,6 +374,28 @@ export function createAiSettings({ read = readUserConfig, write = writeUserConfi
     /** Whether chat / rewrite records are saved in this book (default off). @param {string} bookId */
     async recordsOn(bookId) {
       return (await load()).recordBooks[bookId] === true;
+    },
+
+    /** Whether the book's token usage table (activity/ai-usage.md) is kept on its own (default off). @param {string} bookId */
+    async usageTracked(bookId) {
+      return (await load()).usageBooks[bookId] === true;
+    },
+
+    /** Whether a request is counted in activity/ai-usage.md: when records or usage tracking is on for the book. @param {string} bookId */
+    async usageOn(bookId) {
+      const d = await load();
+      return d.recordBooks[bookId] === true || d.usageBooks[bookId] === true;
+    },
+
+    /** @param {string} bookId @param {boolean} on */
+    setUsage(bookId, on) {
+      return exclusive(async () => {
+        const d = await load();
+        if (on) d.usageBooks[bookId] = true;
+        else delete d.usageBooks[bookId];
+        await save(d);
+        return { ok: true };
+      });
     },
 
     /** @param {string} bookId @param {boolean} on */

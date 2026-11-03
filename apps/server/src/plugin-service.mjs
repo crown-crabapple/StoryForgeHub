@@ -6,11 +6,11 @@ import { openPluginTokens } from '@storyforge/shared';
 import { userConfigDir } from '@storyforge/store';
 
 /**
- * @param {{ shared?: { dir?: string } | null, enabled?: (bookId: string) => Promise<boolean> | boolean,
+ * @param {{ shared?: { dir?: string } | null, keystore?: ReturnType<typeof import('@storyforge/ai').createKeystore> | null, enabled?: (bookId: string) => Promise<boolean> | boolean,
  *   dispatcher?: { deliver?: any, backoffMs?: readonly number[], timeoutMs?: number, now?: () => number, sleep?: (ms: number) => Promise<void> } }} p
  *   `dispatcher` is a test seam for the delivery function and the retry timing; production never sets it.
  */
-export function createPluginService({ shared = null, enabled, dispatcher: seam = {} }) {
+export function createPluginService({ shared = null, keystore = null, enabled, dispatcher: seam = {} }) {
   /** The folder both stores live in; null when shared mode was started without one. */
   const dir = () => (shared ? shared.dir ?? null : userConfigDir());
   /** @type {Promise<Awaited<ReturnType<typeof openPluginTokens>>> | null} */
@@ -36,7 +36,7 @@ export function createPluginService({ shared = null, enabled, dispatcher: seam =
     webhooks() {
       const d = dir();
       if (d === null) return Promise.reject(new Error('no shared-data folder'));
-      return lazy(() => openWebhooks(d), hooksP, (p) => (hooksP = p));
+      return lazy(() => openWebhooks(d, keystore ? { keystore } : {}), hooksP, (p) => (hooksP = p));
     },
     dispatcher: createDispatcher({
       store: () => service.webhooks().catch(() => null),
