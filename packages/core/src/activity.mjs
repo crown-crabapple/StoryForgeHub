@@ -134,9 +134,9 @@ export function createActivity({ rootOf, readGoal, afterWrite = () => {}, now = 
     async sessions(bookPath) {
       const store = await openStore(rootOf(bookPath), { recover: false });
       const rows = [];
-      const years = (await store.list(SESSIONS_DIR)).filter((e) => e.isDirectory && /^d{4}$/.test(e.name)).map((e) => e.name).sort();
+      const years = (await store.list(SESSIONS_DIR)).filter((e) => e.isDirectory && /^\d{4}$/.test(e.name)).map((e) => e.name).sort();
       for (const y of years) {
-        const files = (await store.list(`${SESSIONS_DIR}/${y}`)).filter((e) => !e.isDirectory && /^d{4}-d{2}.md$/.test(e.name)).map((e) => e.name).sort();
+        const files = (await store.list(`${SESSIONS_DIR}/${y}`)).filter((e) => !e.isDirectory && /^\d{4}-\d{2}\.md$/.test(e.name)).map((e) => e.name).sort();
         for (const f of files) {
           const got = await store.read(`${SESSIONS_DIR}/${y}/${f}`);
           if (got) rows.push(...parseSessions(got.bytes.toString('utf8')));
