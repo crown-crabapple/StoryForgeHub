@@ -157,6 +157,7 @@ export function applyGoalOp(text, op) {
     return [...lines.slice(0, r.to), `goals:${cr}`, line, ...lines.slice(r.to)].join('\n');
   }
   const hit = block.items.find(sameId);
+  if (hit && JSON.stringify(asGoal(hit.value)) === JSON.stringify(op.set)) return text; // nothing changes: the file stays byte for byte
   if (hit) return [...lines.slice(0, hit.from), line, ...lines.slice(hit.to)].join('\n');
   if (block.items.length === 0) {
     // `goals: []` or an empty key: make it a block
