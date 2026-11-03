@@ -1,0 +1,18 @@
+# Build context of deploy/Dockerfile is the repository root. Keep the image small and keep anything a person wrote out of it.
+node_modules
+**/node_modules
+.git
+**/.storyforge
+apps/web/dist
+# tests and test fixtures are not needed at runtime
+**/test
+packages/format/fixtures
+packages/manuscript/fixtures
+# local data and settings that must never be baked into an image
+deploy/library
+deploy/config
+deploy/shared-data
+deploy/storyforge.env
+**/*.env
+*.zip
+wt-*

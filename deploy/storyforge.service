@@ -1,0 +1,34 @@
+# systemd unit for StoryForge on a bare server (M08-J01). Install:
+#   sudo useradd --system --home-dir /var/lib/storyforge --create-home --shell /usr/sbin/nologin storyforge
+#   (put the program in /opt/storyforge: git clone or unzip, then `npm ci && npm run build && npm prune --omit=dev` there as root)
+#   sudo mkdir -p /etc/storyforge /srv/storyforge/library /var/lib/storyforge/shared-data
+#   sudo cp deploy/storyforge.env.example /etc/storyforge/storyforge.env       and edit it: STORYFORGE_OWNER, STORYFORGE_PUBLIC_URL, STORYFORGE_HOST=127.0.0.1
+#   sudo chown -R storyforge:storyforge /srv/storyforge /var/lib/storyforge
+#   sudo cp deploy/storyforge.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now storyforge
+#   journalctl -u storyforge          the one-time setup link is printed here on the first start
+[Unit]
+Description=StoryForge (Markdown-first novel studio, shared mode)
+After=network.target
+
+[Service]
+Type=simple
+User=storyforge
+Group=storyforge
+WorkingDirectory=/opt/storyforge
+EnvironmentFile=/etc/storyforge/storyforge.env
+Environment=STORYFORGE_LIBRARY=/srv/storyforge/library
+Environment=STORYFORGE_SHARED_DATA=/var/lib/storyforge/shared-data
+Environment=XDG_CONFIG_HOME=/var/lib/storyforge/config
+ExecStart=/usr/bin/node deploy/entrypoint.mjs
+Restart=on-failure
+RestartSec=5
+# the server closes its library cleanly on SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/storyforge /var/lib/storyforge
+
+[Install]
+WantedBy=multi-user.target

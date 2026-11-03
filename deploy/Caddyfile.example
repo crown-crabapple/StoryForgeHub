@@ -1,0 +1,7 @@
+# Caddy terminates TLS (certificates are fetched and renewed automatically) and passes everything to StoryForge.
+# Copy to Caddyfile, replace the domain with yours, and set STORYFORGE_PUBLIC_URL=https://write.example.org in storyforge.env to the same address.
+# Under Docker Compose the app is reached as storyforge:4317; with a bare Node install on the same machine use 127.0.0.1:4317 instead.
+write.example.org {
+	encode zstd gzip
+	reverse_proxy storyforge:4317
+}

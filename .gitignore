@@ -2,3 +2,9 @@ node_modules/
 .storyforge/
 !packages/format/fixtures/**/.storyforge/
 dist/
+
+# local deployment data and settings (deploy/compose.yaml bind mounts, the copy of storyforge.env.example)
+deploy/storyforge.env
+deploy/library/
+deploy/config/
+deploy/shared-data/
