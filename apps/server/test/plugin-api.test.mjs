@@ -215,6 +215,8 @@ test('proposals by hunks: ranges into the body, overlap and bad ranges refused, 
     [{ target: 'scene_01S5000000000000000000ZZZZ', text: 'x' }, 404],
     [{ target: 'book_01S5000000000000000000000A', text: 'x' }, 404],
     [{ target: SCENE, text: 'x', rationale: 5 }, 400],
+    [{ target: SCENE, text: 'x', base_sha256: 'nope' }, 400],
+    [{ target: SCENE, text: 'x', base_sha256: 'f'.repeat(64) }, 409],
   ];
   for (const [body, status] of bad) assert.equal((await t.plugin(token, 'POST', `/api/v1/books/${SLUG}/proposals`, { body })).status, status, JSON.stringify(body).slice(0, 80));
   assert.equal((await t.plugin(token, 'POST', `/api/v1/books/${SLUG}/proposals`, { body: '{nope', headers: { 'content-type': 'application/json' } })).status, 400);

@@ -42,6 +42,8 @@ before(async () => {
     '/src/codex/dialogs.jsx', '/src/codex/model.js', '/src/editor/LinkPicker.jsx', '/src/structure/PreviewDialog.jsx', '/src/world/LabelManager.jsx', '/src/world/SaveAsTemplateDialog.jsx', '/src/world/model.js',
     // M07-J02: Insights, goals, the timer, Tasks
     '/src/insights/InsightsPage.jsx', '/src/insights/GoalsPanel.jsx', '/src/tasks/TasksPage.jsx', '/src/writing/TimerPanel.jsx', '/src/suggestions/CheckReport.jsx',
+    // M08-J02: Settings -> Plugins and Webhooks
+    '/src/integrations/PluginsPanel.jsx', '/src/integrations/WebhooksPanel.jsx',
   ]) await load(p);
 
   const root = await copyFixture('valid/salt-orchard');
@@ -127,6 +129,34 @@ const MEMBERS = {
 };
 const membersPage = (extra = {}) => h(m.MembersPage, { ...MEMBERS, books: d.books.map((b) => ({ id: b.id, title: b.title })), ...extra });
 
+// M08-J02: Settings -> Plugins and Webhooks, rendered with data (Settings itself renders them before the server has answered). Every control is a native button, input or
+// label, so the keyboard walk is the browser's own; the audit checks names, labels, ids, the headings order and that no two controls share a name.
+const PLUGINS = {
+  api: 1,
+  manifests: [
+    { plugin: 'word-frequency', name: 'Word frequency', version: '1.0.0', api: 1, permissions: ['read'], books: 'all', homepage: '', description: 'Prints the most used words of each chapter.', path: '_plugins/word-frequency/plugin.md', problems: [] },
+    { plugin: 'tidy-notes', name: 'Tidy notes', version: '0.4.0', api: 1, permissions: ['read', 'propose'], books: ['salt-orchard'], homepage: '', description: '', path: '_plugins/tidy-notes/plugin.md', problems: [] },
+    { plugin: 'from-the-future', name: 'From the future', version: '9.0.0', api: 2, permissions: ['read'], books: 'all', homepage: '', description: '', path: '_plugins/future/plugin.md', problems: [{ code: 'W315', location: 'api', message: 'needs a newer StoryForge' }] },
+    { plugin: null, name: null, version: null, api: null, permissions: [], books: 'all', homepage: '', description: '', path: '_plugins/broken/plugin.md', problems: [{ code: 'E102', location: 'schema', message: 'schema must be storyforge.plugin/v1' }] },
+  ],
+  grants: [
+    { id: 'tok_01S8000000000000000000AAAA', plugin: 'word-frequency', permissions: ['read'], books: 'all', created: 1_793_000_000_000, last_used: 1_793_100_000_000, revoked: false },
+    { id: 'tok_01S8000000000000000000BBBB', plugin: 'tidy-notes', permissions: ['read', 'propose'], books: ['salt-orchard'], created: 1_793_000_000_000, last_used: null, revoked: false },
+    { id: 'tok_01S8000000000000000000CCCC', plugin: 'old-one', permissions: ['read', 'events'], books: 'all', created: 1_790_000_000_000, last_used: 1_790_500_000_000, revoked: true },
+  ],
+  books: [{ id: BOOK_ID, slug: 'salt-orchard', title: 'The Salt Orchard' }, { id: 'book_01S5000000000000000000000B', slug: 'second-book', title: 'A Second Book' }],
+};
+const WEBHOOKS = {
+  events: ['scene.saved'],
+  books: PLUGINS.books,
+  webhooks: [
+    { id: 'whk_01S8000000000000000000AAAA', url: 'https://example.com/storyforge', events: ['scene.saved', 'suggestion.created'], books: 'all', include_content: false, allow_local: false, plugin: null, secret_hash: 'a'.repeat(64), created: 1_793_000_000_000, revoked: false, disabled: false, failures: 0, last_delivery: { at: 1_793_100_000_000, ok: true, status: 204, code: null } },
+    { id: 'whk_01S8000000000000000000BBBB', url: 'http://127.0.0.1:8787/hook', events: ['scene.saved'], books: ['salt-orchard'], include_content: true, allow_local: false, plugin: 'tidy-notes', secret_hash: 'b'.repeat(64), created: 1_793_000_000_000, revoked: false, disabled: true, failures: 20, last_delivery: { at: 1_793_100_000_000, ok: false, status: 500, code: 'HTTP_500' } },
+    { id: 'whk_01S8000000000000000000CCCC', url: 'https://old.example.org/h', events: ['export.done'], books: 'all', include_content: false, allow_local: false, plugin: null, secret_hash: 'c'.repeat(64), created: 1_790_000_000_000, revoked: true, disabled: false, failures: 0, last_delivery: null },
+  ],
+};
+const settingsPart = (...parts) => shell(h('main', { id: 'main', tabIndex: -1, className: 'page settings-page' }, h('h1', null, 'Settings'), ...parts), { bookId: null });
+
 const tshell = (children, { tab = 'manuscript' } = {}) => h(m.AppShell, { books: T.books, bookId: TIDE.so, tab }, children);
 const defs = () => [...T.labels.book.labels.map((l) => ({ ...l, scope: 'book' })), ...T.labels.series.labels.map((l) => ({ ...l, scope: 'series' }))];
 const tcodex = (props = {}) => h(m.CodexPage, { bookId: TIDE.so, types: T.types, entries: T.entries, chapters: T.chapters, typeKey: 'all', series: T.series, labelDefs: defs(), onLabel: noop, onScope: noop, ...props });
@@ -200,6 +230,14 @@ const VIEWS = {
   'Backup dialog': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.BackupDialog, { book: d.book, onClose: noop }))), OVER_PAGE],
   'Restore dialog': () => [shell(h(Fragment, null, h(m.LibraryPage, { books: d.books }), h(m.RestoreDialog, { onClose: noop })), { bookId: null }), PAGE],
   'Settings': () => [shell(h(m.SettingsView), { bookId: null }), PAGE],
+  'Settings, Plugins (manifests, a newer-StoryForge warning, a broken manifest, grants active and revoked)': () => [settingsPart(h(m.PluginsView, { data: PLUGINS, onAsk: noop, onRevoke: noop })), PAGE],
+  'Settings, Plugins, confirming a grant from a manifest (permissions and books)': () => [settingsPart(h(m.PluginsView, { data: PLUGINS, ask: { plugin: 'tidy-notes', name: 'Tidy notes', permissions: ['read', 'propose'], books: ['salt-orchard'], manual: false } })), PAGE],
+  'Settings, Plugins, granting to a plugin with no manifest, with an error': () => [settingsPart(h(m.PluginsView, { data: PLUGINS, ask: { plugin: '', name: '', permissions: ['read'], books: 'all', manual: true }, error: 'books names a book that is not in this library' })), PAGE],
+  'Settings, Plugins, the token shown once': () => [settingsPart(h(m.PluginsView, { data: PLUGINS, created: { token: 'a'.repeat(43), plugin: 'word-frequency' } })), PAGE],
+  'Settings, Plugins, nothing found yet, module off': () => [settingsPart(h(m.PluginsView, { data: { manifests: [], grants: [], books: PLUGINS.books }, moduleOff: true })), PAGE],
+  'Settings, Webhooks (active, disabled after failures, revoked; the create form with the include-text warning)': () => [settingsPart(h(m.WebhooksView, { data: WEBHOOKS })), PAGE],
+  'Settings, Webhooks, the secret shown once, with an error': () => [settingsPart(h(m.WebhooksView, { data: WEBHOOKS, created: { secret: 'f'.repeat(64), url: 'https://example.com/storyforge' }, error: 'that address is on a private network; tick "allow local network" to send there' })), PAGE],
+  'Settings, Webhooks, none yet': () => [settingsPart(h(m.WebhooksView, { data: { webhooks: [], events: [], books: PLUGINS.books }, moduleOff: true })), PAGE],
   'Sign in': () => [h(m.LoginPage, { onSignedIn: noop }), LONE_MAIN],
   'Sign in, owner setup pending': () => [h(m.LoginPage, { needsOwner: true, onSignedIn: noop }), LONE_MAIN],
   'Owner setup (/setup)': () => [h(m.SetupPage, { token: 'a'.repeat(43), onDone: noop }), LONE_MAIN],

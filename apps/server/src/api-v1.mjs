@@ -70,7 +70,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
   } catch {
     return out(500, { error: 'internal' });
   }
-  const books = /** @type {any[]} */ (await repository.listBooks());
+  const books = /** @type {any[]} */ (grant ? await repository.listBooks() : []); // an unknown or revoked token is refused before anything is read
   const slugOf = (/** @type {string} */ x) => books.find((b) => b.slug === x || b.id === x)?.slug ?? null;
   const d = decidePlugin(grant, method, pathname, slugOf);
   if (!d.ok) return out(d.status, d.body, grant);
@@ -171,6 +171,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     if (typeof b.target !== 'string' || b.target === '') return { ...none, res: badRequest('target must be the id of a scene, entry, thread or event') };
     if ((b.text === undefined) === (b.hunks === undefined)) return { ...none, res: badRequest('give exactly one of text (the whole new body) and hunks ([{ from, to, replacement }])') };
     if (b.rationale !== undefined && (typeof b.rationale !== 'string' || b.rationale.length > 20_000)) return { ...none, res: badRequest('rationale must be text (up to 20000 characters)') };
+    if (b.base_sha256 !== undefined && (typeof b.base_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(b.base_sha256))) return { ...none, res: badRequest('base_sha256 must be the sha256 the scene had when you read it') };
     if (!(await moduleOn(repository, state, 'suggestions', { bookId: bk.id }))) return { ...none, res: moduleOff('suggestions') };
     const current = await bodyOf(bk.id, b.target);
     if (current === null) return { ...none, res: NOT_FOUND };
@@ -203,6 +204,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       plugin: grant.plugin,
       mode: 'suggest',
       ...(b.rationale !== undefined ? { rationale: b.rationale } : {}),
+      ...(b.base_sha256 !== undefined ? { expectSha256: b.base_sha256 } : {}),
       by,
     });
     if (!r.ok) {
