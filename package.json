@@ -14,7 +14,8 @@
     "test": "npm test --workspaces --if-present",
     "start": "node scripts/start.mjs",
     "dev": "npm run dev -w @storyforge/web",
-    "test:large": "npm run test:large -w @storyforge/server"
+    "test:large": "npm run test:large -w @storyforge/server",
+    "bench": "node bench/run.mjs"
   },
   "engines": {
     "node": ">=22"
