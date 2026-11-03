@@ -20,6 +20,44 @@ export function TimerChip({ insightsHref }) {
 }
 
 /**
+ * A timer that is running or paused: the time left (the clock itself is not a live region: the minutes are announced in the shared one), Pause / Resume, Finish now, Abandon.
+ * Presentational. @param {{ timer: import('./timers.js').Timer, here: boolean, onPause: () => void, onResume: () => void, onFinish: () => void, onAbandon: () => void }} props
+ */
+export function TimerRunning({ timer, here, onPause, onResume, onFinish, onAbandon }) {
+  return (
+    <section className="ins-timer" aria-label={`${NAME[timer.kind]} in progress`}>
+      <h3>{NAME[timer.kind]}</h3>
+      <p className="ins-clock">
+        <span role="timer" aria-label="Time left">
+          {clockText(remainingMs(timer))}
+        </span>{' '}
+        <span className="muted">{timer.status === 'paused' ? 'paused' : 'left'}</span>
+      </p>
+      {timer.wordTarget && <p className="muted">Word target: {timer.wordTarget.toLocaleString('en-US')}</p>}
+      {!here && <p className="muted">This one is running for another book.</p>}
+      <div className="ins-timer-actions">
+        {timer.status === 'paused' ? (
+          <button type="button" className="btn" onClick={onResume}>
+            Resume
+          </button>
+        ) : (
+          <button type="button" className="btn" onClick={onPause}>
+            Pause
+          </button>
+        )}
+        <button type="button" className="btn btn-primary" onClick={onFinish}>
+          Finish now
+        </button>
+        <button type="button" className="btn" onClick={onAbandon}>
+          Abandon
+        </button>
+      </div>
+      <p className="muted ins-note">Finishing adds one row to this month&apos;s sessions file. Abandoning writes nothing.</p>
+    </section>
+  );
+}
+
+/**
  * Start a sprint (N minutes, an optional word target) or a plain timer, and run it: time left, Pause / Resume, Finish now, Abandon. Everything is a real button or field, so it all works
  * from the keyboard; the time left is announced once a minute in the shared live region (not here, so it is not read twice). Finishing writes a row of that kind to the book's sessions
  * file; abandoning writes nothing.
@@ -33,40 +71,7 @@ export function TimerPanel({ bookId }) {
   const [words, setWords] = useState('');
   const [error, setError] = useState(null);
 
-  if (timer) {
-    const here = timer.bookId === bookId;
-    return (
-      <section className="ins-timer" aria-label={`${NAME[timer.kind]} in progress`}>
-        <h3>{NAME[timer.kind]}</h3>
-        <p className="ins-clock">
-          <span role="timer" aria-label="Time left">
-            {clockText(remainingMs(timer))}
-          </span>{' '}
-          <span className="muted">{timer.status === 'paused' ? 'paused' : 'left'}</span>
-        </p>
-        {timer.wordTarget && <p className="muted">Word target: {timer.wordTarget.toLocaleString('en-US')}</p>}
-        {!here && <p className="muted">This one is running for another book.</p>}
-        <div className="ins-timer-actions">
-          {timer.status === 'paused' ? (
-            <button type="button" className="btn" onClick={resume}>
-              Resume
-            </button>
-          ) : (
-            <button type="button" className="btn" onClick={pause}>
-              Pause
-            </button>
-          )}
-          <button type="button" className="btn btn-primary" onClick={() => void finishNow()}>
-            Finish now
-          </button>
-          <button type="button" className="btn" onClick={abandon}>
-            Abandon
-          </button>
-        </div>
-        <p className="muted ins-note">Finishing adds one row to this month&apos;s sessions file. Abandoning writes nothing.</p>
-      </section>
-    );
-  }
+  if (timer) return <TimerRunning timer={timer} here={timer.bookId === bookId} onPause={pause} onResume={resume} onFinish={() => void finishNow()} onAbandon={abandon} />;
 
   const submit = (e) => {
     e.preventDefault();

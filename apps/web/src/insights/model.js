@@ -15,7 +15,7 @@ export const insightsHref = (bookId, { cell = null } = {}) => `/books/${enc(book
 
 /** The selected heat-map cell of a query string, or null. @param {string} search @returns {{ id: string, chapter: number } | null} */
 export function parseInsightsSearch(search = '') {
-  const m = /^(.+):(d{1,5})$/.exec(new URLSearchParams(search).get('cell') ?? '');
+  const m = /^(.+):(\d{1,5})$/.exec(new URLSearchParams(search).get('cell') ?? '');
   return m ? { id: m[1], chapter: Number(m[2]) } : null;
 }
 /** /books/:id/tasks with the optional ?status= filter or ?task= selection. @param {string} bookId @param {{ status?: string | null, task?: string | null }} [q] */

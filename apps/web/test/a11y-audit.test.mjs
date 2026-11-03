@@ -13,7 +13,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 import { createFsRepository } from '../../../packages/core/src/index.mjs';
 import { copyFixture } from '../../server/test/helpers.mjs';
-import { BOOK as BOOK_ID, withSuggestion } from '../../server/test/suggest-helpers.mjs';
+import { BOOK as BOOK_ID, CF1, withSuggestion } from '../../server/test/suggest-helpers.mjs';
 import { audit } from './a11y-check.mjs';
 
 const webDir = fileURLToPath(new URL('..', import.meta.url));
@@ -32,6 +32,8 @@ before(async () => {
     '/src/planning/PlanningWorkspace.jsx', '/src/codex/CodexPage.jsx', '/src/timeline/TimelinePage.jsx', '/src/timeline/model.js', '/src/notes/NotesPage.jsx', '/src/continuity/ContinuityPage.jsx',
     '/src/suggestions/SuggestionReview.jsx', '/src/export/ExportDialog.jsx', '/src/export/BackupDialog.jsx', '/src/export/RestoreDialog.jsx', '/src/ai/SettingsView.jsx',
     '/src/structure/MoveDialog.jsx', '/src/PlaceholderView.jsx', '/src/editor/SceneEditorPage.jsx',
+    // M07-J02: Insights, goals, the timer, Tasks
+    '/src/insights/InsightsPage.jsx', '/src/insights/GoalsPanel.jsx', '/src/tasks/TasksPage.jsx', '/src/writing/TimerPanel.jsx', '/src/suggestions/CheckReport.jsx',
   ]) await load(p);
 
   const root = await copyFixture('valid/salt-orchard');
@@ -57,6 +59,13 @@ before(async () => {
     d.suggestion = clone((await repo.getSuggestion(BOOK_ID, (await repo.listSuggestions(BOOK_ID)).suggestions[0].id)).suggestion);
     const firstNote = d.notes.notes[0];
     d.note = firstNote ? clone(await repo.getNote(BOOK_ID, firstNote.id)) : null;
+    // M07-J02: one task made from the CF1 finding, the numbers, the check report of Arrival
+    const made = await repo.createTask(BOOK_ID, { from: 'continuity', fingerprint: CF1 });
+    d.tasks = clone(await repo.listTasks(BOOK_ID));
+    d.openedTask = clone(await repo.getTask(BOOK_ID, made.id));
+    d.insights = clone((await repo.getInsights(BOOK_ID)).insights);
+    d.codexForCell = clone(await repo.listCodexEntries(BOOK_ID));
+    d.check = clone(await repo.checkScene(BOOK_ID, scenes[1].id));
   } finally {
     await repo.close?.();
   }
@@ -72,6 +81,29 @@ const layout = (children, activeId = null, inspector = null) =>
 const planning = (view, mode = 'list') => h(m.PlanningWorkspace, { book: d.book, planning: d.planning, objects: d.objects, view, mode, render: ({ main, inspector }) => layout(main, null, inspector) });
 const sceneInspector = () =>
   h(m.SceneInspector, { book: d.book, scene: d.scene, diagnostics: { items: d.diagnostics, error: null, loading: false }, objects: d.objects, planning: d.planning, timeline: d.timeline, notes: d.notes, continuity: d.continuity });
+
+/** A heat-map cell that has scenes, from the real numbers. */
+const HEAT_CELL = () => {
+  const row = d.insights.story.characters.rows[0];
+  const at = row.cells.findIndex((n) => n > 0);
+  return { id: row.id, chapter: d.insights.story.chapters[at].chapter };
+};
+/** The numbers with three goals in them (a day goal, a total with a due date, a chapter goal) so the progress bars render. */
+const withGoals = () => {
+  const g = (o) => ({ legacy: false, scope: null, scope_found: true, scope_name: null, due: null, period_start: null, streak: 0, projected_finish: null, on_track: null, reached: false, met: false, ...o });
+  return {
+    ...d.insights,
+    progress: {
+      ...d.insights.progress,
+      goals: [
+        g({ id: 'g1', kind: 'words', period: 'day', target: 500, value: 320, percent: 64, streak: 3 }),
+        g({ id: 'g2', kind: 'words', period: 'total', target: 90000, value: 211, percent: 0, due: '2027-03-01', projected_finish: '2027-09-01', on_track: false }),
+        g({ id: 'g3', kind: 'minutes', period: 'week', target: 300, value: 300, percent: 100, met: true, scope: 'chap_x', scope_name: 'Chapter One: The Drowned Rows' }),
+      ],
+    },
+  };
+};
+const RUNNING = { kind: 'sprint', bookId: 'b', status: 'running', startedAt: 0, plannedMs: 1_500_000, activeMs: 300_000, lastAt: 0, wordTarget: 300, scenes: [], announced: 20 };
 
 const PAGE = { page: true, landmarks: ['banner', 'navigation', 'main'] };
 const WITH_BOOK_ASIDE = { ...PAGE, landmarks: [...PAGE.landmarks, 'complementary'] };
@@ -102,6 +134,16 @@ const VIEWS = {
   'Backup dialog': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.BackupDialog, { book: d.book, onClose: noop }))), OVER_PAGE],
   'Restore dialog': () => [shell(h(Fragment, null, h(m.LibraryPage, { books: d.books }), h(m.RestoreDialog, { onClose: noop })), { bookId: null }), PAGE],
   'Settings': () => [shell(h(m.SettingsView), { bookId: null }), PAGE],
+  // M07-J02: Insights (sections, charts with their table form, goals with progress bars, the timer), Tasks (list, opened task) and their dialogs
+  'Insights': () => [shell(h(m.InsightsPage, { bookId: BOOK_ID, data: d.insights }), { tab: 'insights' }), PAGE],
+  'Insights, a heat-map cell selected': () => [shell(h(m.InsightsPage, { bookId: BOOK_ID, data: d.insights, cell: HEAT_CELL(), entries: d.codexForCell.entries, entryChapters: d.codexForCell.chapters }), { tab: 'insights' }), PAGE],
+  'Insights, with goals': () => [shell(h(m.InsightsPage, { bookId: BOOK_ID, data: withGoals(), goalHandlers: { onAdd: noop, onRemove: noop } }), { tab: 'insights' }), PAGE],
+  'Insights, goal dialog': () => [shell(h(Fragment, null, h(m.InsightsPage, { bookId: BOOK_ID, data: d.insights }), h(m.GoalDialog, { scopes: d.insights.progress.scopes, error: 'The target is a whole number, 1 or more.', onSubmit: noop, onClose: noop })), { tab: 'insights' }), OVER_PAGE],
+  'Timer, running': () => [shell(h('main', { id: 'main', tabIndex: -1 }, h('h1', null, 'Insights'), h('h2', null, 'Progress'), h(m.TimerRunning, { timer: RUNNING, here: true, onPause: noop, onResume: noop, onFinish: noop, onAbandon: noop })), { tab: 'insights' }), PAGE],
+  'Tasks': () => [shell(h(m.TasksPage, { bookId: BOOK_ID, data: d.tasks, opened: d.openedTask, selectedId: d.openedTask.task.id, handlers: { onNew: noop } }), { tab: 'tasks' }), WITH_BOOK_ASIDE],
+  'Tasks, nothing yet': () => [shell(h(m.TasksPage, { bookId: BOOK_ID, data: { tasks: [], counts: { open: 0, doing: 0, done: 0, dropped: 0, total: 0 }, labels: [] } }), { tab: 'tasks' }), WITH_BOOK_ASIDE],
+  'New task dialog': () => [shell(h(Fragment, null, h(m.TasksPage, { bookId: BOOK_ID, data: d.tasks }), h(m.NewTaskDialog, { error: 'The server refused the request.', onSubmit: noop, onClose: noop })), { tab: 'tasks' }), OVER_PAGE],
+  'Check report with Make a task': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.CheckDialog, { bookId: BOOK_ID, sceneTitle: 'Arrival', report: d.check, makeTask: true, onClose: noop })), {}), OVER_PAGE],
   'Placeholder tab': () => [shell(h(m.PlaceholderView, { bookId: BOOK_ID, tab: 'places' }), { tab: 'places' }), PAGE],
 };
 
