@@ -62,7 +62,7 @@ async function until(cond, what) {
 }
 
 /** A controller the way SceneEditorPage makes one in shared mode. */
-function editor({ t, role, queue, net, timers, scene }) {
+function editor({ queue, net, timers, scene }) {
   return createSaveController({ bookId: BOOK, sceneId: SCENE, text: scene.body, sha256: scene.sha256, shared: true, offlineQueue: queue, fetch: net.fetch, timers });
 }
 
