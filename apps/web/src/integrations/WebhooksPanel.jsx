@@ -106,7 +106,7 @@ export function WebhookForm({ books, busy, error, onCreate }) {
       <h3 id={`${id}-h`}>Create a webhook</h3>
       <div className="field">
         <label htmlFor={`${id}-url`}>Address to send to</label>
-        <input id={`${id}-url`} type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/storyforge" autoComplete="off" spellCheck={false} aria-describedby={`${id}-url-hint`} />
+        <input id={`${id}-url`} type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="your-receiver.example/storyforge" autoComplete="off" spellCheck={false} aria-describedby={`${id}-url-hint`} />
         <p id={`${id}-url-hint`} className="field-hint muted">
           Use https. Plain http is allowed only for this computer (localhost or 127.0.0.1). Redirects are never followed.
         </p>

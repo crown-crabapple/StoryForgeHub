@@ -30,6 +30,7 @@ export function createWebhookEvents({ service }) {
     } catch {
       return false;
     }
+    if (!store.list().some((w) => !w.revoked && !w.disabled && w.events.includes(event))) return false; // nobody listens: no further work at all
     const slug = await slugOf(repository, bookId);
     return store.matching(event, slug).length > 0 ? slug : false;
   }
