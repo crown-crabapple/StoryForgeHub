@@ -155,6 +155,12 @@ test('goals: total goals read the manuscript (scoped to a chapter or act), minut
   assert.equal(g.ss.value, 2);
   assert.equal(g.cs.value, 2);
   assert.deepEqual([g.gone.scope_found, g.gone.value], [false, 0]);
+  assert.deepEqual([g.wc.scope_name, g.gone.scope_name], ['Chapter 2: Two', null]);
+  assert.deepEqual(computeInsights(inp).progress.scopes, [
+    { id: 'act_1', kind: 'act', name: 'Act 1' },
+    { id: 'chap_1', kind: 'chapter', name: 'Chapter 1' },
+    { id: 'chap_2', kind: 'chapter', name: 'Chapter 2: Two' },
+  ]);
 });
 
 test('goals: projected finish for a total words goal with a due date, from the last 30 days; reached goals have none', () => {

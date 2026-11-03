@@ -84,7 +84,7 @@ test('3. goals: items the app cannot read are kept as written when other goals c
 schema: storyforge.goals/v1
 id: note_01J00000000000000000000001
 goals:
- {2}- { id: g1, kind: words, target: 500, period: day }
+  - { id: g1, kind: words, target: 500, period: day }
   - { id: g2, kind: pages, target: 3, period: day }
   - a note to myself
 ---
