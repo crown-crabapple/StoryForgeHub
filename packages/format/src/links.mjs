@@ -2,7 +2,7 @@
 // Emits E103 (body paths), E301, E302, W301, W302, W303, W305, I402, and records every explicit reference
 // as a link record (see extractLinks in index.mjs), so nothing else has to resolve links again.
 import path from 'node:path';
-import { exists } from './fs.mjs';
+import { exists, mapLimit, getReadConcurrency } from './fs.mjs';
 import { ID_PREFIX_RE } from './ids.mjs';
 import { escapesRoot } from './schema.mjs';
 
@@ -111,6 +111,25 @@ export async function resolveLinks(docs, bookDir, add) {
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(d);
   };
+  // Look up every linked file's presence concurrently up front; checkFileLink then reads the answers (same results, same order).
+  /** @type {Map<string, boolean>} */
+  const present = new Map();
+  {
+    /** @type {Set<string>} */
+    const wanted = new Set();
+    for (const d of docs) {
+      for (const [, text] of proseLines(d.body, d.bodyStartLine)) {
+        for (const m of text.matchAll(MDLINK_RE)) {
+          const r = fileLinkStat(d, m[3]);
+          if (r) wanted.add(r.resolved);
+        }
+      }
+    }
+    const list = [...wanted];
+    const found = await mapLimit(list, getReadConcurrency(), (rel) => exists(path.join(bookDir, ...rel.split('/'))));
+    list.forEach((rel, i) => present.set(rel, found[i]));
+  }
+
   for (const d of docs) {
     if (!d.kind) continue;
     byRel.set(d.rel, d);
@@ -289,16 +308,44 @@ export async function resolveLinks(docs, bookDir, add) {
       return;
     }
     if (resolved.startsWith('.storyforge/') || resolved === '.storyforge') return;
-    const present = await exists(path.join(bookDir, ...resolved.split('/')));
-    if (!present) {
+    const isPresent = present.get(resolved) ?? (await exists(path.join(bookDir, ...resolved.split('/'))));
+    if (!isPresent) {
       add('E301', src.file, location, `file not found: ${t}`);
     } else if (resolved.startsWith('archive/')) {
       add('W303', src.file, location, `link points into archive/: ${t}`);
     }
     const doc = byRel.get(resolved);
     record(src, location, rawTarget.trim(), doc ? idOf(doc) : null, doc ? doc.kind : 'file',
-      !present ? 'broken' : resolved.startsWith('archive/') ? 'archived' : 'ok');
+      !isPresent ? 'broken' : resolved.startsWith('archive/') ? 'archived' : 'ok');
   }
 
   return { eventScenes, links };
+}
+
+/**
+ * The book-relative path checkFileLink will stat for a markdown link target, or null when it never stats
+ * (absolute / escaping / external / anchor-only / .storyforge). Mirrors the early exits of checkFileLink.
+ * @param {Doc} src @param {string} rawTarget @returns {{resolved: string} | null}
+ */
+function fileLinkStat(src, rawTarget) {
+  let t = rawTarget.trim();
+  if (t.startsWith('<')) {
+    const end = t.indexOf('>');
+    t = end > 0 ? t.slice(1, end) : t.slice(1);
+  } else {
+    t = t.split(/\s+/)[0];
+  }
+  if (/^[A-Za-z]:([\\/]|$)/.test(t) || /^file:/i.test(t) || t.startsWith('\\\\')) return null;
+  if (t === '' || t.startsWith('#') || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(t)) return null;
+  t = t.split('#')[0].split('?')[0];
+  if (t === '') return null;
+  try {
+    t = decodeURIComponent(t);
+  } catch {
+    // keep the raw text
+  }
+  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(src.rel), t));
+  if (t.startsWith('/') || escapesRoot(path.posix.join(path.posix.dirname(src.rel), t))) return null;
+  if (resolved.startsWith('.storyforge/') || resolved === '.storyforge') return null;
+  return { resolved };
 }

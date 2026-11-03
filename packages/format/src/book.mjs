@@ -1,6 +1,6 @@
 // Validate one book folder: load every document, run the per-book checks, build the Book result.
 import path from 'node:path';
-import { walkMarkdown } from './fs.mjs';
+import { mapOrdered, walkMarkdown } from './fs.mjs';
 import { checkDuplicateSlugs } from './ids.mjs';
 import { analyzeScenes } from './scenes.mjs';
 import { resolveLinks } from './links.mjs';
@@ -31,9 +31,13 @@ export async function validateBook({ rootDir, bookPath, series, add }) {
   const docs = [];
   /** @type {{id:string|null,path:string,reason:string}[]} */
   const unsupported = [];
-  for (const rel of files) {
-    const file = join(bookPath, rel);
-    const { doc, unsupported: isUnsupported } = await loadDoc(path.join(bookDir, ...rel.split('/')), rel, file, add);
+  const loaded = await mapOrdered(
+    files,
+    (rel, bufferedAdd) => loadDoc(path.join(bookDir, ...rel.split('/')), rel, join(bookPath, rel), bufferedAdd),
+    add,
+  );
+  for (const [i, { doc, unsupported: isUnsupported }] of loaded.entries()) {
+    const file = join(bookPath, files[i]);
     if (isUnsupported) unsupported.push({ id: null, path: file, reason: 'unsupported-schema' });
     if (doc) docs.push(doc);
   }

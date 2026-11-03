@@ -75,3 +75,49 @@ export async function readText(p) {
 export function byCodePoint(a, b) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+let readConcurrency = 24;
+/** Concurrent file reads in flight at once during validate(). */
+export const getReadConcurrency = () => readConcurrency;
+/** Test hook: 1 gives the one-by-one order, to prove the concurrent path gives identical output. */
+export function setReadConcurrency(n) {
+  readConcurrency = n;
+}
+
+/**
+ * Run `fn` over `items` with at most `n` in flight; results come back in the order of `items`.
+ * @template T, R
+ * @param {T[]} items @param {number} n @param {(item: T, i: number) => Promise<R>} fn
+ * @returns {Promise<R[]>}
+ */
+export async function mapLimit(items, n, fn) {
+  /** @type {R[]} */
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, items.length) }, async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= items.length) return;
+        out[i] = await fn(items[i], i);
+      }
+    }),
+  );
+  return out;
+}
+
+/**
+ * loadDoc-style calls run concurrently, but their diagnostics are replayed into `add` in the order of `items`,
+ * so the Collector sees exactly the sequence a one-by-one loop would have produced.
+ * @template T, R
+ * @param {T[]} items
+ * @param {(item: T, bufferedAdd: (...a: any[]) => void) => Promise<R>} fn
+ * @param {(...a: any[]) => void} add
+ * @returns {Promise<R[]>}
+ */
+export async function mapOrdered(items, fn, add) {
+  const bufs = items.map(() => /** @type {any[][]} */ ([]));
+  const results = await mapLimit(items, getReadConcurrency(), (item, i) => fn(item, (...a) => bufs[i].push(a)));
+  for (const b of bufs) for (const a of b) add(...a);
+  return results;
+}

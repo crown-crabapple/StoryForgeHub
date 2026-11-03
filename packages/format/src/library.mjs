@@ -1,6 +1,6 @@
 // Library / series discovery (spec 3.1, 3.2) and the checks that span books: E202, E203, W101, pen names.
 import path from 'node:path';
-import { isFile, listDirs } from './fs.mjs';
+import { isFile, listDirs, mapLimit, getReadConcurrency } from './fs.mjs';
 
 /** @param {string} a @param {string} b */
 const join = (a, b) => (a ? `${a}/${b}` : b);
@@ -24,16 +24,25 @@ export async function discover(rootDir, mode, add) {
   /** @param {string} rel @param {number} level @param {string|null} seriesRel */
   async function scan(rel, level, seriesRel) {
     const dir = rel ? path.join(rootDir, ...rel.split('/')) : rootDir;
-    for (const name of await listDirs(dir)) {
+    const names = await listDirs(dir);
+    // probe every child for book.md / series.md concurrently, then walk them in order
+    const probes = await mapLimit(names, getReadConcurrency(), async (name) => {
+      const childDir = path.join(dir, name);
+      const isBook = await isFile(path.join(childDir, 'book.md'));
+      const isSeries = !isBook && mode === 'library' && level + 1 === 1 && (await isFile(path.join(childDir, 'series.md')));
+      return { isBook, isSeries };
+    });
+    for (const [idx, name] of names.entries()) {
+      const { isBook, isSeries } = probes[idx];
       const childRel = join(rel, name);
       const childDir = path.join(dir, name);
       const childLevel = level + 1;
-      if (await isFile(path.join(childDir, 'book.md'))) {
+      if (isBook) {
         if (childLevel <= maxLevel) books.push({ path: childRel, seriesPath: seriesRel });
         else add('W101', `${childRel}/book.md`, '', `book.md is more than ${maxLevel} levels below the library root and is ignored`);
         continue;
       }
-      if (mode === 'library' && childLevel === 1 && (await isFile(path.join(childDir, 'series.md')))) {
+      if (isSeries) {
         series.push(childRel);
         await scan(childRel, childLevel, childRel);
         continue;

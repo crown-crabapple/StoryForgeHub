@@ -1,7 +1,7 @@
 // @storyforge/format - validator for the StoryForge Markdown format v1.
 import path from 'node:path';
 import { Collector } from './diagnostics.mjs';
-import { isDirectory, isFile } from './fs.mjs';
+import { isDirectory, isFile, mapOrdered } from './fs.mjs';
 import { checkDuplicateIds } from './ids.mjs';
 import { loadDoc } from './load.mjs';
 import { checkFields } from './schema.mjs';
@@ -51,9 +51,14 @@ export async function validate(rootDir) {
 
   /** @type {Map<string, {slug:string|null}>} */
   const seriesInfo = new Map();
-  for (const sp of seriesPaths) {
-    const file = sp ? `${sp}/series.md` : 'series.md';
-    const { doc } = await loadDoc(path.join(root, ...(sp ? sp.split('/') : []), 'series.md'), 'series.md', file, add);
+  const seriesLoaded = await mapOrdered(
+    seriesPaths,
+    (sp, bufferedAdd) =>
+      loadDoc(path.join(root, ...(sp ? sp.split('/') : []), 'series.md'), 'series.md', sp ? `${sp}/series.md` : 'series.md', bufferedAdd),
+    add,
+  );
+  for (const [i, sp] of seriesPaths.entries()) {
+    const { doc } = seriesLoaded[i];
     let slug = null;
     if (doc && doc.kind) {
       checkFields(doc, {}, add);
