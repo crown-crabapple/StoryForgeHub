@@ -607,7 +607,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
   }
 
   /** Accept/decline receipts for a decision on a suggestion, staged in the caller's batch. Returns nothing the caller must keep. */
-  async function stageDecision(store, tx, { decision, parsed, ids, suggestionId, source, targetId, targetRel, before, after, fullPrompt }) {
+  async function stageDecision(store, tx, { decision, parsed, ids, suggestionId, source, plugin, targetId, targetRel, before, after, fullPrompt }) {
     const s = await session(store, tx);
     const proposal = await s.proposalOf(suggestionId);
     const statuses = new Map(parsed.hunks.map((h) => [h.id, h.status]));
@@ -627,10 +627,11 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
     };
     const actor = source === 'ai' ? 'ai' : source === 'claude-book' ? 'system' : 'author';
     const workflow = source === 'ai' ? 'ai-rewrite' : source === 'claude-book' ? 'claude-book' : 'suggestion';
-    const origin = source === 'ai' ? 'AI-suggested ' : source === 'claude-book' ? 'Claude-Book-suggested ' : 'suggested ';
+    const origin = source === 'ai' ? 'AI-suggested ' : source === 'claude-book' ? 'Claude-Book-suggested ' : source === 'plugin' ? 'plugin-suggested ' : 'suggested ';
+    const fromPlugin = source === 'plugin' && typeof plugin === 'string' && plugin !== '' ? ` Plugin: ${plugin}.` : ''; // M08-J02: the receipt names the plugin
     const total = parsed.hunks.length;
     // an author or reviewer suggestion has no AI block; its receipt still names the suggestion it came from
-    const withAi = source === 'author' || source === 'reviewer' ? { suggestion: { id: suggestionId, hunks: ids, acceptance } } : { ai };
+    const withAi = source === 'author' || source === 'reviewer' || source === 'plugin' ? { suggestion: { id: suggestionId, hunks: ids, acceptance } } : { ai };
     const extraParents = proposal ? [proposal.parent] : [];
     const target = { id: targetId, path: targetRel };
     if (decision === 'accept') {
@@ -647,7 +648,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
         after,
         ...withAi,
         extraParents,
-        summary: `Author accepted ${ids.length} of ${plural(total, `${origin}change`, `${origin}changes`)}${lines}.`,
+        summary: `Author accepted ${ids.length} of ${plural(total, `${origin}change`, `${origin}changes`)}${lines}.${fromPlugin}`,
         ...(fullPrompt ? { prompt: fullPrompt } : {}),
       });
       return;
@@ -666,7 +667,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
       extraParents,
       diff: p.diff,
       ranges: p.ranges,
-      summary: `Author declined ${ids.length} of ${plural(total, `${origin}change`, `${origin}changes`)}.`,
+      summary: `Author declined ${ids.length} of ${plural(total, `${origin}change`, `${origin}changes`)}.${fromPlugin}`,
     });
   }
 

@@ -3,6 +3,7 @@
 import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
+import { handleIntegrationsRead, handleIntegrationsWrite } from './plugin-admin.mjs';
 import { checkModule, handlePreferencesRead, handleProfileWrite } from './preferences.mjs';
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
@@ -67,6 +68,8 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   // M05-J04 (optional AI): provider profiles, and whether AI is on for a book
   if (a === 'ai' && b === 'profiles' && c === undefined) return handleAiRead(repository, state, 'profiles');
   if (a === 'search' && b === undefined) return handleSearch(repository, params);
+  // M08-J02: the plugins found in the library and the access granted to them; the webhook subscriptions (never a token or a secret)
+  if ((a === 'plugins' || a === 'webhooks') && b === undefined) return handleIntegrationsRead(repository, state, a);
   if (a === 'index' && b === 'status' && c === undefined) {
     return { status: 200, body: await repository.indexStatus() };
   }
@@ -464,7 +467,7 @@ async function fromIndex(read) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, profileId?: string, bookId?: string, commentId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string, goalId?: string, taskId?: string } | null}
+ * @returns {{ route: string, profileId?: string, bookId?: string, commentId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string, goalId?: string, taskId?: string, tokenId?: string, webhookId?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
@@ -490,6 +493,17 @@ export function matchWriteRoute(method, pathname) {
   if (a === 'profile' && b === undefined && method === 'PUT') return { route: 'profile-save' };
   if (a === 'profile' && b === 'switch' && c === undefined && method === 'POST') return { route: 'profile-switch' };
   if (a === 'profiles' && b !== undefined && c === undefined && method === 'DELETE') return { route: 'profile-delete', name: b };
+  // M08-J02 plugin access tokens and webhook subscriptions (Settings; owner only in shared mode)
+  if (a === 'plugins' && b === 'grants') {
+    if (method === 'POST' && c === undefined) return { route: 'plugin-grant' };
+    if (method === 'DELETE' && c !== undefined && d === undefined) return { route: 'plugin-revoke', tokenId: c };
+    return null;
+  }
+  if (a === 'webhooks') {
+    if (method === 'POST' && b === undefined) return { route: 'webhook-create' };
+    if (method === 'DELETE' && b !== undefined && c === undefined) return { route: 'webhook-revoke', webhookId: b };
+    return null;
+  }
   if (a !== 'books' || b === undefined || c === undefined) return null;
   if (c === 'ai' && e === undefined) {
     if (method === 'PUT' && d === 'profile') return { route: 'ai-book-profile', bookId: b };
@@ -614,6 +628,7 @@ function respondSuggestion(r, okStatus, okBody) {
 export async function handleWrite(repository, match, body, state, ctx = {}) {
   if (!isObject(body)) return badRequest('body must be a JSON object');
   if (match.route.startsWith('profile-')) return handleProfileWrite(match, body, state); // M07-J04: a file in the user config folder, no library file
+  if (match.route.startsWith('plugin-') || match.route.startsWith('webhook-')) return handleIntegrationsWrite(repository, match, body, state); // M08-J02: files in the user config (or shared-data) folder, no library file
   const off = await checkModule(repository, state, match); // M07-J04: a write of a module that is off is refused (403 MODULE_OFF) before anything runs
   if (off) return off;
   const bookId = /** @type {string} */ (match.bookId);

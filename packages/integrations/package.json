@@ -1,0 +1,17 @@
+{
+  "name": "@storyforge/integrations",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge webhooks (M08-J02): subscriptions, signing, delivery with retries, and the only outbound network module besides the AI transport (src/webhook-transport.mjs).",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "scripts": {
+    "test": "node --import ../../scripts/test-isolate-config.mjs --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@storyforge/store": "0.1.0"
+  }
+}

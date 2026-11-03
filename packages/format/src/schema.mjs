@@ -95,8 +95,8 @@ export const KINDS = {
     prefix: 'note',
     required: ['target', 'base_sha256', 'source', 'mode', 'hunks'],
     fields: {
-      target: 'str', target_path: 'str', base_sha256: 'str', source: ['ai', 'claude-book', 'author', 'reviewer'], mode: ['suggest', 'state', 'canon'],
-      created: 'any', status: ['pending', 'accepted', 'declined', 'partial'], ai: 'map', hunks: 'list', by: 'map',
+      target: 'str', target_path: 'str', base_sha256: 'str', source: ['ai', 'claude-book', 'author', 'reviewer', 'plugin'], mode: ['suggest', 'state', 'canon'],
+      created: 'any', status: ['pending', 'accepted', 'declined', 'partial'], ai: 'map', hunks: 'list', by: 'map', plugin: 'slug', // plugin: M08-J02, additive within v1
     },
   },
   // Added 2026-11-02, M05-J07 (additive within v1): a provenance receipt, under provenance/<YYYY>/<MM>/. A record of what happened; never story text or canon.

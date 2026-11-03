@@ -1,13 +1,17 @@
 // HTTP server: loopback guard, JSON API (reads, plus guarded writes), static web app.
 import http from 'node:http';
 import { createLibraryHost, runAs } from '@storyforge/core';
+import { handlePluginRequest } from './api-v1.mjs';
 import { createAiService } from './ai-routes.mjs';
+import { bearerOf } from './plugin-policy.mjs';
+import { createPluginService } from './plugin-service.mjs';
 import { createPresence } from './presence.mjs';
 import { checkModule, moduleOn, receiptsGate } from './preferences.mjs';
 import { RESTORE_FOLDER_RE, handleApi, handleRestore, handleUpload, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
 import { handleSharedRead, handleSharedWrite, matchSharedRoute } from './shared-routes.mjs';
 import { hasRestoreHeaders, hasUploadHeaders, hasWriteHeaders, isRequestAllowed } from './security.mjs';
 import { serveStatic } from './static.mjs';
+import { createWebhookEvents } from './webhook-events.mjs';
 
 const JSON_TYPE = 'application/json; charset=utf-8';
 export const MAX_BODY_BYTES = 5 * 1024 * 1024;
@@ -92,14 +96,16 @@ function readUpload(req, max) {
  *   `audit` appends one audit event, `publicUrl` is the address links are built on (else the request's own Host). Without it the server is in personal mode:
  *   loopback clients only, no accounts, no policy.
  *   `profile` is the name of the profile this run uses (M07-J04; the CLI takes it from --profile or STORYFORGE_PROFILE); the switcher in Settings changes it for the run.
+ *   `shared.dir` (M08-J02) is the shared-data folder: shared mode keeps plugin tokens and webhook subscriptions there (personal mode keeps them in the user config folder).
+ *   `integrations` (M08-J02) is a test seam for webhook delivery ({ deliver, backoffMs, timeoutMs, now, sleep }); production never sets it.
  * @returns {import('node:http').Server} not yet listening; callers bind it to 127.0.0.1 (personal mode) or the shared-mode host
  */
-export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES, shared = null, profile = 'default' }) {
+export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES, shared = null, profile = 'default', integrations }) {
   const gate = shared ? shared.gate : null;
   /** Classes whose calls are audited (contract M07-J03 section 4). */
   const AUDITED = new Set(['write', 'suggest', 'comment', 'admin', 'ai']);
   /** The ids a write route is about: book, then the most specific object. @param {Record<string, any>} m */
-  const targetOf = (m) => [m.bookId, m.sceneId ?? m.entryId ?? m.threadId ?? m.eventId ?? m.noteId ?? m.suggestionId ?? m.commentId ?? m.opId ?? m.profileId ?? m.n ?? m.slug].filter((x) => x !== undefined).join('/') || undefined;
+  const targetOf = (m) => [m.bookId, m.sceneId ?? m.entryId ?? m.threadId ?? m.eventId ?? m.noteId ?? m.suggestionId ?? m.commentId ?? m.opId ?? m.profileId ?? m.tokenId ?? m.webhookId ?? m.n ?? m.slug].filter((x) => x !== undefined).join('/') || undefined;
   let libraryHost = host ?? null;
   if (!libraryHost && repository) {
     try {
@@ -116,7 +122,10 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
     presence: createPresence(), // advisory "also in this scene" (M07-J03b): in memory only, expires after 60 s, never blocks a save
     profile,
     moduleOn: (/** @type {any} */ repo, /** @type {string} */ id, /** @type {any} */ which) => moduleOn(repo, state, id, which),
+    // plugin tokens, webhook subscriptions and delivery (M08-J02): opened lazily; delivery is gated by the integrations module
+    integrations: createPluginService({ shared, enabled: (/** @type {string} */ bookId) => moduleOn(current(), state, 'integrations', { bookId }), dispatcher: integrations }),
   };
+  const hookEvents = createWebhookEvents({ service: state.integrations });
   /** @type {WeakSet<object>} repositories that already know which modules are on (M07-J04: receipts are asked per book) */
   const gated = new WeakSet();
   const current = () => {
@@ -138,6 +147,35 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
       const queryAt = target.indexOf('?');
       const pathname = queryAt < 0 ? target : target.slice(0, queryAt);
       const queryString = queryAt < 0 ? '' : target.slice(queryAt + 1);
+
+      // M08-J02: a request with an Authorization header is a plugin request. It is decided by its own policy BEFORE the shared-mode gate and the member routes
+      // (a bearer request carries no cookies, so the Origin and write-header checks do not apply and cookies are never read), and /api/v1 is reached only this way.
+      const bearer = bearerOf(req);
+      if (bearer !== null || pathname === '/api/v1' || pathname.startsWith('/api/v1/')) {
+        if (gate && !gate.hostOk(req, port)) return sendJson(res, 403, { error: 'forbidden' }); // personal mode already passed its loopback and Host check above
+        if (bearer === null) {
+          if (req.method !== 'GET') req.resume();
+          return sendJson(res, 401, { error: 'unauthorized', code: 'TOKEN', message: 'API v1 needs an Authorization: Bearer token (a session cookie is never accepted here)' });
+        }
+        const readJson = async () => {
+          const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+          if (type !== 'application/json') return { ok: /** @type {const} */ (false), status: 415, body: { error: 'unsupported_media_type', message: 'send content-type: application/json' } };
+          const read = await readBody(req);
+          if (read.tooLarge) return { ok: /** @type {const} */ (false), status: 413, body: { error: 'too_large' } };
+          try {
+            return { ok: /** @type {const} */ (true), value: JSON.parse(read.buffer.toString('utf8') || '{}') };
+          } catch {
+            return { ok: /** @type {const} */ (false), status: 400, body: { error: 'bad_request', message: 'body is not valid JSON' } };
+          }
+        };
+        const r = await handlePluginRequest({ method: req.method ?? 'GET', pathname, params: new URLSearchParams(queryString), bearer, repository: current(), state, service: state.integrations, readJson });
+        if (req.method !== 'GET') req.resume(); // a refused request's body is never read
+        if (gate && shared?.audit) {
+          await shared.audit({ ...r.event, result: r.status, ...(r.grant ? {} : { ip: req.socket?.remoteAddress }) }).catch((e) => process.stderr.write(`storyforge: audit write failed: ${e?.message ?? e}\n`));
+        }
+        if (r.status === 201 && r.proposal && r.by) void hookEvents.afterProposal(current(), r.book, r.proposal, r.by).catch(() => {});
+        return sendJson(res, r.status, r.body);
+      }
 
       /** @type {{ actor: string, event: string, target?: string } | null} */
       let auditCall = null;
@@ -257,11 +295,14 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         const by = principal?.kind === 'user' ? { id: principal.id, name: principal.display_name } : null;
         const { status, body } = await runAs(by, () => handleWrite(current(), match, parsed, state, principal ? { principal } : {}));
         await record(status);
+        void hookEvents.afterWrite(current(), match, status, body, parsed, principal?.kind === 'user' ? { name: String(principal.display_name ?? principal.id) } : null).catch(() => {});
         return sendJson(res, status, body);
       }
       if (isApiPath(pathname)) {
         const { status, body, raw } = await handleApi(current(), pathname, state, new URLSearchParams(queryString));
         if (raw) {
+          const dl = status === 200 ? /^\/api\/books\/([^/]+)\/(export|backup)$/.exec(pathname) : null;
+          if (dl) void hookEvents.afterDownload(current(), /** @type {'export' | 'backup'} */ (dl[2]), decodeURIComponent(dl[1]), raw).catch(() => {});
           res.writeHead(status, { ...raw.headers, 'content-length': raw.bytes.length });
           return res.end(raw.bytes);
         }

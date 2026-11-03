@@ -2,7 +2,7 @@
 // Pure: no filesystem. Customization never changes what a book means; these values only say how the app looks and which features are on.
 
 /** Feature modules (contract section 5). `insights` and `tasks` belong to J02; they are gated by id here. */
-export const MODULE_IDS = ['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research'];
+export const MODULE_IDS = ['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'integrations'];
 
 /** Keys where the project outranks the person: built-in < profile < library < book. */
 export const PROJECT_KEYS = ['modules', 'labels', 'export'];
