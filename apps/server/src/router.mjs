@@ -233,6 +233,15 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const list = await repository.listCodexEntries(b);
       return list ? { status: 200, body: list } : NOT_FOUND;
     }
+    // M07-J01b: the labels of the book and its series; what a link picker offers (this book, its series' shared entries, other books)
+    if (c === 'labels' && d === undefined) {
+      const labels = await repository.getLabels(b);
+      return labels ? { status: 200, body: labels } : NOT_FOUND;
+    }
+    if (c === 'link-targets' && d === undefined) {
+      const targets = await repository.getLinkTargets(b);
+      return targets ? { status: 200, body: targets } : NOT_FOUND;
+    }
     if (c === 'backlinks' && d !== undefined) {
       return fromIndex(() => repository.getBacklinks(b, d));
     }
@@ -478,6 +487,11 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'entries' && d !== undefined && e === 'restore') return { route: 'entry-restore', bookId: b, entryId: d };
   if (method === 'PUT' && c === 'entries' && d !== undefined && e === 'body') return { route: 'entry-body', bookId: b, entryId: d };
   if (method === 'POST' && c === 'codex' && d === 'types' && e === undefined) return { route: 'codex-type-create', bookId: b };
+  // M07-J01b series worlds, labels, templates: Move to series, Copy into this book, a book's / series' label list, Save as template
+  if (method === 'POST' && c === 'entries' && d !== undefined && e === 'move-to-series') return { route: 'entry-move-to-series', bookId: b, entryId: d };
+  if (method === 'POST' && c === 'entries' && d !== undefined && e === 'copy-to-book') return { route: 'entry-copy-to-book', bookId: b, entryId: d };
+  if (method === 'POST' && c === 'labels' && d === undefined) return { route: 'labels-set', bookId: b };
+  if (method === 'POST' && c === 'save-as-template' && d === undefined) return { route: 'template-save', bookId: b };
   // M04-J03 plot threads
   if (method === 'POST' && c === 'threads' && d === undefined) return { route: 'thread-create', bookId: b };
   if (method === 'POST' && c === 'threads' && d !== undefined && e === 'fields') return { route: 'thread-fields', bookId: b, threadId: d };
@@ -514,8 +528,8 @@ function respond(r, okStatus, okBody) {
   if (r.ok) return { status: okStatus, body: okBody(r) };
   if (r.code === 'NOT_FOUND') return NOT_FOUND;
   if (r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', current: r.current ?? null } };
-  const detail = { code: r.code, ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
-  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE', 'SLUG_TAKEN', 'TYPE_EXISTS', 'CITE_KEY_TAKEN'].includes(r.code);
+  const detail = { code: r.code, ...(r.field ? { field: r.field } : {}), ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
+  const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE', 'SLUG_TAKEN', 'TYPE_EXISTS', 'CITE_KEY_TAKEN', 'TEMPLATE_EXISTS'].includes(r.code);
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
 }
 
@@ -773,12 +787,12 @@ async function handleStructure(repository, match, body) {
     }
     // ---- M04-J02 Codex. `base_sha256` (optional) is the file as the author saw it: a different file on disk is a 409.
     case 'entry-create': {
-      const r = await repository.createEntry(bookId, { type: body.type, name: body.name, slug: body.slug, status: body.status, fields: body.fields, dryRun });
+      const r = await repository.createEntry(bookId, { type: body.type, name: body.name, slug: body.slug, status: body.status, fields: body.fields, ...(body.where !== undefined ? { where: body.where } : {}), dryRun });
       return respond(r, created, structureBody);
     }
     case 'entry-fields': {
       if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
-      const r = await repository.setEntryFields(bookId, /** @type {string} */ (match.entryId), { name: body.name, status: body.status, role: body.role, aliases: body.aliases, fields: body.fields, related: body.related, dryRun, baseSha256: body.base_sha256 });
+      const r = await repository.setEntryFields(bookId, /** @type {string} */ (match.entryId), { name: body.name, status: body.status, role: body.role, aliases: body.aliases, fields: body.fields, related: body.related, labels: body.labels, dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
     }
     case 'entry-slug': {
@@ -800,8 +814,29 @@ async function handleStructure(repository, match, body) {
       return respond(r, 200, structureBody);
     }
     case 'codex-type-create': {
-      const r = await repository.createCodexType(bookId, { type: body.type, name: body.name, plural: body.plural, fields: body.fields, dryRun });
+      const r = await repository.createCodexType(bookId, { type: body.type, name: body.name, plural: body.plural, fields: body.fields, ...(body.where !== undefined ? { where: body.where } : {}), dryRun });
       return respond(r, created, structureBody);
+    }
+    // ---- M07-J01b. Move to series keeps the entry's id; Copy into this book makes a new id (the answer carries the W309 warning). Series files get no receipts.
+    case 'entry-move-to-series': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.moveEntryToSeries(bookId, /** @type {string} */ (match.entryId), { dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
+    case 'entry-copy-to-book': {
+      const r = await repository.copyEntryIntoBook(bookId, /** @type {string} */ (match.entryId), { dryRun });
+      return respond(r, created, structureBody);
+    }
+    case 'labels-set': {
+      if (body.scope !== undefined && body.scope !== 'book' && body.scope !== 'series') return badRequest("scope must be 'book' or 'series'");
+      if (!Array.isArray(body.labels)) return badRequest('expected { labels: [{ name, color }] }');
+      const r = await repository.setLabels(bookId, { scope: body.scope ?? 'book', labels: body.labels, dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'template-save': {
+      for (const k of ['name', 'title', 'description']) if (body[k] !== undefined && typeof body[k] !== 'string') return badRequest(`${k} must be a string`);
+      const r = await repository.saveAsTemplate(bookId, { name: body.name, title: body.title, description: body.description });
+      return respond(r, 201, (x) => ({ ok: true, name: x.name, path: x.path, files: x.files }));
     }
     // ---- M04-J03 plot threads. `base_sha256` (optional) is the file as the author saw it: a different file on disk is a 409.
     case 'thread-create': {
