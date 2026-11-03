@@ -3,6 +3,7 @@
 import { buildContext, createAiSettings, createContextStore, hostOf, localityOf, publicProfile, redact, sendPackage, testConnection } from '@storyforge/ai';
 import { createHash } from 'node:crypto';
 import { promptText, recordProvenance } from '@storyforge/core';
+import { resolvePromptRun } from './prompt-run.mjs';
 
 const MAX_FILES = 100;
 const MAX_INSTRUCTION_CHARS = 20_000;
@@ -114,7 +115,7 @@ export async function handleAiWrite(repository, match, body, state) {
     case 'ai-context':
       return buildPackage(repository, service, bookId, profile, body);
     case 'ai-send':
-      return sendStored(repository, service, bookId, profile, body);
+      return sendStored(repository, service, bookId, profile, body, state);
     case 'ai-apply':
       return applyStored(repository, service, bookId, body);
     case 'ai-discard':
@@ -124,8 +125,21 @@ export async function handleAiWrite(repository, match, body, state) {
   }
 }
 
-/** POST /api/books/:b/ai/context: build the exact request, send nothing. */
+/**
+ * POST /api/books/:b/ai/context: build the exact request, send nothing.
+ * With `prompt` (M07-J04: { slug } or { workflow, step }, plus `inputs` and `previous`) the instruction, the task, the files and the selection come from the library's
+ * prompt component and the inputs the author chose; the answer then also lists each `sources` entry. Everything else is the same preview, and nothing is sent until /ai/send.
+ */
 async function buildPackage(repository, { contexts }, bookId, profile, body) {
+  let promptInfo = null;
+  let sources = null;
+  if (body.prompt !== undefined) {
+    const run = await resolvePromptRun(repository, bookId, body.prompt);
+    if (!run.ok) return refuse(run.status, run.code, run.message);
+    body = { ...body, task: run.task, instruction: run.instruction, files: run.files, selection: run.selection };
+    promptInfo = run.prompt;
+    sources = run.sources;
+  }
   if (body.task !== 'chat' && body.task !== 'rewrite') return badRequest("task must be 'chat' or 'rewrite'");
   if (typeof body.instruction !== 'string' || body.instruction.trim() === '' || body.instruction.length > MAX_INSTRUCTION_CHARS) {
     return badRequest(`instruction is required (up to ${MAX_INSTRUCTION_CHARS} characters)`);
@@ -187,6 +201,7 @@ async function buildPackage(repository, { contexts }, bookId, profile, body) {
       provider: pkg.provider,
       contextSha256: pkg.contextSha256,
       ...(selection ? { selection: { sceneId: selection.sceneId, from: selection.from, to: selection.to, text: selection.text } } : {}),
+      ...(promptInfo ? { prompt: promptInfo, sources } : {}),
     },
   };
 }
@@ -199,7 +214,7 @@ function storedContext({ contexts }, bookId, body) {
 }
 
 /** POST /api/books/:b/ai/send { contextId, confirmCloud?, includeContext? }: sends exactly the stored messages. */
-async function sendStored(repository, service, bookId, active, body) {
+async function sendStored(repository, service, bookId, active, body, state) {
   const { settings } = service;
   const { ctx, refusal } = storedContext(service, bookId, body);
   if (refusal) return refusal;
@@ -248,7 +263,8 @@ async function sendStored(repository, service, bookId, active, body) {
     // sending the same preview again replaces its earlier proposal (that one is declined)
     if (ctx.suggestion && !ctx.applied) await repository.decideSuggestion(bookId, ctx.suggestion.id, { decision: 'decline' });
     ctx.suggestion = null;
-    const made = await repository.createSuggestion(bookId, {
+    // M07-J04: with the suggestions module off nothing is written to the book; the reply is shown and Apply keeps its range-writing behaviour
+    const made = state?.moduleOn && !(await state.moduleOn(repository, 'suggestions', { bookId })) ? { ok: false } : await repository.createSuggestion(bookId, {
       target: ctx.selection.sceneId,
       proposedRange: { from: ctx.selection.from, to: ctx.selection.to, replacement },
       source: 'ai',

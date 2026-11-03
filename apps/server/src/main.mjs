@@ -1,5 +1,5 @@
 // CLI entry:
-//   node apps/server/src/main.mjs [--library <path>] [--port <n>] [--open]   serve the library (without --library: the last one used, else a StoryForge folder in the home folder)
+//   node apps/server/src/main.mjs [--library <path>] [--port <n>] [--profile <name>] [--open]   serve the library (without --library: the last one used, else a StoryForge folder in the home folder)
 //   node apps/server/src/main.mjs --help                                lists every command and flag (help.mjs)
 //   node apps/server/src/main.mjs rebuild --library <path>             rebuild every book's index
 //   node apps/server/src/main.mjs repair --library <path> [--apply]    print the repair plan; write only with --apply
@@ -20,6 +20,7 @@ import { FILE_COMMANDS, runFileCommand } from './export-cli.mjs';
 import { HELP } from './help.mjs';
 import { openBrowser } from './open-browser.mjs';
 import { LEGACY_COMMANDS, runLegacyCommand } from './legacy-cli.mjs';
+import { profileNameFrom } from './preferences.mjs';
 import { runReceiptsCommand } from './receipts-cli.mjs';
 import { createServer } from './server.mjs';
 
@@ -258,7 +259,13 @@ async function runServer() {
   await host.remember(config.libraryRoot);
 
   const instance = { pid: process.pid, started_at: new Date().toISOString(), lock };
-  const server = createServer({ host, webRoot, recoverReport, instance });
+  let profile;
+  try {
+    profile = profileNameFrom(argv, process.env); // --profile <name>, else STORYFORGE_PROFILE, else default (M07-J04: appearance and personal module choices, per machine)
+  } catch (e) {
+    fail(e instanceof Error ? e.message : String(e), 2);
+  }
+  const server = createServer({ host, webRoot, recoverReport, instance, profile });
   server.on('error', (e) => fail(`cannot listen on ${config.host}:${config.port}: ${e.message}`, 1));
 
   let stopping = false;

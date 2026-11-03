@@ -85,6 +85,22 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
 
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
 
+  // M07-J04: the receipts module can be switched off for a book (a project preference or the person's profile). Then nothing new is recorded: writes stay plain
+  // writes, the chain simply has a gap (verification reports RCPT_CHAIN_GAP as before) and the receipts already on disk are untouched.
+  /** @type {((bookRoot: string) => boolean | Promise<boolean>) | null} */
+  let gate = null;
+  const enabled = async (bookRoot) => (gate ? (await gate(bookRoot)) !== false : true);
+  const NO_SESSION = {
+    restoreOwn() {},
+    has: () => false,
+    last: () => null,
+    all: () => [],
+    proposalOf: async () => null,
+    objectBytes: async () => null,
+    add: async () => null,
+    ensureCurrent: async () => null,
+  };
+
   /** `cached`: for reads only; anything that goes on to write looks at the disk. */
   async function findBook(bookId, cached = false) {
     const result = await (cached ? readValidate() : validate(root));
@@ -107,6 +123,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
    * @param {any} store @param {any} tx
    */
   async function session(store, tx) {
+    if (!(await enabled(store.root))) return NO_SESSION;
     const all = await scanReceipts(store);
     /** @type {Map<string, any>} last receipt per target id */
     const last = new Map();
@@ -242,6 +259,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
    * @param {any} store @param {{ rel: string, sceneId: string, next: Buffer, baseSha256: string | undefined, flushFirst?: boolean }} a
    */
   async function saveWithReceipts(store, { rel, sceneId, next, baseSha256, flushFirst = false }) {
+    if (!(await enabled(store.root))) return store.write(rel, next, { baseSha256 });
     // The author's own save stays the plain single-file store write it always was (its crash semantics are unchanged); what it changed is recorded right
     // after it, from the bytes at hand: the baseline of the state it replaced (first save), the flush when a revision was saved, the flush after 10 minutes.
     const before = await store.read(rel);
@@ -277,6 +295,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
    * @param {any} store @param {any} tx @param {{ rel: string, sceneId: string, next: Buffer, baseSha256: string | undefined, flushFirst?: boolean }} a
    */
   async function authorWrite(store, tx, { rel, sceneId, next, baseSha256, flushFirst = false }) {
+    if (!(await enabled(store.root))) return tx.write(rel, next, { baseSha256 });
     const cur = await tx.read(rel);
     // the file is queued first (the store's crash point after the first change then means "the author's save landed"), the receipts after it
     const w = await tx.write(rel, next, { baseSha256 });
@@ -340,6 +359,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
 
   /** Flush one document's pending changes (baseline or author.edit) in a batch of its own. */
   async function flushDoc(store, targetId, rel, as = 'author') {
+    if (!(await enabled(store.root))) return { ok: true, code: 'OK', flushed: false, baseline: false, receipt: null };
     let result = null;
     /** @type {any} */
     let s = null;
@@ -476,6 +496,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
    */
   async function noteOwnWrites(book, rels) {
     try {
+      if (!(await enabled(bookRootOf(book)))) return;
       const found = await findBook(book.id ?? '').catch(() => null);
       const bookRoot = found ? found.bookRoot : bookRootOf(book);
       const result = found ? found.result : await validate(root);
@@ -525,6 +546,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
    */
   async function externalCheck(bookPath, rels) {
     const bookRoot = bookPath === '' ? root : path.join(root, ...bookPath.split('/'));
+    if (!(await enabled(bookRoot))) return;
     const found = await findBookAt(bookRoot);
     if (!found) return;
     const store = await openStore(bookRoot, { recover: false });
@@ -642,6 +664,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
   async function record(event, ctx = {}) {
     const found = ctx.bookRoot ? await findBookAt(ctx.bookRoot) : await findBook(event.bookId);
     if (!found) return null;
+    if (!(await enabled(found.bookRoot))) return null;
     const store = await openStore(found.bookRoot, { recover: false });
     const docs = liveDocs(found);
     const docOf = (id) => docs.find((d) => d.fm.id === id);
@@ -841,6 +864,10 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
   return {
     ...methods,
     root,
+    /** Say whether receipts are on for a book folder: `fn(bookRoot)`; null (the default) means always on. */
+    setGate(fn) {
+      gate = fn;
+    },
     session,
     findBook,
     findBookAt,

@@ -2,6 +2,7 @@
 import http from 'node:http';
 import { createLibraryHost } from '@storyforge/core';
 import { createAiService } from './ai-routes.mjs';
+import { checkModule, moduleOn, receiptsGate } from './preferences.mjs';
 import { RESTORE_FOLDER_RE, handleApi, handleRestore, handleUpload, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
 import { hasRestoreHeaders, hasUploadHeaders, hasWriteHeaders, isRequestAllowed } from './security.mjs';
 import { serveStatic } from './static.mjs';
@@ -82,9 +83,10 @@ function readUpload(req, max) {
  *   `recoverReport` is the result of the recover() run at startup; GET /api/recover/last serves it.
  *   `instance` is what GET /api/status reports about this process (the lock it holds); default: no lock.
  *   `maxRestoreBytes` is the size cap of the backup restore upload (default 512 MB; tests lower it).
+ *   `profile` is the name of the profile this run uses (M07-J04; the CLI takes it from --profile or STORYFORGE_PROFILE); the switcher in Settings changes it for the run.
  * @returns {import('node:http').Server} not yet listening; callers bind it to 127.0.0.1
  */
-export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES }) {
+export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES, profile = 'default' }) {
   let libraryHost = host ?? null;
   if (!libraryHost && repository) {
     try {
@@ -98,8 +100,20 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
     instance: instance ?? { pid: process.pid, started_at: new Date().toISOString(), lock: 'none' },
     host: libraryHost,
     ai: createAiService(), // optional AI workshop (M05-J04): profiles, session keys and stored previews live in this process only
+    profile,
+    moduleOn: (/** @type {any} */ repo, /** @type {string} */ id, /** @type {any} */ which) => moduleOn(repo, state, id, which),
   };
-  const current = () => /** @type {any} */ (libraryHost ? libraryHost.repository : repository);
+  /** @type {WeakSet<object>} repositories that already know which modules are on (M07-J04: receipts are asked per book) */
+  const gated = new WeakSet();
+  const current = () => {
+    const repo = /** @type {any} */ (libraryHost ? libraryHost.repository : repository);
+    if (repo && typeof repo.setModuleGate === 'function' && !gated.has(repo)) {
+      gated.add(repo);
+      repo.setModuleGate(receiptsGate(repo, state));
+    }
+    return repo;
+  };
+  current();
   const server = http.createServer(async (req, res) => {
     try {
       const address = server.address();
@@ -115,6 +129,11 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         if (!match) return sendJson(res, 405, { error: 'read_only' });
         if (match.route === 'attachment-upload') {
           if (!hasUploadHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
+          const off = await checkModule(current(), state, match);
+          if (off) {
+            req.resume();
+            return sendJson(res, off.status, off.body);
+          }
           const up = await readUpload(req, MAX_UPLOAD_BYTES);
           if (up.tooLarge) return sendJson(res, 413, { error: 'too_large', code: 'TOO_LARGE', message: 'attachments can be at most 25 MB' });
           const query = new URLSearchParams(queryString);

@@ -5,7 +5,7 @@ import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
 import { checkContinuity } from '@storyforge/continuity';
-import { discover, escapesRoot, extractDocs, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
+import { discover, escapesRoot, extractDocs, isFile, loadDoc, loadPrompts, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts, buildGraph, subGraph } from '@storyforge/index';
 import { MAX_ATTACHMENT_BYTES, applyRepair, planRepair } from '@storyforge/manuscript';
 import { onWrite } from '@storyforge/store';
@@ -793,6 +793,38 @@ export function createFsRepository(libraryRoot, options = {}) {
     },
 
     listTemplates: () => listTemplates(),
+
+    /**
+     * M07-J04: the `preferences:` maps the project itself holds: { library, book } (each the raw map, or null when the file has none).
+     * With `{ bookId }` the book's book.md is read too (null result for an unknown book); with `{ bookPath }` the same by library-relative folder ('' for a one-book root).
+     * @param {{ bookId?: string, bookPath?: string }} [which]
+     */
+    async getPreferences(which = {}) {
+      const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+      const lib = await readParsed(path.join(root, 'library.md'));
+      const library = isMap(lib?.fm.preferences) ? lib.fm.preferences : null;
+      let bookPath = typeof which.bookPath === 'string' ? which.bookPath : null;
+      if (typeof which.bookId === 'string') {
+        const book = await bookById(which.bookId);
+        if (!book) return null;
+        bookPath = book.path;
+      }
+      if (bookPath === null) return { library, book: null };
+      const file = await readParsed(abs(bookPath ? `${bookPath}/book.md` : 'book.md'));
+      return { library, book: isMap(file?.fm.preferences) ? file.fm.preferences : null };
+    },
+
+    /** M07-J04: the custom prompt components and workflows in `<library>/_prompts/`, with their problems (read-only). */
+    listPrompts: () => loadPrompts(root),
+
+    /**
+     * M07-J04: tell the repository which modules are on for a book. `fn(moduleId, { bookPath })` answers true or false; today only `receipts` is asked (so a
+     * save records no new receipt while it is off). null removes the gate (everything on).
+     * @param {((moduleId: string, ctx: { bookPath: string }) => boolean | Promise<boolean>) | null} fn
+     */
+    setModuleGate(fn) {
+      receipts.setGate(fn ? (bookRoot) => fn('receipts', { bookPath: path.relative(root, bookRoot).split(path.sep).join('/') }) : null);
+    },
 
     /** Create a book from a template: see create-book.mjs. Resolves with { ok, bookId, path } or { ok: false, code, field, message }. */
     createBook: createBookMethod({
