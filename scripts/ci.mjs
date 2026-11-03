@@ -4,7 +4,7 @@
 //   --skip-audit  do not call the npm registry (the audit also skips itself, with a notice, when the registry cannot be reached)
 // Steps run in order and stop at the first failure; a table of every step, its result and its time is printed at the end.
 // The named groups (format fixtures, atomic write, rebuild, import, export, plugin/webhook, shared-mode proof) are run again as their own `node --test`
-// runs over file lists, although `npm test` already ran them, so each shows by name in the table.
+// runs (one file at a time, so a loaded machine does not cause timing failures) over file lists, although `npm test` already ran them, so each shows by name in the table.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,7 +12,7 @@ import { pathToFileURL } from 'node:url';
 import { checkLicenses, checkLockfile } from './checks.mjs';
 import { REPO_ROOT } from './workspaces.mjs';
 
-const ISOLATE = path.join(REPO_ROOT, 'scripts', 'test-isolate-config.mjs');
+const ISOLATE = pathToFileURL(path.join(REPO_ROOT, 'scripts', 'test-isolate-config.mjs')).href;
 
 /** Test files of each named group, as globs relative to the repository root. */
 export const GROUPS = [
@@ -62,7 +62,7 @@ function run(cmd, args, { capture = false } = {}) {
 async function nodeTests(files) {
   const resolved = resolveFiles(files);
   if (resolved.length === 0) throw new Error(`no test files match ${files.join(', ')}`);
-  const r = await run(process.execPath, ['--import', ISOLATE, '--test', ...resolved]);
+  const r = await run(process.execPath, ['--import', ISOLATE, '--test', '--test-concurrency=1', ...resolved]);
   if (r.code !== 0) throw new Error(`node --test exited ${r.code}`);
   return { status: 'ok', note: `${resolved.length} files` };
 }
