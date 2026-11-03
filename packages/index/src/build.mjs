@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { extractLinks, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
+import { extractLinks, isFile, loadDoc, validate, walkMarkdown, walkSharedMarkdown } from '@storyforge/format';
 import { bookFacts } from './book-facts.mjs';
 import { buildGraph, mentionRows } from './graph.mjs';
 import { DDL, FORMAT, OBJECT_KINDS, SCHEMA_VERSION, SEARCH_KINDS } from './schema.mjs';
@@ -62,7 +62,25 @@ async function load({ bookRoot, validateRoot, bookPath, cache }) {
   const rel = (p) => (prefix && p.startsWith(prefix) ? p.slice(prefix.length) : p);
   const diagnostics = result.diagnostics.filter((d) => prefix === '' || d.file.startsWith(prefix)).map((d) => ({ ...d, file: rel(d.file) }));
   const context = await readContext(validateRoot, bookPath, book);
-  return { bookRoot, bookPath, files, book, prefix, rel, diagnostics, result, ...context };
+  const shared = await readSharedFiles(validateRoot, bookPath, book);
+  return { bookRoot, bookPath, files, shared, book, prefix, rel, diagnostics, result, ...context };
+}
+
+/**
+ * The series files a book's index depends on (the shared world under the series' codex/ and archive/), as rows for `shared_files`:
+ * paths relative to the book root (`../codex/...`). Empty for a book outside a series or one validated on its own.
+ */
+async function readSharedFiles(validateRoot, bookPath, book) {
+  const segs = bookPath === '' ? [] : bookPath.split('/');
+  if (!book.series || segs.length < 2) return [];
+  const seriesDir = path.join(validateRoot, ...segs.slice(0, -1));
+  const out = [];
+  for (const rel of await walkSharedMarkdown(seriesDir)) {
+    const abs = path.join(seriesDir, ...rel.split('/'));
+    const [bytes, st] = await Promise.all([readFile(abs), stat(abs)]);
+    out.push({ rel: `../${rel}`, sha256: createHash('sha256').update(bytes).digest('hex'), size: st.size, mtime_ms: st.mtimeMs });
+  }
+  return out;
 }
 
 /** Front matter of the book's series.md and of library.md (null when there is none), for the book's display facts. */
@@ -136,10 +154,11 @@ const KEPT = {
   links: ['src_id', 'src_path', 'location', 'raw', 'target_id', 'target_kind', 'resolution'],
   mentions: ['entry_id', 'scene_id', 'count'],
   graph: ['from_id', 'to_id', 'kind', 'rel', 'label', 'src_path', 'location', 'count'],
+  world_nodes: ['id', 'kind', 'type', 'title', 'owner', 'series_id', 'book_id', 'external', 'path'],
   fts: ['id', 'kind', 'title', 'body'],
 };
 
-function keepProjection({ files, diagnostics, seriesFm, libraryFm }, prev, { now, invalidPaths }) {
+function keepProjection({ files, shared, diagnostics, seriesFm, libraryFm }, prev, { now, invalidPaths }) {
   const db = new DatabaseSync(':memory:');
   try {
     db.exec(DDL);
@@ -158,6 +177,8 @@ function keepProjection({ files, diagnostics, seriesFm, libraryFm }, prev, { now
 
     const insFile = db.prepare('INSERT INTO files (path, sha256, size, mtime_ms, kind, schema, id) VALUES (?, ?, ?, ?, ?, ?, ?)');
     for (const f of files) insFile.run(f.rel, f.sha256, f.size, f.mtime_ms, f.kind, f.schema, f.id);
+    const insShared = db.prepare('INSERT INTO shared_files (path, sha256, size, mtime_ms) VALUES (?, ?, ?, ?)');
+    for (const f of shared) insShared.run(f.rel, f.sha256, f.size, f.mtime_ms);
 
     for (const [table, cols] of Object.entries(KEPT)) {
       const ins = db.prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`);
@@ -177,7 +198,7 @@ function keepProjection({ files, diagnostics, seriesFm, libraryFm }, prev, { now
 }
 
 /** Build the projection from an already loaded book. `extraMeta` entries are added to `meta`. */
-async function project({ bookPath, files, book, rel, diagnostics, result, seriesFm, libraryFm }, { extraMeta = {} }) {
+async function project({ bookPath, files, shared, book, rel, diagnostics, result, seriesFm, libraryFm }, { extraMeta = {} }) {
   const docs = files.map((f) => f.doc).filter((d) => d && d.kind);
   const docByRel = new Map(docs.map((d) => [d.rel, d]));
   const bookDoc = docByRel.get('book.md');
@@ -208,6 +229,8 @@ async function project({ bookPath, files, book, rel, diagnostics, result, series
 
     const insFile = db.prepare('INSERT INTO files (path, sha256, size, mtime_ms, kind, schema, id) VALUES (?, ?, ?, ?, ?, ?, ?)');
     for (const f of files) insFile.run(f.rel, f.sha256, f.size, f.mtime_ms, f.kind, f.schema, f.id);
+    const insShared = db.prepare('INSERT INTO shared_files (path, sha256, size, mtime_ms) VALUES (?, ?, ?, ?)');
+    for (const f of shared) insShared.run(f.rel, f.sha256, f.size, f.mtime_ms);
 
     const insObject = db.prepare('INSERT OR IGNORE INTO objects (id, kind, slug, title, type, status, path, archived) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
     const titleOf = (d) => str(d.fm.title) ?? str(d.fm.name);
@@ -237,7 +260,12 @@ async function project({ bookPath, files, book, rel, diagnostics, result, series
     for (const m of mentions) insMention.run(m.entry_id, m.scene_id, m.count);
 
     const insEdge = db.prepare('INSERT INTO graph (from_id, to_id, kind, rel, label, src_path, location, count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    for (const e of buildGraph(result, mentions, bookPath).edges) {
+    const graph = buildGraph(result, mentions, bookPath);
+    const insNode = db.prepare('INSERT INTO world_nodes (id, kind, type, title, owner, series_id, book_id, external, path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const n of graph.nodes) {
+      if (n.owner) insNode.run(n.id, n.kind, n.type, n.name, n.owner, n.series_id ?? null, n.book_id ?? null, n.external ? 1 : 0, n.path ?? '');
+    }
+    for (const e of graph.edges) {
       insEdge.run(e.from, e.to, e.kind, e.rel, e.label ?? null, e.source.path, e.source.location, e.count ?? null);
     }
 

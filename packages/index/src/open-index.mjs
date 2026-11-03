@@ -25,6 +25,22 @@ function listMarkdown(dir) {
 }
 
 /**
+ * Markdown files of a series' shared world (below its codex/ and archive/), as paths relative to the series folder.
+ * @param {string} seriesDir
+ */
+function listShared(seriesDir) {
+  const out = [];
+  for (const sub of ['codex', 'archive']) {
+    try {
+      for (const rel of listMarkdown(path.join(seriesDir, sub))) out.push(`${sub}/${rel}`);
+    } catch {
+      // no such folder
+    }
+  }
+  return out;
+}
+
+/**
  * @param {string} bookRoot
  * @param {{ store: { writeMeta: Function }, libraryRoot?: string }} options
  *   `libraryRoot`: when the book sits inside a library, validation runs over the whole library (series
@@ -59,6 +75,7 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
   function inspect(db) {
     const base = { built_at: null, schema_version: null, file_count: 0, stale_paths: [], invalid_paths: [], invalid_since: null, book_id: null, title: null, errors: 0, warnings: 0 };
     let flagged;
+    let inSeries;
     if (!db) return { ...base, state: 'missing' };
     let rows;
     try {
@@ -66,6 +83,7 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
       rows = db.prepare('SELECT path, sha256, size, mtime_ms FROM files').all();
       const sev = new Map(db.prepare('SELECT severity, COUNT(*) AS n FROM diagnostics GROUP BY severity').all().map((r) => [r.severity, Number(r.n)]));
       flagged = meta.get('state') === 'invalid';
+      inSeries = meta.has('series');
       let paths = [];
       try {
         const parsed = JSON.parse(meta.get('invalid_paths') ?? '[]');
@@ -117,6 +135,29 @@ export function openIndex(bookRoot, { store, libraryRoot } = /** @type {any} */ 
       }
     }
     for (const rel of known.keys()) stale.push(rel);
+    if (inSeries) {
+      // the series' shared entries are part of this book's index (M07-J01): a change to one makes the index stale
+      try {
+        const sharedKnown = new Map(db.prepare('SELECT path, sha256, size, mtime_ms FROM shared_files').all().map((r) => [r.path, r]));
+        const seriesDir = path.dirname(root);
+        for (const rel of listShared(seriesDir)) {
+          const key = `../${rel}`;
+          const row = sharedKnown.get(key);
+          if (!row) {
+            stale.push(key);
+            continue;
+          }
+          sharedKnown.delete(key);
+          const abs = path.join(seriesDir, ...rel.split('/'));
+          const st = statSync(abs);
+          if (st.size === row.size && st.mtimeMs === row.mtime_ms) continue;
+          if (createHash('sha256').update(readFileSync(abs)).digest('hex') !== row.sha256) stale.push(key);
+        }
+        for (const key of sharedKnown.keys()) stale.push(key);
+      } catch {
+        return { ...base, state: 'stale' };
+      }
+    }
     stale.sort();
     return { ...base, state: stale.length ? 'stale' : flagged ? 'invalid' : 'fresh', stale_paths: stale };
   }
