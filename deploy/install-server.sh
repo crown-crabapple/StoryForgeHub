@@ -11,6 +11,10 @@
 #   --caddy-sites <dir>   where Caddy's site files go (default /etc/caddy/sites; the main Caddyfile must `import` it)
 #   --no-caddy            do not write or reload a Caddy site (use your own reverse proxy)
 #
+#   sudo sh install-server.sh --setup-link
+#                         a new one-time setup link for the first owner (each lasts 30 minutes), while that owner has not chosen a password yet.
+#                         StoryForge is stopped for a few seconds. Once the owner has a password, use `shared reset-owner` (docs/self-hosting.md).
+#
 # What it does, every step safe to run again:
 #   - a system user `storyforge`; the program in /opt/storyforge-<version> with /opt/storyforge pointing at it (root owned, read-only to the service)
 #   - production dependencies only (npm ci --omit=dev); the release ships the built app, so nothing is built here
@@ -22,7 +26,7 @@
 # It never touches the firewall, other Caddy sites, or anything in the library.
 set -eu
 
-ZIP=""; DOMAIN=""; OWNER=""; PORT=4317; CADDY_SITES=/etc/caddy/sites; USE_CADDY=1
+ZIP=""; DOMAIN=""; OWNER=""; PORT=4317; CADDY_SITES=/etc/caddy/sites; USE_CADDY=1; SETUP_LINK=0
 ENV_FILE=/etc/storyforge/storyforge.env
 UNIT=/etc/systemd/system/storyforge.service
 LIBRARY=/srv/storyforge/library
@@ -39,7 +43,8 @@ while [ $# -gt 0 ]; do
     --port) PORT="${2:-}"; shift 2 ;;
     --caddy-sites) CADDY_SITES="${2:-}"; shift 2 ;;
     --no-caddy) USE_CADDY=0; shift ;;
-    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+    --setup-link) SETUP_LINK=1; shift ;;
+    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
   esac
 done
@@ -47,6 +52,26 @@ done
 # --- checks before anything changes ---
 [ "$(id -u)" -eq 0 ] || die "run this as root (sudo sh $0 ...)"
 command -v systemctl >/dev/null 2>&1 || die "systemd is needed"
+
+envval() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1; }
+
+if [ "$SETUP_LINK" -eq 1 ]; then
+  [ -f "$ENV_FILE" ] && [ -e /opt/storyforge ] || die "StoryForge is not installed here yet (no $ENV_FILE)"
+  NODE=$(command -v node) || die "node is not on PATH"
+  OWNER=$(envval STORYFORGE_OWNER)
+  say "stopping StoryForge for a moment to issue a new setup link for $OWNER"
+  systemctl stop storyforge
+  set +e
+  OUT=$(cd /opt/storyforge && runuser -u storyforge -- env XDG_CONFIG_HOME="$STATE/config" "$NODE" apps/server/src/main.mjs shared init \
+    --owner "$OWNER" --library "$LIBRARY" --shared-data "$STATE/shared-data" --public-url "$(envval STORYFORGE_PUBLIC_URL)" --port "$(envval STORYFORGE_PORT)" 2>&1)
+  RC=$?
+  set -e
+  systemctl start storyforge
+  printf '%s\n' "$OUT"
+  [ "$RC" -eq 0 ] || die "no new link: $OWNER may already have a password. Then use: systemctl stop storyforge, then (in /opt/storyforge, as the storyforge user) node apps/server/src/main.mjs shared reset-owner --owner $OWNER --library $LIBRARY --shared-data $STATE/shared-data --public-url <url>, then systemctl start storyforge"
+  say "StoryForge started again; the link above lasts 30 minutes"
+  exit 0
+fi
 [ -n "$ZIP" ] && [ -f "$ZIP" ] || die "--zip <release zip> is required and must exist"
 ZIP=$(readlink -f "$ZIP")
 NODE=$(command -v node || true)
@@ -58,7 +83,7 @@ case "$PORT" in ''|*[!0-9]*) die "--port must be a number" ;; esac
 
 if [ -f "$ENV_FILE" ]; then
   # an existing install: the domain comes from its env file unless given again
-  OLD_URL=$(sed -n 's/^STORYFORGE_PUBLIC_URL=//p' "$ENV_FILE" | tail -n 1)
+  OLD_URL=$(envval STORYFORGE_PUBLIC_URL)
   [ -n "$DOMAIN" ] || DOMAIN=${OLD_URL#https://}
   [ -n "$OWNER" ] && say "note: --owner is used on the first install only; $ENV_FILE already exists"
 else
@@ -134,20 +159,24 @@ EOF
   chown root:storyforge "$ENV_FILE"
   chmod 640 "$ENV_FILE"
 else
-  PORT=$(sed -n 's/^STORYFORGE_PORT=//p' "$ENV_FILE" | tail -n 1); PORT=${PORT:-4317}
+  PORT=$(envval STORYFORGE_PORT); PORT=${PORT:-4317}
 fi
 
 # --- switch over and start ---
 PREVIOUS=$(readlink /opt/storyforge 2>/dev/null || true)
 ln -sfn "$DEST" /opt/storyforge.tmp && mv -T /opt/storyforge.tmp /opt/storyforge
-sed "s#^ExecStart=.*#ExecStart=$NODE deploy/entrypoint.mjs#" /opt/storyforge/deploy/storyforge.service > "$UNIT"
+# node:sqlite prints an ExperimentalWarning on every start; NODE_OPTIONS reaches the server process the entrypoint starts too
+sed -e "s#^ExecStart=.*#ExecStart=$NODE deploy/entrypoint.mjs#" \
+  -e "/^ExecStart=/i Environment=NODE_OPTIONS=--disable-warning=ExperimentalWarning" \
+  /opt/storyforge/deploy/storyforge.service > "$UNIT"
 systemctl daemon-reload
 systemctl enable storyforge >/dev/null 2>&1
 say "starting StoryForge $VERSION${PREVIOUS:+ (was $PREVIOUS)}"
 systemctl restart storyforge
 
 i=0
-until "$NODE" -e "fetch('http://127.0.0.1:$PORT/api/health',{headers:{host:'$DOMAIN'}}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))" 2>/dev/null; do
+# node:http, not fetch: fetch drops a Host header, and StoryForge answers only for its public host name
+until "$NODE" -e "require('node:http').get({host:'127.0.0.1',port:$PORT,path:'/api/health',headers:{Host:'$DOMAIN'},timeout:3000},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1)).on('timeout',()=>process.exit(1))" 2>/dev/null; do
   i=$((i + 1))
   if [ "$i" -ge 60 ]; then
     journalctl -u storyforge -n 30 --no-pager >&2 || true
@@ -191,4 +220,5 @@ if [ -n "$LINK" ]; then
 else
   say "if this is the first install, the one-time setup link is in: journalctl -u storyforge | grep setup"
 fi
+say "the setup link lasts 30 minutes; for a new one: sh $0 --setup-link"
 say "library: $LIBRARY   accounts and audit: $STATE/shared-data   settings: $ENV_FILE"
