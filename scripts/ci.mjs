@@ -7,7 +7,6 @@
 // runs over file lists, although `npm test` already ran them, so each shows by name in the table.
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { checkLicenses, checkLockfile } from './checks.mjs';
@@ -66,55 +65,6 @@ async function nodeTests(files) {
   const r = await run(process.execPath, ['--import', ISOLATE, '--test', ...resolved]);
   if (r.code !== 0) throw new Error(`node --test exited ${r.code}`);
   return { status: 'ok', note: `${resolved.length} files` };
-}
-
-/** UI smoke: the server on a temp copy of the sample, port 0; the app shell, a deep app route and the health route must answer 200. @returns {Promise<Outcome>} */
-async function uiSmoke() {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-ci-smoke-'));
-  const library = path.join(tmp, 'salt-orchard');
-  fs.cpSync(path.join(REPO_ROOT, 'packages', 'format', 'fixtures', 'valid', 'salt-orchard'), library, { recursive: true });
-  const config = path.join(tmp, 'config');
-  const child = spawn(process.execPath, [path.join(REPO_ROOT, 'apps', 'server', 'src', 'main.mjs'), '--library', library, '--port', '0'], {
-    cwd: REPO_ROOT,
-    env: { ...process.env, STORYFORGE_TEST_CONFIG: config, APPDATA: path.join(config, 'AppData'), XDG_CONFIG_HOME: path.join(config, 'xdg') },
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
-  let out = '';
-  child.stdout.on('data', (d) => (out += d));
-  child.stderr.on('data', (d) => (out += d));
-  let exitCode = null;
-  const exited = new Promise((resolve) =>
-    child.once('exit', (code) => {
-      exitCode = code ?? 1;
-      resolve(exitCode);
-    }),
-  );
-  try {
-    const deadline = Date.now() + 30000;
-    let port = 0;
-    while (!port) {
-      const m = /http:\/\/127\.0\.0\.1:(\d+)\//.exec(out);
-      if (m) port = Number(m[1]);
-      else if (exitCode !== null) throw new Error(`the server exited early (${exitCode}):\n${out}`);
-      else if (Date.now() > deadline) throw new Error(`the server did not start in 30 s:\n${out}`);
-      else await new Promise((r) => setTimeout(r, 50));
-    }
-    const get = (p) => fetch(`http://127.0.0.1:${port}${p}`, { headers: { Host: `127.0.0.1:${port}` } });
-    const index = await get('/');
-    const html = await index.text();
-    if (index.status !== 200) throw new Error(`GET / answered ${index.status}`);
-    if (!html.includes('<div id="root">') || !/<script[^>]+type="module"/.test(html)) throw new Error('GET / did not return the app shell (no root element and module script)');
-    const deep = await get('/books/salt-orchard/codex');
-    if (deep.status !== 200 || !(await deep.text()).includes('<div id="root">')) throw new Error(`GET /books/salt-orchard/codex did not return the app shell (${deep.status})`);
-    const health = await get('/api/health');
-    if (health.status !== 200) throw new Error(`GET /api/health answered ${health.status}`);
-    return { status: 'ok', note: `port ${port}: /, /books/salt-orchard/codex, /api/health all 200` };
-  } finally {
-    child.kill();
-    await Promise.race([exited, new Promise((r) => setTimeout(r, 5000))]);
-    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
-  }
 }
 
 const NETWORK_FAILURE = /ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ENETUNREACH|ETIMEDOUT|EHOSTUNREACH|ENOTCACHED|FETCH_ERROR|audit endpoint returned an error|network|offline/i;
@@ -185,7 +135,8 @@ export function buildSteps({ install, skipAudit }) {
   npmStep('test', ['test']);
   npmStep('test:large', ['run', 'test:large']);
   for (const g of GROUPS) steps.push({ name: `group: ${g.name}`, run: () => nodeTests(g.files) });
-  steps.push({ name: 'UI smoke', run: uiSmoke });
+  // the smoke test is a test file (apps/server/test/ui-smoke.test.mjs) so it also runs in npm test and cleans up after itself
+  steps.push({ name: 'UI smoke', run: () => nodeTests(['apps/server/test/ui-smoke.test.mjs']) });
   steps.push({ name: 'security: npm audit', run: () => audit({ skipAudit }) });
   steps.push({
     name: 'security: licences',

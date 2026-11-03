@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { writeWorkFile } from '@storyforge/store';
 import { REPO_ROOT, listPackages } from './workspaces.mjs';
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?$/;
@@ -26,9 +27,9 @@ function repin(json, names, version) {
 /**
  * @param {string} root
  * @param {string} version
- * @returns {string[]} the files changed, relative to root
+ * @returns {Promise<string[]>} the files changed, relative to root (written through @storyforge/store, the single writer)
  */
-export function setVersion(root, version) {
+export async function setVersion(root, version) {
   if (!SEMVER.test(version)) throw new Error(`"${version}" is not a version like 1.2.3`);
   const pkgs = listPackages(root);
   const names = new Set(pkgs.map((p) => p.json.name));
@@ -38,7 +39,7 @@ export function setVersion(root, version) {
     p.json.version = version;
     repin(p.json, names, version);
     if (JSON.stringify(p.json) !== before) {
-      fs.writeFileSync(p.file, `${JSON.stringify(p.json, null, 2)}\n`);
+      await writeWorkFile(p.file, `${JSON.stringify(p.json, null, 2)}\n`);
       changed.push(path.posix.join(p.dir, 'package.json'));
     }
   }
@@ -54,7 +55,7 @@ export function setVersion(root, version) {
       repin(entry, names, version);
     }
     if (JSON.stringify(lock) !== before) {
-      fs.writeFileSync(lockFile, `${JSON.stringify(lock, null, 2)}\n`);
+      await writeWorkFile(lockFile, `${JSON.stringify(lock, null, 2)}\n`);
       changed.push('package-lock.json');
     }
   }
@@ -68,7 +69,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(2);
   }
   try {
-    const changed = setVersion(REPO_ROOT, version);
+    const changed = await setVersion(REPO_ROOT, version);
     process.stdout.write(changed.length ? `version ${version}: changed ${changed.join(', ')}\n` : `version ${version}: nothing to change\n`);
   } catch (e) {
     process.stderr.write(`version: ${e instanceof Error ? e.message : e}\n`);

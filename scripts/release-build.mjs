@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { writeZip } from '@storyforge/export';
-import { writeOutFile } from '@storyforge/store';
+import { writeWorkFile } from '@storyforge/store';
 import { REPO_ROOT, listPackages } from './workspaces.mjs';
 
 /** Folders that are never shipped, wherever they are. */
@@ -67,11 +67,10 @@ export async function buildRelease({ root = REPO_ROOT, outDir = path.join(root, 
   const prefix = `storyforge-${version}/`;
   const bytes = writeZip(files.map((f) => ({ name: prefix + f, data: fs.readFileSync(path.join(root, ...f.split('/'))) })));
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  fs.mkdirSync(outDir, { recursive: true });
   const zip = path.join(outDir, zipName);
   const sha256File = `${zip}.sha256`;
-  await writeOutFile(zip, bytes, { force: true });
-  await writeOutFile(sha256File, Buffer.from(`${sha256}  ${zipName}\n`), { force: true });
+  await writeWorkFile(zip, bytes);
+  await writeWorkFile(sha256File, `${sha256}  ${zipName}\n`);
   return { version, zip, sha256File, sha256, files: files.map((f) => prefix + f) };
 }
 

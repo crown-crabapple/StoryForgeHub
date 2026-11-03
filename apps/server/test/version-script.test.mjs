@@ -21,10 +21,10 @@ function scratchRepo() {
   return tmp;
 }
 
-test('setVersion moves the root, every workspace, the internal pins and the lockfile together', () => {
+test('setVersion moves the root, every workspace, the internal pins and the lockfile together', async () => {
   const tmp = scratchRepo();
   try {
-    const changed = setVersion(tmp, '1.2.3');
+    const changed = await setVersion(tmp, '1.2.3');
     assert.ok(changed.includes('package.json') && changed.includes('package-lock.json') && changed.includes('packages/core/package.json'), changed.join(', '));
     const pkgs = listPackages(tmp);
     assert.ok(pkgs.length >= 15);
@@ -43,7 +43,7 @@ test('setVersion moves the root, every workspace, the internal pins and the lock
     assert.equal(lock.packages['apps/server'].version, '1.2.3');
     assert.equal(lock.packages['apps/server'].dependencies['@storyforge/core'], '1.2.3');
     // every other byte stays: going back gives the original files
-    setVersion(tmp, '0.1.0');
+    await setVersion(tmp, '0.1.0');
     for (const p of listPackages(REPO_ROOT)) assert.equal(fs.readFileSync(path.join(tmp, p.dir, 'package.json'), 'utf8'), fs.readFileSync(p.file, 'utf8'), p.dir || 'root');
     assert.equal(fs.readFileSync(path.join(tmp, 'package-lock.json'), 'utf8'), fs.readFileSync(path.join(REPO_ROOT, 'package-lock.json'), 'utf8'));
   } finally {
@@ -51,11 +51,11 @@ test('setVersion moves the root, every workspace, the internal pins and the lock
   }
 });
 
-test('a version that is not x.y.z is refused and nothing is written', () => {
+test('a version that is not x.y.z is refused and nothing is written', async () => {
   const tmp = scratchRepo();
   try {
     const before = fs.readFileSync(path.join(tmp, 'package.json'), 'utf8');
-    for (const bad of ['1.2', 'v1.2.3', '1.2.x', '', 'latest']) assert.throws(() => setVersion(tmp, bad), /not a version/);
+    for (const bad of ['1.2', 'v1.2.3', '1.2.x', '', 'latest']) await assert.rejects(() => setVersion(tmp, bad), /not a version/);
     assert.equal(fs.readFileSync(path.join(tmp, 'package.json'), 'utf8'), before);
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
