@@ -15,7 +15,7 @@ Binding: DECISIONS 9, 11, 12; M05-J04 AI workshop (profiles, key storage `none |
 | `dpapi` | Windows | The secret is encrypted with Windows DPAPI (CurrentUser) by a spawned `powershell.exe -NoProfile -NonInteractive` that reads the plaintext from **stdin**. The ciphertext is base64 in `<config>/secrets.json`, so only this Windows user on this machine can decrypt it. |
 | `macos-keychain` | macOS with `security` | `security -i` with the commands given on **stdin**, never in argv, under service `storyforge`, account = secret id |
 | `secret-service` | Linux with `secret-tool` and a session bus | `secret-tool store` (secret on stdin) / `lookup` |
-| `file-key` | everything else (servers, containers) | AES-256-GCM. The 32-byte key is in `STORYFORGE_SECRETS_KEY` (base64) or `<shared-data or config>/secrets.key` (mode 0600, created on first use). The ciphertext is in `secrets.json`. The docs say to back up the key separately or keys will need re-entering. |
+| `file-key` | everything else (servers, containers) | AES-256-GCM. The 32-byte key is in `STORYFORGE_SECRETS_KEY` (base64) or `<shared-data or config>/secrets-key.json` (mode 0600, created on first use). The ciphertext is in `secrets.json`. The docs say to back up the key separately or keys will need re-entering. |
 
 **Rules:**
 - No secret ever appears in argv, environment of child processes (except `STORYFORGE_SECRETS_KEY` given by the operator), logs, error messages, receipts, AI records, suggestions, exports, backups, the library, or API responses.
