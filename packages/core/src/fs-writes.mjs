@@ -41,6 +41,7 @@ import { openStore } from '@storyforge/store';
 import { recordPath, renderAiRecord, selectRange, spliceReplacement } from './ai-rewrite.mjs';
 import { createCheckMethods } from './check-scene.mjs';
 import { createContinuityExceptionMethods } from './continuity-exceptions.mjs';
+import { createCommentMethods } from './comments.mjs';
 import { createSuggestionMethods } from './suggestions.mjs';
 import { createReceiptEngine } from './receipts.mjs';
 import { recordProvenance } from './provenance.mjs';
@@ -534,6 +535,8 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     ...createContinuityExceptionMethods({ root, afterWrite, reconcile, now }),
     // ---- M05-J06: suggestions (suggestions/<YYYY>/*.md, through the store; a target changes only on accept) and the read-only scene check
     ...createSuggestionMethods({ root, afterWrite, reconcile, now, receipts, readValidate }),
+    // ---- M07-J03b: comments (comments/<YYYY>/*.md, through the store; they never change the file they are about)
+    ...createCommentMethods({ root, afterWrite, reconcile, now, readValidate }),
     ...createCheckMethods({ root, now, receipts }),
     // ---- M05-J07: receipts (provenance ledger): reads, flush and verification; the writer is shared with the changes above
     getReceipts: receipts.getReceipts,

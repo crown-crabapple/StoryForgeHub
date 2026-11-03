@@ -116,6 +116,18 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const r = await repository.getSuggestion(b, d);
       return r.ok ? { status: 200, body: r.suggestion } : NOT_FOUND;
     }
+    // M07-J03b: comments of a scene (?target=<id>&status=open|resolved) and who has a scene open (?scene=<id>, advisory, in memory)
+    if (c === 'comments' && d === undefined) {
+      const status = params.get('status');
+      if (status !== null && status !== 'open' && status !== 'resolved') return badRequest('status must be open or resolved');
+      const r = await repository.listComments(b, { ...(params.get('target') !== null ? { target: /** @type {string} */ (params.get('target')) } : {}), ...(status !== null ? { status } : {}) });
+      return r.ok ? { status: 200, body: { comments: r.comments } } : NOT_FOUND;
+    }
+    if (c === 'presence' && d === undefined) {
+      const scene = params.get('scene');
+      if (scene === null || scene === '') return badRequest('scene is required');
+      return { status: 200, body: { scene, users: state?.presence ? state.presence.who(b, scene) : [] } };
+    }
     // M05-J07: receipts (the provenance ledger). Reads only: GET /receipts?scene= (lineage, receipts, integrity status), /receipts/blame?scene=&from=&to=, /receipts/verify
     if (c === 'receipts' && d === undefined) {
       const scene = params.get('scene');
@@ -417,7 +429,7 @@ async function fromIndex(read) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, profileId?: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string } | null}
+ * @returns {{ route: string, profileId?: string, bookId?: string, commentId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
@@ -500,7 +512,13 @@ export function matchWriteRoute(method, pathname) {
   // M05-J06 suggestions: decide one hunk or every pending hunk; check one scene (read-only report)
   if (method === 'POST' && c === 'suggestions' && d !== undefined && e === undefined) return { route: 'suggestion-decide', bookId: b, suggestionId: d };
   if (method === 'POST' && c === 'suggestions' && d !== undefined && e === 'hunks' && f !== undefined) return { route: 'suggestion-hunk-decide', bookId: b, suggestionId: d, hunkId: f };
+  if (method === 'POST' && c === 'suggestions' && d === undefined) return { route: 'suggestion-create', bookId: b };
   if (method === 'POST' && c === 'check' && d === undefined) return { route: 'check-scene', bookId: b };
+  // M07-J03b: comments (create, reply, resolve or reopen) and the advisory presence heartbeat
+  if (method === 'POST' && c === 'comments' && d === undefined) return { route: 'comment-create', bookId: b };
+  if (method === 'POST' && c === 'comments' && d !== undefined && e === undefined) return { route: 'comment-resolve', bookId: b, commentId: d };
+  if (method === 'POST' && c === 'comments' && d !== undefined && e === 'replies' && f === undefined) return { route: 'comment-reply', bookId: b, commentId: d };
+  if (method === 'POST' && c === 'presence' && d === undefined) return { route: 'presence', bookId: b };
   // M05-J07: "Record now" (flush the author's pending changes to a scene into a receipt)
   if (method === 'POST' && c === 'receipts' && d === 'flush' && e === undefined) return { route: 'receipts-flush', bookId: b };
   if (method === 'POST' && c === 'attachments' && d === undefined) return { route: 'attachment-upload', bookId: b };
@@ -540,9 +558,11 @@ function respondSuggestion(r, okStatus, okBody) {
  * @param {{ route: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, n?: string, opId?: string, file?: string }} match from matchWriteRoute
  * @param {unknown} body parsed JSON request body
  * @param {ApiState} [state] updated by POST /api/recover
+ * @param {{ principal?: { kind: string, id: string, display_name?: string, role?: string } | null }} [ctx] shared mode (M07-J03b): who is asking. Personal mode passes nothing and
+ *   keeps its behaviour exactly (a stale save is the plain 409 `conflict`; no `by`).
  * @returns {Promise<ApiResult>}
  */
-export async function handleWrite(repository, match, body, state) {
+export async function handleWrite(repository, match, body, state, ctx = {}) {
   if (!isObject(body)) return badRequest('body must be a JSON object');
   const bookId = /** @type {string} */ (match.bookId);
   switch (match.route) {
@@ -593,6 +613,22 @@ export async function handleWrite(repository, match, body, state) {
     case 'body': {
       if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string') return badRequest('expected { body: string, base_sha256: string }');
       const r = await repository.updateSceneBody(bookId, /** @type {string} */ (match.sceneId), body.body, { baseSha256: body.base_sha256 });
+      if (!r.ok && r.code === 'CONFLICT' && ctx.principal?.kind === 'user') {
+        // shared mode (contract M07-J03 section 7): the file moved on since this buffer was loaded. Keep BOTH versions: the file stays as it is, and the buffer is
+        // written as a suggestion against it (source author, rationale "Saved over a newer version"); the editor opens the compare view from the 409.
+        const kept = await repository.suggestFromStaleSave(bookId, /** @type {string} */ (match.sceneId), body.body);
+        return {
+          status: 409,
+          body: {
+            error: 'STALE',
+            code: 'STALE',
+            message: kept.ok ? 'Someone saved this scene first. Your text was kept as a suggestion against their version.' : 'Someone saved this scene first. Your text could not be kept as a suggestion; it is still in your editor.',
+            current: r.current ?? null,
+            kept: Boolean(kept.ok),
+            suggestion: kept.ok ? kept.suggestion : null,
+          },
+        };
+      }
       return respond(r, 200, (x) => ({ sha256: x.sha256, words: x.words ?? { added: 0, removed: 0 } }));
     }
     case 'entry-body': {
@@ -674,6 +710,48 @@ export async function handleWrite(repository, match, body, state) {
       if (body.decision !== 'accept' && body.decision !== 'decline') return badRequest("expected { decision: 'accept' | 'decline' }");
       const r = await repository.decideSuggestion(bookId, /** @type {string} */ (match.suggestionId), { decision: body.decision, ...(match.route === 'suggestion-hunk-decide' ? { hunkId: match.hunkId } : {}) });
       return respondSuggestion(r, 200, (x) => ({ ok: true, decision: x.decision, hunkIds: x.hunkIds, opId: x.opId ?? null, undo: x.undo ?? null, suggestion: x.suggestion ?? null }));
+    }
+    // ---- M07-J03b: a suggestion made by a person (a reviewer's "Suggest change"), comments, and the presence heartbeat
+    case 'suggestion-create': {
+      if (typeof body.target !== 'string' || body.target === '') return badRequest('expected { target: string, proposedText | proposedRange, rationale? }');
+      if (body.rationale !== undefined && typeof body.rationale !== 'string') return badRequest('rationale must be a string');
+      if (body.expect_sha256 !== undefined && typeof body.expect_sha256 !== 'string') return badRequest('expect_sha256 must be a string');
+      // the server decides the source from the role; the client cannot claim another
+      const source = ctx.principal?.kind === 'user' && ctx.principal.role === 'reviewer' ? 'reviewer' : 'author';
+      const r = await repository.createSuggestion(bookId, {
+        target: body.target,
+        ...(body.proposedText !== undefined ? { proposedText: body.proposedText } : {}),
+        ...(body.proposedRange !== undefined ? { proposedRange: body.proposedRange } : {}),
+        ...(body.rationale !== undefined ? { rationale: body.rationale } : {}),
+        ...(body.expect_sha256 !== undefined ? { expectSha256: body.expect_sha256 } : {}),
+        source,
+        mode: 'suggest',
+      });
+      return respondSuggestion(r, 201, (x) => ({ ok: true, id: x.id, path: x.path, status: x.status, hunks: x.hunks }));
+    }
+    case 'comment-create': {
+      if (typeof body.target !== 'string' || typeof body.text !== 'string') return badRequest('expected { target: string, line: integer, lines?: integer, quote?: string, text: string }');
+      const r = await repository.createComment(bookId, { target: body.target, line: /** @type {number} */ (body.line), ...(body.lines !== undefined ? { lines: /** @type {number} */ (body.lines) } : {}), ...(body.quote !== undefined ? { quote: /** @type {string} */ (body.quote) } : {}), text: body.text });
+      return respondSuggestion(r, 201, (x) => ({ ok: true, id: x.id, path: x.path, comment: x.comment }));
+    }
+    case 'comment-reply': {
+      if (typeof body.text !== 'string') return badRequest('expected { text: string }');
+      const r = await repository.replyToComment(bookId, /** @type {string} */ (match.commentId), { text: body.text });
+      return respondSuggestion(r, 200, (x) => ({ ok: true, comment: x.comment }));
+    }
+    case 'comment-resolve': {
+      if (body.status !== 'open' && body.status !== 'resolved') return badRequest("expected { status: 'open' | 'resolved' }");
+      const r = await repository.setCommentState(bookId, /** @type {string} */ (match.commentId), { status: body.status });
+      return respondSuggestion(r, 200, (x) => ({ ok: true, comment: x.comment }));
+    }
+    case 'presence': {
+      // advisory only (read class): never blocks anything. Only signed-in people are recorded; a share link or personal mode records nothing.
+      if (body.scene !== null && typeof body.scene !== 'string') return badRequest('expected { scene: string | null }');
+      const who = ctx.principal?.kind === 'user' ? ctx.principal : null;
+      if (who && state?.presence) {
+        if (!state.presence.beat(bookId, /** @type {string | null} */ (body.scene), { id: who.id, name: who.display_name ?? who.id })) return badRequest('scene must be an id');
+      }
+      return { status: 200, body: { ok: true, users: who && state?.presence && typeof body.scene === 'string' ? state.presence.who(bookId, body.scene, who.id) : [] } };
     }
     case 'check-scene': {
       if (typeof body.sceneId !== 'string' || body.sceneId === '') return badRequest('expected { sceneId: string }');

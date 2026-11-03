@@ -9,6 +9,7 @@ import { ulid } from '@storyforge/manuscript';
 import { blame as blameLines, buildReceipt, compareReceipts, lineDiff, lineage, objectPath, parseReceipt, receiptPath, sha256Hex, verifyChain } from '@storyforge/receipts';
 import { openStore } from '@storyforge/store';
 import { applyHunk, parseSuggestion } from '@storyforge/suggestions';
+import { currentBy } from './actor.mjs';
 
 /** An author's unflushed saves are flushed when this long has passed since the last receipt of the scene (contract section 2 d). */
 export const FLUSH_AFTER_MS = 10 * 60 * 1000;
@@ -82,6 +83,8 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
   /** The last bytes StoryForge itself wrote to a scene since its last receipt (key bookRoot|sceneId). Attribution does not depend on watcher timing: a flush compares
    *  the file with these bytes, so an outside write right after one of our saves is still told apart from it. */
   const ownBytes = new Map();
+  /** Who made the last own save of a scene since its last receipt (shared mode; same keys as ownBytes), so the author.edit receipt names them even when it is written later. */
+  const ownBy = new Map();
 
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
 
@@ -156,6 +159,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
         if (before !== null && !s.noBeforeObject) await putObject(before);
         if (after !== null) await putObject(after);
         const prev = target.id === '' ? null : last.get(target.id) ?? null;
+        const by = s.by === undefined ? (s.actor === 'external' || s.actor === 'system' ? null : currentBy()) : s.by; // shared mode: who did it
         const at = new Date(stamp(prev ? Date.parse(prev.receipt.at) : 0)).toISOString();
         const id = `rcpt_${ulid(Date.parse(at))}`;
         const parents = [];
@@ -172,6 +176,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
           after_sha256,
           parents,
           ...(s.ai ? { ai: s.ai } : {}),
+          ...(by ? { by } : {}),
           ...(s.summary ? { summary: s.summary } : {}),
           ...(s.diff !== undefined ? { diff: s.diff, ranges: s.ranges ?? [] } : before !== null && after !== null ? { beforeBytes: before, afterBytes: after } : {}),
           ...(s.prompt ? { prompt: s.prompt } : {}),
@@ -196,6 +201,8 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
         if (as === 'author' && externalMarks.has(markKey)) as = 'external';
         externalMarks.delete(markKey);
         const own = forced ? null : ownBytes.get(markKey) ?? null;
+        const savedBy = forced ? undefined : ownBy.get(markKey);
+        if (!forced) ownBy.delete(markKey);
         if (!forced) {
           ownBytes.delete(markKey);
           if (own !== null) consumedOwn.set(markKey, own);
@@ -210,7 +217,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
           if (ownSha === null || ownSha === prev.after_sha256) as = 'external'; // nothing of ours since the last receipt: someone else wrote it
           else if (ownSha !== hashOf(current)) {
             // our save, then an outside write over it: two receipts in this batch
-            await api.add({ operation: 'author.edit', actor: 'author', workflow: 'editor', target, before, beforeSha: prev.after_sha256, after: own });
+            await api.add({ operation: 'author.edit', actor: 'author', workflow: 'editor', target, before, beforeSha: prev.after_sha256, after: own, by: savedBy });
             const entry = await api.add({ operation: 'external.change', actor: 'external', workflow: 'watcher', target, before: own, after: current });
             return { kind: 'external', entry };
           }
@@ -224,6 +231,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
           before,
           beforeSha: prev.after_sha256,
           after: current,
+          ...(external ? {} : { by: savedBy }),
         });
         return { kind: external ? 'external' : 'author', entry };
       },
@@ -261,6 +269,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
         } else {
           pending.set(`${store.root}|${sceneId}`, { bookRoot: store.root, sceneId, rel });
           ownBytes.set(`${store.root}|${sceneId}`, next);
+          ownBy.set(`${store.root}|${sceneId}`, currentBy());
         }
         return null;
       })
@@ -298,6 +307,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
       } else {
         pending.set(`${store.root}|${sceneId}`, { bookRoot: store.root, sceneId, rel });
         ownBytes.set(`${store.root}|${sceneId}`, next);
+        ownBy.set(`${store.root}|${sceneId}`, currentBy());
       }
     } catch {
       // as above
@@ -490,6 +500,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
         if (!cur) continue;
         pending.set(`${store.root}|${doc.fm.id}`, { bookRoot: store.root, sceneId: doc.fm.id, rel: doc.rel });
         ownBytes.set(`${store.root}|${doc.fm.id}`, cur.bytes);
+        ownBy.set(`${store.root}|${doc.fm.id}`, currentBy());
       }
     } catch {
       // attribution help only
@@ -595,7 +606,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
     const workflow = source === 'ai' ? 'ai-rewrite' : source === 'claude-book' ? 'claude-book' : 'suggestion';
     const origin = source === 'ai' ? 'AI-suggested ' : source === 'claude-book' ? 'Claude-Book-suggested ' : 'suggested ';
     const total = parsed.hunks.length;
-    const withAi = source === 'author' ? {} : { ai };
+    const withAi = source === 'author' || source === 'reviewer' ? {} : { ai };
     const extraParents = proposal ? [proposal.parent] : [];
     const target = { id: targetId, path: targetRel };
     if (decision === 'accept') {

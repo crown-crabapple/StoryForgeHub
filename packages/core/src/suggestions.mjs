@@ -7,6 +7,7 @@ import { extractDocs, validate } from '@storyforge/format';
 import { slugify, ulid } from '@storyforge/manuscript';
 import { openStore } from '@storyforge/store';
 import { applyHunk, buildSuggestion, parseSuggestion, setHunkStatus, suggestionPath } from '@storyforge/suggestions';
+import { currentBy } from './actor.mjs';
 import { selectRange, spliceReplacement } from './ai-rewrite.mjs';
 import { notifyProvenance, recordProvenance } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
@@ -14,7 +15,7 @@ import { createReceiptEngine } from './receipts.mjs';
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
 const errKey = (d) => `${d.code}|${d.file}|${d.location ?? ''}`;
 const TARGET_KINDS = ['scene', 'entry', 'thread', 'event'];
-const SOURCES = ['ai', 'claude-book', 'author'];
+const SOURCES = ['ai', 'claude-book', 'author', 'reviewer'];
 const MODES = ['suggest', 'state', 'canon'];
 /** Folders a new-file suggestion may not create files in. */
 const NEW_FILE_BLOCKED = ['suggestions/', 'ai/', 'archive/', 'provenance/', 'activity/', '.storyforge/'];
@@ -96,6 +97,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
       target_missing: target !== '' && !targetDoc,
       base_sha256: typeof doc.fm.base_sha256 === 'string' ? doc.fm.base_sha256 : '',
       source: String(doc.fm.source),
+      by: doc.fm.by && typeof doc.fm.by === 'object' && typeof doc.fm.by.name === 'string' ? { ...(typeof doc.fm.by.id === 'string' ? { id: doc.fm.by.id } : {}), name: doc.fm.by.name } : null,
       mode: String(doc.fm.mode),
       created: String(doc.fm.created ?? ''),
       status: String(parsed.fm.status ?? ''),
@@ -127,6 +129,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
    */
   async function createSuggestion(bookId, args = {}) {
     const { target, proposedText, proposedRange, source, mode = 'suggest', rationale, ai, expectSha256 } = args ?? {};
+    const by = args?.by ?? currentBy(); // shared mode: who made it (FORMAT 9.3)
     if (typeof target !== 'string' || target === '') return fail('BAD_ARGS', { message: 'target must be the id of a scene, entry, thread or event' });
     if (!SOURCES.includes(/** @type {string} */ (source))) return fail('BAD_ARGS', { message: `source must be one of ${SOURCES.join(', ')}` });
     if (!MODES.includes(mode)) return fail('BAD_ARGS', { message: `mode must be one of ${MODES.join(', ')}` });
@@ -161,7 +164,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
     const slugBase = slugify(`${titleOf(doc)} ${source === 'ai' ? 'rewrite' : 'change'}`).slice(0, 40).replace(/-+$/g, '') || 'suggestion';
     let built;
     try {
-      built = buildSuggestion({ id, targetId: target, targetPath: doc.rel, baseBytes: cur.bytes, proposedBytes: proposed, source, mode, ...(rationale?.trim() ? { rationale } : {}), ...(source === 'ai' && ai ? { ai } : {}), created });
+      built = buildSuggestion({ id, targetId: target, targetPath: doc.rel, baseBytes: cur.bytes, proposedBytes: proposed, source, mode, ...(rationale?.trim() ? { rationale } : {}), ...(source === 'ai' && ai ? { ai } : {}), ...(by ? { by } : {}), created });
     } catch (e) {
       if (/** @type {any} */ (e)?.code === 'NO_CHANGE') return fail('NO_CHANGE', { message: 'the proposal is identical to the current text' });
       throw e;
@@ -377,5 +380,28 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
     return { ok: true, code: 'OK', decision, hunkIds: v.ids, sha256: decision === 'accept' ? v.after : null, opId: r.opId ?? null, undo: r.opId ? { op: r.opId } : null, ...(again.ok ? { suggestion: again.suggestion } : {}) };
   }
 
-  return { createSuggestion, listSuggestions, getSuggestion, decideSuggestion };
+  /**
+   * A save that arrived on an out-of-date base (shared mode, contract M07-J03 section 7): the saved buffer is kept as a suggestion against the file as it is now
+   * (`source: author`, `mode: suggest`, `by`, the rationale "Saved over a newer version"), so both versions exist. The file is never written. Returns
+   * `{ ok: true, suggestion: null }` when the buffer equals the current text (nothing to keep). Refusals: NOT_FOUND, NOT_A_SCENE, BAD_ARGS.
+   * @param {string} bookId @param {string} sceneId @param {string} body the scene body that was being saved
+   */
+  async function suggestFromStaleSave(bookId, sceneId, body, tries = 3) {
+    if (typeof body !== 'string') return fail('BAD_ARGS', { message: 'body must be a string' });
+    const found = await findBook(bookId);
+    const doc = found ? live(found).find((d) => d.kind === 'scene' && d.fm.id === sceneId) : null;
+    if (!found || !doc) return fail('NOT_FOUND');
+    const store = await openStore(bookRootOf(found.book), { recover: false });
+    const cur = await store.read(doc.rel);
+    if (!cur) return fail('NOT_FOUND');
+    const end = frontMatterEnd(cur.bytes);
+    if (end < 0) return fail('NOT_A_SCENE', { message: 'front matter is not terminated' });
+    const proposedText = Buffer.concat([cur.bytes.subarray(0, end), Buffer.from(body, 'utf8')]).toString('utf8');
+    const r = await createSuggestion(bookId, { target: sceneId, proposedText, source: 'author', mode: 'suggest', rationale: 'Saved over a newer version', expectSha256: cur.sha256 });
+    if (!r.ok && r.code === 'NO_CHANGE') return { ok: true, code: 'OK', suggestion: null };
+    if (!r.ok && r.code === 'SCENE_CHANGED' && tries > 1) return suggestFromStaleSave(bookId, sceneId, body, tries - 1); // the file moved again while we looked: diff against the newest
+    return r.ok ? { ok: true, code: 'OK', suggestion: { id: r.id, path: r.path, hunks: r.hunks } } : r;
+  }
+
+  return { createSuggestion, listSuggestions, getSuggestion, decideSuggestion, suggestFromStaleSave };
 }

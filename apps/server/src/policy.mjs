@@ -22,6 +22,8 @@ export const WRITE_CLASSES = Object.freeze({
   'op-restore': 'write', 'receipts-flush': 'write', restore: 'write', 'revision-restore': 'write', 'revision-save': 'write', 'scene-fields': 'write',
   'scene-merge': 'write', 'scene-move': 'write', 'scene-raw': 'write', 'scene-split': 'write', 'suggestion-decide': 'write',
   'suggestion-hunk-decide': 'write', 'thread-body': 'write', 'thread-create': 'write', 'thread-fields': 'write',
+  // M07-J03b: comments and a reviewer's suggestion are open to reviewers; the presence heartbeat is advisory and read-only (it records nothing in the library)
+  'comment-create': 'comment', 'comment-reply': 'comment', 'comment-resolve': 'comment', 'suggestion-create': 'suggest', presence: 'read',
   // AI workshop: sending is 'ai'; applying a result changes prose, so it also needs write (ai already implies editor)
   'ai-context': 'ai', 'ai-send': 'ai', 'ai-apply': 'ai', 'ai-discard': 'ai',
   // library-level and machine-level operations
