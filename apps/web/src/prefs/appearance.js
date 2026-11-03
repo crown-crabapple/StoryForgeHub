@@ -99,6 +99,25 @@ export function layoutVars(layout) {
 }
 
 /**
+ * The new width of a panel after a key press on its separator, or null when the key does nothing. The rail grows to the right, the right panel to the left;
+ * Shift makes the step four times bigger; Home and End go to the limits. Never outside the panel's range.
+ * @param {'rail' | 'inspector'} which @param {number} width @param {{ key: string, shiftKey?: boolean, altKey?: boolean, ctrlKey?: boolean, metaKey?: boolean }} e
+ */
+export function widthForKey(which, width, e) {
+  if (e.altKey || e.ctrlKey || e.metaKey) return null;
+  const r = PANEL_WIDTHS[which];
+  const step = e.shiftKey ? r.step * 4 : r.step;
+  const grow = which === 'rail' ? 'ArrowRight' : 'ArrowLeft';
+  const shrink = which === 'rail' ? 'ArrowLeft' : 'ArrowRight';
+  let next = null;
+  if (e.key === grow) next = width + step;
+  else if (e.key === shrink) next = width - step;
+  else if (e.key === 'Home') next = r.min;
+  else if (e.key === 'End') next = r.max;
+  return next === null ? null : clamp(next, r);
+}
+
+/**
  * Where one right-rail section goes: shown or not, and its place in the order (CSS `order`). With nothing pinned every section is shown in the default order.
  * @param {string[] | null} pinned @param {string} id
  */

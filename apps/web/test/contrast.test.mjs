@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { contrast, lightness, over, parseTokens, rgb } from './color.mjs';
+import { BUILTIN_THEMES, DARK, THEME_TOKENS, checkCustomTheme, checkTheme } from '../src/prefs/themes.js';
 
 const { root, accents } = parseTokens();
 const hex = (name, vars = root) => {
@@ -186,4 +187,70 @@ test('contrast (rules): borders that carry meaning (focus ring, input borders) a
     const t = tokenOf(r.decls['border-color']);
     if (t === '--danger') for (const s of SURFACES) assert.ok(contrast(resolve(t), resolve(s)) >= 3, `${r.selector}: ${t} on ${s}`);
   }
+});
+
+// ---- M07-J04: every built-in theme (dark, light, high-contrast) passes the same pairs, with this file's own colour maths (the app's checkTheme must agree) ----------------------
+
+for (const theme of BUILTIN_THEMES) {
+  const vars = { ...root, ...theme.tokens };
+  const get = (name) => hex(name, vars);
+
+  test(`theme ${theme.name}: the reference dark theme is exactly tokens.css; every theme sets only known colour tokens as #RRGGBB`, () => {
+    for (const k of THEME_TOKENS) assert.match(theme.tokens[k], /^#[0-9A-Fa-f]{6}$/, `${theme.name} ${k}`);
+    assert.deepEqual(Object.keys(theme.tokens).sort(), [...THEME_TOKENS].sort());
+    if (theme.name === 'dark') for (const k of THEME_TOKENS) assert.equal(theme.tokens[k].toUpperCase(), root[k].toUpperCase(), k);
+  });
+
+  test(`contrast theme ${theme.name}: text on every surface is at least 4.5:1, --muted on --bg and --surface`, () => {
+    for (const t of ['--text', '--text-2', '--text-3']) for (const s of SURFACES) assert.ok(contrast(get(t), get(s)) >= 4.5, `${t} on ${s}: ${contrast(get(t), get(s)).toFixed(2)}`);
+    for (const s of ['--bg', '--surface']) assert.ok(contrast(get('--muted'), get(s)) >= 4.5, `--muted on ${s}`);
+  });
+
+  test(`contrast theme ${theme.name}: accent-ink on accent, accent as text (also on its tint) and the state colours are at least 4.5:1; danger is 10 L* from the accent`, () => {
+    assert.ok(contrast(get('--accent-ink'), get('--accent')) >= 4.5, 'accent-ink on accent');
+    for (const s of SURFACES) assert.ok(contrast(get('--accent'), get(s)) >= 4.5, `accent on ${s}`);
+    for (const s of ['--bg', '--surface']) {
+      const fill = over(get('--accent'), 0.16, get(s));
+      assert.ok(contrast(get('--accent'), fill) >= 4.5, `accent on accent-soft over ${s}`);
+      assert.ok(contrast(get('--text-3'), fill) >= 4.5, `text-3 on accent-soft over ${s}`);
+    }
+    for (const state of ['--danger', '--warning', '--ok']) for (const s of SURFACES) assert.ok(contrast(get(state), get(s)) >= 4.5, `${state} on ${s}`);
+    assert.ok(Math.abs(lightness(get('--danger')) - lightness(get('--accent'))) >= 10, 'danger vs accent');
+    for (const s of SURFACES) assert.ok(contrast(get('--accent'), get(s)) >= 3, `focus ring on ${s}`);
+  });
+
+  test(`contrast theme ${theme.name}: every stylesheet rule that sets a text token on a background token is at least 4.5:1`, () => {
+    const bad = [];
+    let checked = 0;
+    for (const r of RULES) {
+      const fg = tokenOf(r.decls.color);
+      const bg = r.decls['background-color'] ?? r.decls.background;
+      if (!fg || !bg) continue;
+      const f = resolve(fg, vars);
+      const b = fillOf(bg, vars);
+      if (!f || !b) continue;
+      checked++;
+      const c = contrast(f, b);
+      if (c < 4.5) bad.push(`${r.selector}: ${fg} on ${bg} = ${c.toFixed(2)}`);
+    }
+    assert.ok(checked >= 15, `pairs checked: ${checked}`);
+    assert.deepEqual(bad, []);
+  });
+
+  test(`contrast theme ${theme.name}: the app's own checkTheme agrees (no failing pair)`, () => {
+    assert.deepEqual(checkTheme(theme.tokens), []);
+  });
+}
+
+test('a custom theme that fails a pair is reported with the pair and its ratio (and can still be applied after confirming: the check only reports)', () => {
+  const r = checkCustomTheme({ '--text': '#3A3A40', '--muted': '#2B2B31' });
+  assert.equal(r.problems.length, 0);
+  const text = r.fails.find((f) => f.pair === '--text on --bg');
+  assert.ok(text, JSON.stringify(r.fails));
+  assert.equal(text.min, 4.5);
+  assert.equal(text.ratio, Math.round(contrast(rgb('#3A3A40'), rgb(DARK['--bg'])) * 100) / 100, "the ratio is the same as this file's maths");
+  assert.ok(r.fails.some((f) => f.pair === '--muted on --surface'));
+  assert.deepEqual(checkCustomTheme({ '--text': '#FFFFFF' }).fails, [], 'a theme that only improves one token passes');
+  assert.ok(checkCustomTheme({ '--text': 'red' }).problems[0].includes('colour'), 'a colour that is not #RRGGBB is a problem, not a pair');
+  assert.ok(checkCustomTheme({ '--nope': '#000000' }).problems[0].includes('not a theme token'));
 });

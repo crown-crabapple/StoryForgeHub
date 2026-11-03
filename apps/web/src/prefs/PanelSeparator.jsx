@@ -1,7 +1,7 @@
 // A resizable edge between the main column and a side panel (M07-J04 contract section 3). A real separator: focusable, role=separator with aria-valuenow, resized with the
 // mouse (drag) and with the keyboard (arrows, Shift for big steps, Home and End for the limits). The new width is kept in the profile when the drag or the key press ends.
 import { useRef } from 'react';
-import { PANEL_WIDTHS } from './appearance.js';
+import { PANEL_WIDTHS, widthForKey } from './appearance.js';
 import { usePrefs } from './PrefsContext.jsx';
 
 const LABELS = { rail: 'Resize the chapters panel', inspector: 'Resize the right panel' };
@@ -12,9 +12,6 @@ export function PanelSeparator({ which, containerRef }) {
   const range = PANEL_WIDTHS[which];
   const width = layout[which].width;
   const dragging = useRef(false);
-  // the rail grows to the right, the right panel grows to the left
-  const grow = which === 'rail' ? 'ArrowRight' : 'ArrowLeft';
-  const shrink = which === 'rail' ? 'ArrowLeft' : 'ArrowRight';
 
   /** @param {number} clientX @returns {number | null} */
   const widthAt = (clientX) => {
@@ -25,16 +22,10 @@ export function PanelSeparator({ which, containerRef }) {
   const clamp = (n) => Math.min(range.max, Math.max(range.min, n));
 
   function onKeyDown(e) {
-    if (e.altKey || e.ctrlKey || e.metaKey) return;
-    const step = e.shiftKey ? range.step * 4 : range.step;
-    let next = null;
-    if (e.key === grow) next = width + step;
-    else if (e.key === shrink) next = width - step;
-    else if (e.key === 'Home') next = range.min;
-    else if (e.key === 'End') next = range.max;
+    const next = widthForKey(which, width, e);
     if (next === null) return;
     e.preventDefault();
-    resizePanel(which, clamp(next), true);
+    resizePanel(which, next, true);
   }
   function onPointerDown(e) {
     if (e.button !== 0) return;

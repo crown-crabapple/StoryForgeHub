@@ -4,7 +4,7 @@
 // A chord is written `Mod+Alt+Shift+Key`: `Mod` is Ctrl (Cmd on a Mac), the key is a letter in capitals, a digit, a symbol, or a name like Enter, ArrowUp or F5.
 
 /**
- * @typedef {{ id: string, label: string, scope: 'global' | 'editor' | 'outline' | 'board' | 'dialog', binding: string | null, fixed?: boolean, files: string[] }} Command
+ * @typedef {{ id: string, label: string, scope: 'global' | 'editor' | 'outline' | 'board' | 'timeline' | 'dialog', binding: string | null, fixed?: boolean, files: string[] }} Command
  *   `files`: the source files (relative to src/) that carry the command out; a test checks every file that handles keys is named by a command or listed in WIDGET_KEYS.
  */
 
@@ -25,6 +25,8 @@ export const COMMANDS = [
   { id: 'board.moveDown', label: 'Move the card down one place', scope: 'board', binding: 'Alt+ArrowDown', files: ['planning/BoardView.jsx'] },
   { id: 'board.chapterBack', label: 'Move the card to the previous chapter', scope: 'board', binding: 'Alt+ArrowLeft', files: ['planning/BoardView.jsx'] },
   { id: 'board.chapterForward', label: 'Move the card to the next chapter', scope: 'board', binding: 'Alt+ArrowRight', files: ['planning/BoardView.jsx'] },
+  { id: 'timeline.moveUp', label: 'Move the event earlier', scope: 'timeline', binding: 'Alt+ArrowUp', files: ['timeline/TimelinePage.jsx'] },
+  { id: 'timeline.moveDown', label: 'Move the event later', scope: 'timeline', binding: 'Alt+ArrowDown', files: ['timeline/TimelinePage.jsx'] },
   { id: 'dialog.close', label: 'Close the dialog', scope: 'dialog', binding: 'Escape', fixed: true, files: ['shell/Dialog.jsx'] },
   { id: 'dialog.trap', label: "Move between the dialog's controls (Tab stays inside)", scope: 'dialog', binding: 'Tab', fixed: true, files: ['shell/Dialog.jsx'] },
 ];
@@ -36,22 +38,15 @@ export const COMMANDS = [
  */
 export const WIDGET_KEYS = [
   { file: 'Outline.jsx', keys: 'Arrow Up, Arrow Down', what: 'move between scenes in the chapter list' },
-  { file: 'SearchBox.jsx', keys: 'Arrow Up, Arrow Down, Enter, Escape', what: 'pick a search result' },
-  { file: 'shell/BookSwitcher.jsx', keys: 'Arrow keys, Home, End, Enter, Escape, letters', what: 'pick a book (type the first letter to jump)' },
-  { file: 'structure/RowMenu.jsx', keys: 'Arrow keys, Home, End, Enter, Escape', what: 'the row menu of a scene or chapter' },
+  { file: 'SearchBox.jsx', keys: 'Escape', what: 'close the search results' },
+  { file: 'shell/BookSwitcher.jsx', keys: 'Arrow keys, Enter, Escape, letters', what: 'pick a book (type the first letter to jump)' },
+  { file: 'structure/RowMenu.jsx', keys: 'Arrow Up, Arrow Down, Escape, Tab', what: 'the row menu of a scene or chapter' },
   { file: 'editor/LinkPicker.jsx', keys: 'Enter', what: 'choose the first match in the link picker' },
   { file: 'codex/CodexPage.jsx', keys: 'Arrow keys', what: 'move between Codex cards' },
-  { file: 'codex/dialogs.jsx', keys: 'Enter', what: 'add a row in the Codex dialogs' },
   { file: 'continuity/ContinuityPage.jsx', keys: 'Arrow Up, Arrow Down, Home, End', what: 'move between continuity findings' },
-  { file: 'notes/NotesPage.jsx', keys: 'Arrow keys', what: 'move between notes' },
-  { file: 'notes/model.js', keys: 'Arrow keys', what: 'next and previous note' },
   { file: 'planning/MatrixView.jsx', keys: 'Arrow Up, Arrow Down, Escape', what: 'move inside the thread matrix menu' },
-  { file: 'planning/OutlineView.jsx', keys: 'Enter', what: 'open the selected row' },
-  { file: 'planning/PlanningWorkspace.jsx', keys: 'Arrow keys', what: 'switch planning views' },
-  { file: 'planning/ThreadInspector.jsx', keys: 'Enter', what: 'save the thread name' },
-  { file: 'timeline/TimelinePage.jsx', keys: 'Arrow keys, Enter', what: 'move along the timeline' },
-  { file: 'routes.js', keys: 'none', what: 'the word "key" in route names, not a keyboard handler' },
-  { file: 'editor/extensions.js', keys: 'none', what: 'the word "key" in editor data, not a keyboard handler' },
+  { file: 'planning/OutlineView.jsx', keys: 'Enter, Escape', what: 'save or cancel the one-line summary you are editing in the Outline view' },
+  { file: 'timeline/TimelinePage.jsx', keys: 'Enter, Space', what: 'select an event card' },
   { file: 'prefs/PanelSeparator.jsx', keys: 'Arrow Left, Arrow Right, Home, End', what: 'resize a side panel (role=separator)' },
   { file: 'prefs/ShortcutSettings.jsx', keys: 'any chord', what: 'capture a key chord to rebind a command' },
 ];
@@ -186,5 +181,6 @@ export const SCOPES = [
   ['editor', 'In the editor'],
   ['outline', 'In the chapter list'],
   ['board', 'On the Board'],
+  ['timeline', 'On the Timeline'],
   ['dialog', 'In dialogs'],
 ];
