@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Safe scene insert/move/renumber, disposable index and repair planning for StoryForge books",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": "./src/index.mjs",
   "bin": {

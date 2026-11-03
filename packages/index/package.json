@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "StoryForge rebuildable SQLite projection (FTS5 search, links, mentions) derived from the Markdown files",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": "./src/index.mjs",
   "scripts": {

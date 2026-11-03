@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "StoryForge optional shared mode (M07-J03): password hashing, session tokens, sessions, rate limits and the shared-data files. No filesystem access of its own; reads and writes go through @storyforge/store.",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": "./src/index.mjs",
   "scripts": {

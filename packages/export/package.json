@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "StoryForge manuscript export (Markdown, DOCX, EPUB, PDF) and portable backup / restore",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": "./src/index.mjs",
   "scripts": {

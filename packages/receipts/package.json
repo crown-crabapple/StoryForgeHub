@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "StoryForge provenance receipts: build, parse, line diff, chain verification, lineage and blame (pure, no filesystem)",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": "./src/index.mjs",
   "scripts": {

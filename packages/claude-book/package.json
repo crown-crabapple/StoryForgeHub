@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "StoryForge to Claude-Book local adapter: builds the context pack from a v2 book, runs the style checker, writes review requests",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": "./src/index.mjs",
   "bin": {

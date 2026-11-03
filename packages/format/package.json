@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Validator for the StoryForge Markdown format v1",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": "./src/index.mjs",
   "bin": {

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "StoryForge webhooks (M08-J02): subscriptions, signing, delivery with retries, and the only outbound network module besides the AI transport (src/webhook-transport.mjs).",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": "./src/index.mjs",
   "scripts": {

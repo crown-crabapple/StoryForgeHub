@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "StoryForge local read-only JSON API and static file server",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "exports": "./src/server.mjs",
   "scripts": {
