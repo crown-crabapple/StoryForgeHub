@@ -1,6 +1,8 @@
 import { useRef } from 'react';
 import { Link } from '../router.jsx';
 import { researchForEntry } from '../notes/model.js';
+import { LabelFilter } from '../world/LabelChip.jsx';
+import { SCOPES } from '../world/model.js';
 import { CodexCard } from './CodexCard.jsx';
 import { EntryInspector } from './EntryInspector.jsx';
 import { SORTS, STATUS_FILTERS, filterEntries, headerCounts, nextCardIndex, sidebarRows, sortEntries, typeTitle } from './model.js';
@@ -21,10 +23,15 @@ import { SORTS, STATUS_FILTERS, filterEntries, headerCounts, nextCardIndex, side
  *   onStatus?: (key: string) => void, onSort?: (key: string) => void, onSearchText?: (on: boolean) => void,
  *   onNewEntry?: () => void, onNewType?: () => void,
  *   resolve?: (ref: string) => { id: string } | null,
- *   actions?: ((entry: any) => { onEdit?: () => void, onEditText?: () => void, onChangeSlug?: () => void, onArchive?: () => void, onRestore?: () => void }) | null, // the inspector's buttons for the entry it shows
+ *   linkOf?: (ref: string) => { href: string, name?: string | null } | null, // where a cross-book [[link]] in an entry leads (it opens that book on that entry)
+ *   actions?: ((entry: any) => { onEdit?: () => void, onEditText?: () => void, onChangeSlug?: () => void, onArchive?: () => void, onRestore?: () => void, onMoveToSeries?: () => void, onCopyIntoBook?: () => void }) | null, // the inspector's buttons for the entry it shows
  *   editor?: import('react').ReactNode,  // replaces the header and the grid while an entry's text is being edited
  *   notes?: any[] | null,                 // GET /notes `notes` (M04-J04): the inspector then shows each entry's Research section
  *   lockedType?: string | null,           // the Places tab: only this type's row is drawn and the page is titled "Places"
+ *   series?: { slug: string, title?: string | null } | null, // GET /codex/entries `series`: the book is in a series, so the All / This book / Shared filter shows
+ *   scope?: string, onScope?: (scope: string) => void,
+ *   labelDefs?: any[] | null, label?: string, onLabel?: (name: string) => void, // the label chips and the label filter
+ *   banner?: import('react').ReactNode,   // a message above the cards (for example the W309 of a copy)
  * }} props
  */
 export function CodexPage({
@@ -48,19 +55,27 @@ export function CodexPage({
   onNewEntry,
   onNewType,
   resolve,
+  linkOf,
   actions = null,
   editor = null,
   notes = null,
   lockedType = null,
+  series = null,
+  scope = 'all',
+  onScope,
+  labelDefs = null,
+  label = '',
+  onLabel,
+  banner = null,
 }) {
   const gridRef = useRef(null);
   const rows = sidebarRows(types, entries).filter((r) => lockedType === null || r.key === lockedType);
   // the header counts the entries of the sidebar row, before the search and status chips narrow the grid
   const ofRow = filterEntries(entries, { type: typeKey });
-  const shown = sortEntries(filterEntries(entries, { type: typeKey, status, query, textIds: searchText ? textIds : null }), sort);
+  const shown = sortEntries(filterEntries(entries, { type: typeKey, status, query, textIds: searchText ? textIds : null, scope, label }), sort);
   const counts = headerCounts(ofRow);
   const selected = entries.find((e) => e.id === selectedId && shown.some((s) => s.id === e.id)) ?? shown[0] ?? null;
-  const filtered = query.trim() !== '' || status !== 'all';
+  const filtered = query.trim() !== '' || status !== 'all' || scope !== 'all' || label !== '';
   const act = selected && actions ? actions(selected) : {};
 
   function onGridKeyDown(e) {
@@ -142,6 +157,16 @@ export function CodexPage({
                   ))}
                 </select>
               </label>
+              {series && (
+                <div className="chips" role="group" aria-label="Where">
+                  {SCOPES.map((s) => (
+                    <button type="button" key={s.key} className="chip" aria-pressed={s.key === scope ? 'true' : 'false'} onClick={() => onScope?.(s.key)}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {onLabel && <LabelFilter defs={labelDefs} used={entries.map((e) => e.labels ?? [])} value={label} onChange={onLabel} />}
               <div className="chips" role="group" aria-label="Status">
                 {STATUS_FILTERS.map((s) => (
                   <button type="button" key={s.key} className="chip" aria-pressed={s.key === status ? 'true' : 'false'} onClick={() => onStatus?.(s.key)}>
@@ -150,6 +175,8 @@ export function CodexPage({
                 ))}
               </div>
             </div>
+
+            {banner}
 
             {shown.length === 0 ? (
               <div className="empty-state">
@@ -170,6 +197,7 @@ export function CodexPage({
                     entry={e}
                     chapters={chapters}
                     types={types}
+                    labelDefs={labelDefs}
                     selected={selected?.id === e.id}
                     tabIndex={(selected ?? shown[0]).id === e.id ? 0 : -1}
                     onSelect={() => onSelect?.(e.id)}
@@ -195,6 +223,10 @@ export function CodexPage({
           onChangeSlug={selected && !selected.archived ? act.onChangeSlug : undefined}
           onArchive={selected && !selected.archived ? act.onArchive : undefined}
           onRestore={selected?.archived ? act.onRestore : undefined}
+          onMoveToSeries={selected && !selected.archived ? act.onMoveToSeries : undefined}
+          onCopyIntoBook={selected && !selected.archived ? act.onCopyIntoBook : undefined}
+          labelDefs={labelDefs}
+          linkOf={linkOf}
         />
       </aside>
     </div>

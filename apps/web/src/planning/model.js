@@ -156,6 +156,7 @@ export function buildModel(book, planning) {
           index: index.get(s.id) ?? 0,
           tags: tagsOf(s.id),
           sha256: p?.sha256 ?? null,
+          labels: Array.isArray(p?.labels) ? p.labels : [],
         };
         scenes.push(card);
         return card;
@@ -172,6 +173,7 @@ export function buildModel(book, planning) {
     sceneById: new Map(scenes.map((s) => [s.id, s])),
     threadById,
     povs: [...new Set(scenes.map((s) => s.pov).filter((p) => typeof p === 'string' && p !== ''))].sort(),
+    labelDefs: planning?.labels ?? [],
   };
 }
 
@@ -221,13 +223,13 @@ export function visibleThreads(threads, { state = 'all' } = {}) {
 
 /**
  * The outline rows left after the filters, by act and chapter: [{ act, chapters: [{ chapter, scenes, words }] }]. A chapter with no row left is dropped
- * while a filter is on. `filters`: { status, pov, thread } ('' or 'all' = no filter).
+ * while a filter is on. `filters`: { status, pov, thread, label } ('' or 'all' = no filter).
  * @param {ReturnType<typeof buildModel>} model @param {{ status?: string, pov?: string, thread?: string }} [filters]
  */
-export function outlineRows(model, { status = '', pov = '', thread = '' } = {}) {
+export function outlineRows(model, { status = '', pov = '', thread = '', label = '' } = {}) {
   const on = (v) => v !== '' && v !== 'all' && v != null;
-  const filtering = on(status) || on(pov) || on(thread);
-  const keep = (s) => (!on(status) || s.status === status) && (!on(pov) || s.pov === pov) && (!on(thread) || s.tags.some((t) => t.thread_id === thread));
+  const filtering = on(status) || on(pov) || on(thread) || on(label);
+  const keep = (s) => (!on(status) || s.status === status) && (!on(pov) || s.pov === pov) && (!on(thread) || s.tags.some((t) => t.thread_id === thread)) && (!on(label) || s.labels.some((l) => l.toLowerCase() === label.toLowerCase()));
   return model.acts
     .map((a) => ({
       act: a,

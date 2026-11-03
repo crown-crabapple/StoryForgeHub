@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { PovChip, StatusDot } from '../Outline.jsx';
+import { LabelChips, LabelFilter } from '../world/LabelChip.jsx';
+import { hasLabel } from '../world/model.js';
 import { Link } from '../router.jsx';
 import { RowMenu } from '../structure/RowMenu.jsx';
 import { dropTarget, halfOf, keyboardTarget } from '../structure/move-target.js';
@@ -29,9 +31,10 @@ export function ThreadTags({ tags }) {
 /**
  * One card: title (a link to the scene in the Write view), summary or "No summary yet", status dot and label, POV initial, word count, thread tags.
  * @param {{ bookId: string, card: import('./model.js').Card, dropMark?: 'before' | 'after' | null, dragging?: boolean,
- *   onDragStart?: (e: any, card: any) => void, onEdit?: (card: any) => void, onMoveDialog?: (card: any) => void }} props
+ *   onDragStart?: (e: any, card: any) => void, onEdit?: (card: any) => void, onMoveDialog?: (card: any) => void, labelDefs?: any[] | null }} props
+ *   A scene's labels show as chips under its summary.
  */
-export function BoardCard({ bookId, card, dropMark = null, dragging = false, onDragStart, onEdit, onMoveDialog }) {
+export function BoardCard({ bookId, card, dropMark = null, dragging = false, onDragStart, onEdit, onMoveDialog, labelDefs = null }) {
   const name = card.title || 'Untitled scene';
   const items = [
     ...(onEdit ? [{ label: 'Edit card...', run: () => onEdit(card) }] : []),
@@ -55,6 +58,7 @@ export function BoardCard({ bookId, card, dropMark = null, dragging = false, onD
         <PovChip pov={card.pov} />
         <span className="board-card-words">{card.word_count} words</span>
       </div>
+      <LabelChips labels={card.labels} defs={labelDefs} label={`Labels of ${name}`} />
       <ThreadTags tags={card.tags} />
     </li>
   );
@@ -72,6 +76,7 @@ export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDial
   const [dragId, setDragId] = useState(null);
   const [drop, setDrop] = useState(null);
   const [live, setLive] = useState('');
+  const [labelFilter, setLabelFilter] = useState('');
   const dragRef = useRef(null);
   const root = useRef(null);
   const book = model.book;
@@ -153,6 +158,16 @@ export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDial
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="board-live">
         {live}
       </div>
+      {(model.labelDefs ?? []).length + model.scenes.filter((s) => s.labels.length > 0).length > 0 && (
+        <form className="filter-bar" onSubmit={(e) => e.preventDefault()} aria-label="Board filters">
+          <LabelFilter defs={model.labelDefs} used={model.scenes.map((s) => s.labels)} value={labelFilter} onChange={setLabelFilter} />
+          {labelFilter !== '' && (
+            <button type="button" className="btn" onClick={() => setLabelFilter('')}>
+              Clear filter
+            </button>
+          )}
+        </form>
+      )}
       {model.acts.length === 0 && <p className="muted">This book has no chapters yet.</p>}
       {model.acts.map((act) => (
         <section key={act.act} className="board-act" aria-label={act.name}>
@@ -172,7 +187,7 @@ export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDial
                   </span>
                 </header>
                 <ul className="board-cards">
-                  {ch.scenes.map((card) => (
+                  {ch.scenes.filter((card) => hasLabel(card, labelFilter)).map((card) => (
                     <BoardCard
                       key={card.id}
                       bookId={bookId}
@@ -182,6 +197,7 @@ export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDial
                       onDragStart={onMove ? beginDrag : undefined}
                       onEdit={onEdit}
                       onMoveDialog={onMoveDialog}
+                      labelDefs={model.labelDefs}
                     />
                   ))}
                 </ul>

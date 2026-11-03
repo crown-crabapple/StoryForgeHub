@@ -19,6 +19,7 @@ import { InspectorSection } from './InspectorSection.jsx';
 
 export { InspectorSection };
 
+/** The problems of a book. A problem in the series' shared files (`scope: 'series'`, M07-J01b) carries a "Series" badge: it is the same for every book of the series. */
 export function DiagnosticList({ items }) {
   return (
     <ul className="diag-list">
@@ -27,6 +28,11 @@ export function DiagnosticList({ items }) {
           <strong>
             {d.code} {d.severity}
           </strong>
+          {d.scope === 'series' && (
+            <span className="series-badge" title={`In the shared files of the series ${d.series ?? ''}`.trim()}>
+              Series
+            </span>
+          )}
           <div className="muted">
             {d.file}
             {d.location ? ` (${d.location})` : ''}

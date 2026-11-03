@@ -2,6 +2,7 @@ import { useApi } from '../api.js';
 import { SceneEditorPage } from '../editor/SceneEditorPage.jsx';
 import { entryUrl } from './requests.js';
 import { statusLabel } from './model.js';
+import { SHARED_NOTICE, sharedBadge } from '../world/model.js';
 
 /**
  * The text of one entry in the editor the scenes use (same component: toolbar, autosave, conflict panel, draft store); only the URL
@@ -19,6 +20,11 @@ export function EntryBodyEditor({ bookId, entry, types = [], objects = null, onD
           Back to the cards
         </button>
         <span className="muted">Editing the text of {entry.name}. Changes save automatically.</span>
+        {entry.shared && (
+          <span className="shared-notice" role="note">
+            <span className="shared-badge">{sharedBadge(entry)}</span> {SHARED_NOTICE}
+          </span>
+        )}
       </div>
       {loading && <p className="muted">Loading…</p>}
       {error && <p className="error">{error}</p>}

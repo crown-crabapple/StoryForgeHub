@@ -8,16 +8,19 @@ const base = (bookId) => `/api/books/${enc(bookId)}`;
  * New entry. For a type that does not exist yet (`newType`), the type file is created first and the entry gets the type's default field
  * labels with empty values (what the server would take from the type file).
  * @param {string} bookId
- * @param {{ type: string, name: string, slug?: string, status?: string, newType?: { name: string, plural?: string, fields: string[] } | null }} f
+ * `where: 'series'` (M07-J01b) makes a shared entry in the book's series (and, for a new type, the type file in the series); the default is the book.
+ * Fields of a new type are labels, or typed items `{ label, kind, choices? }`; the entry starts with each label empty.
+ * @param {{ type: string, name: string, slug?: string, status?: string, where?: 'book' | 'series', newType?: { name: string, plural?: string, fields: (string | { label: string })[] } | null }} f
  * @returns {{ method: 'POST', url: string, body: Record<string, unknown> }[]}
  */
-export function newEntryRequests(bookId, { type, name, slug, status = 'seed', newType = null }) {
+export function newEntryRequests(bookId, { type, name, slug, status = 'seed', where = 'book', newType = null }) {
   const out = [];
+  const here = where === 'series' ? { where: 'series' } : {};
   if (newType) {
     out.push({
       method: /** @type {const} */ ('POST'),
       url: `${base(bookId)}/codex/types`,
-      body: { type, name: newType.name, ...(newType.plural ? { plural: newType.plural } : {}), fields: newType.fields },
+      body: { type, name: newType.name, ...(newType.plural ? { plural: newType.plural } : {}), fields: newType.fields, ...here },
     });
   }
   out.push({
@@ -28,13 +31,20 @@ export function newEntryRequests(bookId, { type, name, slug, status = 'seed', ne
       name,
       ...(slug ? { slug } : {}),
       status,
-      ...(newType && newType.fields.length > 0 ? { fields: newType.fields.map((label) => ({ label, value: '' })) } : {}),
+      ...(newType && newType.fields.length > 0 ? { fields: newType.fields.map((f) => ({ label: typeof f === 'string' ? f : f.label, value: '' })) } : {}),
+      ...here,
     },
   });
   return out;
 }
 
-/** A new type on its own. @param {string} bookId @param {{ type: string, name: string, plural?: string, fields: string[] }} t */
+/** Move a book's entry into its series' codex (the id is kept). @param {string} bookId @param {string} entryId */
+export const moveToSeriesRequest = (bookId, entryId) => ({ method: /** @type {const} */ ('POST'), url: `${base(bookId)}/entries/${enc(entryId)}/move-to-series`, body: {} });
+
+/** Copy a shared entry into the book (a new id, the same slug). @param {string} bookId @param {string} entryId */
+export const copyToBookRequest = (bookId, entryId) => ({ method: /** @type {const} */ ('POST'), url: `${base(bookId)}/entries/${enc(entryId)}/copy-to-book`, body: {} });
+
+/** A new type on its own; its fields are labels or typed `{ label, kind, choices? }` items. @param {string} bookId @param {{ type: string, name: string, plural?: string, fields: (string | { label: string, kind: string, choices?: string[] })[] }} t */
 export const newTypeRequest = (bookId, t) => ({
   method: /** @type {const} */ ('POST'),
   url: `${base(bookId)}/codex/types`,
@@ -66,7 +76,11 @@ export function explainCodexFailure(status, json) {
   const message = typeof json?.message === 'string' && json.message !== '' ? json.message : null;
   switch (json?.code) {
     case 'SLUG_TAKEN':
+      // Move to series and Copy into this book say which side already has the slug
+      if (message && /^(the series|this book already)/i.test(message)) return `${message.charAt(0).toUpperCase()}${message.slice(1)}. Nothing was changed.`;
       return 'That slug is already used by another entry, thread or event. Choose a different one.';
+    case 'REFUSED_NO_SERIES':
+      return 'This book is not in a series, so there is no shared codex to use.';
     case 'TYPE_EXISTS':
       return 'That type already exists.';
     case 'REFUSED_UNSIMPLE_FIELD':
@@ -74,7 +88,7 @@ export function explainCodexFailure(status, json) {
     case 'REFUSED_PATH_TAKEN':
       return 'A file with that name already exists. Nothing was changed.';
     case 'ROLLED_BACK':
-      return `${message ?? 'The change would have broken the book'}; nothing was changed.`;
+      return `${message ?? 'The change would have broken the book'}${Array.isArray(json?.diagnostics) && json.diagnostics.length > 0 ? ` (${json.diagnostics.map((d) => `${d.code} ${d.location || ''}`.trim()).slice(0, 3).join(', ')})` : ''}; nothing was changed.`;
     default:
       break;
   }
