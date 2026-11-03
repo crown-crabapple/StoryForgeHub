@@ -143,6 +143,8 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
   current();
   const server = http.createServer(async (req, res) => {
     try {
+      // HEAD is a GET without the body (uptime monitors, curl -I): it passes every check a GET passes. Node already decided at this point to send no body for it.
+      if (req.method === 'HEAD') req.method = 'GET';
       const address = server.address();
       const port = address && typeof address === 'object' ? address.port : 0;
       if (!gate && !isRequestAllowed(req, port)) return sendJson(res, 403, { error: 'forbidden' });

@@ -78,7 +78,7 @@ const tokenOf = (link) => link.split('#token=')[1];
  * A shared-mode server over a copy of salt-orchard, shared data in its own temp folder (never inside the library), a controllable clock, and - with
  * `users` - the owner (set up over HTTP) plus an editor, a reviewer and a viewer (each invited by the owner and accepted over HTTP) and two share links.
  */
-async function boot({ users = true } = {}) {
+async function boot({ users = true, webRoot } = {}) {
   const root = await copyFixture('valid/salt-orchard');
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sf-shared-data-'));
   const clock = { t: 1_800_000_000_000, now() { return this.t; } };
@@ -88,7 +88,7 @@ async function boot({ users = true } = {}) {
   const audit = createAudit(dir, { now });
   const gate = createSharedGate({ data, publicUrl: null, bindHost: '127.0.0.1', aiForMembers: () => settings.get().ai_for_members, audit: (e) => audit.append(e) });
   const repository = createFsRepository(root, { watch: false, pollMs: 0 });
-  const server = createServer({ repository, shared: { gate, data, settings, audit: (e) => audit.append(e), publicUrl: null } });
+  const server = createServer({ repository, webRoot, shared: { gate, data, settings, audit: (e) => audit.append(e), publicUrl: null } });
   servers.push(server);
   const port = await listen(server);
   const t = { root, dir, clock, data, settings, audit, port, repository, c: {}, call: (m, p, o) => call(port, m, p, o) };
@@ -440,6 +440,24 @@ test('auth: a write without the x-storyforge header, or with a wrong, missing or
   assert.equal((await t.call('GET', url.replace('/body', ''), { cookie: t.c.owner, headers: { Host: 'evil.example' } })).status, 403, 'a Host that is not ours');
   assert.deepEqual(await libSnapshot(t), before);
   assert.equal((await t.call('PUT', url, { cookie: t.c.owner, body })).status, 200, 'the same request done right works');
+});
+
+test('HEAD is answered like GET with no body (uptime monitors, curl -I), and passes no check a GET would not', async () => {
+  const webRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'sf-web-'));
+  await fs.writeFile(path.join(webRoot, 'index.html'), '<!doctype html><title>SPA</title>');
+  const t = await boot({ webRoot });
+  const bare = { origin: null, guard: false }; // what curl -I sends: no Origin, no write header
+  for (const p of ['/', '/api/health']) {
+    const get = await t.call('GET', p);
+    const head = await t.call('HEAD', p, bare);
+    assert.equal(head.status, 200, `HEAD ${p}: ${head.status}`);
+    assert.equal(head.headers['content-type'], get.headers['content-type']);
+    assert.equal(head.headers['content-length'], get.headers['content-length']);
+    assert.equal(head.text, '');
+  }
+  assert.equal((await t.call('HEAD', `/api/books/${BOOK}/scenes/${SCENE}`, bare)).status, 401);
+  assert.equal((await t.call('HEAD', `/api/books/${BOOK}/scenes/${SCENE}`, { ...bare, cookie: t.c.owner })).status, 200);
+  assert.equal((await t.call('HEAD', '/', { ...bare, headers: { Host: 'evil.example' } })).status, 403);
 });
 
 test('auth: the last owner cannot be removed or demoted, an owner cannot be invited, and a second owner can step in', async () => {
