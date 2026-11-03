@@ -55,6 +55,25 @@ docker compose logs storyforge                  # look for "Open this link withi
 - Open the setup link in a browser. It is built from `STORYFORGE_PUBLIC_URL`, and the server accepts requests for that host only, so the proxy and its DNS name have to work before
   you can use the link. For a first trial on the same machine, set `STORYFORGE_PUBLIC_URL=http://127.0.0.1:4317` in `storyforge.env`. (Inside a container the server listens on `0.0.0.0`, and without a public URL it would refuse the host name `127.0.0.1:4317` that your browser sends.)
 
+### Option B0: one command on a Debian or Ubuntu server with Caddy
+
+`deploy/install-server.sh` (in the release zip) does all of option B, plus the Caddy site. Point a DNS record at the server first, then run as root:
+
+```sh
+sh storyforge-0.1.0/deploy/install-server.sh --zip storyforge-0.1.0.zip --domain app.example.org --owner alice
+```
+
+Here is what it does:
+- It installs the program in `/opt/storyforge-<version>` with production dependencies only. Nothing is built on the server.
+- It writes `/etc/storyforge/storyforge.env` once, in shared mode on `127.0.0.1`, with a generated secrets key.
+- It starts `storyforge.service`.
+- It adds `/etc/caddy/sites/storyforge.caddy`, checks it with `caddy validate`, and only then reloads Caddy. Other sites stay up.
+- At the end it prints the one-time setup link.
+
+To upgrade, run the same command with a newer zip. The old version folder is kept, so going back is `ln -sfn /opt/storyforge-<old> /opt/storyforge && systemctl restart storyforge`.
+
+The script never touches the firewall or other Caddy sites. Run it with `--help` for the options, which include `--no-caddy` for a different proxy.
+
 ### Option B: bare Node with systemd
 
 You need Node.js 22 or newer (24 is what StoryForge is tested with) and a Linux server with systemd. The steps are at the top of `deploy/storyforge.service`; in short:

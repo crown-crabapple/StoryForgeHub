@@ -134,3 +134,24 @@ test('the docs name only commands and flags that exist in --help', async () => {
   // the new docs mention the owner recovery command by its help name
   assert.ok((await read('docs', 'self-hosting.md')).includes('shared reset-owner --owner'));
 });
+
+test('install-server.sh: shared mode on 127.0.0.1, settings written once and private, Caddy validated before a reload (never restarted), no firewall changes, no build', async () => {
+  const text = await read('deploy', 'install-server.sh');
+  const lines = code(text).join('\n');
+  assert.match(text, /^#!\/bin\/sh\n/);
+  assert.match(lines, /set -eu/);
+  assert.match(lines, /STORYFORGE_MODE=shared/);
+  assert.match(lines, /STORYFORGE_HOST=127\.0\.0\.1/);
+  assert.match(lines, /if \[ ! -f "\$ENV_FILE" \]/, 'an existing storyforge.env is kept');
+  assert.match(lines, /chmod 640 "\$ENV_FILE"/);
+  assert.match(lines, /npm ci --omit=dev/);
+  assert.doesNotMatch(lines, /npm run build/, 'a release ships the built app');
+  const validate = lines.indexOf('caddy validate');
+  const reload = lines.indexOf('systemctl reload caddy');
+  assert.ok(validate > 0 && reload > validate, 'caddy validate comes before the reload');
+  assert.doesNotMatch(lines, /systemctl (restart|stop) caddy/, 'other sites stay up');
+  assert.doesNotMatch(lines, /\b(ufw|iptables|nft)\b/, 'the firewall is left alone');
+  assert.doesNotMatch(lines, /curl[^\n]*\|\s*(sh|bash)/);
+  const files = (await import('../../../scripts/release-build.mjs')).releaseFiles;
+  assert.ok(files(REPO_ROOT).includes('deploy/install-server.sh'), 'the script ships in the release zip');
+});
