@@ -8,11 +8,13 @@ import { checkContinuity } from '@storyforge/continuity';
 import { discover, escapesRoot, extractDocs, isFile, loadDoc, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts, buildGraph, subGraph } from '@storyforge/index';
 import { MAX_ATTACHMENT_BYTES, applyRepair, planRepair } from '@storyforge/manuscript';
+import { onWrite } from '@storyforge/store';
 import { listTemplates } from '@storyforge/templates';
 import { createBookMethod } from './create-book.mjs';
 import { createActivity } from './activity.mjs';
 import { createIndexManager } from './index-manager.mjs';
 import { createWatcher } from './watcher.mjs';
+import { createValidateCache } from './validate-cache.mjs';
 import { createWriteMethods } from './fs-writes.mjs';
 import { registerReceiptEngine } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
@@ -194,11 +196,28 @@ function explain(d) {
  */
 export function createFsRepository(libraryRoot, options = {}) {
   const root = path.resolve(libraryRoot);
-  const manager = createIndexManager(root);
+  // Reads share one always-fresh validate() result (validate-cache.mjs); writes call validate() themselves so they always see the disk.
+  const vcache = createValidateCache({ root, isLive: () => watcher.isLive() });
+  const readValidate = () => vcache.get();
+  const sameTree = (a, b) => {
+    const norm = (p) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
+    const x = norm(a);
+    const y = norm(b);
+    return x === y || x.startsWith(y + path.sep) || y.startsWith(x + path.sep);
+  };
+  // every raw watch event (own writes included, before the debounce) and every store write drops the cached result; files under .storyforge/ are never read by validate()
+  const unsubscribeWrites = onWrite((written) => {
+    if (sameTree(written, root)) vcache.invalidate();
+  });
+  const manager = createIndexManager(root, { readValidate });
   // M05-J07: the receipt writer of this library (staged into the batches of the changes themselves; the watcher attributes outside changes)
-  const receipts = createReceiptEngine({ root, now: options.clock });
+  const receipts = createReceiptEngine({ root, now: options.clock, readValidate });
   const unregisterReceipts = registerReceiptEngine(receipts);
-  const watcher = createWatcher({ root, manager, options: { ...options, ...(options.watcher ?? {}) }, onExternalChange: (bookPath, rels) => receipts.externalCheck(bookPath, rels) });
+  const watcher = createWatcher({ root, manager, options: { ...options, ...(options.watcher ?? {}) }, onExternalChange: (bookPath, rels) => receipts.externalCheck(bookPath, rels),
+    onRawEvent: (e) => {
+      if ('rel' in e && typeof e.rel === 'string' && /^\.storyforge(-lock)?(\/|$)/.test(e.rel)) return;
+      vcache.invalidate();
+    } });
   watcher.start();
 
   /** The questions createBook asks about the library (reads only). @type {import('./create-book.mjs').CreateProbe} */
@@ -504,7 +523,7 @@ export function createFsRepository(libraryRoot, options = {}) {
     } catch (e) {
       if (/** @type {any} */ (e)?.code !== 'INDEX_NOT_READY') throw e;
     }
-    const result = known ?? (await validate(root));
+    const result = known ?? (await readValidate());
     const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
     if (!book) return null;
     return {
@@ -513,8 +532,8 @@ export function createFsRepository(libraryRoot, options = {}) {
     };
   }
 
-  async function bookById(bookId) {
-    return (await validate(root)).books.find((/** @type {any} */ b) => b.id === bookId) ?? null;
+  async function bookById(bookId, fresh = false) {
+    return (await (fresh ? validate(root) : readValidate())).books.find((/** @type {any} */ b) => b.id === bookId) ?? null;
   }
 
   /**
@@ -568,7 +587,7 @@ export function createFsRepository(libraryRoot, options = {}) {
     root,
 
     async libraryInfo() {
-      const result = await validate(root);
+      const result = await readValidate();
       const lib = await readParsed(path.join(root, 'library.md'));
       const penNames = Array.isArray(lib?.fm.pen_names)
         ? lib.fm.pen_names.filter((n) => typeof n?.slug === 'string').map((n) => ({ name: str(n.name) ?? n.slug, slug: n.slug }))
@@ -597,7 +616,7 @@ export function createFsRepository(libraryRoot, options = {}) {
     async listBooks() {
       const indexed = await listFromIndex();
       if (indexed) return indexed;
-      const result = await validate(root);
+      const result = await readValidate();
       const books = result.books.filter((/** @type {any} */ b) => b.id);
       const out = await Promise.all(
         books.map(async (/** @type {any} */ b) => summarise(b, result.diagnostics, await loadScenes(b.order))),
@@ -619,7 +638,7 @@ export function createFsRepository(libraryRoot, options = {}) {
           return finishSummary({ ...detail, invalid }, known);
         }
       }
-      const result = await validate(root);
+      const result = await readValidate();
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
       if (!book) return null;
       manager.warm(book.path, book.id);
@@ -652,7 +671,7 @@ export function createFsRepository(libraryRoot, options = {}) {
     },
 
     async getScene(bookId, sceneId) {
-      const result = await validate(root);
+      const result = await readValidate();
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
       if (!book) return null;
       const entry = book.order.find((/** @type {any} */ s) => s.id === sceneId);
@@ -674,7 +693,7 @@ export function createFsRepository(libraryRoot, options = {}) {
         const rel = path.relative(realRoot, real);
         if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
         const bytes = await readFile(file);
-        const diag = (await validate(root)).diagnostics.find((d) => d.file === libRel && isStructureError(d));
+        const diag = (await readValidate()).diagnostics.find((d) => d.file === libRel && isStructureError(d));
         return {
           path: libRel,
           body: bytes.toString('utf8'),
@@ -766,7 +785,7 @@ export function createFsRepository(libraryRoot, options = {}) {
     },
 
     async applyRepair(bookId, actions) {
-      const book = await bookById(bookId);
+      const book = await bookById(bookId, true);
       if (!book) return { ok: false, code: 'NOT_FOUND' };
       const r = await applyRepair(book.path === '' ? root : abs(book.path), actions);
       if (r.ok) await manager.reconcile(book.path, 'repair', { full: true });
@@ -802,6 +821,7 @@ export function createFsRepository(libraryRoot, options = {}) {
       await receipts.flushPending().catch(() => {}); // M05-J07: unflushed author saves become author.edit receipts before we go
       await watcher.ready;
       watcher.close();
+      unsubscribeWrites();
       unregisterReceipts();
     },
 
@@ -907,7 +927,7 @@ export function createFsRepository(libraryRoot, options = {}) {
      * `appears_in` has one row per scene (explicit when any explicit edge exists), explicit first, then manuscript order.
      */
     async listCodexEntries(bookId) {
-      const result = await validate(root);
+      const result = await readValidate();
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
       if (!book) return null;
       const g = await graphOf(bookId, result);
@@ -978,7 +998,7 @@ export function createFsRepository(libraryRoot, options = {}) {
      * names (by id, slug or previous slug; a name nothing resolves is left out). Scenes are in book order. Threads are by title. Null for an unknown book.
      */
     async listThreads(bookId) {
-      const result = await validate(root);
+      const result = await readValidate();
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
       if (!book) return null;
       const loaded = await loadScenes(book.order);
@@ -1027,7 +1047,7 @@ export function createFsRepository(libraryRoot, options = {}) {
 
     /** The image an entry's `image` field points at (only a supported image under assets/ is ever served), like getCover. Null if there is none; `{ error: 'too_large' }` for an image over the size cap (as for covers). */
     async getEntryImage(bookId, ref) {
-      const result = await validate(root);
+      const result = await readValidate();
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
       if (!book || typeof ref !== 'string') return null;
       const doc = extractDocs(result, book.path).find((d) => d.kind === 'entry' && (d.fm.id === ref || (!d.archived && d.fm.slug === ref)));
@@ -1046,11 +1066,11 @@ export function createFsRepository(libraryRoot, options = {}) {
     },
 
     async continuityBooks() {
-      return (await validate(root)).books.filter((/** @type {any} */ b) => b.id).map((/** @type {any} */ b) => ({ id: b.id, slug: b.slug, path: b.path, title: b.title }));
+      return (await readValidate()).books.filter((/** @type {any} */ b) => b.id).map((/** @type {any} */ b) => ({ id: b.id, slug: b.slug, path: b.path, title: b.title }));
     },
 
     async getDiagnostics(bookId) {
-      const result = await validate(root);
+      const result = await readValidate();
       if (bookId === undefined) return result.diagnostics;
       const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
       return book ? forBook(result.diagnostics, book.path) : [];
@@ -1106,6 +1126,7 @@ export function createFsRepository(libraryRoot, options = {}) {
   };
   Object.assign(repository, createTimelineReads({
     root,
+    readValidate,
     bookPathOf: (bookId) => manager.pathOf(bookId),
     async readFileAt(libRel) {
       try {
@@ -1131,6 +1152,8 @@ export function createFsRepository(libraryRoot, options = {}) {
       }
     },
   }));
-  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }), activity, now: options.clock, receipts }));
+  // test hook: the cache itself (not enumerable, so it is not part of the repository's surface)
+  Object.defineProperty(repository, '__validateCache', { value: vcache, enumerable: false });
+  Object.assign(repository, createWriteMethods({ root, getScene: (b, s) => repository.getScene(b, s), afterWrite: (p) => manager.afterWrite(p), reconcile: (p) => manager.reconcile(p, 'write', { full: true }), activity, now: options.clock, receipts, readValidate }));
   return repository;
 }

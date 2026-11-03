@@ -65,7 +65,7 @@ export function promptText(messages) {
 /**
  * @param {{ root: string, now?: () => number | Date }} p `root` is the library (or one-book) root; `now` is the clock the repository uses
  */
-export function createReceiptEngine({ root, now = () => Date.now() }) {
+export function createReceiptEngine({ root, now = () => Date.now(), readValidate = () => validate(root) }) {
   const nowMs = () => Number(now());
   let lastStamp = 0;
   /** Strictly increasing milliseconds, so receipts written in one tick still have a clear order. */
@@ -85,8 +85,9 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
 
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
 
-  async function findBook(bookId) {
-    const result = await validate(root);
+  /** `cached`: for reads only; anything that goes on to write looks at the disk. */
+  async function findBook(bookId, cached = false) {
+    const result = await (cached ? readValidate() : validate(root));
     const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
     return book ? { book, result, bookRoot: bookRootOf(book) } : null;
   }
@@ -359,8 +360,8 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
 
   // ------------------------------------------------------------------ repository reads and flush
 
-  async function sceneOf(bookId, sceneId) {
-    const found = await findBook(bookId);
+  async function sceneOf(bookId, sceneId, cached = false) {
+    const found = await findBook(bookId, cached);
     if (!found || typeof sceneId !== 'string') return null;
     const doc = liveDocs(found).find((d) => d.fm.id === sceneId);
     if (!doc) return null;
@@ -413,13 +414,13 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
   const methods = {
     /** @param {string} bookId */
     async verifyReceipts(bookId) {
-      const found = await findBook(bookId);
+      const found = await findBook(bookId, true);
       return found ? verifyAt(found) : null;
     },
 
     /** The receipts of one document, its lineage in plain words and the integrity status. */
     async getReceipts(bookId, sceneId) {
-      const ctx = await sceneOf(bookId, sceneId);
+      const ctx = await sceneOf(bookId, sceneId, true);
       if (!ctx) return fail('NOT_FOUND');
       let mine = (await scanReceipts(ctx.store)).filter((x) => x.receipt.target.id === sceneId);
       if (mine.length === 0) {
@@ -449,7 +450,7 @@ export function createReceiptEngine({ root, now = () => Date.now() }) {
 
     /** Line-level lineage of lines `from`..`to` (1-based file lines) of a scene as it is now. */
     async blame(bookId, sceneId, from, to) {
-      const ctx = await sceneOf(bookId, sceneId);
+      const ctx = await sceneOf(bookId, sceneId, true);
       if (!ctx) return fail('NOT_FOUND');
       const cur = await ctx.store.read(ctx.doc.rel);
       if (!cur) return fail('NOT_FOUND');

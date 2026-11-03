@@ -81,7 +81,7 @@ const errKey = (d) => `${d.code}\0${d.file}\0${d.location}`;
  *           receipts?: ReturnType<typeof import('./receipts.mjs').createReceiptEngine> }} deps
  *   `afterWrite` runs after every successful change; `reconcile` (structure commands) brings the book's index up to date before the call returns
  */
-export function createWriteMethods({ root, getScene, afterWrite = () => {}, reconcile, activity, now = () => Date.now(), receipts = createReceiptEngine({ root, now }) }) {
+export function createWriteMethods({ root, getScene, afterWrite = () => {}, reconcile, activity, now = () => Date.now(), receipts = createReceiptEngine({ root, now }), readValidate }) {
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
   const toLibRel = (book, p) => (book.path === '' ? p : `${book.path}/${p}`);
   const toBookRel = (book, p) => (book.path === '' ? p : p.startsWith(`${book.path}/`) ? p.slice(book.path.length + 1) : null);
@@ -533,7 +533,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     // ---- M05-J02: continuity exceptions (planning/continuity/<slug>.md, through the store) and the context lines of a finding
     ...createContinuityExceptionMethods({ root, afterWrite, reconcile, now }),
     // ---- M05-J06: suggestions (suggestions/<YYYY>/*.md, through the store; a target changes only on accept) and the read-only scene check
-    ...createSuggestionMethods({ root, afterWrite, reconcile, now, receipts }),
+    ...createSuggestionMethods({ root, afterWrite, reconcile, now, receipts, readValidate }),
     ...createCheckMethods({ root, now, receipts }),
     // ---- M05-J07: receipts (provenance ledger): reads, flush and verification; the writer is shared with the changes above
     getReceipts: receipts.getReceipts,

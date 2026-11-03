@@ -31,11 +31,14 @@ export function isIgnored(rel, eventType = 'rename') {
 
 /**
  * @param {{ root: string, manager: ReturnType<typeof import('./index-manager.mjs').createIndexManager>, options?: WatchOptions,
- *   onExternalChange?: (bookPath: string, rels: string[] | null) => Promise<void> }} p
+ *   onExternalChange?: (bookPath: string, rels: string[] | null) => Promise<void>,
+ *   onRawEvent?: (e: { rel: string | null, eventType: string, own: boolean } | { live: boolean }) => void }} p
+ *   `onRawEvent` runs synchronously for EVERY watch event (own writes and ignored files included), before the debounce, and with `{ live }` whenever
+ *   the watcher starts or stops delivering events (see `isLive()`).
  *   `onExternalChange(bookPath, rels)` (M05-J07) runs before the index is reconciled for changes made outside the app: `rels` are the book-relative files the
  *   watch event named, or null for the catch-up when watching starts (every scene).
  */
-export function createWatcher({ root, manager, options = {}, onExternalChange }) {
+export function createWatcher({ root, manager, options = {}, onExternalChange, onRawEvent }) {
   const watchOpt = options.watch ?? true;
   const pollMs = options.pollMs ?? DEFAULTS.pollMs;
   const debounceMs = options.debounceMs ?? DEFAULTS.debounceMs;
@@ -48,6 +51,8 @@ export function createWatcher({ root, manager, options = {}, onExternalChange })
   /** @type {string | null} */
   let lastEventAt = null;
   let closed = false;
+  /** True while every watch is open and delivering events (fs.watch mode only). */
+  let live = false;
   let running = 0;
   /** @type {{ close(): void }[]} */
   let handles = [];
@@ -62,6 +67,21 @@ export function createWatcher({ root, manager, options = {}, onExternalChange })
   let books = [];
   /** @type {Promise<void>} */
   let ready = Promise.resolve();
+
+  function setLive(v) {
+    if (live === v) return;
+    live = v;
+    raw({ live: v });
+  }
+
+  /** @param {any} e */
+  function raw(e) {
+    try {
+      onRawEvent?.(e);
+    } catch {
+      // a listener must never break the watcher
+    }
+  }
 
   const dirOf = (bookPath) => (bookPath === '' ? root : path.join(root, ...bookPath.split('/')));
   const under = (dir, bookPath) => dir === '' || bookPath === dir || bookPath.startsWith(`${dir}/`);
@@ -105,6 +125,7 @@ export function createWatcher({ root, manager, options = {}, onExternalChange })
   const touched = new Map();
 
   function onBookEvent(bookPath, e) {
+    raw(e);
     if (closed || e.own || isIgnored(e.rel, e.eventType)) return;
     lastEventAt = new Date().toISOString();
     if (e.rel !== null) (touched.get(bookPath) ?? touched.set(bookPath, new Set()).get(bookPath)).add(e.rel);
@@ -117,6 +138,7 @@ export function createWatcher({ root, manager, options = {}, onExternalChange })
   }
 
   function onTopEvent(dir, e) {
+    raw(e);
     if (closed || e.own) return;
     const base = e.rel === null ? null : e.rel.split('/').pop();
     if (base === 'library.md' || base === 'series.md' || base === null) {
@@ -157,6 +179,7 @@ export function createWatcher({ root, manager, options = {}, onExternalChange })
   }
 
   function degrade(why) {
+    setLive(false);
     for (const h of handles) {
       try {
         h.close();
@@ -185,11 +208,13 @@ export function createWatcher({ root, manager, options = {}, onExternalChange })
     const next = await bookList();
     if (next === null || closed || mode !== 'watch') return;
     if (next.join('\n') === books.join('\n')) return;
+    setLive(false);
     for (const h of handles) h.close();
     handles = [];
     books = next;
     try {
       await openWatches(books);
+      if (!closed && mode === 'watch') setLive(true);
     } catch (e) {
       degrade(`fs.watch failed: ${e?.message ?? e}`);
     }
@@ -257,6 +282,7 @@ export function createWatcher({ root, manager, options = {}, onExternalChange })
       try {
         mode = 'watch';
         await openWatches(books);
+        if (!closed && mode === 'watch') setLive(true);
       } catch (e) {
         degrade(`fs.watch failed: ${/** @type {any} */ (e)?.message ?? e}`);
       }
@@ -287,11 +313,16 @@ export function createWatcher({ root, manager, options = {}, onExternalChange })
       if (mode === 'watch') await resync();
       else await pollOnce();
     },
+    /** True while fs.watch is delivering events for every book (false in poll mode, when degraded, before start and after close). */
+    isLive() {
+      return live && !closed && mode === 'watch';
+    },
     status() {
       return { mode, reason, last_event_at: lastEventAt, pending: pending.size + running };
     },
     close() {
       closed = true;
+      setLive(false);
       for (const { timer } of pending.values()) clearTimeout(timer);
       pending.clear();
       if (pollTimer) clearInterval(pollTimer);

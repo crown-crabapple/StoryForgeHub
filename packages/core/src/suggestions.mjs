@@ -63,12 +63,13 @@ async function emit(event, ctx) {
  * @param {{ root: string, afterWrite?: (bookPath: string) => void, reconcile?: (bookPath: string) => Promise<any>, now?: () => number | Date,
  *   receipts?: ReturnType<typeof createReceiptEngine> }} p
  */
-export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile, now = () => Date.now(), receipts = createReceiptEngine({ root, now }) }) {
+export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile, now = () => Date.now(), receipts = createReceiptEngine({ root, now }), readValidate = () => validate(root) }) {
   const bookRootOf = (book) => (book.path === '' ? root : path.join(root, ...book.path.split('/')));
   const nowMs = () => Number(now());
 
-  async function findBook(bookId) {
-    const result = await validate(root);
+  /** `cached`: for reads only; anything that goes on to write looks at the disk. */
+  async function findBook(bookId, cached = false) {
+    const result = await (cached ? readValidate() : validate(root));
     const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
     return book ? { book, result } : null;
   }
@@ -181,7 +182,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
    */
   async function listSuggestions(bookId, args = {}) {
     const { target, state } = args ?? {};
-    const found = await findBook(bookId);
+    const found = await findBook(bookId, true);
     if (!found) return fail('NOT_FOUND');
     const store = await openStore(bookRootOf(found.book), { recover: false });
     const docs = live(found);
@@ -202,7 +203,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
 
   /** One suggestion with the text of every hunk; each pending hunk says whether it is `stale` against the target as it is now. */
   async function getSuggestion(bookId, suggestionId) {
-    const found = await findBook(bookId);
+    const found = await findBook(bookId, true);
     if (!found || typeof suggestionId !== 'string') return fail('NOT_FOUND');
     const store = await openStore(bookRootOf(found.book), { recover: false });
     const docs = live(found);

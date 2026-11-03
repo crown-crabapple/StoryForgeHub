@@ -20,7 +20,7 @@ function isFresh(idx) {
 }
 
 /** @param {string} root absolute library (or book) root */
-export function createIndexManager(root) {
+export function createIndexManager(root, { readValidate = () => validate(root) } = {}) {
   /** @type {Map<string, Promise<{ bookPath: string, idx: ReturnType<typeof openIndex> }>>} */
   const entries = new Map();
   /** @type {Map<string, string>} book id -> book path, learned from indexes and from validate() */
@@ -94,7 +94,7 @@ export function createIndexManager(root) {
   /** The folder of a book id; asks validate() once if the id has not been seen. @returns {Promise<string | null>} */
   async function pathOf(bookId) {
     if (idToPath.has(bookId)) return /** @type {string} */ (idToPath.get(bookId));
-    const result = await validate(root);
+    const result = await readValidate();
     for (const b of result.books) if (b.id) idToPath.set(b.id, b.path);
     return idToPath.get(bookId) ?? null;
   }

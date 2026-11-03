@@ -60,12 +60,12 @@ function excerptOf(md) {
  *   bookPathOf: (bookId: string) => Promise<string | null> }} deps the file reads come from fs-repository.mjs, the one core module that reads files
  *   (`readAssetFile` resolves the real path, keeps it inside the real assets/ folder and enforces the size cap)
  */
-export function createTimelineReads({ root, readFileAt, readAssetFile, bookPathOf }) {
+export function createTimelineReads({ root, readFileAt, readAssetFile, bookPathOf, readValidate = () => validate(root) }) {
   /** @type {Map<string, any>} `${bookId}\0${file}` -> the last good event / note of that file */
   const lastGood = new Map();
 
   async function load(bookId) {
-    const result = await validate(root);
+    const result = await readValidate();
     const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
     if (!book) return null;
     return { result, book, docs: extractDocs(result, book.path), prefix: book.path ? `${book.path}/` : '' };
