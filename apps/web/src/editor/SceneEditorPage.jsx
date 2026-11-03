@@ -693,7 +693,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         </footer>
       </article>
 
-      {check && <CheckDialog bookId={book.id} sceneTitle={scene.title} report={check.report} error={check.error} onClose={() => setCheck(null)} />}
+      {check && <CheckDialog bookId={book.id} sceneTitle={scene.title} report={check.report} error={check.error} makeTask onClose={() => setCheck(null)} />}
       {dialog === 'picker' && <LinkPicker objects={objects} selectedText={pickerText} onPick={pick} onClose={() => setDialog(null)} />}
       {dialog === 'normalise' && preview && (
         <InfoDialog

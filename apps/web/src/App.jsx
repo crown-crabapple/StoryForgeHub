@@ -74,7 +74,7 @@ function Routes() {
     if (route.tab === 'timeline') view = <TimelineView bookId={route.bookId} search={search} />;
     else if (route.tab === 'continuity') view = <ContinuityView bookId={route.bookId} search={search} />;
     else if (route.tab === 'notes') view = <NotesView bookId={route.bookId} search={search} />;
-    else if (route.tab === 'insights') view = <InsightsView bookId={route.bookId} />;
+    else if (route.tab === 'insights') view = <InsightsView bookId={route.bookId} search={search} />;
     else if (route.tab === 'tasks') view = <TasksView bookId={route.bookId} search={search} />;
     else view = <CodexView bookId={route.bookId} search={search} places={route.tab === 'places'} />;
   } else {

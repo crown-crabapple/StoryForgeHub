@@ -4,7 +4,7 @@ import { TimerPanel } from '../writing/TimerPanel.jsx';
 import { BarList, ChartFrame, ColumnChart, DataTable, HeatMap, ThreadMatrix } from './charts.jsx';
 import { GoalsPanel } from './GoalsPanel.jsx';
 import {
-  cellScenes, chapterName, chapterRows, chapterShort, codexHref, dayRows, eventRows, fmt, heatTable, labelRows, lastDays, outlineHref, outlineStatusHref, povRows, sceneHref, statusRows,
+  cellScenes, chapterName, insightsHref, chapterRows, chapterShort, codexHref, dayRows, eventRows, fmt, heatTable, labelRows, lastDays, outlineHref, outlineStatusHref, povRows, sceneHref, statusRows,
   tasksHref, threadHref, threadTable, timelineHref,
 } from './model.js';
 
@@ -13,6 +13,7 @@ function CellDetail({ bookId, data, selected, entries, chapters }) {
   const row = data.story.characters.rows.find((r) => r.id === selected.id);
   const chapter = data.story.chapters.find((c) => c.chapter === selected.chapter);
   if (!row || !chapter) return null;
+  const count = row.cells[data.story.chapters.indexOf(chapter)] ?? 0;
   const scenes = entries ? cellScenes(entries, chapters, selected.id, selected.chapter) : null;
   return (
     <div className="ins-cell-detail" role="region" aria-label={`Scenes: ${row.name} in ${chapterShort(chapter)}`}>
@@ -20,7 +21,7 @@ function CellDetail({ bookId, data, selected, entries, chapters }) {
         <strong>
           {row.name} in {chapterName(chapter)}
         </strong>
-        : {selected.count} {selected.count === 1 ? 'scene' : 'scenes'}
+        : {count} {count === 1 ? 'scene' : 'scenes'}
       </p>
       {scenes === null ? (
         <p className="muted">Loading the scenes…</p>
@@ -91,12 +92,10 @@ function DaysFrame({ shown, range }) {
  * The Insights page (/books/:id/insights): Progress, Manuscript, Story, Tasks. Every number comes from GET /insights; every chart has "Show as table", and its elements link to their
  * source. Presentational: the fetching view hands everything in.
  * @param {{ bookId: string, data: any, entries?: any[] | null, entryChapters?: any[] | null,
- *   goalHandlers?: { onAdd?: () => void, onRemove?: (goal: any) => void }, extra?: import('react').ReactNode, initialCell?: { id: string, chapter: number, count: number } | null,
- *   onCell?: (cell: { id: string, chapter: number, count: number }) => void }} props
- * `onCell` runs when a heat-map cell is pressed (the view then loads the Codex entries to name its scenes).
+ *   goalHandlers?: { onAdd?: () => void, onRemove?: (goal: any) => void }, extra?: import('react').ReactNode, cell?: { id: string, chapter: number } | null }} props
+ * `cell` is the heat-map cell the URL selected (?cell=<entry id>:<chapter>); its scenes are named from `entries` (the Codex answer, loaded by the view).
  */
-export function InsightsPage({ bookId, data, entries = null, entryChapters = null, goalHandlers = {}, extra = null, initialCell = null, onCell = undefined }) {
-  const [cell, setCell] = useState(initialCell);
+export function InsightsPage({ bookId, data, entries = null, entryChapters = null, goalHandlers = {}, extra = null, cell = null }) {
   const m = data.manuscript;
   const s = data.story;
   const wordsLabel = data.book.word_target ? `${fmt(data.book.words)} of ${fmt(data.book.word_target)} words` : `${fmt(data.book.words)} words`;
@@ -191,10 +190,7 @@ export function InsightsPage({ bookId, data, entries = null, entryChapters = nul
                 chapters={s.chapters}
                 rows={s.characters.rows}
                 selected={cell}
-                onSelect={(c) => {
-                  setCell(c);
-                  onCell?.(c);
-                }}
+                cellHref={(id, chapter) => insightsHref(bookId, { cell: { id, chapter } })}
                 chapterShort={chapterShort}
                 entryHref={(id) => codexHref(bookId, { entry: id })}
               />

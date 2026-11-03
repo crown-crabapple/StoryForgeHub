@@ -5,22 +5,22 @@ import { useWrites } from '../shell/writes.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
 import { GoalDialog } from './GoalsPanel.jsx';
 import { InsightsPage } from './InsightsPage.jsx';
-import { insightsUrl } from './model.js';
+import { insightsUrl, parseInsightsSearch } from './model.js';
 import { explainGoalFailure, removeGoalRequest, sendRequest, setGoalRequest } from './requests.js';
 
 /**
  * /books/:id/insights. Fetches the numbers (again after every goal change and on the status poll), and the Codex entries once a heat-map cell is pressed (to name its scenes).
  * Adding or removing a goal writes only activity/goals.md.
- * @param {{ bookId: string }} props
+ * @param {{ bookId: string, search?: string }} props `search` is the query string of the URL (?cell= selects a heat-map cell)
  */
-export function InsightsView({ bookId }) {
+export function InsightsView({ bookId, search = '' }) {
   const { status } = useStatus();
   const { track } = useWrites();
   const [bump, setBump] = useState(0);
   const version = `${bookVersion(status, bookId)}|${bump}`;
   const { data, error, loading } = useApi(insightsUrl(bookId), version);
-  const [wantEntries, setWantEntries] = useState(false);
-  const { data: codex } = useApi(wantEntries ? `/api/books/${encodeURIComponent(bookId)}/codex/entries` : null, version);
+  const cell = parseInsightsSearch(search);
+  const { data: codex } = useApi(cell ? `/api/books/${encodeURIComponent(bookId)}/codex/entries` : null, version);
   const [dialog, setDialog] = useState(null); // { error }
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
@@ -74,7 +74,7 @@ export function InsightsView({ bookId }) {
         data={data}
         entries={codex?.entries ?? null}
         entryChapters={codex?.chapters ?? null}
-        onCell={() => setWantEntries(true)}
+        cell={cell}
         goalHandlers={{ onAdd: () => setDialog({ error: null }), onRemove: remove }}
         extra={
           notice ? (

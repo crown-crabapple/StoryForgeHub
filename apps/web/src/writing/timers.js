@@ -122,9 +122,13 @@ export function createTimers({ clock, schedule, unschedule, announce, report }) 
       announce(`${NAME[t.kind]} stopped: too short to record.`);
       return null;
     }
-    const written = await Promise.resolve()
-      .then(() => report(row, t))
-      .catch(() => null);
+    /** @type {{ added?: number, minutes?: number } | null} */
+    let written;
+    try {
+      written = await report(row, t);
+    } catch {
+      written = null;
+    }
     announce(written ? finishedMessage(t, written) : `${NAME[t.kind]} finished, but the session could not be saved.`);
     return written;
   }

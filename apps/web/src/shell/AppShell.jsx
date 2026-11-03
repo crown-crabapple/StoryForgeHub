@@ -1,4 +1,5 @@
 import { useFocus } from '../writing/FocusContext.jsx';
+import { MoreNav } from './MoreNav.jsx';
 import { ProjectNav } from './ProjectNav.jsx';
 import { SkipLink } from './SkipLink.jsx';
 import { ToastStack } from './ToastStack.jsx';
@@ -16,6 +17,7 @@ export function AppShell({ books, bookId, tab = 'manuscript', banner = null, chi
       <SkipLink />
       {!focus && <TopBar books={books} bookId={bookId} />}
       {known && !focus && <ProjectNav bookId={bookId} active={tab} />}
+      {known && !focus && <MoreNav bookId={bookId} active={tab} />}
       {banner}
       {children}
       <ToastStack />

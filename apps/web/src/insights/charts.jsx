@@ -156,13 +156,13 @@ const HEAD = 24;
 const LEFT = 150;
 
 /**
- * The heat map: characters down, chapters across, the number of scenes in each cell. A cell with scenes is a button (one tab stop, arrow keys move between the cells that have
- * scenes); pressing it selects it. Rows are links to the entry. Series entries are badged.
+ * The heat map: characters down, chapters across, the number of scenes in each cell. A cell with scenes is a link (to this page with that cell selected: one tab stop, arrow keys move
+ * between the cells that have scenes, Enter opens the cell's scenes below the map). Rows are links to the entry. Series entries are badged.
  * @param {{ bookId: string, chapters: { chapter: number, label: string }[], rows: { id: string, name: string, shared: boolean, total: number, cells: number[] }[],
- *   selected: { id: string, chapter: number } | null, onSelect: (cell: { id: string, chapter: number, count: number }) => void,
+ *   selected: { id: string, chapter: number } | null, cellHref: (id: string, chapter: number) => string,
  *   chapterShort: (c: any) => string, entryHref: (id: string) => string }} props
  */
-export function HeatMap({ chapters, rows, selected, onSelect, chapterShort, entryHref }) {
+export function HeatMap({ chapters, rows, selected, cellHref, chapterShort, entryHref }) {
   const grid = rows.map((r) => r.cells);
   const max = Math.max(0, ...grid.flat());
   const start = firstCell(grid);
@@ -205,25 +205,16 @@ export function HeatMap({ chapters, rows, selected, onSelect, chapterShort, entr
               if (n === 0) return <rect key={ci} className="ins-cell" data-level="0" x={x + 1} y={y + 1} width={CELL - 2} height={CELL - 2} rx={3} aria-hidden="true" />;
               const on = selected?.id === r.id && selected.chapter === chapters[ci].chapter;
               return (
-                <g
+                <Link
                   key={ci}
+                  to={cellHref(r.id, chapters[ci].chapter)}
                   data-cell={`${ri}:${ci}`}
-                  role="button"
                   tabIndex={tab && tab.row === ri && tab.col === ci ? 0 : -1}
-                  aria-pressed={on ? 'true' : 'false'}
+                  aria-current={on ? 'true' : undefined}
                   aria-label={`${r.name}, ${chapterShort(chapters[ci])}: ${n} ${n === 1 ? 'scene' : 'scenes'}`}
                   className="ins-cell-btn"
-                  onClick={() => {
-                    setRove({ row: ri, col: ci });
-                    onSelect({ id: r.id, chapter: chapters[ci].chapter, count: n });
-                  }}
                   onFocus={() => setRove({ row: ri, col: ci })}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onSelect({ id: r.id, chapter: chapters[ci].chapter, count: n });
-                      return;
-                    }
                     const next = nextCell(grid, ri, ci, e.key);
                     if (next) {
                       e.preventDefault();
@@ -235,7 +226,7 @@ export function HeatMap({ chapters, rows, selected, onSelect, chapterShort, entr
                   <text className="ins-cell-n" x={x + CELL / 2} y={y + 15} textAnchor="middle">
                     {n}
                   </text>
-                </g>
+                </Link>
               );
             })}
           </g>

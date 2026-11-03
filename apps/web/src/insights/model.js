@@ -10,8 +10,14 @@ const enc = encodeURIComponent;
 export const insightsUrl = (bookId) => `/api/books/${enc(bookId)}/insights`;
 /** GET: the goals file as the app reads it. @param {string} bookId */
 export const goalsUrl = (bookId) => `/api/books/${enc(bookId)}/goals`;
-/** /books/:id/insights @param {string} bookId */
-export const insightsHref = (bookId) => `/books/${enc(bookId)}/insights`;
+/** /books/:id/insights, with the optional heat-map cell selected (?cell=<entry id>:<chapter number>). @param {string} bookId @param {{ cell?: { id: string, chapter: number } | null }} [q] */
+export const insightsHref = (bookId, { cell = null } = {}) => `/books/${enc(bookId)}/insights${cell ? `?cell=${enc(`${cell.id}:${cell.chapter}`)}` : ''}`;
+
+/** The selected heat-map cell of a query string, or null. @param {string} search @returns {{ id: string, chapter: number } | null} */
+export function parseInsightsSearch(search = '') {
+  const m = /^(.+):(d{1,5})$/.exec(new URLSearchParams(search).get('cell') ?? '');
+  return m ? { id: m[1], chapter: Number(m[2]) } : null;
+}
 /** /books/:id/tasks with the optional ?status= filter or ?task= selection. @param {string} bookId @param {{ status?: string | null, task?: string | null }} [q] */
 export function tasksHref(bookId, { status = null, task = null } = {}) {
   const p = new URLSearchParams();
