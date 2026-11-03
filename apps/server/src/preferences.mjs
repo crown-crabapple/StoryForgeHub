@@ -75,7 +75,7 @@ export async function handlePreferencesRead(repository, state, params) {
   const { values, sources, order } = resolvePreferences(layers);
   const modules = resolveModules(layers);
   const warnings = [];
-  if (!modules.receipts.on) warnings.push({ module: 'receipts', code: 'RECEIPTS_GAP', message: 'Receipts are off: nothing new is recorded, so the provenance chain gets a gap. Verification will report RCPT_CHAIN_GAP for the changes made while they are off.' });
+  if (!modules.receipts.on) warnings.push({ module: 'receipts', code: 'RECEIPTS_GAP', message: 'Receipts are off: nothing new is recorded, so the provenance chain gets a gap: changes made while they are off have no receipts of their own.' });
   if (!modules.ai.on) warnings.push({ module: 'ai', code: 'AI_OFF', message: 'AI is off: StoryForge will never call the AI transport.' });
   return {
     status: 200,

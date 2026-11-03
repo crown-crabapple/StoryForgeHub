@@ -135,7 +135,7 @@ A feature the **project** turns off (in `library.md` or `book.md`) shows as "Set
 
 ### Receipts off
 
-Turning **receipts** off stops new receipts, and the provenance chain gets a gap. StoryForge asks before it does this and keeps a warning in Settings while it is off. Receipts already on disk are untouched; verification reports `RCPT_CHAIN_GAP` for changes made while receipts were off.
+Turning **receipts** off stops new receipts, and the provenance chain gets a gap. StoryForge asks before it does this and keeps a warning in Settings while it is off. Receipts already on disk are untouched, and verification works as it does today (it reports `RCPT_CHAIN_GAP` wherever a later receipt no longer starts where the one before it ended).
 
 ### AI off
 

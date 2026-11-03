@@ -345,7 +345,7 @@ function ModulesSection() {
   const [status, setStatus] = useState(/** @type {string | null} */ (null));
   const own = layers.profile?.modules ?? {};
   async function set(id, on) {
-    if (id === 'receipts' && !on && !window.confirm('Turning receipts off stops new receipts, so the provenance chain gets a gap. Verification will report RCPT_CHAIN_GAP for the changes made while they are off. Turn them off?')) return;
+    if (id === 'receipts' && !on && !window.confirm('Turning receipts off stops new receipts, so the provenance chain gets a gap: changes made while they are off have no receipts of their own. Turn them off?')) return;
     setStatus(said(await save({ modules: { ...own, [id]: on } }), `${MODULES.find((m) => m.id === id)?.label}: ${on ? 'on' : 'off'}.`));
   }
   return (
