@@ -71,3 +71,18 @@ export async function putJson(url, body) {
   }
   return { status: res.status, json };
 }
+
+/**
+ * DELETE a resource through a write route. Same write-guard header as postJson.
+ * @returns {Promise<{ status: number, json: any }>}
+ */
+export async function deleteJson(url) {
+  const res = await fetch(url, { method: 'DELETE', headers: { 'content-type': 'application/json', 'x-storyforge': '1', accept: 'application/json' } });
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    // no body
+  }
+  return { status: res.status, json };
+}

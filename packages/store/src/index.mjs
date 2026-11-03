@@ -7,3 +7,4 @@ export { readUserConfig, userConfigDir, writeUserConfig } from './userconfig.mjs
 export { escapesRoot } from './contain.mjs';
 export { writeNewTree, writeOutFile, writeWorkFile, replaceWorkDir } from './foreign-files.mjs';
 export { onWrite } from './write-hooks.mjs';
+export { appendSharedLine, readSharedJson, readSharedText, writeSharedJson } from './shared-files.mjs';

@@ -21,11 +21,12 @@ export function tabHref(bookId, tab) {
 /**
  * @param {string} pathname
  * @param {string} [search]
- * @returns {{ name: 'library' } | { name: 'settings' } | { name: 'book', bookId: string, sceneId: string | null, file: string | null } | { name: 'tab', bookId: string, tab: string } | { name: 'notfound' }}
+ * @returns {{ name: 'library' } | { name: 'settings' } | { name: 'members' } | { name: 'book', bookId: string, sceneId: string | null, file: string | null } | { name: 'tab', bookId: string, tab: string } | { name: 'notfound' }}
  */
 export function parseRoute(pathname, search = '') {
   if (pathname === '/' || pathname === '') return { name: 'library' };
   if (pathname === '/settings' || pathname === '/settings/') return { name: 'settings' };
+  if (pathname === '/settings/members' || pathname === '/settings/members/') return { name: 'members' };
   const m = /^\/books\/([^/]+)(?:\/([^/]+))?\/?$/.exec(pathname);
   if (!m) return { name: 'notfound' };
   let bookId;

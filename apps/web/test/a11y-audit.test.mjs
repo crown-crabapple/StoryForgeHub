@@ -32,6 +32,7 @@ before(async () => {
     '/src/planning/PlanningWorkspace.jsx', '/src/codex/CodexPage.jsx', '/src/timeline/TimelinePage.jsx', '/src/timeline/model.js', '/src/notes/NotesPage.jsx', '/src/continuity/ContinuityPage.jsx',
     '/src/suggestions/SuggestionReview.jsx', '/src/export/ExportDialog.jsx', '/src/export/BackupDialog.jsx', '/src/export/RestoreDialog.jsx', '/src/ai/SettingsView.jsx',
     '/src/structure/MoveDialog.jsx', '/src/PlaceholderView.jsx', '/src/editor/SceneEditorPage.jsx',
+    '/src/shared/LoginPage.jsx', '/src/shared/SetupPage.jsx', '/src/shared/InvitePage.jsx', '/src/shared/MembersPage.jsx', '/src/shared/UserMenu.jsx', '/src/shared/ShareReader.jsx', '/src/shared/ShareEntry.jsx',
   ]) await load(p);
 
   const root = await copyFixture('valid/salt-orchard');
@@ -73,6 +74,22 @@ const planning = (view, mode = 'list') => h(m.PlanningWorkspace, { book: d.book,
 const sceneInspector = () =>
   h(m.SceneInspector, { book: d.book, scene: d.scene, diagnostics: { items: d.diagnostics, error: null, loading: false }, objects: d.objects, planning: d.planning, timeline: d.timeline, notes: d.notes, continuity: d.continuity });
 
+// M07-J03a shared-mode views: the sign-in pages have no app shell (nobody is signed in), so they are a lone <main>
+const LONE_MAIN = { landmarks: ['main'] };
+const MEMBERS = {
+  members: [
+    { user: 'usr_1', username: 'ilse', display_name: 'Ilse', role: 'owner', disabled: false },
+    { user: 'usr_2', username: 'tobin', display_name: 'Tobin', role: 'editor', disabled: false },
+    { user: 'usr_3', username: 'mara', display_name: 'Mara', role: 'reviewer', disabled: false },
+  ],
+  invites: [{ id: 'inv_1', role: 'viewer', expires: 1_800_000_000_000, live: true }, { id: 'inv_2', role: 'editor', expires: 1_800_100_000_000, live: true }],
+  shares: [{ id: 'shr_1', book: BOOK_ID, scope: ['read'], expires: 1_800_000_000_000, live: true }, { id: 'shr_2', book: BOOK_ID, scope: ['read', 'export'], expires: 1_800_100_000_000, live: true }],
+  settings: { ai_for_members: false },
+  currentUserId: 'usr_1',
+  onRole: noop, onRemove: noop, onInvite: noop, onRevokeInvite: noop, onShare: noop, onRevokeShare: noop, onAi: noop, onDismissLink: noop,
+};
+const membersPage = (extra = {}) => h(m.MembersPage, { ...MEMBERS, books: d.books.map((b) => ({ id: b.id, title: b.title })), ...extra });
+
 const PAGE = { page: true, landmarks: ['banner', 'navigation', 'main'] };
 const WITH_BOOK_ASIDE = { ...PAGE, landmarks: [...PAGE.landmarks, 'complementary'] };
 /** A dialog drawn over a page that is not under test: the dialog itself, the landmarks of the shell and no page-level rules. */
@@ -102,6 +119,19 @@ const VIEWS = {
   'Backup dialog': () => [shell(h(Fragment, null, layout(h('p', null, 'x')), h(m.BackupDialog, { book: d.book, onClose: noop }))), OVER_PAGE],
   'Restore dialog': () => [shell(h(Fragment, null, h(m.LibraryPage, { books: d.books }), h(m.RestoreDialog, { onClose: noop })), { bookId: null }), PAGE],
   'Settings': () => [shell(h(m.SettingsView), { bookId: null }), PAGE],
+  'Sign in': () => [h(m.LoginPage, { onSignedIn: noop }), LONE_MAIN],
+  'Sign in, owner setup pending': () => [h(m.LoginPage, { needsOwner: true, onSignedIn: noop }), LONE_MAIN],
+  'Owner setup (/setup)': () => [h(m.SetupPage, { token: 'a'.repeat(43), onDone: noop }), LONE_MAIN],
+  'Owner setup without a link': () => [h(m.SetupPage, { token: null, onDone: noop }), LONE_MAIN],
+  'Invitation (/invite)': () => [h(m.InvitePage, { token: 'a'.repeat(43), peek: { role: 'reviewer', expires: 1_800_000_000_000 }, onDone: noop }), LONE_MAIN],
+  'Invitation that is not valid': () => [h(m.InvitePage, { token: 'a'.repeat(43), peek: null, onDone: noop }), LONE_MAIN],
+  'Share link opening (/s)': () => [h(m.ShareEntry, { onOpened: noop }), LONE_MAIN],
+  'Shared book, read only': () => [h(m.ShareReaderPage, { share: { book: BOOK_ID, scope: ['read', 'export'] }, book: d.book, scene: d.scene, sceneId: d.scene.id, onPick: noop, onLeave: noop }), { landmarks: ['banner', 'main', 'complementary'] }],
+  'Members and sharing': () => [shell(membersPage(), { bookId: null }), PAGE],
+  'Members and sharing with a new link': () => [shell(membersPage({ link: { kind: 'invitation', url: 'http://127.0.0.1:4317/invite#token=abc' } }), { bookId: null }), PAGE],
+  'Members and sharing with an error': () => [shell(membersPage({ error: 'the last owner cannot be demoted' }), { bookId: null }), PAGE],
+  'Account menu open': () => [h('main', { id: 'main' }, h('h1', null, 'Page'), h(m.UserMenuView, { user: { display_name: 'Ilse', role: 'owner' }, onLogout: noop, defaultOpen: true })), LONE_MAIN],
+  'Change password dialog': () => [shell(h(Fragment, null, h(m.LibraryPage, { books: d.books }), h(m.ChangePasswordDialog, { onClose: noop })), { bookId: null }), PAGE],
   'Placeholder tab': () => [shell(h(m.PlaceholderView, { bookId: BOOK_ID, tab: 'places' }), { tab: 'places' }), PAGE],
 };
 

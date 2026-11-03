@@ -144,6 +144,11 @@ export default [
     files: ['packages/ai/src/**/*.mjs'],
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
+  // packages/shared (M07-J03): no direct filesystem access; the shared-data files go through the store's shared-file functions.
+  {
+    files: ['packages/shared/src/**/*.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
+  },
   // packages/claude-book: the local Claude-Book adapter. Only src/io.mjs touches the filesystem (every write is checked
   // to stay inside <framework>/.work/<work-id>/); only src/style.mjs starts a process (the style checker); no network.
   {

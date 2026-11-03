@@ -1,6 +1,9 @@
 // CLI entry:
 //   node apps/server/src/main.mjs [--library <path>] [--port <n>] [--open]   serve the library (without --library: the last one used, else a StoryForge folder in the home folder)
 //   node apps/server/src/main.mjs --help                                lists every command and flag (help.mjs)
+//   node apps/server/src/main.mjs serve --shared [--shared-data <dir>] [--host <addr>] [--public-url <https://...>]   optional shared mode: accounts, roles, invites, share links, audit (M07-J03a)
+//   node apps/server/src/main.mjs shared init --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>]   create the owner and print the one-time setup link
+//   node apps/server/src/main.mjs audit verify [--shared-data <dir> | --library <path>]   check the shared-mode audit chain (exit 1 when broken or truncated)
 //   node apps/server/src/main.mjs rebuild --library <path>             rebuild every book's index
 //   node apps/server/src/main.mjs repair --library <path> [--apply]    print the repair plan; write only with --apply
 //   node apps/server/src/main.mjs continuity --library <path> [--book <slug>] [--json]   print continuity findings (read-only, no lock)
@@ -22,10 +25,13 @@ import { openBrowser } from './open-browser.mjs';
 import { LEGACY_COMMANDS, runLegacyCommand } from './legacy-cli.mjs';
 import { runReceiptsCommand } from './receipts-cli.mjs';
 import { createServer } from './server.mjs';
+import { createSharedGate } from './shared-gate.mjs';
+import { PERSONAL_HOST, SHARED_COMMANDS, defaultSharedDir, isLoopbackHost, parsePublicUrl, runSharedCommand, sharedDirProblem } from './shared-cli.mjs';
+import { SharedDataError, createAudit, openSettings, openSharedData } from '@storyforge/shared';
 
 const webRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const argv = process.argv.slice(2);
-const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'receipts', ...LEGACY_COMMANDS, ...FILE_COMMANDS];
+const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'receipts', ...SHARED_COMMANDS, ...LEGACY_COMMANDS, ...FILE_COMMANDS];
 const command = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'serve';
 const apply = argv.includes('--apply');
 
@@ -39,13 +45,16 @@ if (argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') {
   process.stdout.write(HELP);
   process.exit(0);
 }
-if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, import-legacy, export, backup or restore; --help lists them all)`, 2);
+if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, shared, audit, import-legacy, export, backup or restore; --help lists them all)`, 2);
 
 // import-legacy reads a legacy dump (and writes only a NEW folder with --into): no library config, no lock, no server
 if (command === 'import-legacy') process.exit(await runLegacyCommand(argv.slice(1)));
 
 // receipts verify is read-only too: no lock, no server
 if (command === 'receipts') process.exit(await runReceiptsCommand(argv.slice(1)));
+
+// shared init and audit verify work on the shared-data files only: no lock, no server
+if (SHARED_COMMANDS.includes(command)) process.exit(await runSharedCommand(/** @type {'shared' | 'audit'} */ (command), argv.slice(1)));
 
 // export, backup and restore work on files only: no library config, no lock, no server
 if (FILE_COMMANDS.includes(command)) process.exit(await runFileCommand(command, argv.slice(1)));
@@ -229,7 +238,56 @@ function printPlans(plans) {
   return hand;
 }
 
+/**
+ * Shared mode (M07-J03a): check the flags, open the shared data (a damaged file or a missing owner ends the start with exit 2; nothing is ever reset) and build
+ * the request gate. Runs before the library lock is taken or anything is created.
+ * @param {string} bindHost
+ */
+async function prepareShared(bindHost) {
+  let publicUrl = null;
+  const pu = flagValue('--public-url');
+  if (pu !== undefined) {
+    const r = parsePublicUrl(pu);
+    if (!r.ok) fail(r.message, 2);
+    else publicUrl = r.url;
+  }
+  const dir = path.resolve(flagValue('--shared-data') ?? defaultSharedDir(config.libraryRoot));
+  const problem = sharedDirProblem(dir, config.libraryRoot);
+  if (problem) fail(problem, 2);
+  let data;
+  let settings;
+  try {
+    data = await openSharedData(dir);
+    settings = await openSettings(dir);
+  } catch (e) {
+    if (e instanceof SharedDataError) return fail(`the shared data cannot be used: ${e.message} (nothing was changed; fix or move that file)`, 2);
+    throw e;
+  }
+  if (!data.listMembers().some((m) => m.role === 'owner')) return fail(`shared mode has no owner yet: run \`shared init --owner <name>\` first (shared data: ${dir})`, 2);
+  const audit = createAudit(dir);
+  const chain = await audit.verify();
+  if (!chain.ok) process.stderr.write(`storyforge: warning: ${chain.message} (run \`audit verify\`; the log keeps growing, the damaged line stays)\n`);
+  const append = (/** @type {Record<string, unknown>} */ e) => audit.append(/** @type {any} */ (e));
+  await append({ actor: 'system', event: 'server.start' });
+  if (!isLoopbackHost(bindHost) && !(publicUrl ?? '').startsWith('https:')) {
+    process.stderr.write('storyforge: warning: this server can be reached from other computers without TLS. Put it behind a TLS reverse proxy and pass its https address as --public-url; passwords and sessions must not cross a network in the clear.\n');
+  }
+  const gate = createSharedGate({ data, publicUrl, bindHost, aiForMembers: () => settings.get().ai_for_members, audit: append });
+  const timer = setInterval(() => void data.prune().catch(() => {}), 10 * 60 * 1000);
+  timer.unref();
+  process.stdout.write(`Shared mode: accounts and audit log in ${dir}\n`);
+  return { gate, data, settings, audit: append, publicUrl };
+}
+
 async function runServer() {
+  const hostFlag = flagValue('--host');
+  const shared = argv.includes('--shared');
+  if (!shared) {
+    for (const f of ['--shared-data', '--public-url']) if (flagValue(f) !== undefined) fail(`${f} only works with --shared`, 2);
+    if (hostFlag !== undefined && hostFlag !== PERSONAL_HOST) fail(`--host ${hostFlag} is refused: without --shared StoryForge listens on ${PERSONAL_HOST} only (shared mode adds accounts and roles; see --shared)`, 2);
+  }
+  const bindHost = shared ? (hostFlag ?? PERSONAL_HOST) : PERSONAL_HOST;
+  const sharedState = shared ? await prepareShared(bindHost) : null;
   if (config.source === 'default') {
     // first run: no --library, no variable, no library used before. A StoryForge folder in the home folder holds the first books; Open folder... in the Library switches.
     await writeNewTree(config.libraryRoot, () => []).catch((e) => fail(`cannot create the library folder ${config.libraryRoot}: ${e.message} (pass --library <path> or set STORYFORGE_LIBRARY)`, 2));
@@ -258,8 +316,9 @@ async function runServer() {
   await host.remember(config.libraryRoot);
 
   const instance = { pid: process.pid, started_at: new Date().toISOString(), lock };
-  const server = createServer({ host, webRoot, recoverReport, instance });
-  server.on('error', (e) => fail(`cannot listen on ${config.host}:${config.port}: ${e.message}`, 1));
+  const server = createServer({ host, webRoot, recoverReport, instance, shared: sharedState });
+  const shownHost = bindHost.includes(':') ? `[${bindHost}]` : bindHost;
+  server.on('error', (e) => fail(`cannot listen on ${bindHost}:${config.port}: ${e.message}`, 1));
 
   let stopping = false;
   const stop = async () => {
@@ -277,13 +336,13 @@ async function runServer() {
     releaseOwnLock();
   });
 
-  server.listen(config.port, config.host, async () => {
+  server.listen(config.port, bindHost, async () => {
     const addr = server.address();
     const port = addr && typeof addr === 'object' ? addr.port : config.port;
     // the lock names the port we really got, and does so before anyone is told we are up
     if (port !== config.port) await updateLock(lockPath, { port }).catch(() => {});
-    process.stdout.write(`StoryForge serving ${config.libraryRoot}\nhttp://${config.host}:${port}/\n`);
-    if (argv.includes('--open') && !(await openBrowser(`http://${config.host}:${port}/`))) process.stderr.write(`storyforge: could not open a browser; open http://${config.host}:${port}/ yourself\n`);
+    process.stdout.write(`StoryForge serving ${config.libraryRoot}\nhttp://${shownHost}:${port}/\n`);
+    if (argv.includes('--open') && !(await openBrowser(`http://${shownHost}:${port}/`))) process.stderr.write(`storyforge: could not open a browser; open http://${shownHost}:${port}/ yourself\n`);
     // Indexes are built after the server is up; reads answer from the files until they are ready.
     host?.repository.ensureIndexes().then(
       (r) => {
