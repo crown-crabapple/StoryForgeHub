@@ -3,6 +3,7 @@ import http from 'node:http';
 import { createLibraryHost } from '@storyforge/core';
 import { createAiService } from './ai-routes.mjs';
 import { RESTORE_FOLDER_RE, handleApi, handleRestore, handleUpload, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
+import { handleSharedRead, handleSharedWrite, matchSharedRoute } from './shared-routes.mjs';
 import { hasRestoreHeaders, hasUploadHeaders, hasWriteHeaders, isRequestAllowed } from './security.mjs';
 import { serveStatic } from './static.mjs';
 
@@ -85,12 +86,17 @@ function readUpload(req, max) {
  *   `recoverReport` is the result of the recover() run at startup; GET /api/recover/last serves it.
  *   `instance` is what GET /api/status reports about this process (the lock it holds); default: no lock.
  *   `maxRestoreBytes` is the size cap of the backup restore upload (default 512 MB; tests lower it).
- *   `shared` (M07-J03) turns on shared mode: `gate` is createSharedGate(...) from shared-gate.mjs. Without it the server is in personal mode:
+ *   `shared` (M07-J03) turns on shared mode: `gate` is createSharedGate(...) from shared-gate.mjs; `data` is the open shared data, `settings` the owner's settings,
+ *   `audit` appends one audit event, `publicUrl` is the address links are built on (else the request's own Host). Without it the server is in personal mode:
  *   loopback clients only, no accounts, no policy.
  * @returns {import('node:http').Server} not yet listening; callers bind it to 127.0.0.1 (personal mode) or the shared-mode host
  */
 export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES, shared = null }) {
   const gate = shared ? shared.gate : null;
+  /** Classes whose calls are audited (contract M07-J03 section 4). */
+  const AUDITED = new Set(['write', 'suggest', 'comment', 'admin', 'ai']);
+  /** The ids a write route is about: book, then the most specific object. @param {Record<string, any>} m */
+  const targetOf = (m) => [m.bookId, m.sceneId ?? m.entryId ?? m.threadId ?? m.eventId ?? m.noteId ?? m.suggestionId ?? m.opId ?? m.profileId ?? m.n ?? m.slug].filter((x) => x !== undefined).join('/') || undefined;
   let libraryHost = host ?? null;
   if (!libraryHost && repository) {
     try {
@@ -117,6 +123,14 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
       const pathname = queryAt < 0 ? target : target.slice(0, queryAt);
       const queryString = queryAt < 0 ? '' : target.slice(queryAt + 1);
 
+      /** @type {{ actor: string, event: string, target?: string } | null} */
+      let auditCall = null;
+      /** Audit the call that was just answered (shared mode, state-changing classes only). @param {number} status */
+      const record = async (status) => {
+        if (auditCall && shared?.audit) await shared.audit({ ...auditCall, result: status }).catch((e) => process.stderr.write(`storyforge: audit write failed: ${e?.message ?? e}
+`));
+      };
+      let sharedMatch = null;
       if (gate) {
         // shared mode (M07-J03): any client address, but the Host must be ours, writes must come from our own pages, and every API route is
         // checked against the caller's role. The web app itself (static files) is public so the login page can load.
@@ -139,16 +153,43 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         }
         if (req.method !== 'GET' || isApiPath(pathname)) {
           const who = await gate.principalOf(req);
-          const writeMatch = req.method !== 'GET' ? matchWriteRoute(req.method ?? '', pathname) : null;
+          sharedMatch = req.method !== 'GET' ? matchSharedRoute(req.method ?? '', pathname) : null;
+          const writeMatch = req.method !== 'GET' ? (sharedMatch ?? matchWriteRoute(req.method ?? '', pathname)) : null;
           const verdict = gate.decide(who, req.method ?? 'GET', pathname, writeMatch);
+          const audited = req.method !== 'GET' && writeMatch !== null && verdict.cls !== null && AUDITED.has(verdict.cls);
+          if (audited && who && !writeMatch.shared) auditCall = { actor: who.id, event: `${verdict.cls}.${writeMatch.route}`, target: targetOf(writeMatch) };
           if (!verdict.ok) {
+            if (audited && who) await shared?.audit?.({ actor: who.id, event: `${verdict.cls}.${writeMatch.route}.refused`, target: targetOf(writeMatch), result: verdict.status }).catch((e) => process.stderr.write(`storyforge: audit write failed: ${e?.message ?? e}
+`));
+            auditCall = null;
             if (req.method !== 'GET') req.resume();
             return sendJson(res, verdict.status, verdict.body);
           }
         }
       }
 
+      if (gate && shared?.data && req.method === 'GET' && pathname.startsWith('/api/shared/')) {
+        const { status, body } = handleSharedRead(pathname, { data: shared.data, settings: shared.settings, audit: shared.audit, actor: 'system', base: '' });
+        return sendJson(res, status, body);
+      }
       if (req.method !== 'GET') {
+        if (gate && shared?.data && sharedMatch) {
+          // the owner's admin routes (members, invites, shares, settings): audited by the handler itself
+          if (!hasWriteHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
+          const read = await readBody(req);
+          if (read.tooLarge) return sendJson(res, 413, { error: 'too_large' });
+          let parsed;
+          try {
+            const text = read.buffer.toString('utf8');
+            parsed = req.method === 'DELETE' && text.trim() === '' ? {} : JSON.parse(text);
+          } catch {
+            return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
+          }
+          const who = await gate.principalOf(req);
+          const base = shared.publicUrl ? new URL(shared.publicUrl).origin : `http://${req.headers.host}`;
+          const { status, body } = await handleSharedWrite(sharedMatch, parsed, { data: shared.data, settings: shared.settings, audit: shared.audit, actor: who?.id ?? 'system', base });
+          return sendJson(res, status, body);
+        }
         const match = matchWriteRoute(req.method ?? '', pathname);
         if (!match) return sendJson(res, 405, { error: 'read_only' });
         if (match.route === 'attachment-upload') {
@@ -157,6 +198,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
           if (up.tooLarge) return sendJson(res, 413, { error: 'too_large', code: 'TOO_LARGE', message: 'attachments can be at most 25 MB' });
           const query = new URLSearchParams(queryString);
           const { status, body } = await handleUpload(current(), match, { name: query.get('name'), note: query.get('note'), bytes: up.buffer });
+          await record(status);
           return sendJson(res, status, body);
         }
         if (match.route === 'backup-restore') {
@@ -169,6 +211,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
           const up = await readUpload(req, maxRestoreBytes);
           if (up.tooLarge) return sendJson(res, 413, { error: 'too_large', code: 'TOO_LARGE', message: `backups can be at most ${Math.round(maxRestoreBytes / (1024 * 1024))} MB` });
           const { status, body } = await handleRestore(current(), folder, up.buffer);
+          await record(status);
           return sendJson(res, status, body);
         }
         if (!hasWriteHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
@@ -182,6 +225,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
           return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
         }
         const { status, body } = await handleWrite(current(), match, parsed, state);
+        await record(status);
         return sendJson(res, status, body);
       }
       if (isApiPath(pathname)) {

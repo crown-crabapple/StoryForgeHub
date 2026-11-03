@@ -8,7 +8,7 @@ const FILE = 'audit.jsonl';
 const ZERO = '0'.repeat(64);
 const HEX64 = /^[0-9a-f]{64}$/;
 const sha = (/** @type {string} */ text) => createHash('sha256').update(text, 'utf8').digest('hex');
-const clip = (/** @type {unknown} */ v, max = 200) => String(v).replace(/[\u0000-\u001f]/g, ' ').slice(0, max);
+const clip = (/** @type {unknown} */ v, max = 200) => [...String(v)].map((ch) => (ch.charCodeAt(0) < 0x20 ? ' ' : ch)).join('').slice(0, max);
 
 /**
  * @param {string} dir the shared-data folder

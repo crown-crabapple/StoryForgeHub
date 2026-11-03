@@ -70,8 +70,8 @@ test('--help lists every command and every flag, needs no library and exits 0', 
   const r = await run(['--help'], { env: home.env });
   assert.equal(r.code, 0, r.stderr);
   assert.equal(r.stdout, HELP);
-  for (const c of ['serve', 'rebuild', 'repair', 'continuity', 'export', 'backup', 'restore', 'receipts verify', 'import-legacy']) assert.ok(r.stdout.includes(`  ${c} `), `command ${c}`);
-  assert.deepEqual(HELP_COMMANDS, ['serve', 'rebuild', 'repair', 'continuity', 'export', 'backup', 'restore', 'receipts verify', 'import-legacy']);
+  for (const c of ['serve', 'rebuild', 'repair', 'continuity', 'export', 'backup', 'restore', 'receipts verify', 'shared init', 'audit verify', 'import-legacy']) assert.ok(r.stdout.includes(`  ${c} `), `command ${c}`);
+  assert.deepEqual(HELP_COMMANDS, ['serve', 'rebuild', 'repair', 'continuity', 'export', 'backup', 'restore', 'receipts verify', 'shared init', 'audit verify', 'import-legacy']);
   for (const f of ['--library', '--port', '--open', '--book', '--json', '--apply', '--format', '--include', '--out', '--force', '--provenance', '--from', '--to', '--help', 'STORYFORGE_LIBRARY', 'STORYFORGE_PORT']) assert.ok(r.stdout.includes(f), `flag ${f}`);
   assert.equal((await run(['-h'], { env: home.env })).stdout, HELP);
   assert.equal((await run(['export', '--help'], { env: home.env })).stdout, HELP);

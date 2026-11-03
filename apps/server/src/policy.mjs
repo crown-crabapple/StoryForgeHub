@@ -28,6 +28,9 @@ export const WRITE_CLASSES = Object.freeze({
   'library-open': 'admin', 'recent-remove': 'admin', recover: 'admin', repair: 'admin', 'backup-restore': 'admin', 'book-create': 'admin',
   'ai-profile-create': 'admin', 'ai-profile-update': 'admin', 'ai-profile-delete': 'admin', 'ai-profile-test': 'admin', 'ai-book-profile': 'admin',
   'ai-records': 'admin',
+  // shared-mode administration (shared-routes.mjs)
+  'shared-member-role': 'admin', 'shared-member-remove': 'admin', 'shared-invite-create': 'admin', 'shared-invite-revoke': 'admin',
+  'shared-share-create': 'admin', 'shared-share-revoke': 'admin', 'shared-settings': 'admin',
 });
 
 /**
