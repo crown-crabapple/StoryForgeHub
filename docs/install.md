@@ -38,7 +38,7 @@ You can also start it without the launcher: `npm ci`, `npm run build`, then `npm
 | --- | --- | --- |
 | **Your books** | Each book is a **folder** of Markdown files. The folder is everything the author wrote: scenes, notes, the Codex, plans, suggestions, receipts. | **Yes. This is the only thing that matters.** |
 | The index | `.storyforge/` inside each book folder. A cache that makes searching and lists fast. | No. It is **disposable**: delete it any time and StoryForge rebuilds it from the files. |
-| Settings for you | `%APPDATA%\StoryForge` on Windows, `~/.config/storyforge` on macOS and Linux (or `$XDG_CONFIG_HOME/storyforge`). It holds the list of recent libraries and your AI provider settings, **including a key if you chose "save the key in the settings file"** (it is stored as plain text). | Optional. |
+| Settings for you | `%APPDATA%\StoryForge` on Windows, `~/.config/storyforge` on macOS and Linux (or `$XDG_CONFIG_HOME/storyforge`). It holds the list of recent libraries and your AI provider settings, **including a key if you chose "save the key in the settings file"** (it is stored as plain text). Keys kept in **secure storage** (the default for a new key) are encrypted: on Windows by your Windows user (DPAPI), on macOS and Linux by the system key store when there is one, else in `secrets.json` here with a key file beside it. They are never in a book, a backup or an export. | Optional. |
 
 Nothing else is written anywhere. In particular, StoryForge keeps no copy of your books outside the book folders.
 

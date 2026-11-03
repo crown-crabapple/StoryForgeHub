@@ -42,12 +42,25 @@ A provider may need a key. You choose where it lives:
 
 | Choice | What happens |
 | --- | --- |
+| Keep the key in secure storage (recommended, the default for a new key) | Encrypted by your operating system: Windows protected storage (DPAPI) for your Windows user, the macOS keychain, or the Linux Secret Service. Where none of those exists (a server, a container) the key is encrypted in a file with a key of its own ([self-hosting.md](self-hosting.md), "Secrets"). Settings shows which one is in use. Webhook signing secrets are kept the same way. |
 | No key | Nothing stored. Typical for a model on your own computer. |
 | Keep the key for this session only | Held in memory until StoryForge stops. |
-| Save the key in the settings file, as plain text | Written to the settings file in your settings folder ([install.md](install.md), "Where your data lives"). Anyone who can read that file can read the key. |
+| Save the key in the settings file, as plain text | Written to the settings file in your settings folder ([install.md](install.md), "Where your data lives"). Anyone who can read that file can read the key. Settings offers **Move key to secure storage**, which writes the secure copy and then deletes the plain one. |
+
+If StoryForge cannot unlock a stored key (it was saved by another Windows user or on another computer, or the key file of an encrypted store is missing), Settings says "cannot unlock stored keys", nothing is sent, and you enter the key again. A key is never replaced by an empty one.
 
 The key is never shown back in the app and is sent only to that provider's address. It is never written into a book, a backup, an export or a receipt. Provider settings are
 kept in the settings folder, not in the book.
+
+### Models, streaming and tokens
+
+**Test connection** in Settings lists the models the provider offers (an OpenAI-compatible `/models` list, and Ollama's `/api/tags` for a provider on this computer) and shows whether it streams and reports token use. It sends only that one fixed test message, never any of your text. Replies stream into the panel as they arrive and can be cancelled; a reply is shown as it comes but is never applied, suggested or saved until it is complete, and a cancelled or interrupted one is thrown away.
+
+Each reply shows its tokens: the provider's own count, or, when it reports none, an estimate (characters divided by four) marked **estimated**. If you turn on **Keep a daily token table for this book** (or AI records), the totals per day, provider and locality are kept in the book's `activity/ai-usage.md`: counts only, never sent anywhere.
+
+### Cover drafts (optional)
+
+An *image* provider (an OpenAI-compatible images endpoint) can be added the same way and chosen for a book. Then **Cover drafts** appears on the book page. **Generate a draft** opens a prompt editor (prefilled from the title, genre and logline); before anything is sent a dialog shows exactly what leaves your computer, which is **only that prompt text**, to which provider and host, and whether that is on your computer or in the cloud. Results are saved as drafts in `assets/drafts/` with a small note (prompt, provider, model, hash) and a receipt. A draft becomes the cover only when you choose **Use as cover**, which changes one line of `book.md`; drafts can be deleted to the trash. With no image provider there is no button, and nothing is ever requested.
 
 ### AI records
 
