@@ -635,7 +635,7 @@ describe('§1.6 audit integrity', () => {
     assert.deepEqual(await t.audit.verify(), { ok: true, lines: n0 + expected.length });
   });
 
-  test('a refused write by an anonymous caller is audited too', { todo: 'DEFECT: refused calls by an anonymous caller (401) are not in the audit log (server.mjs audits refusals only when a principal exists)' }, async () => {
+  test('a refused write by an anonymous caller is audited too', async () => {
     const t = await boot();
     const n0 = (await auditLines(t)).length;
     assert.equal((await t.call('PUT', `${S}/body`, { body: { body: 'x\n', base_sha256: 'a'.repeat(64) } })).status, 401);
@@ -684,7 +684,7 @@ describe('§1.6 audit integrity', () => {
     assert.equal((await probe(text.slice(0, -1), 'last line without its newline')).code, 'AUDIT_TAIL_TRUNCATED');
   });
 
-  test('removing whole lines from the tail is detected', { todo: 'DEFECT: dropping complete trailing audit lines still passes `audit verify` (a hash chain with no external head cannot see it)' }, async () => {
+  test('removing whole lines from the tail is detected', async () => {
     const t = await boot();
     await script(t);
     const lines = (await fs.readFile(path.join(t.dir, 'audit.jsonl'), 'utf8')).trim().split('\n');
@@ -693,7 +693,7 @@ describe('§1.6 audit integrity', () => {
     assert.equal((await createAudit(dir).verify()).ok, false, 'three events were cut from the end');
   });
 
-  test('editing the last line is detected', { todo: 'DEFECT: the last audit line is covered by no later hash, so editing it still passes `audit verify`' }, async () => {
+  test('editing the last line is detected', async () => {
     const t = await boot();
     await script(t);
     const lines = (await fs.readFile(path.join(t.dir, 'audit.jsonl'), 'utf8')).trim().split('\n');
@@ -919,7 +919,7 @@ describe('§2.2 attribution: comments, suggestions and receipts carry the right 
 });
 
 describe('§2.2 (link) the receipt of an accepted suggestion links it', () => {
-  test('accepting a suggestion from a reviewer gives a receipt that names the suggestion it came from', { todo: 'DEFECT: the suggestion.accept receipt of an author/reviewer suggestion has ai: null and no field naming the suggestion (core/receipts.mjs stageDecision only sets ai.suggestion for AI sources)' }, async () => {
+  test('accepting a suggestion from a reviewer gives a receipt that names the suggestion it came from', async () => {
     const t = await boot();
     const scene = await loadScene(t, 'editor');
     const sug = await t.call('POST', `${b}/suggestions`, { cookie: t.c.reviewer, body: { target: SCENE, proposedRange: { ...range(scene.body, DUNES), replacement: 'waist-deep in water' } } });

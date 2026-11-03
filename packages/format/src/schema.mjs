@@ -108,7 +108,7 @@ export const KINDS = {
       at: 'str', actor: ['author', 'ai', 'external', 'system'],
       operation: ['baseline', 'author.edit', 'external.change', 'ai.proposal', 'ai.generation', 'suggestion.accept', 'suggestion.decline', 'undo', 'revision.restore', 'publish', 'check.report', 'ai.chat'],
       workflow: ['editor', 'ai-rewrite', 'ai-chat', 'suggestion', 'claude-book', 'watcher', 'revision', 'undo', 'export', 'check'],
-      target: 'map', before_sha256: 'str', after_sha256: 'str', ranges: 'list', parents: 'list', ai: 'map', by: 'map',
+      target: 'map', before_sha256: 'str', after_sha256: 'str', ranges: 'list', parents: 'list', ai: 'map', by: 'map', suggestion: 'map', // suggestion: M07-J05, additive within v1
     },
   },
   // Added 2026-11-02, M07-J03 (additive within v1): a comment anchored to lines of a scene, under comments/<YYYY>/. Never story text or canon, never exported to readers.

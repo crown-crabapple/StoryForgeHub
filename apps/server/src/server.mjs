@@ -178,7 +178,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
           const audited = req.method !== 'GET' && writeMatch !== null && verdict.cls !== null && AUDITED.has(verdict.cls);
           if (audited && who && !writeMatch.shared) auditCall = { actor: who.id, event: `${verdict.cls}.${writeMatch.route}`, target: targetOf(writeMatch) };
           if (!verdict.ok) {
-            if (audited && who) await shared?.audit?.({ actor: who.id, event: `${verdict.cls}.${writeMatch.route}.refused`, target: targetOf(writeMatch), result: verdict.status }).catch((e) => process.stderr.write(`storyforge: audit write failed: ${e?.message ?? e}
+            if (audited) await shared?.audit?.({ actor: who ? who.id : "anonymous", event: `${verdict.cls}.${writeMatch.route}.refused`, target: targetOf(writeMatch), ...(who ? {} : { ip: req.socket?.remoteAddress }), result: verdict.status }).catch((e) => process.stderr.write(`storyforge: audit write failed: ${e?.message ?? e}
 `));
             auditCall = null;
             if (req.method !== 'GET') req.resume();
