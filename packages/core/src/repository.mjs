@@ -127,6 +127,11 @@
  *   listSuggestions(bookId: string, args?: { target?: string, state?: 'open' | 'decided' }): Promise<WriteResult & { suggestions?: Record<string, any>[] }>,
  *   getSuggestion(bookId: string, suggestionId: string): Promise<WriteResult & { suggestion?: Record<string, any> }>,
  *   decideSuggestion(bookId: string, suggestionId: string, args: { decision: 'accept' | 'decline', hunkId?: string }): Promise<WriteResult & Record<string, any>>,
+ *   suggestFromStaleSave(bookId: string, sceneId: string, body: string): Promise<WriteResult & { suggestion?: { id: string, path: string, hunks: any[] } | null }>,
+ *   createComment(bookId: string, args: { target: string, line: number, lines?: number, quote?: string, text: string, by?: { id?: string, name: string } }): Promise<WriteResult & Record<string, any>>,
+ *   replyToComment(bookId: string, commentId: string, args: { text: string, by?: { id?: string, name: string } }): Promise<WriteResult & Record<string, any>>,
+ *   setCommentState(bookId: string, commentId: string, args: { status: 'open' | 'resolved' }): Promise<WriteResult & Record<string, any>>,
+ *   listComments(bookId: string, args?: { target?: string, status?: 'open' | 'resolved' }): Promise<WriteResult & { comments?: Record<string, any>[] }>,
  *   checkScene(bookId: string, sceneId: string): Promise<WriteResult & Record<string, any>>,
  *   continuityBooks(): Promise<{ id: string, slug: string | null, path: string, title: string | null }[]>,
  *   updateSceneBody(bookId: string, sceneId: string, body: string, opts: { baseSha256: string }):

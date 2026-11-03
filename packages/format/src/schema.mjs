@@ -94,8 +94,8 @@ export const KINDS = {
     prefix: 'note',
     required: ['target', 'base_sha256', 'source', 'mode', 'hunks'],
     fields: {
-      target: 'str', target_path: 'str', base_sha256: 'str', source: ['ai', 'claude-book', 'author'], mode: ['suggest', 'state', 'canon'],
-      created: 'any', status: ['pending', 'accepted', 'declined', 'partial'], ai: 'map', hunks: 'list',
+      target: 'str', target_path: 'str', base_sha256: 'str', source: ['ai', 'claude-book', 'author', 'reviewer'], mode: ['suggest', 'state', 'canon'],
+      created: 'any', status: ['pending', 'accepted', 'declined', 'partial'], ai: 'map', hunks: 'list', by: 'map',
     },
   },
   // Added 2026-11-02, M05-J07 (additive within v1): a provenance receipt, under provenance/<YYYY>/<MM>/. A record of what happened; never story text or canon.
@@ -107,8 +107,14 @@ export const KINDS = {
       at: 'str', actor: ['author', 'ai', 'external', 'system'],
       operation: ['baseline', 'author.edit', 'external.change', 'ai.proposal', 'ai.generation', 'suggestion.accept', 'suggestion.decline', 'undo', 'revision.restore', 'publish', 'check.report', 'ai.chat'],
       workflow: ['editor', 'ai-rewrite', 'ai-chat', 'suggestion', 'claude-book', 'watcher', 'revision', 'undo', 'export', 'check'],
-      target: 'map', before_sha256: 'str', after_sha256: 'str', ranges: 'list', parents: 'list', ai: 'map',
+      target: 'map', before_sha256: 'str', after_sha256: 'str', ranges: 'list', parents: 'list', ai: 'map', by: 'map',
     },
+  },
+  // Added 2026-11-02, M07-J03 (additive within v1): a comment anchored to lines of a scene, under comments/<YYYY>/. Never story text or canon, never exported to readers.
+  comment: {
+    prefix: 'note',
+    required: ['target', 'anchor', 'status'],
+    fields: { target: 'str', anchor: 'map', status: ['open', 'resolved'], by: 'map', created: 'any' },
   },
   doc: {
     prefix: 'note',
@@ -349,6 +355,22 @@ function checkSuggestion(doc, add) {
   if (open >= 0) for (const id of diff.keys()) if (!seen.has(id)) add('E102', file, 'body', `the diff block names hunk ${id}, which the front matter does not list`);
 }
 
+/** `by` (M07-J03): a mapping with a string `name`; `id` is optional but, when present, a string. E102 at `by`. */
+function checkBy(by, file, add) {
+  if (typeof by.name !== 'string' || by.name.trim() === '' || (by.id !== undefined && typeof by.id !== 'string')) add('E102', file, 'by', 'by must be a mapping with a name (text) and, optionally, an id (text)');
+}
+
+/** Comment shape (spec 9.5): `anchor` is { line >= 1, lines >= 1, quote?: text, sha256?: hex }. E102 at `anchor`. */
+function checkComment(doc, add) {
+  const { fm, file } = doc;
+  const a = fm.anchor;
+  if (!isPlainMap(a)) return; // a missing or non-mapping anchor is reported by the field table
+  if (!isInt(a.line) || a.line < 1 || !isInt(a.lines) || a.lines < 1) add('E102', file, 'anchor', 'anchor needs line (>= 1) and lines (>= 1)');
+  else if ((a.quote !== undefined && (typeof a.quote !== 'string' || a.quote.length > 500)) || (a.sha256 !== undefined && (typeof a.sha256 !== 'string' || !/^(?:[0-9a-f]{64})?$/.test(a.sha256)))) {
+    add('E102', file, 'anchor', 'anchor quote must be text (at most 500 characters) and sha256 a 64-character hex string');
+  }
+}
+
 /**
  * Field-level checks for one parsed document: E102, I401, E103.
  * @param {{kind:string, rel:string, file:string, fm:any}} doc
@@ -425,6 +447,8 @@ export function checkFields(doc, ctx, add) {
   }
 
   if (doc.kind === 'suggestion') checkSuggestion(doc, add);
+  if (doc.kind === 'comment') checkComment(doc, add);
+  if (Object.hasOwn(fm, 'by') && isPlainMap(fm.by) && (doc.kind === 'suggestion' || doc.kind === 'receipt' || doc.kind === 'comment')) checkBy(fm.by, file, add);
 
   for (const key of ['cover', 'image']) {
     if (Object.hasOwn(spec.fields, key) && typeof fm[key] === 'string' && escapesRoot(fm[key])) {

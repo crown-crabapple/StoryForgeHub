@@ -22,6 +22,8 @@ export const WRITE_CLASSES = Object.freeze({
   'op-restore': 'write', 'receipts-flush': 'write', restore: 'write', 'revision-restore': 'write', 'revision-save': 'write', 'scene-fields': 'write',
   'scene-merge': 'write', 'scene-move': 'write', 'scene-raw': 'write', 'scene-split': 'write', 'suggestion-decide': 'write',
   'suggestion-hunk-decide': 'write', 'thread-body': 'write', 'thread-create': 'write', 'thread-fields': 'write',
+  // M07-J03b: comments and a reviewer's suggestion are open to reviewers; the presence heartbeat is advisory and read-only (it records nothing in the library)
+  'comment-create': 'comment', 'comment-reply': 'comment', 'comment-resolve': 'comment', 'suggestion-create': 'suggest', presence: 'read',
   // AI workshop: sending is 'ai'; applying a result changes prose, so it also needs write (ai already implies editor)
   'ai-context': 'ai', 'ai-send': 'ai', 'ai-apply': 'ai', 'ai-discard': 'ai',
   // library-level and machine-level operations
@@ -56,7 +58,10 @@ export function classifyRead(pathname) {
     if (b === undefined) return { cls: 'read' };
     if (c === 'backup' || (c === 'repair' && d === 'plan')) return { cls: 'admin', book: b };
     if (c === 'export') return { cls: 'export', book: b };
-    return { cls: 'read', book: b };
+    // what a share link may read of its book: the book, a scene's text, the cover. Notes, receipts, suggestions, comments, revisions, raw
+    // files, activity and AI state are private project data (DECISIONS 12) and stay member-only.
+    const shareable = c === undefined || c === 'cover' || (c === 'scenes' && d !== undefined && parts.length === 5);
+    return { cls: 'read', book: b, shareable };
   }
   return null;
 }
@@ -71,7 +76,7 @@ export const bookOfWrite = (match) => match.bookId;
  * May `principal` use a route of class `cls` (about `book`, when it is about one)?
  * @param {import('@storyforge/shared/src/shared-data.mjs').Principal | null} principal
  * @param {string} cls
- * @param {{ book?: string, aiForMembers?: boolean, path?: string }} [ctx]
+ * @param {{ book?: string, shareable?: boolean, aiForMembers?: boolean, path?: string }} [ctx]  `shareable`: a read a share link may make (classifyRead)
  */
 export function allowed(principal, cls, ctx = {}) {
   if (cls === 'auth') return true;
@@ -80,7 +85,7 @@ export function allowed(principal, cls, ctx = {}) {
     // a share reads one book (and exports it when its scope says so); the top-level reads the reader page needs are allowed, nothing else
     if (cls === 'read' && ctx.book === undefined) return ctx.path === '/api/health' || ctx.path === '/api/status';
     if (ctx.book !== principal.book) return false;
-    if (cls === 'read') return true;
+    if (cls === 'read') return ctx.shareable === true;
     if (cls === 'export') return principal.scope.includes('export');
     return false;
   }

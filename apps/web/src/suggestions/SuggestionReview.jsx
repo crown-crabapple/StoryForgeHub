@@ -72,6 +72,7 @@ export function SuggestionReview({ suggestion: s, busy = false, error = null, ha
             {sourceLabelOf(s.source)}
           </span>
           {provider && <span className="muted sg-provider">{provider}</span>}
+          {s.by?.name && <span className="muted sg-by">{s.by.name}</span>}
           <span className="sg-chip" data-status={s.status}>
             {STATUS_LABEL[s.status] ?? s.status}
           </span>

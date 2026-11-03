@@ -72,7 +72,7 @@ function defaultSummary(f, ranges) {
 /**
  * Build a receipt file.
  * @param {{ id: string, at: string, actor: string, operation: string, workflow: string, target: { id: string, path: string },
- *   before_sha256: string, after_sha256: string, parents?: { id: string, sha256: string }[], ai?: Record<string, any>,
+ *   before_sha256: string, after_sha256: string, parents?: { id: string, sha256: string }[], ai?: Record<string, any>, by?: { id?: string, name: string },
  *   summary?: string, ranges?: object[], diff?: string, beforeBytes?: Buffer | string, afterBytes?: Buffer | string, prompt?: string }} fields
  *   `diff` / `ranges` are written as given (a proposed diff); otherwise, when `beforeBytes` and `afterBytes` are given, they are computed from them.
  * @returns {{ text: string, sha256: string, ranges: object[], diff: string }}
@@ -108,6 +108,7 @@ export function buildReceipt(fields) {
   else fm.push('ranges:', ...ranges.map((r) => `  - { before: [${r.before[0]}, ${r.before[1]}], after: [${r.after[0]}, ${r.after[1]}] }`));
   if (parents.length === 0) fm.push('parents: []');
   else fm.push('parents:', ...parents.map((p) => `  - { id: ${p.id}, sha256: ${JSON.stringify(p.sha256)} }`));
+  if (f.by && typeof f.by.name === 'string') fm.push(`by: ${flow(f.by.id ? { id: f.by.id, name: f.by.name } : { name: f.by.name })}`); // who did it (shared mode; FORMAT 9.4)
   if (f.ai) {
     fm.push('ai:');
     for (const key of ['provider', 'model', 'locality', 'settings_sha256', 'prompt_sha256', 'context_sha256', 'files_sha256', 'suggestion', 'hunks', 'acceptance']) {
@@ -133,7 +134,7 @@ const isRange = (r) => Array.isArray(r) && r.length === 2 && r.every((n) => Numb
  * Parse a receipt file. Throws an Error with code RCPT_MALFORMED when the front matter fails the schema.
  * @param {string | Uint8Array} input
  * @returns {{ schema: string, id: string, at: string, actor: string, operation: string, workflow: string, target: { id: string, path: string },
- *   before_sha256: string, after_sha256: string, ranges: { before: number[], after: number[] }[], parents: { id: string, sha256: string }[], ai: Record<string, any> | null,
+ *   before_sha256: string, after_sha256: string, ranges: { before: number[], after: number[] }[], parents: { id: string, sha256: string }[], ai: Record<string, any> | null, by: { id?: string, name: string } | null,
  *   summary: string, diff: string, hunks: object[], prompt: string | null }}
  */
 export function parseReceipt(input) {
@@ -159,6 +160,11 @@ export function parseReceipt(input) {
   for (const k of ['before_sha256', 'after_sha256']) if (typeof fm[k] !== 'string' || !HEX_RE.test(fm[k])) throw fail(`${k} must be a sha256 hex string or ""`);
   if (!Array.isArray(fm.ranges) || !fm.ranges.every((r) => r && isRange(r.before) && isRange(r.after))) throw fail('ranges must be a list of { before: [a, b], after: [a, b] }');
   if (!Array.isArray(fm.parents) || !fm.parents.every((p) => p && typeof p.id === 'string' && typeof p.sha256 === 'string' && HEX_RE.test(p.sha256))) throw fail('parents must be a list of { id, sha256 }');
+  let by = null;
+  if (fm.by !== undefined && fm.by !== null) {
+    if (typeof fm.by !== 'object' || Array.isArray(fm.by) || typeof fm.by.name !== 'string') throw fail('by must be { id?, name }');
+    by = { ...(typeof fm.by.id === 'string' ? { id: fm.by.id } : {}), name: fm.by.name };
+  }
   let ai = null;
   if (fm.ai !== undefined && fm.ai !== null) {
     if (typeof fm.ai !== 'object' || Array.isArray(fm.ai)) throw fail('ai must be a map');
@@ -204,6 +210,7 @@ export function parseReceipt(input) {
     ranges: fm.ranges,
     parents: fm.parents,
     ai,
+    by,
     summary,
     diff,
     hunks,

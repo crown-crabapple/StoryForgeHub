@@ -1,7 +1,8 @@
 // HTTP server: loopback guard, JSON API (reads, plus guarded writes), static web app.
 import http from 'node:http';
-import { createLibraryHost } from '@storyforge/core';
+import { createLibraryHost, runAs } from '@storyforge/core';
 import { createAiService } from './ai-routes.mjs';
+import { createPresence } from './presence.mjs';
 import { RESTORE_FOLDER_RE, handleApi, handleRestore, handleUpload, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
 import { handleSharedRead, handleSharedWrite, matchSharedRoute } from './shared-routes.mjs';
 import { hasRestoreHeaders, hasUploadHeaders, hasWriteHeaders, isRequestAllowed } from './security.mjs';
@@ -96,7 +97,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
   /** Classes whose calls are audited (contract M07-J03 section 4). */
   const AUDITED = new Set(['write', 'suggest', 'comment', 'admin', 'ai']);
   /** The ids a write route is about: book, then the most specific object. @param {Record<string, any>} m */
-  const targetOf = (m) => [m.bookId, m.sceneId ?? m.entryId ?? m.threadId ?? m.eventId ?? m.noteId ?? m.suggestionId ?? m.opId ?? m.profileId ?? m.n ?? m.slug].filter((x) => x !== undefined).join('/') || undefined;
+  const targetOf = (m) => [m.bookId, m.sceneId ?? m.entryId ?? m.threadId ?? m.eventId ?? m.noteId ?? m.suggestionId ?? m.commentId ?? m.opId ?? m.profileId ?? m.n ?? m.slug].filter((x) => x !== undefined).join('/') || undefined;
   let libraryHost = host ?? null;
   if (!libraryHost && repository) {
     try {
@@ -110,6 +111,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
     instance: instance ?? { pid: process.pid, started_at: new Date().toISOString(), lock: 'none' },
     host: libraryHost,
     ai: createAiService(), // optional AI workshop (M05-J04): profiles, session keys and stored previews live in this process only
+    presence: createPresence(), // advisory "also in this scene" (M07-J03b): in memory only, expires after 60 s, never blocks a save
   };
   const current = () => /** @type {any} */ (libraryHost ? libraryHost.repository : repository);
   const server = http.createServer(async (req, res) => {
@@ -131,6 +133,8 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
 `));
       };
       let sharedMatch = null;
+      /** Shared mode: who is asking (a signed-in user or a share link); null in personal mode. */
+      let principal = null;
       if (gate) {
         // shared mode (M07-J03): any client address, but the Host must be ours, writes must come from our own pages, and every API route is
         // checked against the caller's role. The web app itself (static files) is public so the login page can load.
@@ -153,6 +157,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         }
         if (req.method !== 'GET' || isApiPath(pathname)) {
           const who = await gate.principalOf(req);
+          principal = who;
           sharedMatch = req.method !== 'GET' ? matchSharedRoute(req.method ?? '', pathname) : null;
           const writeMatch = req.method !== 'GET' ? (sharedMatch ?? matchWriteRoute(req.method ?? '', pathname)) : null;
           const verdict = gate.decide(who, req.method ?? 'GET', pathname, writeMatch);
@@ -164,6 +169,11 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
             auditCall = null;
             if (req.method !== 'GET') req.resume();
             return sendJson(res, verdict.status, verdict.body);
+          }
+          // comments and who-is-here are for the people working on the book: a read-only share link (a reader) is not shown them (M07-J03b; FORMAT 9.5 "never exported to readers")
+          if (who?.kind === 'share' && /^\/api\/books\/[^/]+\/(comments|presence)(\/|$)/.test(pathname)) {
+            if (req.method !== 'GET') req.resume();
+            return sendJson(res, 403, { error: 'forbidden', code: 'ROLE', message: 'comments are not shown to readers' });
           }
         }
       }
@@ -224,7 +234,9 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         } catch {
           return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
         }
-        const { status, body } = await handleWrite(current(), match, parsed, state);
+        // shared mode: the request runs as its user, so receipts, suggestions and comments say who made them (`by`); personal mode runs as nobody
+        const by = principal?.kind === 'user' ? { id: principal.id, name: principal.display_name } : null;
+        const { status, body } = await runAs(by, () => handleWrite(current(), match, parsed, state, principal ? { principal } : {}));
         await record(status);
         return sendJson(res, status, body);
       }

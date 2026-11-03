@@ -161,18 +161,20 @@ export function createSharedGate({ data, publicUrl = null, bindHost, aiForMember
   function decide(who, method, pathname, writeMatch) {
     let cls;
     let book;
+    let shareable = false;
     if (method === 'GET') {
       const r = classifyRead(pathname);
       if (!r) return { ok: false, status: 403, body: { error: 'forbidden', code: 'UNCLASSIFIED' }, cls: null };
       cls = r.cls;
       book = r.book;
+      shareable = r.shareable === true;
     } else {
       if (!writeMatch) return { ok: false, status: 405, body: { error: 'read_only' }, cls: null };
       cls = WRITE_CLASSES[/** @type {keyof typeof WRITE_CLASSES} */ (writeMatch.route)];
       if (!cls) return { ok: false, status: 403, body: { error: 'forbidden', code: 'UNCLASSIFIED' }, cls: null };
       book = bookOfWrite(writeMatch);
     }
-    if (allowed(who, cls, { book, aiForMembers: aiForMembers(), path: pathname })) return { ok: true, cls };
+    if (allowed(who, cls, { book, shareable, aiForMembers: aiForMembers(), path: pathname })) return { ok: true, cls };
     if (!who) return { ok: false, status: 401, body: { error: 'unauthorized', code: 'LOGIN_REQUIRED' }, cls };
     return { ok: false, status: 403, body: { error: 'forbidden', code: 'ROLE', message: `your role cannot do this (${cls})` }, cls };
   }

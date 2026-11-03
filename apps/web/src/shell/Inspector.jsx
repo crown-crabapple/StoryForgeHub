@@ -8,6 +8,7 @@ import { RailResearch } from '../notes/RailResearch.jsx';
 import { researchForScene } from '../notes/model.js';
 import { RailContinuity } from '../continuity/RailContinuity.jsx';
 import { RailSuggestions } from '../suggestions/RailSuggestions.jsx';
+import { RailComments } from '../collab/RailComments.jsx';
 import { RailReceipts } from '../receipts/RailReceipts.jsx';
 import { RailEvents } from '../timeline/RailEvents.jsx';
 import { eventsForScene } from '../timeline/model.js';
@@ -86,6 +87,7 @@ export function SceneInspector({ book, scene, diagnostics, objects = null, onCha
           {timeline !== undefined && <RailEvents bookId={book.id} events={timeline ? eventsForScene(timeline, scene.id) : null} />}
           {notes !== undefined && <RailResearch bookId={book.id} notes={notes ? researchForScene(notes.notes, sceneLinkItems(scene.front_matter, body, objects)) : null} />}
           <RailContinuity book={book} scene={scene} continuity={continuity ?? null} version={version} onChanged={onChanged} />
+          {readable && <RailComments book={book} scene={scene} version={version} onChanged={onChanged} />}
           {readable && <RailSuggestions book={book} scene={scene} version={version} onChanged={onChanged} />}
           <InspectorSection title="Problems">
             {diagnostics.loading && <p className="muted">Loading…</p>}

@@ -14,3 +14,4 @@ export { renderAiRecord, selectRange, spliceReplacement } from './ai-rewrite.mjs
 export { acquireLock, releaseLock, releaseLockSync, updateLock, writeNewTree } from '@storyforge/store';
 export { readUserConfig, userConfigDir, writeUserConfig } from '@storyforge/store';
 export { listTemplates } from '@storyforge/templates';
+export { runAs, currentBy } from './actor.mjs';
