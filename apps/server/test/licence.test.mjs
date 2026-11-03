@@ -1,4 +1,5 @@
 // M08-J05: the licence is AGPL-3.0-only everywhere, the lockfile is in sync, and production dependencies are under licences that fit.
+import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -16,6 +17,9 @@ test('LICENSE is the full, unmodified GNU AGPL version 3', () => {
     assert.ok(text.includes(phrase), phrase);
   }
   assert.equal(Buffer.byteLength(text), 34523, 'the official agpl-3.0.txt is 34523 bytes');
+  // sha256 of https://www.gnu.org/licenses/agpl-3.0.txt (line endings normalised, so a CRLF checkout still matches)
+  const sha = createHash('sha256').update(text.replace(/\r\n/g, '\n')).digest('hex');
+  assert.equal(sha, '0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0', 'LICENSE is byte for byte the official text');
 });
 
 test('the root and every workspace package.json declares AGPL-3.0-only', () => {

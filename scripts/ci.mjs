@@ -88,7 +88,7 @@ async function secretScan() {
     .globSync('scripts/**/*secret-scan*.mjs', { cwd: REPO_ROOT })
     .map((f) => f.split(path.sep).join('/'))
     .filter((f) => !/\.test\.mjs$/.test(f));
-  const tests = resolveFiles(['scripts/**/*secret-scan*.test.mjs', 'apps/*/test/*secret-scan*.test.mjs', 'packages/*/test/*secret-scan*.test.mjs', 'test/*secret-scan*.test.mjs']);
+  const tests = resolveFiles(['scripts/**/*secret-scan*.test.mjs', 'apps/*/test/*secret-scan*.test.mjs', 'apps/*/test/*secrets-scan*.test.mjs', 'packages/*/test/*secret-scan*.test.mjs', 'test/*secret-scan*.test.mjs']);
   if (scripts.length === 0 && tests.length === 0) {
     process.stdout.write('secret scan: not present yet\n');
     return { status: 'skip', note: 'not present yet' };
