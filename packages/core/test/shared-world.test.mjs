@@ -326,3 +326,17 @@ test('a library template that shares a built-in name is picked by source; the li
   assert.equal(builtin.ok, true, builtin.message);
   assert.equal((await repo.createBook({ title: 'Nope', template: 'nope', templateSource: 'library' })).code, 'NO_SUCH_TEMPLATE');
 });
+
+test('getObjects (the scene rail, POV and link names) includes the series shared entries, flagged; a standalone book gets none', async () => {
+  const { repo } = await setup();
+  for (const book of [SO, LT]) {
+    const objs = await repo.getObjects(book, ['entry']);
+    const ilse = objs.find((o) => o.id === ILSE);
+    assert.ok(ilse, `ilse-hollis is named in ${book}`);
+    assert.equal(ilse.title, 'Ilse Hollis');
+    assert.equal(ilse.shared, true);
+    assert.equal(objs.filter((o) => o.slug === 'ilse-hollis').length, 1, 'listed once');
+  }
+  assert.equal((await repo.getObjects(PR, ['entry'])).some((o) => o.id === ILSE), false);
+  assert.equal((await repo.getObjects(SO, ['thread'])).some((o) => o.id === ILSE), false, 'only when entries are asked for');
+});

@@ -600,6 +600,32 @@ export function createFsRepository(libraryRoot, options = {}) {
   });
 
   /** @type {FileRepository} */
+  /**
+   * The book's own entries, threads and events (from the index, else the files), sorted by kind then title. Null for an unknown book.
+   * @param {string} bookId @param {string[]} wanted
+   */
+  async function ownObjects(bookId, wanted) {
+    try {
+      const rows = await manager.query(bookId, (x) => x.objects(wanted));
+      if (rows === null) return null;
+      return rows;
+    } catch (e) {
+      if (/** @type {any} */ (e)?.code !== 'INDEX_NOT_READY') throw e;
+    }
+    // no usable index yet: read the files
+    const book = await bookById(bookId);
+    if (!book) return null;
+    const bookRoot = book.path === '' ? root : abs(book.path);
+    const out = [];
+    for (const rel of await walkMarkdown(bookRoot)) {
+      const { doc } = await loadDoc(path.join(bookRoot, ...rel.split('/')), rel, rel, noop);
+      if (!doc || doc.archived || !wanted.includes(doc.kind) || typeof doc.fm.id !== 'string') continue;
+      out.push({ id: doc.fm.id, kind: doc.kind, slug: str(doc.fm.slug), title: str(doc.fm.title) ?? str(doc.fm.name), type: str(doc.fm.type) });
+    }
+    const key = (o) => (o.title ?? '').toLowerCase();
+    return out.sort((a, b) => cmp(a.kind, b.kind) || cmp(key(a), key(b)) || cmp(a.id, b.id));
+  }
+
   const repository = {
     root,
 
@@ -736,25 +762,18 @@ export function createFsRepository(libraryRoot, options = {}) {
 
     async getObjects(bookId, kinds) {
       const wanted = Array.isArray(kinds) && kinds.length > 0 ? kinds : ['entry', 'thread', 'event'];
-      try {
-        const rows = await manager.query(bookId, (x) => x.objects(wanted));
-        if (rows === null) return null;
-        return rows;
-      } catch (e) {
-        if (/** @type {any} */ (e)?.code !== 'INDEX_NOT_READY') throw e;
-      }
-      // no usable index yet: read the files
+      const own = await ownObjects(bookId, wanted);
+      if (own === null || !wanted.includes('entry')) return own;
+      // the series' shared entries (M07-J01) name things in this book too; a book entry with the same slug shadows the shared one (W309)
       const book = await bookById(bookId);
-      if (!book) return null;
-      const bookRoot = book.path === '' ? root : abs(book.path);
-      const out = [];
-      for (const rel of await walkMarkdown(bookRoot)) {
-        const { doc } = await loadDoc(path.join(bookRoot, ...rel.split('/')), rel, rel, noop);
-        if (!doc || doc.archived || !wanted.includes(doc.kind) || typeof doc.fm.id !== 'string') continue;
-        out.push({ id: doc.fm.id, kind: doc.kind, slug: str(doc.fm.slug), title: str(doc.fm.title) ?? str(doc.fm.name), type: str(doc.fm.type) });
-      }
+      const shared = book ? extractShared(await readValidate(), book.path) : null;
+      const slugs = new Set(own.filter((o) => o.kind === 'entry').map((o) => o.slug));
+      const extra = (shared?.docs ?? [])
+        .filter((doc) => doc.kind === 'entry' && !doc.archived && typeof doc.fm.id === 'string' && !slugs.has(str(doc.fm.slug)))
+        .map((doc) => ({ id: doc.fm.id, kind: 'entry', slug: str(doc.fm.slug), title: str(doc.fm.name) ?? str(doc.fm.title), type: str(doc.fm.type), shared: true }));
+      if (extra.length === 0) return own;
       const key = (o) => (o.title ?? '').toLowerCase();
-      return out.sort((a, b) => cmp(a.kind, b.kind) || cmp(key(a), key(b)) || cmp(a.id, b.id));
+      return [...own, ...extra].sort((a, b) => cmp(a.kind, b.kind) || cmp(key(a), key(b)) || cmp(a.id, b.id));
     },
 
     indexStatus: (bookId) => manager.status(bookId),
