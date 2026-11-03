@@ -5,6 +5,7 @@ import { SearchBox } from '../SearchBox.jsx';
 import { BookSwitcher } from './BookSwitcher.jsx';
 import { BookIcon } from './icons.jsx';
 import { SaveStatus } from './SaveStatus.jsx';
+import { UserMenu } from '../shared/UserMenu.jsx';
 
 /** Logo, book switcher, save status, search, index status. @param {{ books: any[] | null, bookId: string | null }} props */
 export function TopBar({ books, bookId }) {
@@ -26,6 +27,7 @@ export function TopBar({ books, bookId }) {
         <Link to="/settings" className="topbar-link">
           Settings
         </Link>
+        <UserMenu />
       </nav>
     </header>
   );

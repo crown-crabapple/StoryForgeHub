@@ -13,6 +13,14 @@ import { WritesProvider } from './shell/writes.jsx';
 import { SearchQueryProvider } from './searchQuery.jsx';
 import { StatusProvider, libraryVersion, useStatus } from './status.jsx';
 import { FocusProvider } from './writing/FocusContext.jsx';
+import { InvitePage } from './shared/InvitePage.jsx';
+import { LoginPage } from './shared/LoginPage.jsx';
+import { MembersView } from './shared/MembersView.jsx';
+import { SessionProvider, useSession } from './shared/session.jsx';
+import { SetupPage } from './shared/SetupPage.jsx';
+import { ShareEntry } from './shared/ShareEntry.jsx';
+import { ShareReader } from './shared/ShareReader.jsx';
+import { postJson } from './api.js';
 
 /** Shown when the startup recovery pass rolled an interrupted save back or needs the author's eyes. */
 function RecoverBanner() {
@@ -62,6 +70,7 @@ function Routes() {
   let tab = 'manuscript';
   if (route.name === 'library') view = <LibraryView />;
   else if (route.name === 'settings') view = <SettingsView />;
+  else if (route.name === 'members') view = <MembersView />;
   else if (route.name === 'book') {
     bookId = route.bookId;
     view = <BookView bookId={route.bookId} sceneId={route.sceneId} file={route.file} />;
@@ -89,7 +98,8 @@ function Routes() {
   );
 }
 
-export function App() {
+/** The whole writing app: what personal mode has always shown, and what a signed-in person sees in shared mode. */
+function Workspace() {
   return (
     <StatusProvider>
       <WritesProvider>
@@ -100,5 +110,40 @@ export function App() {
         </FocusProvider>
       </WritesProvider>
     </StatusProvider>
+  );
+}
+
+/**
+ * Personal mode (GET /api/auth/me is 404) shows the app exactly as before. Shared mode adds the pages for people who are not signed in: login, /setup, /invite and /s
+ * (a read-only share link), and a read-only reader for a share session.
+ */
+function SessionGate() {
+  const session = useSession();
+  const { pathname } = useLocation();
+  if (session.mode === 'loading') return null;
+  if (session.mode === 'personal') return <Workspace />;
+  if (session.share) {
+    return (
+      <ShareReader
+        share={session.share}
+        onLeave={async () => {
+          await postJson('/api/auth/logout', {});
+          await session.refresh();
+        }}
+      />
+    );
+  }
+  if (session.user) return <Workspace />;
+  if (pathname === '/setup') return <SetupPage onDone={session.refresh} />;
+  if (pathname === '/invite') return <InvitePage onDone={session.refresh} />;
+  if (pathname === '/s') return <ShareEntry onOpened={session.refresh} />;
+  return <LoginPage needsOwner={session.needsOwner} onSignedIn={session.refresh} />;
+}
+
+export function App() {
+  return (
+    <SessionProvider>
+      <SessionGate />
+    </SessionProvider>
   );
 }

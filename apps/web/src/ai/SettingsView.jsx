@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useApi } from '../api.js';
 import { Link } from '../router.jsx';
+import { useSession } from '../shared/session.jsx';
 import { KEY_STORAGE_CHOICES, hostOf, isInsecureCloud, localityOf } from './model.js';
 import { LocalityBadge } from './parts.jsx';
 import { aiRequest, aiUrl } from './requests.js';
@@ -195,6 +196,7 @@ function ProfileRow({ profile, onEdit, onDelete, onChanged }) {
 
 export function SettingsView() {
   const [bump, setBump] = useState(0);
+  const { user } = useSession(); // shared mode (M07-J03): only the owner sees Members and sharing
   const { data, error: loadError } = useApi(aiUrl.profiles, String(bump));
   const { data: books } = useApi('/api/books');
   const [editing, setEditing] = useState(/** @type {null | { id: string | null, form: typeof EMPTY, hasKey: boolean }} */ (null));
@@ -226,6 +228,11 @@ export function SettingsView() {
   return (
     <main id="main" tabIndex={-1} className="page settings-page">
       <h1>Settings</h1>
+      {user?.role === 'owner' && (
+        <p>
+          <Link to="/settings/members">Members and sharing</Link>
+        </p>
+      )}
       <section aria-labelledby="ai-setup-heading">
         <h2 id="ai-setup-heading">Set up AI (optional)</h2>
         <p className="placeholder-text">
