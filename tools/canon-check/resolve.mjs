@@ -91,7 +91,7 @@ function load(root) {
     books.push({ dir, docs, slug: bookDoc?.fm.slug ?? null, series: seriesRef });
   };
   for (const name of dirs(root)) {
-    if (name === '_templates') continue;
+    if (name === '_templates' || name === '_prompts') continue;
     const dir = path.join(root, name);
     if (has(dir, 'book.md')) takeBook(dir, null);
     else if (has(dir, 'series.md')) {

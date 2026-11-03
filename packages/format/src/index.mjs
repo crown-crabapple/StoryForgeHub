@@ -9,6 +9,7 @@ import { finishBook, loadBook } from './book.mjs';
 import { checkBookUniqueness, checkPenNames, discover } from './library.mjs';
 import { makeNamespace, resolveLinks } from './links.mjs';
 import { checkTemplates, labelNames, loadShared } from './world.mjs';
+import { checkPrompts } from './prompts.mjs';
 
 /**
  * Validate a book root, series root or library root. Read-only; never follows `.storyforge/`.
@@ -143,6 +144,7 @@ export async function validate(rootDir) {
   checkDuplicateIds(allDocs, add);
   checkBookUniqueness(bookEntries, add, seriesEntries);
   if (!isBookRoot && !isSeriesRoot) await checkTemplates(root, add);
+  if (!isBookRoot && !isSeriesRoot) await checkPrompts(root, add); // M07-J04
   if (libraryDoc) checkPenNames(libraryDoc, bookEntries, add);
 
   books.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
@@ -199,3 +201,7 @@ export { escapesRoot } from './schema.mjs';
 // Building blocks for the continuity engine (@storyforge/continuity). Re-exports only.
 export { readText } from './fs.mjs';
 export { STATE_EVENTS, FINGERPRINT_RE } from './schema.mjs';
+
+// M07-J04: preferences (the layers and their precedence) and custom prompt components / workflows. Additive within v1.
+export * from './preferences.mjs';
+export { PROMPT_INPUTS, PROMPT_TASKS, INPUT_FIELDS, PROMPT_SCHEMA, WORKFLOW_SCHEMA, placeholdersOf, parsePromptFile, loadPrompts, renderPrompt } from './prompts.mjs';

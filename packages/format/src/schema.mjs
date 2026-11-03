@@ -1,6 +1,7 @@
 // Per-kind field tables (spec sections 4-7 and 11.1) and the E102 / I401 / E103 checks.
 import path from 'node:path';
 import { isValidId, isValidSlug } from './ids.mjs';
+import { checkPreferences } from './preferences.mjs';
 
 /**
  * Field type codes: str, int (>= 0), int1 (>= 1), num, bool, list, map, any, slug,
@@ -11,7 +12,7 @@ export const KINDS = {
   library: {
     prefix: 'lib',
     required: ['title'],
-    fields: { title: 'str', pen_names: 'list' },
+    fields: { title: 'str', pen_names: 'list', preferences: 'map' },
   },
   series: {
     prefix: 'series',
@@ -25,7 +26,7 @@ export const KINDS = {
       slug: 'slug', title: 'str', subtitle: 'str', series_number: 'int', pen_name: 'str',
       profile: ['fiction', 'nonfiction', 'memoir', 'selfhelp'],
       status: ['planning', 'drafting', 'revising', 'complete', 'archived'],
-      genre: 'list', word_target: 'int', daily_word_goal: 'int1', cover: 'str', cover_color: 'hex', language: 'str', previous_slugs: 'list',
+      genre: 'list', word_target: 'int', daily_word_goal: 'int1', cover: 'str', cover_color: 'hex', language: 'str', previous_slugs: 'list', preferences: 'map',
     },
   },
   act: {
@@ -396,6 +397,7 @@ export function checkFields(doc, ctx, add) {
     });
   }
 
+  if ((doc.kind === 'library' || doc.kind === 'book') && fm.preferences !== undefined) checkPreferences(doc, add); // M07-J04
   if (Array.isArray(fm.labels)) checkLabels(doc, add);
   if (doc.kind === 'codex-type' && Array.isArray(fm.fields)) checkTypeFields(fm.fields, file, add);
 
