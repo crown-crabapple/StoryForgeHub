@@ -54,6 +54,20 @@ test('setup: one owner, single-use 30-minute link, nothing works before it', asy
   const [a, b] = await Promise.all([d2.completeSetup(i2.token, PW), d2.completeSetup(i2.token, 'another password 2')]);
   assert.equal([a.ok, b.ok].filter(Boolean).length, 1, 'a setup link works once, even for two requests at the same moment');
   assert.equal(d2.needsOwner, false);
+  assert.equal((await d2.initOwner('ilse')).code, 'EXISTS', 'no new link once the owner has a password');
+});
+
+test('setup: a lapsed link can be reissued for the same pending owner only, and the old link stops working', async () => {
+  const c = clock();
+  const data = await openSharedData(tmp(), { now: c.now });
+  const first = await data.initOwner('ilse');
+  c.t += 31 * 60 * 1000;
+  assert.equal((await data.initOwner('someone-else')).code, 'EXISTS', 'a different name cannot take over');
+  const again = await data.initOwner('ilse');
+  assert.equal(again.ok, true);
+  assert.equal(again.reissued, true);
+  assert.equal((await data.completeSetup(first.token, PW)).code, 'GONE');
+  assert.equal((await data.completeSetup(again.token, PW)).ok, true);
 });
 
 test('login: same answer for unknown user and wrong password; rate limit; sessions resolve and end', async () => {

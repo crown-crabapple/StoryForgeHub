@@ -191,7 +191,16 @@ export async function openSharedData(dir, { now = Date.now } = {}) {
      * @returns {Promise<{ ok: true, token: string, expires: number } | { ok: false, code: string, message: string }>}
      */
     async initOwner(username, display_name = username) {
-      if (owners().length > 0) return { ok: false, code: 'EXISTS', message: 'this shared data already has an owner' };
+      if (owners().length > 0) {
+        // an owner who never finished setup (link lapsed) gets a new link; once any owner has a password this is refused
+        const pending = owners().map((m) => userById(m.user)).filter((u) => u && !u.pw);
+        const same = pending.find((u) => typeof username === 'string' && u.username === username.toLowerCase());
+        if (pending.length !== owners().length || !same) return { ok: false, code: 'EXISTS', message: 'this shared data already has an owner' };
+        const token = newToken();
+        data['setup.json'].setup = { user: same.id, token_hash: hashToken(token), expires: now() + SETUP_MS };
+        await save('setup.json');
+        return { ok: true, token, expires: data['setup.json'].setup.expires, reissued: true };
+      }
       const problem = newUserProblem(username, display_name);
       if (problem) return { ok: false, code: 'BAD_ARGS', message: problem };
       const user = { id: newId('usr'), username, display_name, pw: null, created: now(), disabled: false };

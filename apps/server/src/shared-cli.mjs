@@ -5,7 +5,7 @@
 // No filesystem access here: the shared-data files go through @storyforge/shared and @storyforge/store.
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { ConfigError, resolveConfig } from '@storyforge/core';
+import { ConfigError, LOCK_FILE, acquireLock, releaseLock, resolveConfig } from '@storyforge/core';
 import { userConfigDir } from '@storyforge/store';
 import { SharedDataError, createAudit, openSharedData } from '@storyforge/shared';
 
@@ -100,6 +100,8 @@ export async function runSharedCommand(command, argv) {
   }
   let dir = v['--shared-data'] ? path.resolve(v['--shared-data']) : null;
   let port = 4317;
+  /** @type {string | null} */
+  let libraryRoot = null;
   if (!dir || command === 'shared') {
     // the library names the default shared-data folder (and the port in the setup link)
     let config;
@@ -115,6 +117,7 @@ export async function runSharedCommand(command, argv) {
     }
     if (config) {
       port = config.port;
+      libraryRoot = config.libraryRoot;
       dir ??= defaultSharedDir(config.libraryRoot);
       const problem = sharedDirProblem(dir, config.libraryRoot);
       if (problem) {
@@ -139,6 +142,15 @@ export async function runSharedCommand(command, argv) {
     }
     base = pub.url;
   }
+  // a running server keeps the shared data in memory and would overwrite what this command writes: hold the library lock while we change it
+  const lockPath = libraryRoot ? path.join(libraryRoot, LOCK_FILE) : null;
+  if (lockPath) {
+    const lock = await acquireLock(lockPath, { port: null });
+    if (!lock.ok) {
+      complain(`StoryForge is running on this library; stop it first, then run shared init again. Lock file: ${lockPath}`);
+      return 3;
+    }
+  }
   try {
     const data = await openSharedData(dir);
     const r = await data.initOwner(/** @type {string} */ (v['--owner']));
@@ -147,8 +159,8 @@ export async function runSharedCommand(command, argv) {
       return r.code === 'BAD_ARGS' ? 2 : 1;
     }
     const audit = createAudit(dir);
-    await audit.append({ actor: 'system', event: 'owner.init', target: v['--owner'] });
-    process.stdout.write(`Owner "${v['--owner']}" created in ${dir}\nOpen this link within 30 minutes to choose a password (it works once):\n${base}/setup#token=${r.token}\n`);
+    await audit.append({ actor: 'system', event: r.reissued ? 'owner.setup-reissued' : 'owner.init', target: v['--owner'] });
+    process.stdout.write(`${r.reissued ? 'New setup link for' : 'Owner'} "${v['--owner']}"${r.reissued ? '' : ` created in ${dir}`}\nOpen this link within 30 minutes to choose a password (it works once):\n${base}/setup#token=${r.token}\n`);
     return 0;
   } catch (e) {
     if (e instanceof SharedDataError) {
@@ -156,5 +168,7 @@ export async function runSharedCommand(command, argv) {
       return 2;
     }
     throw e;
+  } finally {
+    if (lockPath) await releaseLock(lockPath).catch(() => {});
   }
 }
