@@ -73,7 +73,19 @@ export function createIndexManager(root, { readValidate = () => validate(root) }
    * @param {string} reason
    * @param {{ full?: boolean }} [opts]
    */
-  async function reconcileEntry(entry, bookPath, reason, opts) {
+  function reconcileEntry(entry, bookPath, reason, opts) {
+    const p = reconcileNow(entry, bookPath, reason, opts);
+    inflight.add(p);
+    const done = () => inflight.delete(p);
+    p.then(done, done);
+    return p;
+  }
+
+  /** Reconciles still running (background refreshes included); close() waits for them so no index file stays open. @type {Set<Promise<any>>} */
+  const inflight = new Set();
+
+  /** @param {{ idx: ReturnType<typeof openIndex> }} entry @param {string} bookPath @param {string} reason @param {{ full?: boolean }} [opts] */
+  async function reconcileNow(entry, bookPath, reason, opts) {
     try {
       __hooks.onReconcile?.({ bookPath, reason });
     } catch {
@@ -112,6 +124,10 @@ export function createIndexManager(root, { readValidate = () => validate(root) }
     bookPaths,
     learn,
     pathOf,
+    /** Resolves once no reconcile is running (including ones that start while waiting). Never throws. */
+    async drain() {
+      while (inflight.size > 0) await Promise.allSettled([...inflight]);
+    },
     /** The folder of a book id seen before, without any lookup. @param {string} bookId */
     knownPath: (bookId) => idToPath.get(bookId),
 

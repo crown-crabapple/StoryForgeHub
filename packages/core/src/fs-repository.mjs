@@ -821,6 +821,7 @@ export function createFsRepository(libraryRoot, options = {}) {
       await receipts.flushPending().catch(() => {}); // M05-J07: unflushed author saves become author.edit receipts before we go
       await watcher.ready;
       watcher.close();
+      await manager.drain(); // background index refreshes finish before the library counts as closed (their index files are open)
       unsubscribeWrites();
       unregisterReceipts();
     },
