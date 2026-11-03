@@ -52,6 +52,7 @@ export const WIDGET_KEYS = [
   { file: 'insights/charts.jsx', keys: 'Arrow keys, Home, End', what: 'move between the cells of an Insights heat map' },
   { file: 'tasks/TasksPage.jsx', keys: 'Arrow Up, Arrow Down, Home, End', what: 'move between tasks in the list' },
   { file: 'shared/UserMenu.jsx', keys: 'Escape', what: 'close the account menu' },
+  { file: 'shell/useDrawer.js', keys: 'Escape, Tab', what: 'close a side drawer (Chapters or Details) and keep Tab inside it while it is open' },
 ];
 
 /** Chords nothing may be bound to (browser and OS ones, and the keys the keyboard walk needs). Same list as @storyforge/format RESERVED_CHORDS (a test compares them). */

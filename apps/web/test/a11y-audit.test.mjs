@@ -17,7 +17,7 @@ import { createServer } from 'vite';
 import { createFsRepository } from '../../../packages/core/src/index.mjs';
 import { copyFixture } from '../../server/test/helpers.mjs';
 import { BOOK as BOOK_ID, CF1, withSuggestion } from '../../server/test/suggest-helpers.mjs';
-import { audit } from './a11y-check.mjs';
+import { audit, indexIds, nameOf, parse as parseMarkup, walk as walkMarkup } from './a11y-check.mjs';
 
 const webDir = fileURLToPath(new URL('..', import.meta.url));
 let vite;
@@ -41,6 +41,8 @@ before(async () => {
     '/src/shared/LoginPage.jsx', '/src/shared/SetupPage.jsx', '/src/shared/InvitePage.jsx', '/src/shared/MembersPage.jsx', '/src/shared/UserMenu.jsx', '/src/shared/ShareReader.jsx', '/src/shared/ShareEntry.jsx',
     '/src/codex/dialogs.jsx', '/src/codex/model.js', '/src/editor/LinkPicker.jsx', '/src/structure/PreviewDialog.jsx', '/src/world/LabelManager.jsx', '/src/world/SaveAsTemplateDialog.jsx', '/src/world/model.js',
     // M07-J02: Insights, goals, the timer, Tasks
+    // M08-J04: drawers, the simulated viewport and the offline bar
+    '/src/shell/useDrawer.js', '/src/shell/drawer.js', '/src/shell/Workspace.jsx', '/src/shared/OfflineQueueBar.jsx', '/src/editor/offline-queue.js', '/src/planning/MatrixView.jsx',
     '/src/insights/InsightsPage.jsx', '/src/insights/GoalsPanel.jsx', '/src/tasks/TasksPage.jsx', '/src/writing/TimerPanel.jsx', '/src/suggestions/CheckReport.jsx',
     // M08-J02: Settings -> Plugins and Webhooks
     '/src/integrations/PluginsPanel.jsx', '/src/integrations/WebhooksPanel.jsx',
@@ -294,6 +296,275 @@ describe('every core view passes the render-level audit', () => {
       assert.deepEqual(audit(markup, opts), []);
     });
   }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// M08-J04 section 2: the same audit at 1280, 900, 600 and 360 px. A render has no window, so the width is simulated with the ViewportContext the layout reads (the same
+// switch the panel drawers use for their media queries); what the stylesheet does at each width is checked in responsive-styles.test.mjs.
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+const atWidth = (width, el) => h(m.ViewportContext.Provider, { value: width }, el);
+const WIDTHS = [
+  { width: 1280, cls: 'desktop' },
+  { width: 900, cls: 'tablet' },
+  { width: 600, cls: 'phone' },
+  { width: 360, cls: 'phone' },
+];
+
+for (const { width, cls } of WIDTHS) {
+  describe(`every core view passes the render-level audit at ${width} px (${cls})`, () => {
+    for (const name of Object.keys(VIEWS)) {
+      test(name, () => {
+        const [el, opts] = VIEWS[name]();
+        const markup = html(atWidth(width, el));
+        assert.ok(markup.length > 200, `${name} rendered something`);
+        assert.deepEqual(audit(markup, opts), []);
+      });
+    }
+  });
+}
+
+const sceneEditor = () => h(m.ScenePaper, { book: d.book, scene: d.scene, chapterLabel: 'Chapter One' });
+const withDrawer = (openPanel) => shell(h(m.BookLayout, { book: d.book, activeId: d.scene.id, openPanel, inspector: sceneInspector() }, sceneEditor()));
+const tagOf = (markup, re) => markup.match(re)?.[0] ?? '';
+
+describe('panel drawers: names, roles and state at each width', () => {
+  for (const { width } of WIDTHS) {
+    test(`${width} px: both toggles are buttons with aria-expanded=false and aria-controls pointing at their panel, and the panel exists`, () => {
+      const markup = html(atWidth(width, withDrawer(null)));
+      const root = parseMarkup(markup);
+      const nodes = [...walkMarkup(root)];
+      for (const [cls, label] of [['rail-toggle', 'Chapters'], ['inspector-toggle', 'Details']]) {
+        const b = nodes.find((n) => n.tag === 'button' && n.attrs.class?.split(' ').includes(cls));
+        assert.ok(b, `${cls} is drawn`);
+        assert.equal(b.attrs['aria-expanded'], 'false');
+        assert.match(markup, new RegExp(`<button[^>]*class="${cls} btn"[^>]*>${label}</button>`));
+        const panel = nodes.find((n) => n.attrs.id === b.attrs['aria-controls']);
+        assert.ok(panel, `${cls} controls an element that exists`);
+        assert.equal(panel.attrs['data-open'], 'false');
+      }
+      assert.deepEqual(audit(markup, WITH_BOOK_ASIDE), []);
+    });
+  }
+  test('an open drawer: the button says aria-expanded=true, only one drawer is open, the page behind is inert and a tap-outside button is drawn (tablet and phone)', () => {
+    for (const [width, panel] of [[900, 'inspector'], [600, 'inspector'], [360, 'inspector'], [600, 'rail'], [360, 'rail']]) {
+      const markup = html(atWidth(width, withDrawer(panel)));
+      const toggle = tagOf(markup, new RegExp(`<button[^>]*class="${panel}-toggle btn"[^>]*>`));
+      assert.match(toggle, /aria-expanded="true"/, `${width} ${panel}`);
+      assert.equal((markup.match(/data-open="true"/g) ?? []).length, 1, 'one drawer at a time');
+      assert.match(markup, /<main id="main"[^>]*inert=""/, 'the text behind an open drawer is inert');
+      assert.match(markup, /<button type="button" class="drawer-scrim" aria-label="Close panel" tabindex="-1">/);
+      assert.deepEqual(audit(markup, WITH_BOOK_ASIDE), [], `${width} ${panel}`);
+    }
+  });
+  test('where a panel is not an overlay (1280 px; the rail at 900 px) an open flag draws no scrim and makes nothing inert', () => {
+    for (const [width, panel] of [[1280, 'rail'], [1280, 'inspector'], [900, 'rail']]) {
+      const markup = html(atWidth(width, withDrawer(panel)));
+      assert.doesNotMatch(markup, /inert/, `${width} ${panel}`);
+      assert.doesNotMatch(markup, /drawer-scrim/, `${width} ${panel}`);
+    }
+  });
+  test('which panels are drawers at which width, and the device class of a width', () => {
+    assert.deepEqual(m.drawersAt(1280), { rail: false, inspector: false });
+    assert.deepEqual(m.drawersAt(1199), { rail: false, inspector: true });
+    assert.deepEqual(m.drawersAt(900), { rail: false, inspector: true });
+    assert.deepEqual(m.drawersAt(899), { rail: true, inspector: true });
+    assert.deepEqual(m.drawersAt(360), { rail: true, inspector: true });
+    assert.deepEqual([1280, 1199, 768, 767, 360].map(m.widthClass), ['desktop', 'tablet', 'tablet', 'phone', 'phone']);
+    for (const q of Object.values(m.DRAWER_QUERY)) assert.equal(typeof q, 'string');
+    for (const { width } of WIDTHS) {
+      assert.equal(m.matchesWidth(m.DRAWER_QUERY.rail, width), m.drawersAt(width).rail, `rail at ${width}`);
+      assert.equal(m.matchesWidth(m.DRAWER_QUERY.inspector, width), m.drawersAt(width).inspector, `inspector at ${width}`);
+    }
+  });
+});
+
+describe('the focus trap: where Tab goes inside an open drawer', () => {
+  test('wraps from the last control to the first and from the first back to the last, and pulls focus in from outside', () => {
+    const { trapTarget } = m;
+    assert.equal(trapTarget({ count: 3, index: 2, shift: false }), 0);
+    assert.equal(trapTarget({ count: 3, index: 0, shift: true }), 2);
+    assert.equal(trapTarget({ count: 3, index: 1, shift: false }), null, 'in the middle the browser moves focus');
+    assert.equal(trapTarget({ count: 3, index: 1, shift: true }), null);
+    assert.equal(trapTarget({ count: 3, index: -1, shift: false }), 0);
+    assert.equal(trapTarget({ count: 3, index: -1, shift: true }), 2);
+    assert.equal(trapTarget({ count: 0, index: -1, shift: false }), -1, 'nothing to focus: stay on the drawer itself');
+    assert.equal(trapTarget({ count: 1, index: 0, shift: false }), 0);
+    assert.equal(trapTarget({ count: 1, index: 0, shift: true }), 0);
+  });
+  test('Escape, focus return and the trap are wired in useDrawer (no browser here: the source is checked)', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const src = await readFile(new URL('../src/shell/useDrawer.js', import.meta.url), 'utf8');
+    assert.match(src, /e\.key === 'Escape'/);
+    assert.match(src, /closeRef\.current\(\)/);
+    assert.match(src, /trapTarget\(/);
+    assert.match(src, /opener\.focus\(/, 'focus returns to the button that opened it');
+    assert.match(src, /removeEventListener\('keydown'/);
+    const ws = await readFile(new URL('../src/shell/Workspace.jsx', import.meta.url), 'utf8');
+    assert.equal((ws.match(/useDrawer\(/g) ?? []).length, 2, 'both drawers use it');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+// M08-J04 section 2: keyboard walks at tablet and phone, drawers included. A render cannot press keys, so a walk is: for every step of a flow, the control it needs is
+// in the page's tab order at that width (a real, named, focusable element that is not hidden or inert), and when the control lives in a side drawer that is an overlay
+// at that width, the drawer's toggle comes first in the tab order, is collapsed, and controls that drawer; with the drawer open the control is in it. The trap, Escape and
+// focus return that complete the walk are tested above (trapTarget, useDrawer).
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------
+const FOCUSABLE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea']);
+
+/** The controls a Tab key visits, in order, at this width: { node, name, panel }. `panel` is 'rail' / 'inspector' when the control is inside a side panel. */
+function tabStops(markup, width) {
+  const root = parseMarkup(markup);
+  const byId = indexIds(root);
+  const drawers = m.drawersAt(width);
+  const stops = [];
+  for (const n of walkMarkup(root)) {
+    const focusable = (FOCUSABLE_TAGS.has(n.tag) && !(n.tag === 'a' && n.attrs.href === undefined) && !('disabled' in n.attrs) && !(n.tag === 'input' && n.attrs.type === 'hidden')) || (n.attrs.tabindex !== undefined && Number(n.attrs.tabindex) >= 0);
+    if (!focusable || n.attrs.tabindex === '-1') continue;
+    let panel = null;
+    let blocked = false;
+    for (let x = n; x && x.tag; x = x.parent) {
+      if (x.attrs['aria-hidden'] === 'true' || 'hidden' in x.attrs || 'inert' in x.attrs) blocked = true;
+      const cls = (x.attrs.class ?? '').split(' ');
+      for (const which of ['rail', 'inspector']) if (cls.includes(which) && x.tag !== 'button') panel = which;
+      if (panel && x.attrs['data-open'] === 'false' && drawers[panel]) blocked = true; // a closed drawer is out of the tab order
+    }
+    if (!blocked) stops.push({ node: n, name: nameOf(n, byId, root), panel });
+  }
+  return stops;
+}
+
+/**
+ * One flow at one width. Each step: { name: RegExp, view: () => element, region?: 'rail' | 'inspector' }.
+ * A step with a region is rendered with that drawer open when it is an overlay at this width, and the closed render must offer its toggle.
+ */
+function walkFlow(width, steps, shellOpts = {}) {
+  const drawers = m.drawersAt(width);
+  const seen = [];
+  for (const step of steps) {
+    const view = step.view;
+    const closed = tabStops(html(atWidth(width, view(null))), width);
+    if (closed[0]?.node.attrs.class !== 'skip-link') seen.push(`${step.name}: the skip link is not the first stop`);
+    const overlay = step.region && drawers[step.region];
+    const stops = overlay ? tabStops(html(atWidth(width, view(step.region))), width) : closed;
+    const hit = stops.find((s) => step.name.test(s.name));
+    if (!hit) {
+      seen.push(`${width} px: no stop named ${step.name} (${stops.length} stops)`);
+      continue;
+    }
+    if (step.region) assert.equal(hit.panel, step.region, `${step.name} is in the ${step.region}`);
+    if (overlay) {
+      // closed: the control is not reachable, but its toggle is, collapsed, and it controls the panel the control is in
+      assert.ok(!closed.some((s) => step.name.test(s.name)), `${step.name} is out of the tab order while the ${step.region} drawer is closed`);
+      const toggle = closed.find((s) => s.node.tag === 'button' && s.node.attrs.class?.includes(`${step.region}-toggle`));
+      assert.ok(toggle, `${width} px: the ${step.region} toggle is reachable`);
+      assert.equal(toggle.node.attrs['aria-expanded'], 'false');
+      const opened = tabStops(html(atWidth(width, view(step.region))), width);
+      assert.equal(opened.find((s) => s.node.tag === 'button' && s.node.attrs.class?.includes(`${step.region}-toggle`)).node.attrs['aria-expanded'], 'true');
+      assert.ok(closed.indexOf(toggle) < closed.length, 'the toggle is part of the page order');
+    }
+    assert.ok(hit.name.length > 0);
+  }
+  assert.deepEqual(seen, [], shellOpts.label ?? '');
+}
+
+describe('keyboard walks at tablet and phone widths (drawers included)', () => {
+  const book = (openPanel, body = sceneEditor()) => shell(h(m.BookLayout, { book: d.book, activeId: d.scene.id, openPanel, inspector: sceneInspector() }, body));
+  const flowBook = () => [
+    // create a book
+    { name: /^New book/, view: () => shell(h(m.LibraryPage, { books: d.books, library: { root: 'C:\\Books' } }), { bookId: null }) },
+    // write: open a scene from the chapters rail, which is a drawer on a phone
+    { name: new RegExp(`^${d.scene.title}`), region: 'rail', view: (open) => book(open) },
+    // add a scene, reorder (the row menu holds Move up / Move down; Alt+Arrow keys do the same), both in the rail
+    { name: /^Add scene to /, region: 'rail', view: (open) => book(open) },
+    { name: /^More actions for /, region: 'rail', view: (open) => book(open) },
+    // export is in the top bar
+    { name: /^Export/, view: () => book(null) },
+  ];
+  const codex = (extra = {}) => h(m.CodexPage, { bookId: BOOK_ID, types: d.types, entries: d.entries, chapters: d.chapters, typeKey: 'all', ...extra });
+  const flowCodex = () => [
+    { name: new RegExp(d.entries[0].name), view: () => shell(codex(), { tab: 'codex' }) },
+    { name: /^Edit fields/, view: () => shell(codex({ selectedId: d.entries[0].id, actions: () => ({ onEdit: noop }) }), { tab: 'codex' }) },
+    { name: /^Preview$/, view: () => shell(h(Fragment, null, codex(), h(m.EditFieldsDialog, { bookId: BOOK_ID, entry: d.entries[0], entries: d.entries, types: d.types, labelDefs: [], onClose: noop, onPreview: noop })), { tab: 'codex' }) },
+    { name: /^Apply/, view: () => shell(h(Fragment, null, codex(), h(m.PreviewDialog, { preview: { title: 'Edit', changes: [{ from: null, to: 'x.md' }], warnings: [] }, busy: false, onApply: noop, onCancel: noop })), { tab: 'codex' }) },
+  ];
+  for (const { width, cls } of WIDTHS.filter((w) => w.cls !== 'desktop')) {
+    test(`${width} px (${cls}): create book, write, add scene, reorder, export`, () => walkFlow(width, flowBook(), { label: 'book flow' }));
+    test(`${width} px (${cls}): open a Codex entry, edit, save`, () => walkFlow(width, flowCodex(), { label: 'codex flow' }));
+  }
+  test('every tab stop at 360 px has a name, none has a positive tabindex, and the Chapters and Details toggles are stops in that order', () => {
+    const stops = tabStops(html(atWidth(360, book(null))), 360);
+    assert.ok(stops.length > 8);
+    for (const s of stops) assert.ok(s.name.length > 0, `${s.node.tag} ${s.node.attrs.class ?? ''} has a name`);
+    const at = (cls) => stops.findIndex((s) => s.node.attrs.class?.includes(cls));
+    assert.ok(at('rail-toggle') > -1 && at('inspector-toggle') > -1);
+    assert.ok(at('rail-toggle') < at('inspector-toggle'), 'Chapters, then Details');
+    assert.equal(stops[0].node.attrs.class, 'skip-link', 'the skip link is the first stop');
+  });
+});
+
+describe('screen-reader semantics: live regions are present and polite', () => {
+  const polite = (markup, testid) => {
+    const tag = tagOf(markup, new RegExp(`<[^>]*data-testid="${testid}"[^>]*>`));
+    assert.ok(tag, `${testid} is drawn`);
+    assert.match(tag, /role="status"/);
+    assert.match(tag, /aria-live="polite"/);
+  };
+  test('drawer open/close has its own polite status region in the workspace, at every width', () => {
+    for (const { width } of WIDTHS) polite(html(atWidth(width, shell(layout(h('h1', null, 'x'))))), 'drawer-live');
+  });
+  test('the drawer announcement says which panel opened or closed', () => {
+    assert.equal(m.drawerAnnouncement('Details', true), 'Details panel opened');
+    assert.equal(m.drawerAnnouncement('Chapters', false), 'Chapters panel closed');
+  });
+  test('save state, toasts, and the board and rail move announcements are polite', () => {
+    const markup = html(shell(planning('board')));
+    assert.match(markup, /<div id="toast-stack" class="toast-stack" role="status" aria-live="polite"/);
+    polite(markup, 'board-live');
+    polite(markup, 'move-live');
+    assert.match(markup, /<span role="status" class="save-status" data-state="[a-z-]+">/);
+  });
+  test('the timer is read out through a polite region', () => {
+    const markup = html(h(m.TimerRunning, { timer: RUNNING, here: true, onPause: noop, onResume: noop, onFinish: noop, onAbandon: noop }));
+    assert.match(markup, /role="(timer|status)"|aria-live="polite"/);
+    assert.doesNotMatch(markup, /aria-live="assertive"/);
+  });
+  test('the offline bar is a polite status region that is there before it has anything to say, and names the count', () => {
+    assert.match(html(h(m.OfflineBarView, { count: 0 })), /role="status" aria-live="polite"/);
+    assert.match(html(h(m.OfflineBarView, { count: 2 })), /Offline: 2 scenes waiting to save/);
+    assert.match(html(h(m.OfflineBarView, { count: 1 })), /Offline: 1 scene waiting to save/);
+    const page = h('main', { id: 'main' }, h('h1', null, 'x'), h(m.OfflineBarView, { count: 2, notice: { saved: 1, stale: [{ bookId: BOOK_ID, sceneId: 's1' }] }, onDismiss: noop }));
+    assert.deepEqual(audit(html(page), { landmarks: ['main'] }), []);
+  });
+  test('the editor names its text area (aria-label) and describes its status through a polite line', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const src = await readFile(new URL('../src/editor/SceneEditorPage.jsx', import.meta.url), 'utf8');
+    assert.match(src, /'aria-label': resource\?\.label \?\? 'Scene text'/);
+    assert.match(src, /aria-live="polite"/, 'the word count line is polite');
+    assert.match(src, /role="status"/, 'offline and queued notices are status regions');
+  });
+});
+
+describe('the offline queue is a browser-only store: no server, core, export or format source can see it', () => {
+  test('no source outside the web app mentions the queue or its database', async () => {
+    const { readdir, readFile } = await import('node:fs/promises');
+    const { join } = await import('node:path');
+    const root = fileURLToPath(new URL('../../../', import.meta.url));
+    const walkDir = async (dir) => {
+      const out = [];
+      for (const e of await readdir(dir, { withFileTypes: true })) {
+        if (e.name === 'node_modules' || e.name === 'test') continue;
+        const f = join(dir, e.name);
+        if (e.isDirectory()) out.push(...(await walkDir(f)));
+        else if (/\.(mjs|js)$/.test(e.name)) out.push(f);
+      }
+      return out;
+    };
+    const files = [];
+    for (const dir of ['packages', 'apps/server/src']) files.push(...(await walkDir(join(root, dir))));
+    assert.ok(files.length > 20);
+    for (const f of files) assert.doesNotMatch(await readFile(f, 'utf8'), /offline-queue|storyforge-offline-queue/i, f);
+  });
 });
 
 describe('reviewer mode: the controls follow the role', () => {

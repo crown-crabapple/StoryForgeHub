@@ -1,0 +1,250 @@
+/* M08-J04: responsive layouts down to 360 px. Loaded after styles.css and insights.css, so on equal specificity these rules win. Additive: nothing here changes a
+   width of 1200 px or more (the dark reference look on desktop). Classes: desktop >= 1200, tablet 768-1199, phone 360-767.
+   What the tests check (responsive-styles.test.mjs): the drawers, the phone fallbacks, 44 px targets, 16 px fields, reduced motion and "no fixed width wider than 360 px". */
+
+/* ---------- panel bar and drawers (tablet and phone) ---------- */
+
+.workspace-bar {
+  display: none;
+  grid-area: toggle;
+  gap: var(--s2);
+}
+.inspector-toggle {
+  display: none;
+}
+.drawer-scrim {
+  display: none;
+}
+
+/* Tablet: the rail stays a column from 900 px, the inspector becomes an overlay drawer opened with "Details". */
+@media (max-width: 1199px) {
+  .workspace {
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'rail toggle'
+      'rail main';
+  }
+  .workspace-bar {
+    display: flex;
+    padding: var(--s3) var(--s4) 0;
+  }
+  .inspector-toggle {
+    display: inline-flex;
+  }
+  .inspector {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    width: min(420px, 92vw);
+    overflow: auto;
+    background: var(--bg);
+    border-left: 1px solid var(--border);
+    border-top: 0;
+    transform: translateX(100%);
+    visibility: hidden;
+  }
+  .inspector[data-open='true'] {
+    transform: none;
+    visibility: visible;
+  }
+  .drawer-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 35;
+    background: rgb(0 0 0 / 55%);
+  }
+}
+
+/* From 900 down the rail is a drawer too ("Chapters"), and the text and its panels are one at a time. */
+@media (max-width: 899px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'toggle'
+      'main';
+  }
+  .workspace-bar .rail-toggle {
+    margin: 0;
+  }
+  .rail[data-open='true'] {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 40;
+    width: min(320px, 88vw);
+    overflow: auto;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+  }
+}
+
+/* Motion only for people who have not asked for less (the block below names the same selectors). */
+@media (prefers-reduced-motion: no-preference) {
+  .inspector {
+    transition:
+      transform 0.2s ease,
+      visibility 0.2s;
+  }
+  .rail[data-open='true'] {
+    animation: drawer-in-left 0.2s ease;
+  }
+  .drawer-scrim {
+    animation: drawer-fade 0.2s ease;
+  }
+}
+@keyframes drawer-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes drawer-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .inspector,
+  .rail[data-open='true'],
+  .drawer-scrim {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ---------- phone ---------- */
+
+.matrix-list,
+.tl-phone-note {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .topbar {
+    padding-left: var(--s3);
+    padding-right: var(--s3);
+    gap: var(--s2) var(--s3);
+  }
+  .logo-word {
+    display: none;
+  }
+  .search {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+  .workspace-main,
+  .tl-main,
+  .nt-main,
+  .codex-main {
+    padding-left: var(--s3);
+    padding-right: var(--s3);
+  }
+  .editor-column,
+  .paper {
+    --paper-pad: 16px;
+  }
+  .editor-column[data-focus='on'] {
+    --paper-pad: 16px;
+  }
+  .inspector,
+  .rail[data-open='true'] {
+    width: 100vw;
+  }
+
+  /* Board, Matrix and Timeline show a list instead of the 2D canvas. */
+  .board-columns {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-x: visible;
+  }
+  .board-column {
+    flex: 1 1 auto;
+  }
+  .matrix-wrap {
+    display: none;
+  }
+  .matrix-list {
+    display: block;
+  }
+  .matrix-thread {
+    margin-bottom: var(--s5);
+  }
+  .matrix-thread ul {
+    margin: 0;
+    padding-left: var(--s5);
+  }
+  .tl-svg {
+    display: none;
+  }
+  .tl-phone-note {
+    display: block;
+  }
+
+  /* Touch targets: at least 44 px. !important because several controls set their own smaller min-height with more specific selectors. */
+  :is(button, .btn, select, input:not([type='checkbox'], [type='radio'], [type='range'], [type='hidden']), .project-tab, .topbar-link, .topbar-button, .logo, .switcher-button, .status-toggle, .row-button, .btn-small, summary, [role='menuitem'], .rail a, .tl-linklike, .matrix-button, .skip-link) {
+    min-height: 44px !important;
+  }
+  :is(button, .btn, .topbar-link, .topbar-button, .logo, .row-button, .matrix-button, .rail-toggle, .inspector-toggle) {
+    min-width: 44px;
+  }
+  :is(label:has(> input[type='checkbox']), label:has(> input[type='radio'])) {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  input[type='checkbox'],
+  input[type='radio'] {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* 16 px in every field, so iOS does not zoom the page when one is focused. The editor text itself follows the typography setting but never goes below 16 px here. */
+  :is(input, select, textarea) {
+    font-size: 16px !important;
+  }
+  .cm-editor .cm-content,
+  .raw-surface textarea {
+    font-size: max(16px, var(--fs-prose)) !important;
+  }
+
+  /* no table or dialog is wider than the window */
+  .dialog,
+  .preview-dialog,
+  .link-picker,
+  .raw-dialog,
+  .codex-dialog,
+  .label-manager,
+  .ai-panel {
+    max-width: 100vw;
+  }
+  .pref-table,
+  .tl-table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+/* the tap-outside area of an open drawer is a real button (so it is not a clickable div); it only needs to look like a scrim */
+button.drawer-scrim {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  cursor: default;
+}
+
+/* the offline bar of shared mode (M08-J04): a status line under the top bar, never covering the page */
+.offline-bar p {
+  margin: 0;
+}
