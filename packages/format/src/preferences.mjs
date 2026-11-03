@@ -41,7 +41,6 @@ const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const inRange = (v, [lo, hi]) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 export const THEME_RE = /^(dark|light|high-contrast|custom:[A-Za-z0-9][A-Za-z0-9 _-]{0,39})$/;
 export const COMMAND_ID_RE = /^[a-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+$/;
-const CHORD_RE = /^(Mod\+)?(Alt\+)?(Shift\+)?[^\s+]+$|^(Mod\+)?(Alt\+)?(Shift\+)?\+$/;
 
 /**
  * Problems of one `preferences` key's value: [{ location, message }] with `location` relative to `preferences.` (e.g. `typography.size`).
@@ -99,7 +98,7 @@ export function preferenceProblems(key, value) {
       if (!isMap(value)) return [{ location: key, message: 'shortcuts must be a mapping of command id to a key chord (or null to remove it)' }];
       for (const [id, chord] of Object.entries(value)) {
         if (!COMMAND_ID_RE.test(id)) bad(`${key}.${id}`, 'not a command id (like editor.bold)');
-        else if (chord !== null && !(typeof chord === 'string' && CHORD_RE.test(chord))) bad(`${key}.${id}`, 'a chord like Mod+Shift+K, or null to remove the binding');
+        else if (chord !== null && normalizeChord(chord) === null) bad(`${key}.${id}`, 'a chord like Mod+Shift+K, or null to remove the binding');
       }
       return out;
     }
@@ -219,4 +218,97 @@ export function moduleOfRoute(route) {
   if (route.startsWith('thread-')) return 'threads';
   if (route.startsWith('note-') || route === 'attachment-upload') return 'research';
   return null;
+}
+
+// ---------------------------------------------------------------- key chords (contract section 4)
+
+/** Chords nothing may be bound to: the browser and the operating system own them, and Tab, Shift+Tab and Escape keep the keyboard walk working. */
+export const RESERVED_CHORDS = ['Mod+W', 'Mod+T', 'Mod+N', 'Mod+L', 'Mod+Tab', 'F5', 'Alt+F4', 'Tab', 'Shift+Tab', 'Escape'];
+
+/** Symbols a keyboard types with Shift held: the key already says so, so a chord for them carries no Shift. */
+export const SHIFTED_SYMBOLS = '?:"<>{}|~!@#$%^&*()_+';
+const MODIFIER_ORDER = ['Mod', 'Alt', 'Shift'];
+const KEY_ALIASES = { esc: 'Escape', return: 'Enter', ' ': 'Space', spacebar: 'Space', del: 'Delete', up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+
+/**
+ * One spelling for a chord: modifiers in the order Mod, Alt, Shift (`Ctrl`, `Control`, `Cmd` and `Meta` all mean Mod), a single letter in capitals, named keys as the
+ * browser spells them. A symbol that already needs Shift to type (`?`) carries no Shift. Null when it is not a chord.
+ * @param {unknown} chord @returns {string | null}
+ */
+export function normalizeChord(chord) {
+  if (typeof chord !== 'string' || chord.trim() === '') return null;
+  const parts = chord.trim() === '+' ? ['+'] : chord.trim().split(/\+(?=.)/);
+  const key = parts.pop() ?? '';
+  const mods = new Set();
+  for (const p of parts) {
+    const m = { ctrl: 'Mod', control: 'Mod', cmd: 'Mod', meta: 'Mod', command: 'Mod', mod: 'Mod', alt: 'Alt', option: 'Alt', shift: 'Shift' }[p.toLowerCase()];
+    if (!m) return null;
+    mods.add(m);
+  }
+  let name = KEY_ALIASES[key.toLowerCase()] ?? (/^f[0-9]{1,2}$/i.test(key) ? key.toUpperCase() : key);
+  if (name.length === 1) name = name.toUpperCase();
+  else if (!/^(F([1-9]|1[0-2])|[A-Z][A-Za-z]+)$/.test(name)) return null;
+  if (name.length === 1 && SHIFTED_SYMBOLS.includes(name)) mods.delete('Shift');
+  return [...MODIFIER_ORDER.filter((m) => mods.has(m)), name].join('+');
+}
+
+/** Is this chord one nothing may be bound to? @param {unknown} chord */
+export function isReservedChord(chord) {
+  const n = normalizeChord(chord);
+  return n !== null && RESERVED_CHORDS.includes(n);
+}
+
+// ---------------------------------------------------------------- the profile layer (stored by the server; `docs/customization.md`)
+
+/** The colour tokens of `theme/tokens.css` a custom theme may set. Every value is a #RRGGBB colour. */
+export const THEME_TOKENS = ['--bg', '--surface', '--surface-2', '--divider', '--border', '--text', '--text-2', '--text-3', '--muted', '--accent', '--accent-ink', '--danger', '--warning', '--ok'];
+export const PROFILE_SCHEMA = 'storyforge.profile/v1';
+const CUSTOM_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/;
+export const MAX_CUSTOM_THEMES = 20;
+export const MAX_CUSTOM_LAYOUTS = 20;
+
+/**
+ * Problems in the extra profile-only keys (`customThemes`, `layouts`) and in every preference key of a profile.
+ * @param {any} profile @returns {{ location: string, message: string }[]}
+ */
+export function profileProblems(profile) {
+  if (!isMap(profile)) return [{ location: '', message: 'a profile is a JSON object' }];
+  /** @type {{ location: string, message: string }[]} */
+  const out = [];
+  for (const [key, value] of Object.entries(profile)) {
+    if (key === 'schema') continue;
+    if (key === 'customThemes') {
+      if (!isMap(value)) out.push({ location: key, message: 'customThemes must be an object of theme name to colours' });
+      else {
+        if (Object.keys(value).length > MAX_CUSTOM_THEMES) out.push({ location: key, message: `at most ${MAX_CUSTOM_THEMES} custom themes` });
+        for (const [name, tokens] of Object.entries(value)) {
+          if (!CUSTOM_NAME_RE.test(name)) out.push({ location: `${key}.${name}`, message: 'a theme name is 1 to 40 letters, digits, spaces, hyphens or underscores' });
+          else if (!isMap(tokens)) out.push({ location: `${key}.${name}`, message: 'a theme is an object of token name to #RRGGBB colour' });
+          else {
+            for (const [token, colour] of Object.entries(tokens)) {
+              if (!THEME_TOKENS.includes(token)) out.push({ location: `${key}.${name}.${token}`, message: `unknown token (${THEME_TOKENS.join(', ')})` });
+              else if (typeof colour !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(colour)) out.push({ location: `${key}.${name}.${token}`, message: 'a colour like #1A2B3C' });
+            }
+          }
+        }
+      }
+    } else if (key === 'layouts') {
+      if (!isMap(value)) out.push({ location: key, message: 'layouts must be an object of layout name to layout' });
+      else {
+        if (Object.keys(value).length > MAX_CUSTOM_LAYOUTS) out.push({ location: key, message: `at most ${MAX_CUSTOM_LAYOUTS} custom layouts` });
+        for (const [name, layout] of Object.entries(value)) {
+          if (!CUSTOM_NAME_RE.test(name)) out.push({ location: `${key}.${name}`, message: 'a layout name is 1 to 40 letters, digits, spaces, hyphens or underscores' });
+          else for (const p of preferenceProblems('layout', layout)) out.push({ location: p.location.replace(/^layout/, `${key}.${name}`), message: p.message });
+        }
+      }
+    } else if (PREFERENCE_KEYS.includes(key)) {
+      for (const p of preferenceProblems(key, value)) out.push(p);
+      if (key === 'shortcuts' && isMap(value)) {
+        for (const [id, chord] of Object.entries(value)) {
+          if (chord !== null && isReservedChord(chord)) out.push({ location: `${key}.${id}`, message: `${chord} is reserved (the browser, the system or the keyboard walk uses it)` });
+        }
+      }
+    } else out.push({ location: key, message: 'unknown profile key' });
+  }
+  return out;
 }
