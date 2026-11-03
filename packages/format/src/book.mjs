@@ -13,6 +13,7 @@ import { checkFields } from './schema.mjs';
 import { checkCodex } from './codex.mjs';
 import { checkExceptions } from './exceptions.mjs';
 import { checkSuggestions } from './suggestions.mjs';
+import { checkActivity } from './activity.mjs';
 import { checkLabelRefs, checkShadows, checkTypedValues, labelNames, typeNames } from './world.mjs';
 
 /** @typedef {import('./load.mjs').Doc} Doc */
@@ -57,6 +58,7 @@ export async function loadBook({ rootDir, bookPath, series, add }) {
   checkCodex(typed, add, typeNames(shared));
   checkExceptions(typed, add);
   checkSuggestions(typed, add);
+  checkActivity(typed, add);
   const bookDoc = typed.find((d) => d.kind === 'book' && d.rel === 'book.md');
   checkShadows(typed, shared, add);
   checkLabelRefs(typed, new Set([...labelNames(bookDoc), ...(series?.labels ?? [])]), add);

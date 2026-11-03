@@ -32,3 +32,5 @@ One folder per defect, named `<code>-<short-name>`. Each is a minimal valid book
 `test/build-fixtures.mjs --write` regenerates `invalid/*`, `valid/salt-orchard` (and its `expected-continuity.json`), `valid/continuity-cases`, `valid/continuity-exception`, `valid/suggestion`, `valid/library` and `valid/spec-example/expected.json`. The committed files are the source of truth; the script is only a convenience and does nothing without `--write`. It never touches the spec-example copy.
 
 `test/build-world-fixtures.mjs --write` regenerates `valid/tidewater` and the M07-J01 invalid cases (`E210`, `E303`, `W309`, `W311`, `W312`, `I403`, `E102-label-*`, `E102-field-*`, `E102-template-shape`, `E301-shared-private-link`, `E302-cross-book-reference`, `E208-shared-duplicate-slug`, `W303-cross-book-archived`) the same way.
+
+The M07-J02 invalid cases (`W313-task-target`, `E102-goal-shape`, `E102-task-shape`, `E301-goal-scope`, `W201-task-folder`) are hand-written minimal books (the committed files are the source of truth; no generator).

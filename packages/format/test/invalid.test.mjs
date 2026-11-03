@@ -24,6 +24,8 @@ const CONTRACT_CASES = [
   'E210-book-series-slug', 'E303-cross-book-missing', 'W309-shadowed-entry', 'W311-unknown-label', 'W312-field-kind', 'I403-type-override',
   'E102-label-duplicate', 'E102-label-color', 'E102-field-kind', 'E102-field-choices', 'E102-template-shape',
   'E301-shared-private-link', 'E302-cross-book-reference', 'E208-shared-duplicate-slug', 'W303-cross-book-archived',
+  // M07-J02: goals, sessions and revision tasks
+  'W313-task-target', 'E102-goal-shape', 'E102-task-shape', 'E301-goal-scope', 'W201-task-folder',
 ];
 
 test('invalid fixture set matches the contract case table', () => {
