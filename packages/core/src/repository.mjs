@@ -196,6 +196,12 @@
  *   planRepair(bookId: string): Promise<{ ok: boolean, code: string, actions: any[], unrepairable: any[] } | null>,
  *   repairPlans(): Promise<any[]>,
  *   applyRepair(bookId: string, actions: any[]): Promise<WriteResult & { changes?: any[], opId?: string }>,
+ *   moveEntryToSeries(bookId: string, ref: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<WriteResult & Record<string, any>>,
+ *   copyEntryIntoBook(bookId: string, ref: string, args?: { dryRun?: boolean }): Promise<WriteResult & { id?: string, path?: string, warnings?: { code: string, location: string, message: string }[] }>,
+ *   getLabels(bookId: string): Promise<{ book: { labels: { name: string, color: string | null }[] }, series: { slug: string, title: string | null, labels: { name: string, color: string | null }[] } | null } | null>,
+ *   setLabels(bookId: string, args: { scope?: 'book' | 'series', labels: { name: string, color: string }[], dryRun?: boolean }): Promise<StructureResult>,
+ *   getLinkTargets(bookId: string): Promise<{ book: any[], series: { slug: string, title: string | null, items: any[] } | null, books: { id: string, slug: string, title: string | null, items: any[] }[] } | null>,
+ *   saveAsTemplate(bookId: string, meta: { name?: string, title: string, description?: string }): Promise<WriteResult & { name?: string, path?: string }>,
  *   close(): Promise<void>,
  * }} FileRepository
  *   While a book is `invalid` (a file broke outside the app) getBook serves the last valid structure plus `index_state`,
