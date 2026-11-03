@@ -1,6 +1,7 @@
 // Webhook subscriptions (contract M08-J02 section 4): `webhooks.json` in the folder given (the user config folder in personal mode, the shared-data folder in
 // shared mode; never a library). The signing secret has to be kept to sign, so it is stored here (the folder is owner-only where the OS has modes) and is
-// never written to a library, a backup or a log, and never sent back after creation. M08-J03 moves it to the secure key store.
+// never written to a library, a backup or a log, and never sent back after creation. M08-J03: given a key store (opts.keystore) the secret lives there (DPAPI, keychain, Secret Service or an encrypted file) and webhooks.json
+// holds no secret at all; plain secrets from before are moved on open.
 import crypto from 'node:crypto';
 import { readSharedJson, writeSharedJson } from '@storyforge/store';
 import { checkWebhookUrl } from './url-rules.mjs';
@@ -31,7 +32,7 @@ const isTime = (/** @type {unknown} */ v) => Number.isInteger(v) && /** @type {n
 
 /** @param {any} w */
 function validRecord(w) {
-  return w !== null && typeof w === 'object' && ID_RE.test(w.id) && typeof w.url === 'string' && HEX64.test(w.secret_hash) && typeof w.secret === 'string' && w.secret.length >= 32
+  return w !== null && typeof w === 'object' && ID_RE.test(w.id) && typeof w.url === 'string' && HEX64.test(w.secret_hash) && (w.secret_store === 'keystore' || (typeof w.secret === 'string' && w.secret.length >= 32))
     && Array.isArray(w.events) && w.events.length > 0 && w.events.every((/** @type {string} */ e) => WEBHOOK_EVENTS.includes(e))
     && (w.books === 'all' || (Array.isArray(w.books) && w.books.every((/** @type {unknown} */ b) => typeof b === 'string' && SLUG_RE.test(b))))
     && typeof w.include_content === 'boolean' && typeof w.allow_local === 'boolean' && (w.plugin === null || (typeof w.plugin === 'string' && SLUG_RE.test(w.plugin)))
@@ -59,11 +60,13 @@ function newId() {
  * Open the subscriptions kept in `dir`. A damaged file throws WebhookDataError (never reset).
  * @param {string} dir @param {{ now?: () => number }} [opts]
  */
-export async function openWebhooks(dir, { now = Date.now } = {}) {
+export async function openWebhooks(dir, { now = Date.now, keystore = null } = {}) {
   const r = await readSharedJson(dir, FILE);
   if (r.state === 'corrupt') throw new WebhookDataError(r.message);
   const data = r.state === 'missing' ? { version: 1, webhooks: [] } : r.value;
   if (!data || data.version !== 1 || !Array.isArray(data.webhooks) || !data.webhooks.every(validRecord)) throw new WebhookDataError('unexpected content');
+  /** The key store's id for a subscription's signing secret (its ids are lower case). @param {string} id */
+  const secretId = (id) => `webhook.${id.toLowerCase()}`;
   let queue = Promise.resolve();
   const save = () => {
     const value = structuredClone(data);
@@ -71,6 +74,23 @@ export async function openWebhooks(dir, { now = Date.now } = {}) {
     queue = p.catch(() => {});
     return p;
   };
+
+  // plain secrets from an earlier version move into the key store; one that cannot be moved stays where it was (and keeps working)
+  if (keystore) {
+    let moved = false;
+    for (const w of data.webhooks) {
+      if (typeof w.secret !== 'string') continue;
+      try {
+        await keystore.set(secretId(w.id), w.secret);
+        delete w.secret;
+        w.secret_store = 'keystore';
+        moved = true;
+      } catch {
+        break;
+      }
+    }
+    if (moved) await save();
+  }
 
   return {
     /**
@@ -88,9 +108,17 @@ export async function openWebhooks(dir, { now = Date.now } = {}) {
       if (scope === null) return { ok: false, code: 'BAD_ARGS', message: 'books must be "all" or a non-empty list of book slugs' };
       if (data.webhooks.filter((w) => !w.revoked).length >= MAX_WEBHOOKS) return { ok: false, code: 'TOO_MANY', message: `at most ${MAX_WEBHOOKS} webhooks; revoke one first` };
       const secret = crypto.randomBytes(32).toString('hex');
+      const id = newId();
+      if (keystore) {
+        try {
+          await keystore.set(secretId(id), secret);
+        } catch (e) {
+          return { ok: false, code: String(/** @type {any} */ (e)?.code ?? 'STORE_FAILED'), message: e instanceof Error ? e.message : 'the secret could not be stored' };
+        }
+      }
       const rec = {
-        id: newId(), url: checked.url.href, events: /** @type {string[]} */ (evs).sort(), books: scope, include_content, allow_local, plugin,
-        secret, secret_hash: crypto.createHash('sha256').update(secret, 'utf8').digest('hex'), created: now(), revoked: false, disabled: false, failures: 0, last_delivery: null,
+        id, url: checked.url.href, events: /** @type {string[]} */ (evs).sort(), books: scope, include_content, allow_local, plugin,
+        ...(keystore ? { secret_store: 'keystore' } : { secret }), secret_hash: crypto.createHash('sha256').update(secret, 'utf8').digest('hex'), created: now(), revoked: false, disabled: false, failures: 0, last_delivery: null,
       };
       data.webhooks.push(rec);
       await save();
@@ -108,12 +136,21 @@ export async function openWebhooks(dir, { now = Date.now } = {}) {
       if (!w) return { ok: false, code: 'NOT_FOUND', message: 'no such webhook' };
       w.revoked = true;
       await save();
+      if (keystore && w.secret_store === 'keystore') await keystore.remove(secretId(w.id)).catch(() => {});
       return { ok: true };
     },
 
     /** The live subscriptions an event goes to (never a revoked or disabled one). @param {string} event @param {string | null} bookSlug @returns {any[]} records, secret included: for the dispatcher only */
     matching(event, bookSlug) {
       return data.webhooks.filter((w) => !w.revoked && !w.disabled && w.events.includes(event) && (w.books === 'all' || (bookSlug !== null && w.books.includes(bookSlug))));
+    },
+
+    /** The signing secret of a subscription: from the key store, or (no key store) the file. Throws KeystoreError('LOCKED') when it cannot be unlocked. @param {string} id @returns {Promise<string | null>} */
+    async secretOf(id) {
+      const w = data.webhooks.find((x) => x.id === id);
+      if (!w) return null;
+      if (typeof w.secret === 'string') return w.secret;
+      return keystore ? keystore.get(secretId(id)) : null;
     },
 
     /** Record one finished delivery: a success clears the failure count, a failure adds one and disables the subscription at MAX_FAILURES. @param {string} id @param {{ ok: boolean, status?: number, code?: string }} result */

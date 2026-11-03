@@ -26,8 +26,21 @@ export function createDispatcher({ store, enabled = () => true, deliver = postWe
 
   /** @param {any} sub @param {string} body @param {{ event: string, delivery: string }} id */
   async function send(sub, body, id) {
+    const s = await store();
+    /** @type {string | null} */
+    let secret;
+    try {
+      secret = typeof s?.secretOf === 'function' ? await s.secretOf(sub.id) : (sub.secret ?? null);
+    } catch {
+      secret = null;
+    }
+    if (secret === null) {
+      // the signing secret cannot be unlocked: nothing is sent (an unsigned delivery is worse than none)
+      await s?.recordDelivery(sub.id, { ok: false, code: 'SECRET_LOCKED' });
+      return;
+    }
     const headers = {
-      'x-storyforge-signature': `sha256=${crypto.createHmac('sha256', sub.secret).update(body, 'utf8').digest('hex')}`,
+      'x-storyforge-signature': `sha256=${crypto.createHmac('sha256', secret).update(body, 'utf8').digest('hex')}`,
       'x-storyforge-event': id.event,
       'x-storyforge-delivery': id.delivery,
     };
@@ -40,7 +53,6 @@ export function createDispatcher({ store, enabled = () => true, deliver = postWe
       const clientError = result.status !== undefined && result.status >= 400 && result.status < 500 && result.status !== 408 && result.status !== 429;
       if (isRefusal(result.code) || clientError || result.code === 'REDIRECT_REFUSED') break; // trying again cannot help
     }
-    const s = await store();
     await s?.recordDelivery(sub.id, result.ok ? { ok: true, status: result.status } : { ok: false, code: result.code, ...(result.status !== undefined ? { status: result.status } : {}) });
   }
 
