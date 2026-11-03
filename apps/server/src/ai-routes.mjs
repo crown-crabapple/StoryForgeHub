@@ -509,7 +509,7 @@ async function generateCover(repository, service, bookId, body) {
   await emit(repository, {
     kind: 'ai.generation',
     bookId,
-    asset: { id: saved.id, path: saved.path, sha256: saved.sha256 },
+    asset: { id: saved.id, path: saved.notePath, sha256: saved.sha256 }, // the asset note is the target; the picture's hash rides in ai.files_sha256
     provider: { name: image.name, model: r.model, locality },
     promptSha256: createHash('sha256').update(body.prompt, 'utf8').digest('hex'),
   });

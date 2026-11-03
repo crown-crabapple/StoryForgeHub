@@ -212,8 +212,11 @@ test('cover generation: nothing is sent without consent for this provider host; 
   const note = await fs.readFile(path.join(library, 'assets', 'drafts', gen.json.draft.name.replace(/\.png$/, '.md')), 'utf8');
   assert.match(note, /schema: storyforge\.asset-note\/v1/);
   const receipts = [...(await readEverything(library))].filter(([p]) => p.startsWith('provenance/receipts') || (p.startsWith('provenance/') && p.endsWith('.md'))).map(([, bytes]) => bytes.toString('utf8'));
-  assert.ok(receipts.some((r) => /operation: ai\.generation/.test(r) && /workflow: ai-cover/.test(r) && r.includes(`assets/drafts/${gen.json.draft.name}`)), 'an ai.generation receipt targets the asset');
+  assert.ok(receipts.some((r) => /operation: ai\.generation/.test(r) && /workflow: ai-cover/.test(r) && r.includes(`assets/drafts/${gen.json.draft.name.replace(/.png$/, '.md')}`) && r.includes(gen.json.draft.sha256)), 'an ai.generation receipt targets the asset note and names the picture by hash');
   assert.equal(receipts.some((r) => r.includes(PROMPT.trim())), false, 'the receipt keeps hashes, not the prompt (the prompt is in the asset note)');
+  const verified = await app.get(b('/receipts/verify'));
+  assert.equal(verified.status, 200, verified.text);
+  assert.equal(verified.json.ok, true, `the receipt chain, with the cover receipt in it, verifies: ${verified.text}`);
 
   // the draft is not the cover until the author says so, and that is a single-line edit of book.md
   assert.equal((await app.get(b('/cover'))).status, 404, 'a draft is not the cover');

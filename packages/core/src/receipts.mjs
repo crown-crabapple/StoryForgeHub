@@ -781,7 +781,9 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
       }
       case 'ai.generation': {
         if (event.asset) {
-          // M08-J03: an AI cover draft saved under assets/drafts/. The target is its asset note; the picture is named by hash only (it is not copied into provenance/objects).
+          // M08-J03: an AI cover draft saved under assets/drafts/. The target is its asset note (kept as an object); the picture is named by its hash only (it is not copied into provenance/objects).
+          const note = await store.read(event.asset.path);
+          if (!note) return null;
           return run('receipt', async (tx) => {
             const s = await session(store, tx);
             await s.add({
@@ -789,9 +791,10 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
               actor: 'ai',
               workflow: 'ai-cover',
               target: { id: event.asset.id, path: event.asset.path },
-              before: null,
-              afterSha: event.asset.sha256,
-              ai: aiBlock(event),
+              before: Buffer.alloc(0),
+              noBeforeObject: true,
+              after: note.bytes,
+              ai: aiBlock(event, { files_sha256: [event.asset.sha256] }),
               summary: `An AI cover draft was generated${event.provider ? ` (${event.provider.name}, ${event.provider.model}, ${event.provider.locality})` : ''}; the prompt is kept in its asset note.`,
             });
             return null;

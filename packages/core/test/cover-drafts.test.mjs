@@ -76,3 +76,26 @@ test('ai-usage.md: counts per day, profile and locality; the file is created on 
   assert.equal(parseAiUsage(file)[0].requests, 2);
   assert.deepEqual((await validate(root)).diagnostics.filter((d) => d.severity === 'error'), []);
 });
+
+test('the cover draft receipt (ai.generation, workflow ai-cover) names the asset note and the picture by hash, and the receipt chain verifies', async () => {
+  const root = await copyFixture('valid/salt-orchard');
+  const repo = createFsRepository(root);
+  const d = await repo.saveCoverDraft(BOOK, draft);
+  await repo.recordProvenance({ kind: 'ai.generation', bookId: BOOK, asset: { id: d.id, path: d.notePath, sha256: d.sha256 }, provider: { name: 'Pictures', model: 'img-1', locality: 'local' }, promptSha256: 'a'.repeat(64) });
+  const dir = path.join(root, 'provenance');
+  const found = [];
+  const walk = async (p) => {
+    for (const e of await fs.readdir(p, { withFileTypes: true })) {
+      if (e.isDirectory()) await walk(path.join(p, e.name));
+      else if (e.name.endsWith('.md')) found.push(await fs.readFile(path.join(p, e.name), 'utf8'));
+    }
+  };
+  await walk(dir);
+  const receipt = found.find((t) => /operation: ai\.generation/.test(t));
+  assert.ok(receipt, 'a receipt was written');
+  assert.match(receipt, /workflow: ai-cover/);
+  assert.ok(receipt.includes(d.notePath));
+  assert.ok(receipt.includes(d.sha256), 'the picture is named by its hash');
+  assert.equal(receipt.includes('Pictures') && receipt.includes(draft.prompt), false, 'the prompt is not in the receipt');
+  assert.deepEqual(await repo.verifyReceipts(BOOK), { ok: true, receipts: 1, problems: [] });
+});
