@@ -131,6 +131,18 @@
 }
 
 @media (max-width: 767px) {
+  /* phone: the book actions and the page tabs each keep to one row that scrolls sideways, so the text starts sooner */
+  .book-actions,
+  .project-nav > ul {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-width: 100%;
+    scrollbar-width: thin;
+  }
+  .book-actions > *,
+  .project-nav > ul > li {
+    flex: 0 0 auto;
+  }
   .topbar {
     padding-left: var(--s3);
     padding-right: var(--s3);
