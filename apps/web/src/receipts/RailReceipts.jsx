@@ -161,7 +161,8 @@ export function PassagePanel({ lines, rows, receipts, message = null }) {
               {rec && (
                 <span className="muted">
                   {' '}
-                  ({actorLabel(rec.actor)}, {rec.at.slice(0, 10)})
+                  ({actorLabel(rec.actor)}
+                  {rec.by ? `: ${rec.by.name}` : ''}, {rec.at.slice(0, 10)})
                 </span>
               )}
               {r.unrecorded && <div className="muted">Changed since the last receipt: not recorded yet. Use Record now.</div>}

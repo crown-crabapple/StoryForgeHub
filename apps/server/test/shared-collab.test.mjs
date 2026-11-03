@@ -23,11 +23,10 @@ after(async () => {
 });
 
 const libSnapshot = (t) => snapshot(t.root, { skipStoryforge: true });
-const scenePath = (t) => path.join(t.root, 'manuscript', 'act-01-low-water', 'ch-001-the-drowned-rows', '0010-arrival.md');
 const commentFiles = async (t) => {
   const out = [];
   const walk = async (dir) => {
-    let entries = [];
+    let entries;
     try {
       entries = await fs.readdir(dir, { withFileTypes: true });
     } catch {
@@ -203,14 +202,20 @@ test('viewer and share: cannot comment, reply, resolve or suggest (403); anonymo
   for (const [method, url, body] of attempts) assert.equal((await t.call(method, url, { body })).status, 401, `anonymous ${method} ${url}`);
   assert.deepEqual(await libSnapshot(t), snap);
 
-  // presence is class read: a viewer's heartbeat is accepted; a share link's is accepted and records nothing; another book's share and anonymous are refused
+  // presence is class read: a viewer's heartbeat is accepted; a share link's, another book's share and anonymous are refused
   const beat = (cookie, book = BOOK) => t.call('POST', `/api/books/${book}/presence`, { cookie, body: { scene: SCENE } });
   assert.equal((await beat(t.c.viewer)).status, 200);
-  assert.equal((await beat(t.c.share)).status, 200);
+  assert.equal((await beat(t.c.share)).status, 403, 'a reader link is not part of the team: no presence, and it is never shown comments');
   assert.equal((await beat(t.c.share, OTHER_BOOK)).status, 403);
+  for (const cookie of [t.c.share, t.c.exportShare]) {
+    assert.equal((await t.call('GET', `/api/books/${BOOK}/comments?target=${SCENE}`, { cookie })).status, 403, 'comments are never shown to readers');
+    assert.equal((await t.call('GET', `/api/books/${BOOK}/presence?scene=${SCENE}`, { cookie })).status, 403);
+  }
+  assert.equal((await t.call('GET', `/api/books/${BOOK}/comments?target=${SCENE}`, { cookie: t.c.viewer })).status, 200, 'a signed-in viewer reads them');
+  assert.equal((await t.call('GET', `/api/books/${BOOK}/comments?target=${SCENE}`)).status, 401);
   assert.equal((await beat(undefined)).status, 401);
   const who = (await t.call('GET', `/api/books/${BOOK}/presence?scene=${SCENE}`, { cookie: t.c.viewer })).json;
-  assert.deepEqual(who.users.map((u) => u.name), ['The viewer'], 'only the signed-in viewer is listed, not the share link');
+  assert.deepEqual(who.users.map((u) => u.name), ['The viewer'], 'only the signed-in viewer is listed');
   assert.deepEqual(await libSnapshot(t), snap, 'presence writes nothing to the library');
 });
 

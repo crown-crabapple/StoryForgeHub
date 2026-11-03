@@ -58,6 +58,7 @@ export function readReceipt(r) {
     after: str(f.after_sha256 ?? f.after),
     ranges: list(f.ranges),
     parents: list(f.parents),
+    by: f.by && typeof f.by.name === 'string' ? { name: f.by.name } : null,
     ai: f.ai && typeof f.ai === 'object' ? f.ai : null,
     summary: str(f.summary),
     diff: str(f.diff),

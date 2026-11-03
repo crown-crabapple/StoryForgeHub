@@ -170,6 +170,11 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
             if (req.method !== 'GET') req.resume();
             return sendJson(res, verdict.status, verdict.body);
           }
+          // comments and who-is-here are for the people working on the book: a read-only share link (a reader) is not shown them (M07-J03b; FORMAT 9.5 "never exported to readers")
+          if (who?.kind === 'share' && /^\/api\/books\/[^/]+\/(comments|presence)(\/|$)/.test(pathname)) {
+            if (req.method !== 'GET') req.resume();
+            return sendJson(res, 403, { error: 'forbidden', code: 'ROLE', message: 'comments are not shown to readers' });
+          }
         }
       }
 

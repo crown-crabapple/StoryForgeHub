@@ -4373,3 +4373,64 @@ label.form-check {
     grid-template-columns: 1fr;
   }
 }
+
+/* Comments, reviewer controls and presence (M07-J03b) */
+.cmt-threads {
+  margin: 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+}
+.cmt-thread {
+  margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.cmt-thread[data-status='resolved'] {
+  background: var(--surface-2);
+}
+.cmt-head {
+  margin: 0 0 var(--s1);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: baseline;
+}
+.cmt-quote {
+  margin: 0 0 var(--s2);
+  padding-left: var(--s3);
+  border-left: 3px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-13);
+}
+.cmt-text {
+  margin: 0 0 var(--s2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cmt-replies {
+  margin: 0 0 var(--s2);
+  padding: 0 0 0 var(--s3);
+  list-style: none;
+  border-left: 2px solid var(--border);
+}
+.cmt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: var(--s2) 0;
+}
+.cmt-reply,
+.cmt-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.cmt-form {
+  margin: var(--s3) 0;
+}
+.editor-presence {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-13);
+}

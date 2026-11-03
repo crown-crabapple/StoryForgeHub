@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { abilities } from '../collab/model.js';
+import { useSession } from '../shared/session.jsx';
 import { useApi } from '../api.js';
 import { Dialog } from '../shell/Dialog.jsx';
 import { InspectorSection } from '../shell/InspectorSection.jsx';
@@ -15,6 +17,7 @@ export function SuggestionRow({ suggestion: s, onReview }) {
         <span className="sg-source" data-source={s.source}>
           {sourceLabelOf(s.source)}
         </span>
+        {s.by?.name && <span className="muted">{s.by.name}</span>}
         <span className="muted">{String(s.created).slice(0, 10)}</span>
       </div>
       {s.source === 'ai' && providerLine(s.ai) && <p className="muted sg-row-provider">{providerLine(s.ai)}</p>}
@@ -30,9 +33,10 @@ export function SuggestionRow({ suggestion: s, onReview }) {
 
 /**
  * The review window for one suggestion: loads it (again after every write) and shows the side-by-side review with Accept / Decline per change and Accept all / Decline all.
- * @param {{ bookId: string, suggestionId: string, version?: string, actions: ReturnType<typeof useSuggestionActions>, onClose: () => void }} props
+ * Accept and Decline are drawn only when `canDecide` (editors and owners; reviewers and viewers see the same changes without them).
+ * @param {{ bookId: string, suggestionId: string, version?: string, actions: ReturnType<typeof useSuggestionActions>, canDecide?: boolean, onClose: () => void }} props
  */
-export function SuggestionDialog({ bookId, suggestionId, version = '', actions, onClose }) {
+export function SuggestionDialog({ bookId, suggestionId, version = '', actions, canDecide = true, onClose }) {
   const { data, error } = useApi(suggestionUrl(bookId, suggestionId), `${version}|${actions.stamp}`);
   return (
     <Dialog label="Review suggestion" onClose={onClose} className="dialog-wide sg-dialog">
@@ -41,12 +45,16 @@ export function SuggestionDialog({ bookId, suggestionId, version = '', actions, 
           suggestion={data}
           busy={actions.busy}
           error={actions.error}
-          handlers={{
-            onAccept: (h) => actions.decide(suggestionId, 'accept', h),
-            onDecline: (h) => actions.decide(suggestionId, 'decline', h),
-            onAcceptAll: () => actions.decide(suggestionId, 'accept'),
-            onDeclineAll: () => actions.decide(suggestionId, 'decline'),
-          }}
+          handlers={
+            canDecide
+              ? {
+                  onAccept: (h) => actions.decide(suggestionId, 'accept', h),
+                  onDecline: (h) => actions.decide(suggestionId, 'decline', h),
+                  onAcceptAll: () => actions.decide(suggestionId, 'accept'),
+                  onDeclineAll: () => actions.decide(suggestionId, 'decline'),
+                }
+              : {}
+          }
         />
       ) : (
         <p className="muted">{error ?? 'Loading…'}</p>
@@ -67,6 +75,7 @@ export function SuggestionDialog({ bookId, suggestionId, version = '', actions, 
  */
 export function RailSuggestions({ book, scene, version = '', onChanged }) {
   const [openId, setOpenId] = useState(/** @type {string | null} */ (null));
+  const can = abilities(useSession());
   const actions = useSuggestionActions({ bookId: book.id, onChanged });
   const { data } = useApi(suggestionsUrl(book.id, { target: scene.id }), `${version}|${actions.stamp}`);
   const list = data?.suggestions ?? null;
@@ -107,7 +116,7 @@ export function RailSuggestions({ book, scene, version = '', onChanged }) {
           </ul>
         </details>
       )}
-      {openId && <SuggestionDialog key={openId} bookId={book.id} suggestionId={openId} version={version} actions={actions} onClose={() => setOpenId(null)} />}
+      {openId && <SuggestionDialog key={openId} bookId={book.id} suggestionId={openId} version={version} actions={actions} canDecide={can.decide} onClose={() => setOpenId(null)} />}
       {actions.ui}
     </InspectorSection>
   );

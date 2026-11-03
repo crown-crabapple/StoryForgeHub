@@ -5,6 +5,8 @@
 //   saving -> saved (new base sha) | conflict (409) | offline (network error or 5xx) | error (any other refusal)
 //   offline: retry 2, 4, 8, 16, 30, 30... s, buffer kept, editing continues
 //   conflict: autosave stops until the author chooses (keepMine / adoptDisk / restore); nothing is merged
+//   shared mode (options.shared, M07-J03b): the server answers a stale save with 409 STALE and keeps the buffer as a suggestion (`conflict.suggestionId`);
+//   a change noticed on disk while the buffer is dirty is sent as a save at once, so it takes that same path instead of a client-side conflict
 //
 // Text is always the serialised buffer (see buffer.js `serialise`), compared and sent as a whole string.
 
@@ -17,7 +19,8 @@ export const FLUSH_WAIT_MS = 3000;
  * @typedef {'clean' | 'dirty' | 'saving' | 'saved' | 'conflict' | 'offline' | 'error'} SaveState
  * @typedef {{
  *   state: SaveState, baseSha256: string | null, text: string, savedText: string, savedAt: string | null,
- *   attempt: number, retryInMs: number | null, conflict: { currentSha256: string | null, currentText: string | null } | null,
+ *   attempt: number, retryInMs: number | null,
+ *   conflict: { currentSha256: string | null, currentText: string | null, stale?: boolean, suggestionId?: string | null } | null,
  *   error: { status: number, code: string | null } | null,
  * }} SaveSnapshot
  * @typedef {{ setTimeout: (fn: () => void, ms: number) => any, clearTimeout: (id: any) => void }} Timers
@@ -40,7 +43,7 @@ const quiet = (p) => {
  *   bookId: string, sceneId: string, text: string, sha256: string | null, resourceUrl?: string,
  *   fetch?: typeof fetch, drafts?: DraftStore | null, timers?: Timers, now?: () => number,
  *   onChange?: (snapshot: SaveSnapshot) => void,
- *   onSaved?: (words: { added: number, removed: number } | null) => void,
+ *   onSaved?: (words: { added: number, removed: number } | null) => void, shared?: boolean,
  * }} options  `text`/`sha256`: the scene body and file hash as loaded. `onSaved` runs after each successful save with the
  *   server's `words` ({ added, removed }) for that save, or null if the answer had none.
  */
@@ -173,7 +176,11 @@ export function createSaveController(options) {
         }
       } else if (status === 409) {
         mirrorNow();
-        set({ state: 'conflict', conflict: { currentSha256: json?.current?.sha256 ?? null, currentText: typeof json?.current?.body === 'string' ? json.current.body : null } });
+        const stale = json?.error === 'STALE'; // shared mode: the buffer was kept as a suggestion
+        set({
+          state: 'conflict',
+          conflict: { currentSha256: json?.current?.sha256 ?? null, currentText: typeof json?.current?.body === 'string' ? json.current.body : null, ...(stale ? { stale: true, suggestionId: json?.suggestion?.id ?? null } : {}) },
+        });
       } else if (status === null || status >= 500) {
         mirrorNow();
         const attemptNo = s.attempt + 1;
@@ -289,12 +296,17 @@ export function createSaveController(options) {
       const disk = await fetchCurrent();
       if (!disk || disposed || s.state === 'saving' || s.baseSha256 !== baseAtStart) return { action: 'ignored' };
       if (s.state === 'conflict') {
-        if (s.conflict?.currentSha256 !== disk.sha256) set({ conflict: { currentSha256: disk.sha256, currentText: disk.text } });
+        if (s.conflict?.currentSha256 !== disk.sha256) set({ conflict: { ...s.conflict, currentSha256: disk.sha256, currentText: disk.text } });
         return { action: 'ignored' };
       }
       if (disk.sha256 === s.baseSha256) return { action: 'ignored' };
       debounceTimer = cancel(debounceTimer);
       retryTimer = cancel(retryTimer);
+      if (options.shared && s.text !== s.savedText) {
+        // shared mode: do not decide anything here. Sending the buffer from its old base makes the server answer 409 STALE and keep it as a suggestion.
+        void attempt();
+        return { action: 'ignored' };
+      }
       if (s.text === s.savedText) {
         set({ baseSha256: disk.sha256, savedText: disk.text, text: disk.text, state: 'clean', attempt: 0, retryInMs: null, error: null });
         return { action: 'reload', text: disk.text, sha256: disk.sha256 };

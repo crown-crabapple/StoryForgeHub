@@ -83,7 +83,7 @@ export function setCommentStatus(text, status) {
  *   by: { id?: string, name: string } | null, created: string, text: string, replies: { name: string, at: string, text: string }[] }}
  */
 export function parseComment(input) {
-  const text = (typeof input === 'string' ? input : Buffer.from(input).toString('utf8')).replace(/^﻿/, '');
+  const text = (typeof input === 'string' ? input : Buffer.from(input).toString('utf8')).replace(/^\uFEFF/, '');
   const lines = text.split('\n').map((l) => l.replace(/\r$/, ''));
   if (lines[0] !== '---') throw fail('COMMENT_MALFORMED', 'no front matter');
   const close = lines.indexOf('---', 1);

@@ -7,6 +7,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from '../router.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { SaveStatus } from '../shell/SaveStatus.jsx';
+import { abilities } from '../collab/model.js';
+import { PresenceNote, usePresence } from '../collab/Presence.jsx';
+import { useSession } from '../shared/session.jsx';
+import { SuggestionDialog } from '../suggestions/RailSuggestions.jsx';
+import { useSuggestionActions } from '../suggestions/useSuggestionActions.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { bookUrl, send, slugify } from '../structure/helpers.js';
 import { useAi } from '../ai/AiContext.jsx';
@@ -17,6 +22,7 @@ import { useEditorBridge } from './bridge.jsx';
 import { caretLine, detectLineEnding, loadBuffer, normaliseLineEndings, normalisePreview, serialise } from './buffer.js';
 import { authorNote, bold, insertLink, italic, sceneBreak } from './commands.js';
 import { ConflictPanel } from './ConflictPanel.jsx';
+import { StalePanel } from './StalePanel.jsx';
 import { continuityMarks, setContinuityMarks } from './continuity-marks.js';
 import { createDraftStore, draftKey } from './draft-store.js';
 import { decoratedMarkdown, marksExtension, setMarks } from './extensions.js';
@@ -89,6 +95,14 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const liveTimer = useRef(null);
   const key = draftKey(book.id, scene.id);
   const isEntry = Boolean(resource);
+  // shared mode (M07-J03b): reviewers and viewers get a read-only editor; everyone signed in is told who else has the scene open; a stale save is kept as a suggestion
+  const session = useSession();
+  const can = abilities(session);
+  const readOnlyRole = can.readOnly;
+  const sharedMode = session.mode === 'shared';
+  const [reviewId, setReviewId] = useState(/** @type {string | null} */ (null));
+  const suggestionActions = useSuggestionActions({ bookId: book.id, onChanged: onStructureChanged });
+  const others = usePresence({ bookId: book.id, sceneId: scene.id, enabled: can.present && !isEntry });
 
   const [snap, setSnap] = useState(null);
   const [words, setWords] = useState(() => countWords(scene.body ?? ''));
@@ -187,6 +201,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       text: fileText,
       sha256: scene.sha256 ?? null,
       resourceUrl: resource?.url,
+      shared: sharedMode && !resource,
       drafts,
       onChange: setSnap,
       onSaved: (words) => writingRef.current.applySaved(words),
@@ -214,6 +229,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       continuityMarks(),
       marksExtension(readShowMarks()),
       placeholder('Start writing…'),
+      ...(readOnlyRole ? [EditorState.readOnly.of(true)] : []),
       // pasted text takes the file's own line ending, so a CRLF scene never gains a bare LF
       EditorView.clipboardInputFilter.of((text, state) => text.replace(/\r\n|\r|\n/g, state.lineBreak)),
       EditorView.contentAttributes.of({ 'aria-label': resource?.label ?? 'Scene text', spellcheck: 'true' }),
@@ -366,13 +382,14 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   useEffect(() => {
     const bookId = book.id;
     const sceneId = scene.id;
+    if (readOnlyRole) return undefined; // nothing of theirs to record (and the server would refuse it)
     const onHide = () => flushOnLeave(bookId, sceneId, { keepalive: true });
     window.addEventListener('pagehide', onHide);
     return () => {
       window.removeEventListener('pagehide', onHide);
       flushOnLeave(bookId, sceneId);
     };
-  }, [book.id, scene.id]);
+  }, [book.id, scene.id, readOnlyRole]);
 
   // ---- the file may have changed outside (the book was reconciled and the scene came back with another hash)
   useEffect(() => {
@@ -505,6 +522,16 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       flash("Showing the file's version. Your text is kept in Discarded drafts for 7 days.");
     } else flash("The file's version could not be read. Your text is still here.", { sticky: true });
   };
+  // shared mode: someone else saved first; their version is on disk and ours is a suggestion, so nothing is kept in the discarded-drafts list
+  const useTheirs = async () => {
+    const kept = ctlRef.current?.snapshot().conflict?.suggestionId != null;
+    const r = await ctlRef.current?.adoptDisk({ preserve: !kept });
+    if (r?.ok) {
+      applyText(r.text);
+      await refreshDiscarded();
+      flash(kept ? 'Showing their version. Your text is kept as a suggestion in the side panel.' : "Showing their version. Your text is kept in Discarded drafts for 7 days.");
+    } else flash('Their version could not be read. Your text is still here.', { sticky: true });
+  };
   const saveCopy = async () => {
     const ctl = ctlRef.current;
     if (!ctl) return { ok: false, message: 'The editor is not ready.' };
@@ -576,12 +603,21 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
           showMarks={showMarks}
           onToggleMarks={toggleMarks}
           onFocus={focus.toggle}
-          onCheck={!isEntry ? checkScene : undefined}
-          onRewrite={ai.available && !isEntry ? rewriteSelection : undefined}
-          onWorkshop={ai.available && !isEntry ? ai.toggle : undefined}
-          disabled={mixed}
+          onCheck={!isEntry && !readOnlyRole ? checkScene : undefined}
+          onRewrite={ai.available && !isEntry && !readOnlyRole ? rewriteSelection : undefined}
+          onWorkshop={ai.available && !isEntry && !readOnlyRole ? ai.toggle : undefined}
+          disabled={mixed || readOnlyRole}
         />
       )}
+      {readOnlyRole && (
+        <section className="editor-notice" role="region" aria-label="Read-only">
+          <p>
+            <strong>{can.suggest ? 'You are reviewing this scene.' : 'You can read this scene, but not change it.'}</strong>{' '}
+            {can.suggest ? 'Select some text, then use Comment on selection or Suggest change in the side panel. The author decides what to accept.' : 'Ask the owner for a reviewer or editor role to comment or edit.'}
+          </p>
+        </section>
+      )}
+      <PresenceNote users={others} />
       {mixed && (
         <section className="editor-notice" role="region" aria-label="Mixed line endings">
           <p>
@@ -605,7 +641,16 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
           </div>
         </section>
       )}
-      {state === 'conflict' && snap && (
+      {state === 'conflict' && snap && snap.conflict?.stale && (
+        <StalePanel
+          snapshot={snap}
+          title={scene.title}
+          canReview={can.decide && Boolean(snap.conflict.suggestionId)}
+          onReview={() => setReviewId(snap.conflict?.suggestionId ?? null)}
+          onUseCurrent={useTheirs}
+        />
+      )}
+      {state === 'conflict' && snap && !snap.conflict?.stale && (
         <ConflictPanel
           snapshot={snap}
           title={scene.title}
@@ -682,6 +727,8 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         </footer>
       </article>
 
+      {reviewId && <SuggestionDialog key={reviewId} bookId={book.id} suggestionId={reviewId} version={String(snap?.baseSha256 ?? '')} actions={suggestionActions} canDecide={can.decide} onClose={() => setReviewId(null)} />}
+      {suggestionActions.ui}
       {check && <CheckDialog bookId={book.id} sceneTitle={scene.title} report={check.report} error={check.error} onClose={() => setCheck(null)} />}
       {dialog === 'picker' && <LinkPicker objects={objects} selectedText={pickerText} onPick={pick} onClose={() => setDialog(null)} />}
       {dialog === 'normalise' && preview && (
