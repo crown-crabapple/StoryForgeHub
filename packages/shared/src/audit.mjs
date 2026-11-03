@@ -2,9 +2,12 @@
 // the sha256 of the previous line's exact text, so editing, removing or reordering a line breaks the chain from there on. Lines never hold manuscript text:
 // only the fields below are kept, and every string is cut short.
 import { createHash } from 'node:crypto';
-import { appendSharedLine, readSharedText } from '@storyforge/store';
+import { appendSharedLine, readSharedJson, readSharedText, writeSharedJson } from '@storyforge/store';
 
 const FILE = 'audit.jsonl';
+// audit-head.json: the number and hash of the last line, written after every append. With it, removing whole lines from the end or editing the last
+// line (which no later line hashes) is detected too. A crash between the line and the head leaves the head exactly one line behind; that is accepted.
+const HEAD = 'audit-head.json';
 const ZERO = '0'.repeat(64);
 const HEX64 = /^[0-9a-f]{64}$/;
 const sha = (/** @type {string} */ text) => createHash('sha256').update(text, 'utf8').digest('hex');
@@ -54,6 +57,7 @@ export function createAudit(dir, { now = Date.now } = {}) {
       const text = JSON.stringify(line);
       await appendSharedLine(dir, FILE, text);
       tail = { seq: line.seq, prev: sha(text) };
+      await writeSharedJson(dir, HEAD, { version: 1, seq: tail.seq, hash: tail.prev });
     };
     const p = queue.then(run);
     queue = p.catch(() => {
@@ -69,7 +73,12 @@ export function createAudit(dir, { now = Date.now } = {}) {
   async function verify() {
     await queue.catch(() => {});
     const text = await readSharedText(dir, FILE);
-    if (text === '') return { ok: true, lines: 0 };
+    const head = await readSharedJson(dir, HEAD);
+    const headOk = head.state === 'ok' && head.value !== null && typeof head.value === 'object' && Number.isInteger(head.value.seq) && typeof head.value.hash === 'string' && HEX64.test(head.value.hash);
+    if (text === '') {
+      if (head.state === 'missing' || (headOk && head.value.seq === 0)) return { ok: true, lines: 0 };
+      return { ok: false, code: 'AUDIT_HEAD_MISMATCH', line: 0, message: 'AUDIT_HEAD_MISMATCH: the audit log is empty but its head says it had lines' };
+    }
     const partial = !text.endsWith('\n');
     const lines = (partial ? text : text.slice(0, -1)).split('\n');
     const broken = (/** @type {number} */ line, /** @type {string} */ why) => ({ ok: /** @type {const} */ (false), code: /** @type {const} */ ('AUDIT_CHAIN_BROKEN'), line, message: `AUDIT_CHAIN_BROKEN at line ${line}: ${why}` });
@@ -88,7 +97,15 @@ export function createAudit(dir, { now = Date.now } = {}) {
       prev = sha(lines[i]);
     }
     if (partial) return { ok: false, code: 'AUDIT_TAIL_TRUNCATED', line: lines.length, message: `AUDIT_TAIL_TRUNCATED: line ${lines.length} is incomplete (the process stopped while writing it)` };
-    return { ok: true, lines: lines.length };
+    // the chain must end where the head says: at the same last line, or (a crash between the two writes) exactly one line further
+    const n = lines.length;
+    const mismatch = (/** @type {string} */ why) => ({ ok: /** @type {const} */ (false), code: /** @type {const} */ ('AUDIT_HEAD_MISMATCH'), line: n, message: `AUDIT_HEAD_MISMATCH: ${why}` });
+    if (!headOk) return mismatch(head.state === 'missing' ? 'audit-head.json is missing' : 'audit-head.json is damaged');
+    const h = head.value;
+    if (h.seq === n && h.hash === prev) return { ok: true, lines: n };
+    if (h.seq === n - 1 && n >= 2 && h.hash === sha(lines[n - 2])) return { ok: true, lines: n };
+    if (h.seq > n) return mismatch(`the head names line ${h.seq} but the log has ${n} lines: lines were removed from the end`);
+    return mismatch(`the end of the log does not match the head (line ${h.seq}): the last line was changed, or lines were added outside the app`);
   }
 
   return { append, verify, file: FILE };

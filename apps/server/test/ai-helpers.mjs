@@ -83,11 +83,11 @@ const fileUrl = (p) => new URL(`file:///${p.replace(/\\/g, '/').replace(/^\/+/, 
  * Start main.mjs (a real server process) on `library` with its user config dir inside `home`.
  * `net: true` preloads the network recorder; read the calls with `app.netCalls()`.
  */
-export async function startApp({ library, home, net = false, env = {} }) {
+export async function startApp({ library, home, net = false, env = {}, extraArgs = [] }) {
   const netLog = path.join(home.home, `net-${process.hrtime.bigint()}.jsonl`);
   const args = [];
   if (net) args.push('--import', fileUrl(path.join(path.dirname(fileURLToPath(import.meta.url)), 'ai-net-preload.mjs')));
-  args.push(MAIN, '--library', library, '--port', '0');
+  args.push(MAIN, '--library', library, '--port', '0', ...extraArgs);
   const child = spawn(process.execPath, args, {
     cwd: REPO_ROOT,
     env: { ...process.env, ...home.env, SF_NET_LOG: netLog, ...env },

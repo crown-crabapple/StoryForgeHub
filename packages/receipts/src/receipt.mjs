@@ -109,6 +109,8 @@ export function buildReceipt(fields) {
   if (parents.length === 0) fm.push('parents: []');
   else fm.push('parents:', ...parents.map((p) => `  - { id: ${p.id}, sha256: ${JSON.stringify(p.sha256)} }`));
   if (f.by && typeof f.by.name === 'string') fm.push(`by: ${flow(f.by.id ? { id: f.by.id, name: f.by.name } : { name: f.by.name })}`); // who did it (shared mode; FORMAT 9.4)
+  // the suggestion an author or reviewer decision came from (M07-J05; AI decisions keep it under ai.suggestion as before)
+  if (f.suggestion && typeof f.suggestion.id === 'string') fm.push(`suggestion: ${flow({ id: f.suggestion.id, hunks: f.suggestion.hunks ?? [], acceptance: f.suggestion.acceptance })}`);
   if (f.ai) {
     fm.push('ai:');
     for (const key of ['provider', 'model', 'locality', 'settings_sha256', 'prompt_sha256', 'context_sha256', 'files_sha256', 'suggestion', 'hunks', 'acceptance']) {
@@ -165,6 +167,12 @@ export function parseReceipt(input) {
     if (typeof fm.by !== 'object' || Array.isArray(fm.by) || typeof fm.by.name !== 'string') throw fail('by must be { id?, name }');
     by = { ...(typeof fm.by.id === 'string' ? { id: fm.by.id } : {}), name: fm.by.name };
   }
+  let suggestion = null;
+  if (fm.suggestion !== undefined && fm.suggestion !== null) {
+    const sg = fm.suggestion;
+    if (typeof sg !== 'object' || Array.isArray(sg) || typeof sg.id !== 'string' || !Array.isArray(sg.hunks) || !ACCEPTANCE.includes(sg.acceptance)) throw fail(`suggestion must be { id, hunks: [..], acceptance: ${ACCEPTANCE.join(' | ')} }`);
+    suggestion = { id: sg.id, hunks: sg.hunks.map(String), acceptance: sg.acceptance };
+  }
   let ai = null;
   if (fm.ai !== undefined && fm.ai !== null) {
     if (typeof fm.ai !== 'object' || Array.isArray(fm.ai)) throw fail('ai must be a map');
@@ -211,6 +219,7 @@ export function parseReceipt(input) {
     parents: fm.parents,
     ai,
     by,
+    suggestion,
     summary,
     diff,
     hunks,

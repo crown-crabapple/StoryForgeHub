@@ -193,6 +193,7 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
           after_sha256,
           parents,
           ...(s.ai ? { ai: s.ai } : {}),
+          ...(s.suggestion ? { suggestion: s.suggestion } : {}),
           ...(by ? { by } : {}),
           ...(s.summary ? { summary: s.summary } : {}),
           ...(s.diff !== undefined ? { diff: s.diff, ranges: s.ranges ?? [] } : before !== null && after !== null ? { beforeBytes: before, afterBytes: after } : {}),
@@ -628,7 +629,8 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
     const workflow = source === 'ai' ? 'ai-rewrite' : source === 'claude-book' ? 'claude-book' : 'suggestion';
     const origin = source === 'ai' ? 'AI-suggested ' : source === 'claude-book' ? 'Claude-Book-suggested ' : 'suggested ';
     const total = parsed.hunks.length;
-    const withAi = source === 'author' || source === 'reviewer' ? {} : { ai };
+    // an author or reviewer suggestion has no AI block; its receipt still names the suggestion it came from
+    const withAi = source === 'author' || source === 'reviewer' ? { suggestion: { id: suggestionId, hunks: ids, acceptance } } : { ai };
     const extraParents = proposal ? [proposal.parent] : [];
     const target = { id: targetId, path: targetRel };
     if (decision === 'accept') {

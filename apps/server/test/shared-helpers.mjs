@@ -67,18 +67,19 @@ const tokenOf = (link) => link.split('#token=')[1];
  * A shared-mode server over a copy of salt-orchard. Users: `owner` (Ilse), `editor` (The editor), `editor2` (Second editor), `reviewer`, `viewer`;
  * `t.c[role]` is the cookie, `t.users[role]` the user. `t.c.share` / `t.c.exportShare` are share cookies for BOOK.
  */
-export async function boot() {
+export async function boot({ clock = null } = {}) {
   const root = await copyFixture('valid/salt-orchard');
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sf-shared-data-'));
-  const data = await openSharedData(dir);
+  const now = clock ? () => clock.now() : undefined; // a test clock for expiry cases; the real one when absent
+  const data = await openSharedData(dir, now ? { now } : undefined);
   const settings = await openSettings(dir);
-  const audit = createAudit(dir);
+  const audit = createAudit(dir, now ? { now } : undefined);
   const gate = createSharedGate({ data, publicUrl: null, bindHost: '127.0.0.1', aiForMembers: () => settings.get().ai_for_members, audit: (e) => audit.append(e) });
   const repository = createFsRepository(root, { watch: false, pollMs: 0 });
   const server = createServer({ repository, shared: { gate, data, settings, audit: (e) => audit.append(e), publicUrl: null } });
   servers.push(server);
   const port = await listen(server);
-  const t = { root, dir, data, settings, audit, port, repository, server, c: {}, users: {}, call: (m, p, o) => call(port, m, p, o) };
+  const t = { clock, root, dir, data, settings, audit, port, repository, server, c: {}, users: {}, call: (m, p, o) => call(port, m, p, o) };
 
   const init = await data.initOwner('ilse', 'Ilse');
   assert.equal(init.ok, true);

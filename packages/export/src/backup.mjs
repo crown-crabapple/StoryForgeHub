@@ -1,6 +1,6 @@
 // Portable backup (a zip of the book folder) and restore into a new folder.
 //
-// Zip layout: every file of the book except `.storyforge/**` and (unless asked) `provenance/**`, stored as `<book folder name>/<path>`,
+// Zip layout: every file of the book except `.storyforge/**`, the running server's `.storyforge-lock` (pid, port and host of a process: not project data; it sits in the book folder when the book is the library root) and (unless asked) `provenance/**`, stored as `<book folder name>/<path>`,
 // byte for byte. The manifest is the zip comment: { "storyforge_backup": 1, "book_id", "files": <count>, "sha256": <hash> } where the hash is
 // the SHA-256 of the text lines `<path relative to the book>\t<sha256 of the file>\n`, sorted by path (code point order).
 //
@@ -73,7 +73,7 @@ export async function createBackup(bookRoot, { includeProvenance = false, now } 
   const folder = path.basename(root);
   /** @type {string[]} */
   const rels = [];
-  await walkFiles(root, '', (rel) => rel === '.storyforge' || (!includeProvenance && rel === 'provenance'), rels);
+  await walkFiles(root, '', (rel) => rel === '.storyforge' || rel === '.storyforge-lock' || (!includeProvenance && rel === 'provenance'), rels);
   rels.sort(byCodePoint);
   const list = [];
   const entries = [];
