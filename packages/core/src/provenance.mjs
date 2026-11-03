@@ -13,7 +13,8 @@ import { createReceiptEngine } from './receipts.mjs';
  *   | { kind: 'check.report', bookId: string, sceneId: string, scene: string, at: string, summary: { total: number, errors: number, warnings: number, infos: number, diagnostics: number, continuity: number } }
  *   | { kind: 'suggestion.create', bookId: string, suggestionId: string, target: string, source: string, mode: string, path: string, hunkIds: string[], base_sha256: string, after_sha256: string, ai?: object }
  *   | { kind: 'suggestion.accept' | 'suggestion.decline', bookId: string, suggestionId: string, hunkIds: string[], target: string, before_sha256: string | null, after_sha256: string | null, diff: string }
- *   | { kind: 'ai.generation', bookId: string, chapter?: number, draft?: string, draft_sha256?: string, text?: string }
+ *   | { kind: 'ai.generation', bookId: string, chapter?: number, draft?: string, draft_sha256?: string, text?: string,
+ *     asset?: { id: string, path: string, sha256: string }, provider?: { name: string, model: string, locality: 'local' | 'cloud' }, promptSha256?: string }
  *   | { kind: 'publish', bookId: string, sceneId: string, target: string, path: string, before_sha256: string, after_sha256: string, from_sha256?: string, from_body_sha256?: string }} ProvenanceEvent
  */
 

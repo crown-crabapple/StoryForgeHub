@@ -780,6 +780,23 @@ export function createReceiptEngine({ root, now = () => Date.now(), readValidate
         });
       }
       case 'ai.generation': {
+        if (event.asset) {
+          // M08-J03: an AI cover draft saved under assets/drafts/. The target is its asset note; the picture is named by hash only (it is not copied into provenance/objects).
+          return run('receipt', async (tx) => {
+            const s = await session(store, tx);
+            await s.add({
+              operation: 'ai.generation',
+              actor: 'ai',
+              workflow: 'ai-cover',
+              target: { id: event.asset.id, path: event.asset.path },
+              before: null,
+              afterSha: event.asset.sha256,
+              ai: aiBlock(event),
+              summary: `An AI cover draft was generated${event.provider ? ` (${event.provider.name}, ${event.provider.model}, ${event.provider.locality})` : ''}; the prompt is kept in its asset note.`,
+            });
+            return null;
+          });
+        }
         // the adapter's co-write draft: it lives in .work, outside the book, so the receipt has no target; the draft text is kept as an object
         const text = typeof event.text === 'string' ? Buffer.from(event.text, 'utf8') : null;
         return run('receipt', async (tx) => {
