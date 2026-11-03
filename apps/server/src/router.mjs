@@ -177,6 +177,28 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const { added, removed, net, minutes, sessions } = r.today;
       return { status: 200, body: { goal: r.goal, today: { added, removed, net, minutes, sessions }, days: r.days, streak: r.streak } };
     }
+    // M07-J02: the Insights numbers (one JSON, computed from the index when fresh, else from the files), goals, revision tasks (list; one task opened = its targets located)
+    if (c === 'insights' && d === undefined) {
+      const r = await repository.getInsights(b);
+      return r.ok ? { status: 200, body: r.insights } : NOT_FOUND;
+    }
+    if (c === 'goals' && d === undefined) {
+      const r = await repository.getGoals(b);
+      return r.ok ? { status: 200, body: { goals: r.goals, skipped: r.skipped, daily_word_goal: r.daily_word_goal, effective: r.effective } } : NOT_FOUND;
+    }
+    if (c === 'tasks' && d === undefined) {
+      const status = params.get('status');
+      const source = params.get('source');
+      if (status !== null && !['open', 'doing', 'done', 'dropped'].includes(status)) return badRequest('status must be open, doing, done or dropped');
+      if (source !== null && !['continuity', 'check', 'manual'].includes(source)) return badRequest('source must be continuity, check or manual');
+      const label = params.get('label');
+      const r = await repository.listTasks(b, { ...(status !== null ? { status } : {}), ...(source !== null ? { source } : {}), ...(label !== null && label !== '' ? { label } : {}) });
+      return r.ok ? { status: 200, body: { tasks: r.tasks, counts: r.counts, labels: r.labels } } : NOT_FOUND;
+    }
+    if (c === 'tasks' && d !== undefined && e === undefined) {
+      const r = await repository.getTask(b, d);
+      return r.ok ? { status: 200, body: { task: r.task, notes: r.notes, targets: r.targets } } : NOT_FOUND;
+    }
     if (c === 'entries' && d !== undefined && e === undefined) {
       const entry = await repository.getEntry(b, d);
       return entry ? { status: 200, body: entry } : NOT_FOUND;
@@ -417,7 +439,7 @@ async function fromIndex(read) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, profileId?: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string } | null}
+ * @returns {{ route: string, profileId?: string, bookId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string, goalId?: string, taskId?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
@@ -450,6 +472,11 @@ export function matchWriteRoute(method, pathname) {
   // M03-J04
   if (method === 'POST' && c === 'activity' && d === 'session' && e === undefined) return { route: 'activity-session', bookId: b };
   if (method === 'POST' && c === 'goal' && d === undefined) return { route: 'goal', bookId: b };
+  // M07-J02: goals file, revision tasks
+  if (method === 'POST' && c === 'goals' && d === undefined) return { route: 'goal-set', bookId: b };
+  if (method === 'DELETE' && c === 'goals' && d !== undefined && e === undefined) return { route: 'goal-remove', bookId: b, goalId: d };
+  if (method === 'POST' && c === 'tasks' && d === undefined) return { route: 'task-create', bookId: b };
+  if (method === 'POST' && c === 'tasks' && d !== undefined && e === 'status' && f === undefined) return { route: 'task-status', bookId: b, taskId: d };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f === undefined) return { route: 'revision-save', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f !== undefined && g === 'restore') return { route: 'revision-restore', bookId: b, sceneId: d, file: f };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'body') return { route: 'body', bookId: b, sceneId: d };
@@ -616,9 +643,34 @@ export async function handleWrite(repository, match, body, state) {
       return respond(r, 200, (x) => ({ sha256: x.sha256, words: { added: 0, removed: 0 } }));
     }
     case 'activity-session': {
-      if (!Number.isInteger(body.minutes)) return badRequest('expected { minutes: integer >= 1 }');
+      // M07-J02: { start, end, kind, scenes } adds a row to activity/sessions/; the old { minutes } body works as before
+      if (body.start !== undefined || body.end !== undefined || body.kind !== undefined) {
+        const r = await repository.recordSessionRow(bookId, { start: /** @type {any} */ (body.start), end: /** @type {any} */ (body.end), kind: /** @type {any} */ (body.kind), scenes: /** @type {any} */ (body.scenes) });
+        return respond(r, 200, (x) => ({ ok: true, row: x.row }));
+      }
+      if (!Number.isInteger(body.minutes)) return badRequest('expected { minutes: integer >= 1 } or { start, end, kind, scenes }');
       const r = await repository.recordSession(bookId, /** @type {number} */ (body.minutes));
       return respond(r, 200, () => ({ ok: true }));
+    }
+    case 'goal-set': {
+      if (!isObject(body.goal)) return badRequest('expected { goal: { id?, kind, target, period, due?, scope? } }');
+      const r = await repository.setGoal(bookId, /** @type {any} */ (body.goal));
+      return respond(r, 200, (x) => ({ ok: true, goal: x.goal }));
+    }
+    case 'goal-remove': {
+      const r = await repository.removeGoal(bookId, /** @type {string} */ (match.goalId));
+      return respond(r, 200, (x) => ({ ok: true, removed: x.removed }));
+    }
+    case 'task-create': {
+      const r = await repository.createTask(bookId, body);
+      if (!r.ok && r.code === 'TASK_EXISTS') return { status: 409, body: { error: 'TASK_EXISTS', code: r.code, message: r.message, existing: r.existing } };
+      if (!r.ok && r.code === 'FINDING_NOT_FOUND') return { status: 404, body: { error: r.code, code: r.code, message: r.message } };
+      return respond(r, 201, (x) => (x.dryRun ? { ok: true, dryRun: true, file: x.file, text: x.text } : { ok: true, id: x.id, slug: x.slug, file: x.file, opId: x.opId ?? null, undo: x.undo ?? null }));
+    }
+    case 'task-status': {
+      if (typeof body.status !== 'string') return badRequest("expected { status: 'open' | 'doing' | 'done' | 'dropped' }");
+      const r = await repository.setTaskStatus(bookId, /** @type {string} */ (match.taskId), body.status);
+      return respond(r, 200, (x) => ({ ok: true, id: x.id, slug: x.slug, status: x.status, path: x.path }));
     }
     case 'goal': {
       if (body.daily_word_goal === undefined || (body.daily_word_goal !== null && !Number.isInteger(body.daily_word_goal))) {
