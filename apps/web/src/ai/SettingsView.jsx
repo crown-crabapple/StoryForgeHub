@@ -1,6 +1,7 @@
 // Settings. The only AI entry in the app: "Set up AI (optional)". StoryForge works completely without it; with no provider profile nothing is ever sent anywhere.
 import { useState } from 'react';
 import { useApi } from '../api.js';
+import { PreferencesSettings } from '../prefs/PreferencesSettings.jsx';
 import { Link } from '../router.jsx';
 import { useSession } from '../shared/session.jsx';
 import { KEY_STORAGE_CHOICES, hostOf, isInsecureCloud, localityOf } from './model.js';
@@ -233,6 +234,7 @@ export function SettingsView() {
           <Link to="/settings/members">Members and sharing</Link>
         </p>
       )}
+      <PreferencesSettings />
       <section aria-labelledby="ai-setup-heading">
         <h2 id="ai-setup-heading">Set up AI (optional)</h2>
         <p className="placeholder-text">

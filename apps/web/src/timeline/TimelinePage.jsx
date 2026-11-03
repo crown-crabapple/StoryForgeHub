@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from '../router.jsx';
+import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
 import { sceneHref } from '../codex/model.js';
 import { TimelineChart } from './TimelineChart.jsx';
 import { filterEvents, namesOf, orderLabel, timelineHref, whenLabel } from './model.js';
@@ -24,11 +25,12 @@ export function TellBadges({ event }) {
 
 /**
  * One event: title, when (and date), who, where, the scenes it is told in (links into the manuscript with their chapter), and the told-early / told-late badges.
- * In Story time the card can be dragged to a new place, or moved with Alt+Up / Alt+Down.
+ * In Story time the card can be dragged to a new place, or moved with timeline.moveUp / timeline.moveDown (Alt+Up / Alt+Down unless rebound).
  * @param {{ bookId: string, event: any, entries: any[], selected?: boolean, draggable?: boolean, onSelect?: (id: string) => void, onMoveStep?: (id: string, dir: -1 | 1) => void,
  *   onDragStart?: (id: string) => void, onDragEnd?: () => void }} props
  */
 export function EventCard({ bookId, event, entries, selected = false, draggable = false, onSelect, onMoveStep, onDragStart, onDragEnd }) {
+  const shortcuts = useShortcuts(); // the keys come from the shortcut registry (M07-J04)
   const people = namesOf(event.characters, entries);
   const places = namesOf(event.locations, entries);
   const when = whenLabel(event);
@@ -50,9 +52,10 @@ export function EventCard({ bookId, event, entries, selected = false, draggable 
       onDragEnd={draggable ? () => onDragEnd?.() : undefined}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
-        if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && onMoveStep) {
+        const command = shortcuts.commandFor(e.nativeEvent ?? e, 'timeline');
+        if (command !== null && onMoveStep) {
           e.preventDefault();
-          onMoveStep(event.id, e.key === 'ArrowUp' ? -1 : 1);
+          onMoveStep(event.id, command === 'timeline.moveUp' ? -1 : 1);
         } else if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onSelect?.(event.id);

@@ -16,7 +16,9 @@ import { threadActionsFor } from '../planning/ThreadMarks.jsx';
 import { useStructure } from '../structure/useStructure.jsx';
 import { threadListRequest } from '../planning/requests.js';
 import { useWriting } from '../writing/WritingContext.jsx';
+import { usePrefs } from '../prefs/PrefsContext.jsx';
 import { InspectorSection } from './InspectorSection.jsx';
+import { RailSlot } from './RailSlot.jsx';
 
 export { InspectorSection };
 
@@ -63,6 +65,7 @@ export function isForFile(diagnostic, book, scene) {
  */
 export function SceneInspector({ book, scene, diagnostics, objects = null, onChanged, planning = null, timeline = undefined, notes = undefined, continuity = undefined, version = '' }) {
   const { liveBody } = useWriting();
+  const prefs = usePrefs();
   const structure = useStructure({ book, activeId: scene?.id ?? null, onChanged });
   // "Mark this scene as setup / development / payoff" under each plot thread (M04-J03): the thread file's list changes, after a preview
   const markThread = (thread, list, present) => {
@@ -80,31 +83,71 @@ export function SceneInspector({ book, scene, diagnostics, objects = null, onCha
     <>
       {scene && (
         <>
-          <GoalCard />
-          {readable && <SceneSection book={book} scene={scene} objects={objects} onChanged={onChanged} />}
-          <LinkedEntries bookId={book.id} front={scene.front_matter} body={body} objects={objects} threadActions={planning ? threadActionsFor({ planning, sceneId: scene.id, onMark: markThread }) : null} />
-          <SceneNotes body={body} />
-          {timeline !== undefined && <RailEvents bookId={book.id} events={timeline ? eventsForScene(timeline, scene.id) : null} />}
-          {notes !== undefined && <RailResearch bookId={book.id} notes={notes ? researchForScene(notes.notes, sceneLinkItems(scene.front_matter, body, objects)) : null} />}
-          <RailContinuity book={book} scene={scene} continuity={continuity ?? null} version={version} onChanged={onChanged} />
-          {readable && <RailComments book={book} scene={scene} version={version} onChanged={onChanged} />}
-          {readable && <RailSuggestions book={book} scene={scene} version={version} onChanged={onChanged} />}
-          <InspectorSection title="Problems">
-            {diagnostics.loading && <p className="muted">Loading…</p>}
-            {diagnostics.error && <p className="error">{diagnostics.error}</p>}
-            {diagnostics.items && forScene.length === 0 && <p className="muted">No problems in this scene.</p>}
-            {forScene.length > 0 && <DiagnosticList items={forScene} />}
-          </InspectorSection>
-          {readable && <Revisions bookId={book.id} sceneId={scene.id} onChanged={onChanged} />}
-          {readable && <RailReceipts book={book} scene={scene} version={version} onChanged={onChanged} />}
+          <RailSlot id="goal">
+            <GoalCard />
+          </RailSlot>
+          {readable && (
+            <RailSlot id="scene">
+              <SceneSection book={book} scene={scene} objects={objects} onChanged={onChanged} />
+            </RailSlot>
+          )}
+          <RailSlot id="linked">
+            <LinkedEntries bookId={book.id} front={scene.front_matter} body={body} objects={objects} threadActions={planning && prefs.moduleOn('threads') ? threadActionsFor({ planning, sceneId: scene.id, onMark: markThread }) : null} />
+          </RailSlot>
+          <RailSlot id="notes">
+            <SceneNotes body={body} />
+          </RailSlot>
+          {timeline !== undefined && (
+            <RailSlot id="events" module="timeline">
+              <RailEvents bookId={book.id} events={timeline ? eventsForScene(timeline, scene.id) : null} />
+            </RailSlot>
+          )}
+          {notes !== undefined && (
+            <RailSlot id="research" module="research">
+              <RailResearch bookId={book.id} notes={notes ? researchForScene(notes.notes, sceneLinkItems(scene.front_matter, body, objects)) : null} />
+            </RailSlot>
+          )}
+          <RailSlot id="continuity" module="continuity">
+            <RailContinuity book={book} scene={scene} continuity={continuity ?? null} version={version} onChanged={onChanged} />
+          </RailSlot>
+          {readable && (
+            <RailSlot id="comments">
+              <RailComments book={book} scene={scene} version={version} onChanged={onChanged} />
+            </RailSlot>
+          )}
+          {readable && (
+            <RailSlot id="suggestions" module="suggestions">
+              <RailSuggestions book={book} scene={scene} version={version} onChanged={onChanged} />
+            </RailSlot>
+          )}
+          <RailSlot id="problems">
+            <InspectorSection title="Problems">
+              {diagnostics.loading && <p className="muted">Loading…</p>}
+              {diagnostics.error && <p className="error">{diagnostics.error}</p>}
+              {diagnostics.items && forScene.length === 0 && <p className="muted">No problems in this scene.</p>}
+              {forScene.length > 0 && <DiagnosticList items={forScene} />}
+            </InspectorSection>
+          </RailSlot>
+          {readable && (
+            <RailSlot id="revisions">
+              <Revisions bookId={book.id} sceneId={scene.id} onChanged={onChanged} />
+            </RailSlot>
+          )}
+          {readable && (
+            <RailSlot id="receipts" module="receipts">
+              <RailReceipts book={book} scene={scene} version={version} onChanged={onChanged} />
+            </RailSlot>
+          )}
         </>
       )}
-      <InspectorSection title="Book problems">
-        {!scene && diagnostics.loading && <p className="muted">Loading…</p>}
-        {!scene && diagnostics.error && <p className="error">{diagnostics.error}</p>}
-        {diagnostics.items && forBook.length === 0 && <p className="muted">No other problems found.</p>}
-        {forBook.length > 0 && <DiagnosticList items={forBook} />}
-      </InspectorSection>
+      <RailSlot id="book-problems">
+        <InspectorSection title="Book problems">
+          {!scene && diagnostics.loading && <p className="muted">Loading…</p>}
+          {!scene && diagnostics.error && <p className="error">{diagnostics.error}</p>}
+          {diagnostics.items && forBook.length === 0 && <p className="muted">No other problems found.</p>}
+          {forBook.length > 0 && <DiagnosticList items={forBook} />}
+        </InspectorSection>
+      </RailSlot>
       {structure.ui}
     </>
   );

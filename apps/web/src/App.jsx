@@ -10,7 +10,9 @@ import { TasksView } from './tasks/TasksView.jsx';
 import { TimerProvider } from './writing/TimerProvider.jsx';
 import { useApi } from './api.js';
 import { SettingsView } from './ai/SettingsView.jsx';
-import { parseRoute } from './routes.js';
+import { RoutedPrefsProvider, usePrefs } from './prefs/PrefsContext.jsx';
+import { parseRoute, tabModule } from './routes.js';
+import { ShortcutsProvider } from './shortcuts/ShortcutsContext.jsx';
 import { AppShell } from './shell/AppShell.jsx';
 import { WritesProvider } from './shell/writes.jsx';
 import { SearchQueryProvider } from './searchQuery.jsx';
@@ -66,6 +68,7 @@ function RecoverBanner() {
 function Routes() {
   const { pathname, search } = useLocation();
   const { status } = useStatus();
+  const prefs = usePrefs();
   const { data: books } = useApi('/api/books', libraryVersion(status));
   const route = parseRoute(pathname, search);
   let view;
@@ -80,7 +83,18 @@ function Routes() {
   } else if (route.name === 'tab') {
     bookId = route.bookId;
     tab = route.tab;
-    if (route.tab === 'timeline') view = <TimelineView bookId={route.bookId} search={search} />;
+    const gate = tabModule(route.tab);
+    if (gate !== null && !prefs.moduleOn(gate)) {
+      // the page of a module that is off (M07-J04): the address still works, it just says so
+      view = (
+        <main id="main" tabIndex={-1} className="page">
+          <h1>This feature is turned off</h1>
+          <p>
+            The {gate} module is off for this profile or this project. Turn it on in <Link to="/settings">Settings</Link> (a project that requires it off must be changed in library.md or book.md).
+          </p>
+        </main>
+      );
+    } else if (route.tab === 'timeline') view = <TimelineView bookId={route.bookId} search={search} />;
     else if (route.tab === 'continuity') view = <ContinuityView bookId={route.bookId} search={search} />;
     else if (route.tab === 'notes') view = <NotesView bookId={route.bookId} search={search} />;
     else if (route.tab === 'insights') view = <InsightsView bookId={route.bookId} search={search} />;
@@ -107,15 +121,19 @@ function Routes() {
 function Workspace() {
   return (
     <StatusProvider>
-      <WritesProvider>
-        <FocusProvider>
-          <TimerProvider>
-            <SearchQueryProvider>
-              <Routes />
-            </SearchQueryProvider>
-          </TimerProvider>
-        </FocusProvider>
-      </WritesProvider>
+      <RoutedPrefsProvider>
+        <ShortcutsProvider>
+          <WritesProvider>
+            <FocusProvider>
+              <TimerProvider>
+                <SearchQueryProvider>
+                  <Routes />
+                </SearchQueryProvider>
+              </TimerProvider>
+            </FocusProvider>
+          </WritesProvider>
+        </ShortcutsProvider>
+      </RoutedPrefsProvider>
     </StatusProvider>
   );
 }

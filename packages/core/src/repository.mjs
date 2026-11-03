@@ -195,6 +195,9 @@
  *   recover(): Promise<RecoverReport>,
  *   root: string,
  *   listTemplates(): Promise<{ name: string, title: string, description: string, beats: string[], acts: number, chapters: number, scenes: number }[]>,
+ *   getPreferences(which?: { bookId?: string, bookPath?: string }): Promise<{ library: object | null, book: object | null } | null>,  (M07-J04: the `preferences:` maps of library.md and book.md)
+ *   listPrompts(): Promise<{ prompts: any[], workflows: any[], diagnostics: object[] }>,  (M07-J04: `_prompts/`)
+ *   setModuleGate(fn: ((moduleId: string, ctx: { bookPath: string }) => boolean | Promise<boolean>) | null): void,  (M07-J04: receipts on or off per book)
  *   createBook(input: { title: string, slug?: string, template: string, seriesSlug?: string, seriesNumber?: number, penName?: string }):
  *     Promise<{ ok: true, bookId: string, path: string } | { ok: false, code: string, field: string | null, message: string, diagnostics?: any[] }>,
  *   search(q: string, opts?: { bookId?: string, kinds?: string[], limit?: number }):

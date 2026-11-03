@@ -4,6 +4,7 @@ import { LabelChips, LabelFilter } from '../world/LabelChip.jsx';
 import { hasLabel } from '../world/model.js';
 import { Link } from '../router.jsx';
 import { RowMenu } from '../structure/RowMenu.jsx';
+import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
 import { dropTarget, halfOf, keyboardTarget } from '../structure/move-target.js';
 import { ROLES, chapterShiftTarget, sceneHref } from './model.js';
 
@@ -73,6 +74,7 @@ export function BoardCard({ bookId, card, dropMark = null, dragging = false, onD
  *   onMove?: (card: any, target: any) => void, onNewCard?: (chapter: any) => void, onEdit?: (card: any) => void, onMoveDialog?: (card: any) => void }} props
  */
 export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDialog }) {
+  const shortcuts = useShortcuts(); // the card-moving keys come from the shortcut registry (M07-J04)
   const [dragId, setDragId] = useState(null);
   const [drop, setDrop] = useState(null);
   const [live, setLive] = useState('');
@@ -130,21 +132,22 @@ export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDial
   function onDragLeave(e) {
     if (!root.current?.contains(e.relatedTarget)) setDrop(null);
   }
-  /** Alt+arrows on a card. */
+  /** board.moveUp / moveDown / chapterBack / chapterForward (Alt+arrows unless rebound) on a card. */
   function onKeyDown(e) {
-    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    const command = shortcuts.commandFor(e.nativeEvent ?? e, 'board');
+    if (command === null) return;
     const el = e.target instanceof Element ? e.target : null;
     if (!el || el.closest('[role="menu"]')) return;
     const row = el.closest('[data-scene-id]');
     const card = row ? model.sceneById.get(row.dataset.sceneId) : null;
     if (!card) return;
     e.preventDefault();
-    const target = e.key === 'ArrowLeft' || e.key === 'ArrowRight' ? chapterShiftTarget(book, card.id, e.key === 'ArrowLeft' ? 'left' : 'right') : keyboardTarget(book, card.id, e.key === 'ArrowUp' ? 'up' : 'down');
+    const sideways = command === 'board.chapterBack' || command === 'board.chapterForward';
+    const target = sideways ? chapterShiftTarget(book, card.id, command === 'board.chapterBack' ? 'left' : 'right') : keyboardTarget(book, card.id, command === 'board.moveUp' ? 'up' : 'down');
     if (!target) {
       const name = card.title || 'Untitled scene';
       setLive(
-        e.key === 'ArrowLeft' ? `${name} is already in the first chapter.` : e.key === 'ArrowRight' ? `${name} is already in the last chapter.` : `${name} is already ${e.key === 'ArrowUp' ? 'first' : 'last'} in the book.`,
+        command === 'board.chapterBack' ? `${name} is already in the first chapter.` : command === 'board.chapterForward' ? `${name} is already in the last chapter.` : `${name} is already ${command === 'board.moveUp' ? 'first' : 'last'} in the book.`,
       );
       return;
     }

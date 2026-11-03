@@ -17,6 +17,8 @@ import { bookUrl, send, slugify } from '../structure/helpers.js';
 import { useAi } from '../ai/AiContext.jsx';
 import { bookRelative } from '../ai/model.js';
 import { useFocus } from '../writing/FocusContext.jsx';
+import { registryKeymap } from '../shortcuts/editor-keymap.js';
+import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
 import { useWriting } from '../writing/WritingContext.jsx';
 import { useEditorBridge } from './bridge.jsx';
 import { caretLine, detectLineEnding, loadBuffer, normaliseLineEndings, normalisePreview, serialise } from './buffer.js';
@@ -88,6 +90,8 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const bridge = useEditorBridge();
   const { setEditor } = useWrites();
   const focus = useFocus();
+  const shortcuts = useShortcuts();
+  const shortcutsRef = useRef(shortcuts);
   const ai = useAi();
   const writing = useWriting();
   const writingRef = useRef(writing);
@@ -157,6 +161,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   useEffect(() => {
     writingRef.current = writing;
     focusRef.current = focus;
+    shortcutsRef.current = shortcuts;
     applyTextRef.current = applyText;
   });
 
@@ -215,16 +220,16 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     };
     const extensions = [
       history(),
-      keymap.of([
-        { key: 'Mod-b', run: runCommand(bold), preventDefault: true },
-        { key: 'Mod-i', run: runCommand(italic), preventDefault: true },
-        { key: 'Mod-k', run: () => (pickerRef.current(), true), preventDefault: true },
-        { key: 'Mod-Alt-m', run: runCommand(authorNote), preventDefault: true },
-        { key: 'Mod-Enter', run: runCommand(sceneBreak), preventDefault: true },
-        { key: 'Mod-s', run: () => (void ctl.saveNow(), true), preventDefault: true },
-        ...historyKeymap,
-        ...defaultKeymap,
-      ]),
+      // the editor's shortcuts come from the registry (M07-J04), so a rebound chord works at once
+      registryKeymap(() => shortcutsRef.current.bindings, {
+        'editor.bold': runCommand(bold),
+        'editor.italic': runCommand(italic),
+        'editor.link': () => (pickerRef.current(), true),
+        'editor.note': runCommand(authorNote),
+        'editor.sceneBreak': runCommand(sceneBreak),
+        'editor.save': () => (void ctl.saveNow(), true),
+      }),
+      keymap.of([...historyKeymap, ...defaultKeymap]),
       decoratedMarkdown(),
       continuityMarks(),
       marksExtension(readShowMarks()),
@@ -334,7 +339,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       }
     };
     const onKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') {
+      if (shortcutsRef.current.matches(e, 'editor.save')) {
         e.preventDefault();
         void ctl.saveNow();
       }
@@ -475,6 +480,17 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       return;
     }
     ai.startRewrite({ sceneId: scene.id, from: range.from, to: range.to, text: view.state.sliceDoc(range.from, range.to) });
+  };
+  // "Run a prompt" (M07-J04): the selection (if any) goes to the prompt runner; the runner previews every send and sends nothing by itself
+  const runPrompt = async () => {
+    const view = viewRef.current;
+    const range = view?.state.selection.main;
+    const { saved } = await ctlRef.current.flush();
+    if (!saved) {
+      flash('The scene has changes that could not be saved yet. Try again once it is saved.');
+      return;
+    }
+    ai.startPrompt(view && range && !range.empty ? { sceneId: scene.id, from: range.from, to: range.to, text: view.state.sliceDoc(range.from, range.to) } : null);
   };
   // "Check scene" (M05-J06): save, then ask for the local report. It never changes the text and the check writes nothing.
   const checkScene = async () => {
@@ -617,6 +633,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
           onCheck={!isEntry && !readOnlyRole ? checkScene : undefined}
           onRewrite={ai.available && !isEntry && !readOnlyRole ? rewriteSelection : undefined}
           onWorkshop={ai.available && !isEntry && !readOnlyRole ? ai.toggle : undefined}
+          onPrompts={ai.available && !isEntry && !readOnlyRole ? runPrompt : undefined}
           disabled={mixed || readOnlyRole}
         />
       )}

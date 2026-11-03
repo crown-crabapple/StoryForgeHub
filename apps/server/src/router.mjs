@@ -3,6 +3,7 @@
 import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
+import { checkModule, handlePreferencesRead, handleProfileWrite } from './preferences.mjs';
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
 /** @typedef {{ status: number, body: unknown, raw?: { bytes: Buffer, headers: Record<string, string> } }} ApiResult  `raw` (cover images) is sent as is instead of `body`. */
@@ -76,6 +77,9 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (!state?.host) return NOT_SUPPORTED;
     return { status: 200, body: await state.host.recent() };
   }
+  // M07-J04: the layers, the resolved preferences and the modules; the custom prompt components and workflows
+  if (a === 'preferences' && b === undefined) return handlePreferencesRead(repository, state, params);
+  if (a === 'prompts' && b === undefined) return { status: 200, body: await repository.listPrompts() };
   if (a === 'templates' && b === undefined) {
     return { status: 200, body: await repository.listTemplates() };
   }
@@ -482,6 +486,10 @@ export function matchWriteRoute(method, pathname) {
     if (method === 'POST' && c !== undefined && d === 'test' && e === undefined) return { route: 'ai-profile-test', profileId: c };
     return null;
   }
+  // M07-J04 profiles: per-machine appearance settings (a file in the user config folder, never a library file)
+  if (a === 'profile' && b === undefined && method === 'PUT') return { route: 'profile-save' };
+  if (a === 'profile' && b === 'switch' && c === undefined && method === 'POST') return { route: 'profile-switch' };
+  if (a === 'profiles' && b !== undefined && c === undefined && method === 'DELETE') return { route: 'profile-delete', name: b };
   if (a !== 'books' || b === undefined || c === undefined) return null;
   if (c === 'ai' && e === undefined) {
     if (method === 'PUT' && d === 'profile') return { route: 'ai-book-profile', bookId: b };
@@ -605,6 +613,9 @@ function respondSuggestion(r, okStatus, okBody) {
  */
 export async function handleWrite(repository, match, body, state, ctx = {}) {
   if (!isObject(body)) return badRequest('body must be a JSON object');
+  if (match.route.startsWith('profile-')) return handleProfileWrite(match, body, state); // M07-J04: a file in the user config folder, no library file
+  const off = await checkModule(repository, state, match); // M07-J04: a write of a module that is off is refused (403 MODULE_OFF) before anything runs
+  if (off) return off;
   const bookId = /** @type {string} */ (match.bookId);
   switch (match.route) {
     case 'recover': {

@@ -1,5 +1,6 @@
 // Focus mode (M03-J04 section 4): the keymap, the persisted options and the small calculations behind typewriter scrolling and
 // "dim other paragraphs". Pure; none of it touches the document text.
+import { bindingsFor, matchesChord } from '../shortcuts/registry.js';
 
 export const FOCUS_OPTIONS_KEY = 'storyforge.focus';
 /** @type {{ typewriter: boolean, dim: boolean }} */
@@ -10,16 +11,19 @@ export const TYPEWRITER_RATIO = 0.4;
 export const DIM_OPACITY = 0.45;
 
 /**
- * What a key press means for focus mode: 'toggle' (Ctrl/Cmd+Shift+F), 'exit' (Escape while focused) or null.
+ * What a key press means for focus mode: 'toggle' (focus.toggle, Ctrl/Cmd+Shift+F unless rebound), 'exit' (focus.exit, Escape, while focused) or null. The bindings come from the
+ * shortcut registry (M07-J04); without `bindings` the defaults are used.
  * Nothing happens while a dialog is open (Escape then belongs to the dialog).
  * @param {{ key: string, ctrlKey?: boolean, metaKey?: boolean, shiftKey?: boolean, altKey?: boolean }} event
  * @param {{ focus: boolean, dialogOpen?: boolean }} state
+ * @param {Record<string, string | null>} [bindings]
  * @returns {'toggle' | 'exit' | null}
  */
-export function focusKeyAction(event, { focus, dialogOpen = false }) {
+export function focusKeyAction(event, { focus, dialogOpen = false }, bindings = bindingsFor({})) {
   if (dialogOpen) return null;
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && !event.altKey && typeof event.key === 'string' && event.key.toLowerCase() === 'f') return 'toggle';
-  if (event.key === 'Escape' && focus) return 'exit';
+  if (typeof event.key !== 'string') return null;
+  if (matchesChord(event, bindings['focus.toggle'])) return 'toggle';
+  if (focus && matchesChord(event, bindings['focus.exit'])) return 'exit';
   return null;
 }
 

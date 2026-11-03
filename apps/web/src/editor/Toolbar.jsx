@@ -1,5 +1,7 @@
 // The formatting toolbar above the text. Real buttons with names; the toggle exposes aria-pressed.
 // Buttons keep focus out of the way: mousedown is prevented so the editor's selection is not lost.
+import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
+
 const icon = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', focusable: 'false' };
 
 const PATHS = {
@@ -30,18 +32,18 @@ function ToolButton({ name, label, shortcut, onRun, disabled }) {
 
 /**
  * @param {{ onBold: () => void, onItalic: () => void, onLink: () => void, onNote: () => void, onSceneBreak: () => void,
- *   showMarks: boolean, onToggleMarks: () => void, onFocus?: () => void, onCheck?: () => void, onRewrite?: () => void, onWorkshop?: () => void, disabled?: boolean }} props  `onFocus` shows the "Focus" button;
+ *   showMarks: boolean, onToggleMarks: () => void, onFocus?: () => void, onCheck?: () => void, onRewrite?: () => void, onWorkshop?: () => void, onPrompts?: () => void, disabled?: boolean }} props  `onFocus` shows the "Focus" button;
  *   `onCheck` shows "Check scene" (a local, read-only report, M05-J06); `onRewrite` / `onWorkshop` show "Rewrite with AI..." and "AI workshop" (only when the book has an active AI provider).
  */
-export function EditorToolbar({ onBold, onItalic, onLink, onNote, onSceneBreak, showMarks, onToggleMarks, onFocus, onCheck, onRewrite, onWorkshop, disabled = false }) {
-  const mod = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform ?? '') ? 'Cmd' : 'Ctrl';
+export function EditorToolbar({ onBold, onItalic, onLink, onNote, onSceneBreak, showMarks, onToggleMarks, onFocus, onCheck, onRewrite, onWorkshop, onPrompts, disabled = false }) {
+  const keys = useShortcuts(); // the live bindings from the shortcut registry (M07-J04): a rebound command shows its new chord
   return (
     <div role="toolbar" aria-label="Formatting" className="editor-toolbar">
-      <ToolButton name="bold" label="Bold" shortcut={`${mod}+B`} onRun={onBold} disabled={disabled} />
-      <ToolButton name="italic" label="Italic" shortcut={`${mod}+I`} onRun={onItalic} disabled={disabled} />
-      <ToolButton name="link" label="Link to Codex or thread" shortcut={`${mod}+K`} onRun={onLink} disabled={disabled} />
-      <ToolButton name="note" label="Author note" shortcut={`${mod}+Alt+M`} onRun={onNote} disabled={disabled} />
-      <ToolButton name="scene-break" label="Scene break" shortcut={`${mod}+Enter`} onRun={onSceneBreak} disabled={disabled} />
+      <ToolButton name="bold" label="Bold" shortcut={keys.display('editor.bold')} onRun={onBold} disabled={disabled} />
+      <ToolButton name="italic" label="Italic" shortcut={keys.display('editor.italic')} onRun={onItalic} disabled={disabled} />
+      <ToolButton name="link" label="Link to Codex or thread" shortcut={keys.display('editor.link')} onRun={onLink} disabled={disabled} />
+      <ToolButton name="note" label="Author note" shortcut={keys.display('editor.note')} onRun={onNote} disabled={disabled} />
+      <ToolButton name="scene-break" label="Scene break" shortcut={keys.display('editor.sceneBreak')} onRun={onSceneBreak} disabled={disabled} />
       <span className="editor-toolbar-sep" aria-hidden="true" />
       <button type="button" className="editor-tool editor-tool-text" aria-pressed={showMarks} onMouseDown={(e) => e.preventDefault()} onClick={onToggleMarks}>
         Show Markdown marks
@@ -61,8 +63,13 @@ export function EditorToolbar({ onBold, onItalic, onLink, onNote, onSceneBreak, 
           AI workshop
         </button>
       )}
+      {onPrompts && (
+        <button type="button" className="editor-tool editor-tool-text" onMouseDown={(e) => e.preventDefault()} onClick={onPrompts}>
+          Run a prompt…
+        </button>
+      )}
       {onFocus && (
-        <button type="button" className="editor-tool editor-tool-text" title={`Focus mode (${mod}+Shift+F)`} aria-keyshortcuts="Control+Shift+F Meta+Shift+F" onMouseDown={(e) => e.preventDefault()} onClick={onFocus}>
+        <button type="button" className="editor-tool editor-tool-text" title={`Focus mode (${keys.display('focus.toggle')})`} aria-keyshortcuts={keys.aria('focus.toggle')} onMouseDown={(e) => e.preventDefault()} onClick={onFocus}>
           Focus
         </button>
       )}

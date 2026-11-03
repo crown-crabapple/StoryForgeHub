@@ -16,6 +16,11 @@ export const MORE_TABS = [
   { key: 'tasks', label: 'Tasks', path: '/tasks' },
 ];
 
+/** The module a project tab belongs to (M07-J04): with the module off the tab disappears. `insights` and `tasks` are J02's pages, gated by id so they follow once they exist. */
+const TAB_MODULES = { timeline: 'timeline', continuity: 'continuity', notes: 'research', insights: 'insights', tasks: 'tasks' };
+/** @param {string} tab a PROJECT_TABS key @returns {string | null} */
+export const tabModule = (tab) => TAB_MODULES[tab] ?? null;
+
 const PLACEHOLDER_TABS = [...PROJECT_TABS.filter((t) => t.path !== ''), ...MORE_TABS].map((t) => t.key);
 
 /** @param {string} bookId @param {string} tab a PROJECT_TABS key */

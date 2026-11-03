@@ -28,14 +28,14 @@ export async function discover(rootDir, mode, add) {
     // probe every child for book.md / series.md concurrently, then walk them in order
     const probes = await mapLimit(names, getReadConcurrency(), async (name) => {
       const childDir = path.join(dir, name);
-      if (mode === 'library' && level === 0 && name === '_templates') return { isBook: false, isSeries: false, skip: true };
+      if (mode === 'library' && level === 0 && (name === '_templates' || name === '_prompts')) return { isBook: false, isSeries: false, skip: true };
       const isBook = await isFile(path.join(childDir, 'book.md'));
       const isSeries = !isBook && mode === 'library' && level + 1 === 1 && (await isFile(path.join(childDir, 'series.md')));
       return { isBook, isSeries };
     });
     for (const [idx, name] of names.entries()) {
       const { isBook, isSeries, skip } = probes[idx];
-      if (skip) continue; // `_templates/` is not a book or series (FORMAT 2)
+      if (skip) continue; // `_templates/` and `_prompts/` are not a book or series (FORMAT 2)
       const childRel = join(rel, name);
       const childDir = path.join(dir, name);
       const childLevel = level + 1;

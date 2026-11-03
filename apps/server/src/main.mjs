@@ -1,5 +1,5 @@
 // CLI entry:
-//   node apps/server/src/main.mjs [--library <path>] [--port <n>] [--open]   serve the library (without --library: the last one used, else a StoryForge folder in the home folder)
+//   node apps/server/src/main.mjs [--library <path>] [--port <n>] [--profile <name>] [--open]   serve the library (without --library: the last one used, else a StoryForge folder in the home folder)
 //   node apps/server/src/main.mjs --help                                lists every command and flag (help.mjs)
 //   node apps/server/src/main.mjs serve --shared [--shared-data <dir>] [--host <addr>] [--public-url <https://...>]   optional shared mode: accounts, roles, invites, share links, audit (M07-J03a)
 //   node apps/server/src/main.mjs shared init --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>]   create the owner and print the one-time setup link
@@ -23,6 +23,7 @@ import { FILE_COMMANDS, runFileCommand } from './export-cli.mjs';
 import { HELP } from './help.mjs';
 import { openBrowser } from './open-browser.mjs';
 import { LEGACY_COMMANDS, runLegacyCommand } from './legacy-cli.mjs';
+import { profileNameFrom } from './preferences.mjs';
 import { runReceiptsCommand } from './receipts-cli.mjs';
 import { createServer } from './server.mjs';
 import { createSharedGate } from './shared-gate.mjs';
@@ -316,7 +317,13 @@ async function runServer() {
   await host.remember(config.libraryRoot);
 
   const instance = { pid: process.pid, started_at: new Date().toISOString(), lock };
-  const server = createServer({ host, webRoot, recoverReport, instance, shared: sharedState });
+  let profile;
+  try {
+    profile = profileNameFrom(argv, process.env); // --profile <name>, else STORYFORGE_PROFILE, else default (M07-J04: appearance and personal module choices, per machine)
+  } catch (e) {
+    fail(e instanceof Error ? e.message : String(e), 2);
+  }
+  const server = createServer({ host, webRoot, recoverReport, instance, shared: sharedState, profile });
   const shownHost = bindHost.includes(':') ? `[${bindHost}]` : bindHost;
   server.on('error', (e) => fail(`cannot listen on ${bindHost}:${config.port}: ${e.message}`, 1));
 

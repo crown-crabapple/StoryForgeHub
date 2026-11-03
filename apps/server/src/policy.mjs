@@ -34,6 +34,8 @@ export const WRITE_CLASSES = Object.freeze({
   'entry-move-to-series': 'write', 'entry-copy-to-book': 'write', 'labels-set': 'write', 'template-save': 'admin',
   // M07-J02 goals and revision tasks (book files; never prose)
   'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
+  // M07-J04 profiles: per-machine appearance settings of the server process, so in shared mode only the owner changes them
+  'profile-save': 'admin', 'profile-switch': 'admin', 'profile-delete': 'admin',
   // shared-mode administration (shared-routes.mjs)
   'shared-member-role': 'admin', 'shared-member-remove': 'admin', 'shared-invite-create': 'admin', 'shared-invite-revoke': 'admin',
   'shared-share-create': 'admin', 'shared-share-revoke': 'admin', 'shared-settings': 'admin',
@@ -55,6 +57,8 @@ export function classifyRead(pathname) {
   if (a === 'recover' || (a === 'ai' && b === 'profiles') || (a === 'library' && b === 'recent')) return { cls: 'admin' };
   if (a === 'library' && parts.length === 2) return { cls: 'read' };
   if ((a === 'search' || a === 'templates') && parts.length === 2) return { cls: 'read' };
+  // M07-J04: the effective preferences (layers, modules) and the library's prompt components
+  if ((a === 'preferences' || a === 'prompts') && parts.length === 2) return { cls: 'read' };
   if (a === 'index' && b === 'status' && parts.length === 3) return { cls: 'read' };
   if (a === 'books') {
     if (b === undefined) return { cls: 'read' };

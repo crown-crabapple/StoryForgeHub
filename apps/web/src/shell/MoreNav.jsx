@@ -1,5 +1,6 @@
 import { Link } from '../router.jsx';
-import { MORE_TABS, tabHref } from '../routes.js';
+import { usePrefs } from '../prefs/PrefsContext.jsx';
+import { MORE_TABS, tabHref, tabModule } from '../routes.js';
 import { TimerChip } from '../writing/TimerPanel.jsx';
 
 /**
@@ -7,10 +8,13 @@ import { TimerChip } from '../writing/TimerPanel.jsx';
  * @param {{ bookId: string, active: string }} props
  */
 export function MoreNav({ bookId, active }) {
+  const prefs = usePrefs();
+  // a page whose module is off (M07-J04) is not offered
+  const tabs = MORE_TABS.filter((t) => tabModule(t.key) === null || prefs.moduleOn(/** @type {string} */ (tabModule(t.key))));
   return (
     <nav aria-label="Insights and tasks" className="project-nav more-nav">
       <ul>
-        {MORE_TABS.map((t) => (
+        {tabs.map((t) => (
           <li key={t.key}>
             <Link to={tabHref(bookId, t.key)} className="project-tab" aria-current={t.key === active ? 'page' : undefined}>
               {t.label}

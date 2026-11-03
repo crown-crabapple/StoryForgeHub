@@ -34,6 +34,8 @@ Options
   --public-url <url>          serve --shared, shared init: the address people use, e.g. https://write.example.org behind a TLS reverse proxy. A non-loopback --host
                               without an https --public-url starts with a warning.
   --owner <username>          shared init: the owner's user name (3-32 characters: a-z, 0-9, dot, underscore, hyphen).
+  --profile <name>            serve: the appearance profile to use (theme, type, layout, shortcuts; kept on this computer, never in a book).
+                              Without it STORYFORGE_PROFILE, then the profile called default.
   --open                      serve: open the browser on the running app (no network; uses the system's opener).
   --book <slug>               continuity, export, backup, receipts verify, import-legacy: which book.
   --json [file]               continuity, receipts verify: machine-readable output; import-legacy: write the plan (or the reconciliation) as JSON to this new file.
@@ -57,6 +59,7 @@ Options
 Environment
   STORYFORGE_LIBRARY          Library folder when --library is not given.
   STORYFORGE_PORT             Port when --port is not given.
+  STORYFORGE_PROFILE          Profile name when --profile is not given.
 
 Exit codes
   0 ok   1 failed, or needs hand repair, or errors found   2 usage, or the library cannot be opened   3 another instance holds the library
