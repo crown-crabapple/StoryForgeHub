@@ -278,7 +278,7 @@ async function prepareShared(bindHost) {
   const timer = setInterval(() => void data.prune().catch(() => {}), 10 * 60 * 1000);
   timer.unref();
   process.stdout.write(`Shared mode: accounts and audit log in ${dir}\n`);
-  return { gate, data, settings, audit: append, publicUrl };
+  return { gate, data, settings, audit: append, publicUrl, dir }; // `dir`: plugin tokens and webhook subscriptions are kept there too (M08-J02)
 }
 
 async function runServer() {

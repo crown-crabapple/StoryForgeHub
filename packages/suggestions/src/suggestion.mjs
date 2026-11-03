@@ -86,7 +86,7 @@ export function deriveStatus(hunks) {
  * A suggestion document for `proposedBytes` replacing `baseBytes`. Throws code NO_CHANGE when the lines are identical.
  * @returns {{ text: string, hunks: object[] }} the file text and its parsed hunks
  */
-export function buildSuggestion({ id, targetId, targetPath, baseBytes, proposedBytes, source, mode, rationale, ai, created, by }) {
+export function buildSuggestion({ id, targetId, targetPath, baseBytes, proposedBytes, source, mode, rationale, ai, created, by, plugin }) {
   const { hunks } = lineDiff(baseBytes, proposedBytes);
   if (hunks.length === 0) throw fail('NO_CHANGE', 'the proposed text is identical to the target');
   const isNew = !targetId;
@@ -103,6 +103,7 @@ export function buildSuggestion({ id, targetId, targetPath, baseBytes, proposedB
     `created: ${JSON.stringify(created)}`,
   ];
   if (by && typeof by.name === 'string') fm.push(`by: ${flow(by.id ? { id: by.id, name: by.name } : { name: by.name })}`); // who made it (shared mode; FORMAT 9.3)
+  if (source === 'plugin' && typeof plugin === 'string') fm.push(`plugin: ${plugin}`); // which plugin proposed it (M08-J02)
   fm.push('status: pending');
   if (source === 'ai' && ai) fm.push(`ai: ${flow(ai)}`);
   fm.push('hunks:', ...hunks.map(hunkEntry), '---');

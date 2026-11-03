@@ -157,6 +157,8 @@ The validator output (code, file, location) must equal this list exactly, as a s
 | `W307-duplicate-exception` | two `planning/continuity/` exceptions with one fingerprint |
 | `W308-suggestion-target-missing` | a `suggestions/` document whose `target` id is not a live document (M05-J06) |
 | `W314-comment-target-missing` | a `comments/` document whose `target` id is not a live document (M07-J03) |
+| `W315-plugin-api-newer` | a `_plugins/<id>/plugin.md` manifest whose `api` is greater than the API major this StoryForge serves (M08-J02) |
+| `E102-plugin-permission` | a plugin manifest with an unknown permission, at `permissions[i]` (M08-J02) |
 | `E102-suggestion-hunk` | a suggestion whose hunk `lines` disagrees with its diff block (M05-J06) |
 | `W302-paid-no-payoff` | thread `status: paid`, `payoff: []` |
 | `W303-archived-target` | link to an entry under `archive/` |

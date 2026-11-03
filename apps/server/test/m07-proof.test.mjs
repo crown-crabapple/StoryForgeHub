@@ -149,6 +149,11 @@ const SAMPLES = {
   'shared-share-create': ['POST', '/api/shared/shares'],
   'shared-share-revoke': ['DELETE', '/api/shared/shares/shr_01S5000000000000000000000A'],
   'shared-settings': ['PUT', '/api/shared/settings'],
+  // M08-J02: plugin access tokens and webhook subscriptions (owner only)
+  'plugin-grant': ['POST', '/api/plugins/grants'],
+  'plugin-revoke': ['DELETE', '/api/plugins/grants/tok_X'],
+  'webhook-create': ['POST', '/api/webhooks'],
+  'webhook-revoke': ['DELETE', '/api/webhooks/whk_X'],
 };
 const matchOf = (method, url) => {
   const p = url.split('?')[0];
@@ -167,7 +172,7 @@ const GET_SAMPLES = {
     `/api/books/${OTHER_BOOK}`, `/api/books/${OTHER_BOOK}/scenes/${SCENE}`,
   ],
   export: [`${b}/export?format=markdown`, `/api/books/${OTHER_BOOK}/export?format=markdown`],
-  admin: ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/ai/profiles', '/api/recover/last', '/api/library/recent', `${b}/backup`, `${b}/repair/plan`],
+  admin: ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/plugins', '/api/webhooks', '/api/ai/profiles', '/api/recover/last', '/api/library/recent', `${b}/backup`, `${b}/repair/plan`],
   auth: ['/api/auth/me'],
 };
 const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status'].map((x) => `${b}/${x}`);

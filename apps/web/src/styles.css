@@ -4750,3 +4750,22 @@ kbd {
 .shortcut-row dd {
   margin: 0;
 }
+
+/* ---------- plugins and webhooks (M08-J02) ---------- */
+
+.integrations-form,
+.integrations-secret {
+  margin: var(--s3) 0;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-input);
+}
+.integrations-secret {
+  border-color: var(--warning);
+}
+.integrations-secret input[type='text'] {
+  font-family: var(--font-mono, monospace);
+}
+.integrations-indent {
+  margin-left: var(--s5);
+}

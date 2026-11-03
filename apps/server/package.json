@@ -17,6 +17,7 @@
     "@storyforge/core": "0.1.0",
     "@storyforge/export": "0.1.0",
     "@storyforge/format": "0.1.0",
+    "@storyforge/integrations": "0.1.0",
     "@storyforge/legacy-import": "0.1.0",
     "@storyforge/shared": "0.1.0",
     "@storyforge/store": "0.1.0"

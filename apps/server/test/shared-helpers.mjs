@@ -76,7 +76,7 @@ export async function boot({ clock = null } = {}) {
   const audit = createAudit(dir, now ? { now } : undefined);
   const gate = createSharedGate({ data, publicUrl: null, bindHost: '127.0.0.1', aiForMembers: () => settings.get().ai_for_members, audit: (e) => audit.append(e) });
   const repository = createFsRepository(root, { watch: false, pollMs: 0 });
-  const server = createServer({ repository, shared: { gate, data, settings, audit: (e) => audit.append(e), publicUrl: null } });
+  const server = createServer({ repository, shared: { gate, data, settings, audit: (e) => audit.append(e), publicUrl: null, dir } });
   servers.push(server);
   const port = await listen(server);
   const t = { clock, root, dir, data, settings, audit, port, repository, server, c: {}, users: {}, call: (m, p, o) => call(port, m, p, o) };

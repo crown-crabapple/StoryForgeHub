@@ -40,6 +40,8 @@ export const WRITE_CLASSES = Object.freeze({
   // shared-mode administration (shared-routes.mjs)
   'shared-member-role': 'admin', 'shared-member-remove': 'admin', 'shared-invite-create': 'admin', 'shared-invite-revoke': 'admin',
   'shared-share-create': 'admin', 'shared-share-revoke': 'admin', 'shared-settings': 'admin',
+  // M08-J02 plugin access tokens and webhook subscriptions: a token or a webhook reaches the author's book, so in shared mode only the owner grants them
+  'plugin-grant': 'admin', 'plugin-revoke': 'admin', 'webhook-create': 'admin', 'webhook-revoke': 'admin',
 });
 
 /**
@@ -56,6 +58,7 @@ export function classifyRead(pathname) {
   if (a === 'status' && parts.length === 2) return { cls: 'read' };
   if (a === 'auth') return { cls: 'auth' };
   if (a === 'shared') return { cls: 'admin' }; // members, invites, shares, audit
+  if ((a === 'plugins' || a === 'webhooks') && parts.length === 2) return { cls: 'admin' }; // M08-J02: the manifests, grants and subscriptions (never a token or a secret)
   if (a === 'recover' || (a === 'ai' && b === 'profiles') || (a === 'library' && b === 'recent')) return { cls: 'admin' };
   if (a === 'library' && parts.length === 2) return { cls: 'read' };
   if ((a === 'search' || a === 'templates') && parts.length === 2) return { cls: 'read' };

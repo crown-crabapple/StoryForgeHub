@@ -33,7 +33,7 @@ const { root: TOKENS } = parseTokens();
 
 // ---------------------------------------------------------------- fixtures: what GET /api/preferences answers
 
-const ALL_ON = Object.fromEntries(['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research'].map((id) => [id, { on: true, source: 'builtin', locked: false }]));
+const ALL_ON = Object.fromEntries(['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'integrations'].map((id) => [id, { on: true, source: 'builtin', locked: false }]));
 const DEFAULTS = { theme: 'dark', typography: { family: 'serif', size: 18, lineHeight: 1.7, paragraphSpacing: 0, letterSpacing: 0, measure: 72 }, layout: { name: 'Writing' }, shortcuts: {}, modules: {}, labels: {}, export: {} };
 /** A preferences answer for `effective` overrides, modules off, and the profile's own parts. */
 function prefs({ effective = {}, off = [], profile = {}, locked = [] } = {}) {

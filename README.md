@@ -42,6 +42,7 @@ ESLint (`eslint.config.mjs`) enforces this. Details: `docs/decisions/0001-local-
 - [Backing up and restoring](docs/backup-restore.md)
 - [Moving from the old StoryForgeHub](docs/migration.md)
 - [Privacy and the optional AI workshop](docs/privacy-ai.md)
+- [API v1 and webhooks](docs/api.md) and [writing a plugin](docs/plugins.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Self-hosting for a group (Docker, systemd, TLS, backups)](docs/self-hosting.md)
 - [Developing StoryForge](docs/development.md)

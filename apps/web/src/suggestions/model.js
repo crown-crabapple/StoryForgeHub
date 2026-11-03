@@ -3,7 +3,7 @@ import { wordDiff } from '../ai/diff.js';
 
 const enc = encodeURIComponent;
 
-export const SOURCE_LABEL = { ai: 'AI', 'claude-book': 'Claude-Book', author: 'Author', reviewer: 'Reviewer' };
+export const SOURCE_LABEL = { ai: 'AI', 'claude-book': 'Claude-Book', author: 'Author', reviewer: 'Reviewer', plugin: 'Plugin' };
 export const STATUS_LABEL = { pending: 'Pending', accepted: 'Accepted', declined: 'Declined', partial: 'Partly decided' };
 
 /** @param {string} source */
