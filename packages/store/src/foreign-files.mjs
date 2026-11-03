@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import { mkdir, open, readdir, rename, rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
+import { notifyWrite } from './write-hooks.mjs';
 import { fsyncDir, kindOf, moveFile, writeSynced } from './atomic.mjs';
 
 /**
@@ -15,6 +16,14 @@ import { fsyncDir, kindOf, moveFile, writeSynced } from './atomic.mjs';
  * @returns {Promise<{ ok: true, files: number } | { ok: false, code: 'TARGET_NOT_EMPTY' }>}
  */
 export async function writeNewTree(targetDir, produce) {
+  try {
+    return await writeNewTreeInner(targetDir, produce);
+  } finally {
+    notifyWrite(targetDir);
+  }
+}
+
+async function writeNewTreeInner(targetDir, produce) {
   const target = path.resolve(targetDir);
   const parent = path.dirname(target);
   const existing = await kindOf(target);

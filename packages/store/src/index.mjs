@@ -6,3 +6,4 @@ export { createTree } from './tree.mjs';
 export { readUserConfig, userConfigDir, writeUserConfig } from './userconfig.mjs';
 export { escapesRoot } from './contain.mjs';
 export { writeNewTree, writeOutFile, writeWorkFile, replaceWorkDir } from './foreign-files.mjs';
+export { onWrite } from './write-hooks.mjs';

@@ -13,6 +13,7 @@ import { fault } from './faults.mjs';
 import { acquireLock, releaseLock, updateLock } from './instance-lock.mjs';
 import { OP_ID_RE, archiveJournal, listJournal, makeOpId, writeJournal } from './journal.mjs';
 import { withRootLock } from './lock.mjs';
+import { notifyWrite } from './write-hooks.mjs';
 import { isOwn, markOwn } from './ownwrites.mjs';
 import { recoverRoot, settleEntry } from './recover.mjs';
 import { listRevisions, pruneRevisions, readRevision, saveRevision } from './revisions.mjs';
@@ -49,6 +50,14 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
   const root = path.resolve(projectRoot);
 
   async function runBatch(opName, args, fn, opts = {}) {
+    try {
+      return await runBatchLocked(opName, args, fn, opts);
+    } finally {
+      notifyWrite(root);
+    }
+  }
+
+  async function runBatchLocked(opName, args, fn, opts = {}) {
     return withRootLock(root, async () => {
       const opId = opts.opId && OP_ID_RE.test(opts.opId) ? opts.opId : makeOpId();
       /** rel -> { origSha, origBytes, bytes, dir } : virtual state of every path the batch has looked at */
@@ -388,7 +397,11 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
     releaseLock: (absPath, info) => releaseLock(absPath, info),
     updateLock: (absPath, patch) => updateLock(absPath, patch),
 
-    recover: () => withRootLock(root, () => recoverRoot(root)),
+    recover: async () => {
+      const report = await withRootLock(root, () => recoverRoot(root));
+      if (report.completed.length || report.rolledBack.length || report.needsAttention.length) notifyWrite(root);
+      return report;
+    },
     journal: () => listJournal(root),
   };
 
