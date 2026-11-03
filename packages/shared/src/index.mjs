@@ -7,3 +7,4 @@ export { createLimiter } from './ratelimit.mjs';
 export { openSharedData, SharedDataError, ROLES, USERNAME_RE, INVITE_DEFAULT_MS, INVITE_MAX_MS, SHARE_MAX_MS, SETUP_MS } from './shared-data.mjs';
 export { createAudit } from './audit.mjs';
 export { openSettings, settingsProblem } from './settings.mjs';
+export { openPluginTokens, PLUGIN_PERMISSIONS } from './plugin-tokens.mjs';

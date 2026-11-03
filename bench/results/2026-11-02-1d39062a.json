@@ -1,0 +1,799 @@
+{
+  "schema": "storyforge.bench/v1",
+  "date": "2026-11-02",
+  "git": "640de03",
+  "machine": {
+    "node": "v24.18.0",
+    "os": "Windows_NT 10.0.22631 (win32 x64)",
+    "cpu": "AMD Ryzen 7 5700G with Radeon Graphics",
+    "cores": 16,
+    "ram_mb": 16278,
+    "hash": "1d39062a"
+  },
+  "reps": 5,
+  "budget_min": 15,
+  "fixtures": {
+    "S": {
+      "description": "the salt-orchard sample",
+      "size": {
+        "books": 1,
+        "files": 38,
+        "bytes": 12310,
+        "scenes": 8,
+        "words": 250
+      },
+      "generate_ms": 46,
+      "total_ms": 7344,
+      "operations": {
+        "validate_library": {
+          "status": "ok",
+          "runs_ms": [
+            46.8,
+            17.7,
+            21.1,
+            14.2,
+            15.2
+          ],
+          "median_ms": 17.7
+        },
+        "library_open_cold": {
+          "status": "ok",
+          "runs_ms": [
+            50,
+            6.6,
+            6,
+            5.7,
+            5.8
+          ],
+          "median_ms": 6
+        },
+        "library_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            6.5,
+            7.3,
+            6.3,
+            7.4,
+            5.9
+          ],
+          "median_ms": 6.5
+        },
+        "book_open_cold": {
+          "status": "ok",
+          "runs_ms": [
+            38.5,
+            35.4,
+            35.7,
+            38.1,
+            37.1
+          ],
+          "median_ms": 37.1
+        },
+        "book_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            10.3,
+            10.1,
+            9.9,
+            10.6,
+            10.6
+          ],
+          "median_ms": 10.3
+        },
+        "scene_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            0.9,
+            0.9,
+            0.9,
+            1.2,
+            1
+          ],
+          "median_ms": 0.9
+        },
+        "search_book": {
+          "status": "ok",
+          "runs_ms": [
+            14.5,
+            10,
+            10.1,
+            12.1,
+            11.2
+          ],
+          "median_ms": 11.2
+        },
+        "index_rebuild": {
+          "status": "ok",
+          "runs_ms": [
+            76.9,
+            72.8,
+            68.2,
+            73.3,
+            70
+          ],
+          "median_ms": 72.8
+        },
+        "reconcile_1_edit": {
+          "status": "ok",
+          "runs_ms": [
+            25.9,
+            26.5,
+            25.6,
+            28.5,
+            26.3
+          ],
+          "median_ms": 26.3
+        },
+        "reconcile_50_edits": {
+          "status": "ok",
+          "runs_ms": [
+            36.4,
+            37.2,
+            36.5,
+            34.2,
+            37.8
+          ],
+          "median_ms": 36.5,
+          "note": "the fixture has only 8 scenes, so that many files were edited"
+        },
+        "export_markdown": {
+          "status": "ok",
+          "runs_ms": [
+            14.8,
+            13,
+            14.5,
+            13.1,
+            12.5
+          ],
+          "median_ms": 13.1,
+          "bytes": 2570
+        },
+        "export_docx": {
+          "status": "ok",
+          "runs_ms": [
+            19.5,
+            17,
+            15.1,
+            15.2,
+            17.7
+          ],
+          "median_ms": 17,
+          "bytes": 3514
+        },
+        "export_epub": {
+          "status": "ok",
+          "runs_ms": [
+            15.5,
+            19.3,
+            16.1,
+            14,
+            13.3
+          ],
+          "median_ms": 15.5,
+          "bytes": 4285
+        },
+        "export_pdf": {
+          "status": "ok",
+          "runs_ms": [
+            18.4,
+            16.8,
+            14.8,
+            14.9,
+            13.5
+          ],
+          "median_ms": 14.9,
+          "bytes": 4013
+        },
+        "backup": {
+          "status": "ok",
+          "runs_ms": [
+            31.9,
+            26.1,
+            31.2,
+            28.7,
+            25.7
+          ],
+          "median_ms": 28.7,
+          "bytes": 14572
+        },
+        "restore": {
+          "status": "ok",
+          "runs_ms": [
+            88.6,
+            88.7,
+            107.3,
+            86.4,
+            95.7
+          ],
+          "median_ms": 88.7
+        }
+      }
+    },
+    "M": {
+      "description": "1 book, 60 chapters, 320 scenes, about 130k words",
+      "size": {
+        "books": 1,
+        "files": 831,
+        "bytes": 1143032,
+        "scenes": 320,
+        "words": 130048
+      },
+      "generate_ms": 577,
+      "total_ms": 141082,
+      "operations": {
+        "validate_library": {
+          "status": "ok",
+          "runs_ms": [
+            246,
+            229.7,
+            247.2,
+            225,
+            245.1
+          ],
+          "median_ms": 245.1
+        },
+        "library_open_cold": {
+          "status": "ok",
+          "runs_ms": [
+            505,
+            53.2,
+            55.1,
+            56.9,
+            49.7
+          ],
+          "median_ms": 55.1
+        },
+        "library_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            57.1,
+            50.1,
+            50.2,
+            50.6,
+            51.1
+          ],
+          "median_ms": 50.6
+        },
+        "book_open_cold": {
+          "status": "ok",
+          "runs_ms": [
+            620.1,
+            609.9,
+            666.6,
+            677.5,
+            611.9
+          ],
+          "median_ms": 620.1
+        },
+        "book_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            105.8,
+            101.6,
+            105.4,
+            104.8,
+            99.3
+          ],
+          "median_ms": 104.8
+        },
+        "scene_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            0.9,
+            0.9,
+            0.9,
+            1,
+            0.8
+          ],
+          "median_ms": 0.9
+        },
+        "search_book": {
+          "status": "ok",
+          "runs_ms": [
+            100.9,
+            99.2,
+            101.3,
+            99.2,
+            100.3
+          ],
+          "median_ms": 100.3
+        },
+        "index_rebuild": {
+          "status": "ok",
+          "runs_ms": [
+            3129.1,
+            2373.5,
+            1983.5,
+            1567.6,
+            1544
+          ],
+          "median_ms": 1983.5
+        },
+        "reconcile_1_edit": {
+          "status": "ok",
+          "runs_ms": [
+            600.5,
+            562.2,
+            521.4,
+            2224.6,
+            1527
+          ],
+          "median_ms": 600.5
+        },
+        "reconcile_50_edits": {
+          "status": "ok",
+          "runs_ms": [
+            1857.7,
+            1412.1,
+            1364.7,
+            1039.1,
+            901.8
+          ],
+          "median_ms": 1364.7
+        },
+        "export_markdown": {
+          "status": "ok",
+          "runs_ms": [
+            361.8,
+            334.3,
+            351.3,
+            264.5,
+            275.8
+          ],
+          "median_ms": 334.3,
+          "bytes": 807864
+        },
+        "export_docx": {
+          "status": "ok",
+          "runs_ms": [
+            347.2,
+            348.8,
+            336.7,
+            334,
+            323.3
+          ],
+          "median_ms": 336.7,
+          "bytes": 257326
+        },
+        "export_epub": {
+          "status": "ok",
+          "runs_ms": [
+            311.3,
+            348.1,
+            343.9,
+            339.2,
+            311.9
+          ],
+          "median_ms": 339.2,
+          "bytes": 310918
+        },
+        "export_pdf": {
+          "status": "ok",
+          "runs_ms": [
+            561.2,
+            538,
+            523.5,
+            539.3,
+            536.5
+          ],
+          "median_ms": 538,
+          "bytes": 606743
+        },
+        "backup": {
+          "status": "ok",
+          "runs_ms": [
+            527.7,
+            514.9,
+            542.6,
+            594.6,
+            519.8
+          ],
+          "median_ms": 527.7,
+          "bytes": 679173
+        },
+        "restore": {
+          "status": "ok",
+          "runs_ms": [
+            13878.5,
+            15843.5,
+            17020.2,
+            17536.2,
+            14034.7
+          ],
+          "median_ms": 15843.5
+        }
+      }
+    },
+    "L": {
+      "description": "3 books of M in one series, 200 shared entries",
+      "size": {
+        "books": 3,
+        "files": 2695,
+        "bytes": 3466733,
+        "scenes": 960,
+        "words": 390144
+      },
+      "generate_ms": 4166,
+      "total_ms": 202126,
+      "operations": {
+        "validate_library": {
+          "status": "ok",
+          "runs_ms": [
+            697.3,
+            658.9,
+            633.6,
+            651,
+            617.3
+          ],
+          "median_ms": 651
+        },
+        "library_open_cold": {
+          "status": "ok",
+          "runs_ms": [
+            1204.2,
+            186.7,
+            210.2,
+            213.5,
+            246.7
+          ],
+          "median_ms": 213.5
+        },
+        "library_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            193.1,
+            194.9,
+            212.9,
+            187.5,
+            597
+          ],
+          "median_ms": 194.9
+        },
+        "book_open_cold": {
+          "status": "ok",
+          "runs_ms": [
+            4189.5,
+            3541.7,
+            3387.7,
+            2845.5,
+            2404.3
+          ],
+          "median_ms": 3387.7
+        },
+        "book_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            164.8,
+            136.3,
+            116.9,
+            113.2,
+            113.5
+          ],
+          "median_ms": 116.9
+        },
+        "scene_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            2,
+            2,
+            1.9,
+            2,
+            2
+          ],
+          "median_ms": 2
+        },
+        "search_book": {
+          "status": "ok",
+          "runs_ms": [
+            127.5,
+            124.4,
+            124.5,
+            122.3,
+            121
+          ],
+          "median_ms": 124.4
+        },
+        "index_rebuild": {
+          "status": "ok",
+          "runs_ms": [
+            2017.2,
+            1981.4,
+            1996.8,
+            2174.2,
+            1990.4
+          ],
+          "median_ms": 1996.8
+        },
+        "reconcile_1_edit": {
+          "status": "ok",
+          "runs_ms": [
+            967.8,
+            1006.7,
+            1003.5,
+            995.2,
+            998.6
+          ],
+          "median_ms": 998.6
+        },
+        "reconcile_50_edits": {
+          "status": "ok",
+          "runs_ms": [
+            1085.9,
+            1071.4,
+            1049.6,
+            1058,
+            1063.6
+          ],
+          "median_ms": 1063.6
+        },
+        "export_markdown": {
+          "status": "ok",
+          "runs_ms": [
+            238.1,
+            235.7,
+            250.2,
+            236.6,
+            277.8
+          ],
+          "median_ms": 238.1,
+          "bytes": 807864
+        },
+        "export_docx": {
+          "status": "ok",
+          "runs_ms": [
+            313.4,
+            308.4,
+            293,
+            298.2,
+            303.4
+          ],
+          "median_ms": 303.4,
+          "bytes": 257326
+        },
+        "export_epub": {
+          "status": "ok",
+          "runs_ms": [
+            294,
+            301.1,
+            296.3,
+            311.5,
+            316.9
+          ],
+          "median_ms": 301.1,
+          "bytes": 310918
+        },
+        "export_pdf": {
+          "status": "ok",
+          "runs_ms": [
+            568,
+            549.6,
+            553.5,
+            564.5,
+            547.2
+          ],
+          "median_ms": 553.5,
+          "bytes": 606743
+        },
+        "backup": {
+          "status": "ok",
+          "runs_ms": [
+            472.9,
+            486.6,
+            487.9,
+            474.2,
+            475
+          ],
+          "median_ms": 475,
+          "bytes": 674319
+        },
+        "restore": {
+          "status": "ok",
+          "runs_ms": [
+            1529.5,
+            1693.2,
+            1480.9,
+            1618.9,
+            1564.9
+          ],
+          "median_ms": 1564.9
+        }
+      }
+    },
+    "XL": {
+      "description": "1 book, 1,500 scenes, about 600k words",
+      "size": {
+        "books": 1,
+        "files": 1854,
+        "bytes": 4243249,
+        "scenes": 1500,
+        "words": 615672
+      },
+      "generate_ms": 1018,
+      "total_ms": 147461,
+      "operations": {
+        "validate_library": {
+          "status": "ok",
+          "runs_ms": [
+            455.4,
+            435.3,
+            431.6,
+            455.1,
+            462.1
+          ],
+          "median_ms": 455.1
+        },
+        "library_open_cold": {
+          "status": "ok",
+          "runs_ms": [
+            1237.1,
+            119.1,
+            109.7,
+            113.3,
+            110.5
+          ],
+          "median_ms": 113.3
+        },
+        "library_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            107,
+            107.9,
+            108.7,
+            107.3,
+            110.6
+          ],
+          "median_ms": 107.9
+        },
+        "book_open_cold": {
+          "status": "ok",
+          "runs_ms": [
+            1465.5,
+            1468.6,
+            1319,
+            1325.9,
+            1396.1
+          ],
+          "median_ms": 1396.1
+        },
+        "book_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            228.5,
+            242.6,
+            250.5,
+            229.3,
+            224.7
+          ],
+          "median_ms": 229.3
+        },
+        "scene_open_warm": {
+          "status": "ok",
+          "runs_ms": [
+            0.8,
+            0.8,
+            0.9,
+            0.8,
+            0.9
+          ],
+          "median_ms": 0.8
+        },
+        "search_book": {
+          "status": "ok",
+          "runs_ms": [
+            221.9,
+            218.1,
+            219.3,
+            216.4,
+            218.7
+          ],
+          "median_ms": 218.7
+        },
+        "index_rebuild": {
+          "status": "ok",
+          "runs_ms": [
+            3332.1,
+            3357.7,
+            3321.9,
+            3432.4,
+            3488.3
+          ],
+          "median_ms": 3357.7
+        },
+        "reconcile_1_edit": {
+          "status": "ok",
+          "runs_ms": [
+            1305.4,
+            1234.1,
+            1214.7,
+            1279.3,
+            1279.5
+          ],
+          "median_ms": 1279.3
+        },
+        "reconcile_50_edits": {
+          "status": "ok",
+          "runs_ms": [
+            1357.5,
+            1277.5,
+            1332.1,
+            1255.2,
+            1260.7
+          ],
+          "median_ms": 1277.5
+        },
+        "export_markdown": {
+          "status": "ok",
+          "runs_ms": [
+            672.2,
+            599.4,
+            591.3,
+            584.7,
+            606.4
+          ],
+          "median_ms": 599.4,
+          "bytes": 3792908
+        },
+        "export_docx": {
+          "status": "ok",
+          "runs_ms": [
+            923.7,
+            953.8,
+            982.2,
+            935.9,
+            930.3
+          ],
+          "median_ms": 935.9,
+          "bytes": 1196374
+        },
+        "export_epub": {
+          "status": "ok",
+          "runs_ms": [
+            985.1,
+            952,
+            955.8,
+            962.9,
+            948
+          ],
+          "median_ms": 955.8,
+          "bytes": 1352960
+        },
+        "export_pdf": {
+          "status": "ok",
+          "runs_ms": [
+            1894.4,
+            2002.6,
+            1935.6,
+            2050.8,
+            2482.8
+          ],
+          "median_ms": 2002.6,
+          "bytes": 2823499
+        },
+        "backup": {
+          "status": "ok",
+          "runs_ms": [
+            1259.9,
+            1202.8,
+            1221.4,
+            1072.4,
+            1115.8
+          ],
+          "median_ms": 1202.8,
+          "bytes": 2335029
+        },
+        "restore": {
+          "status": "ok",
+          "runs_ms": [
+            3073,
+            2901,
+            2891.3,
+            3068.8,
+            3429.9
+          ],
+          "median_ms": 3068.8
+        }
+      }
+    }
+  },
+  "total_ms": 507793
+}

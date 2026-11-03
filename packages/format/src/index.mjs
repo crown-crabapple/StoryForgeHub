@@ -10,6 +10,7 @@ import { checkBookUniqueness, checkPenNames, discover } from './library.mjs';
 import { makeNamespace, resolveLinks } from './links.mjs';
 import { checkTemplates, labelNames, loadShared } from './world.mjs';
 import { checkPrompts } from './prompts.mjs';
+import { checkPlugins } from './plugins.mjs';
 
 /**
  * Validate a book root, series root or library root. Read-only; never follows `.storyforge/`.
@@ -145,6 +146,7 @@ export async function validate(rootDir) {
   checkBookUniqueness(bookEntries, add, seriesEntries);
   if (!isBookRoot && !isSeriesRoot) await checkTemplates(root, add);
   if (!isBookRoot && !isSeriesRoot) await checkPrompts(root, add); // M07-J04
+  if (!isBookRoot && !isSeriesRoot) await checkPlugins(root, add); // M08-J02
   if (libraryDoc) checkPenNames(libraryDoc, bookEntries, add);
 
   books.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
@@ -205,3 +207,6 @@ export { STATE_EVENTS, FINGERPRINT_RE } from './schema.mjs';
 // M07-J04: preferences (the layers and their precedence) and custom prompt components / workflows. Additive within v1.
 export * from './preferences.mjs';
 export { PROMPT_INPUTS, PROMPT_TASKS, INPUT_FIELDS, PROMPT_SCHEMA, WORKFLOW_SCHEMA, placeholdersOf, parsePromptFile, loadPrompts, renderPrompt } from './prompts.mjs';
+
+// M08-J02: plugin manifests (_plugins/<id>/plugin.md). Additive within v1.
+export { PLUGIN_SCHEMA, PLUGIN_PERMISSIONS, PLUGIN_API_MAJOR, parsePluginManifest, loadPlugins } from './plugins.mjs';

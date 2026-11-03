@@ -1,6 +1,8 @@
 // Settings. The only AI entry in the app: "Set up AI (optional)". StoryForge works completely without it; with no provider profile nothing is ever sent anywhere.
 import { useState } from 'react';
 import { useApi } from '../api.js';
+import { PluginsSettings } from '../integrations/PluginsPanel.jsx';
+import { WebhooksSettings } from '../integrations/WebhooksPanel.jsx';
 import { PreferencesSettings } from '../prefs/PreferencesSettings.jsx';
 import { Link } from '../router.jsx';
 import { useSession } from '../shared/session.jsx';
@@ -197,7 +199,7 @@ function ProfileRow({ profile, onEdit, onDelete, onChanged }) {
 
 export function SettingsView() {
   const [bump, setBump] = useState(0);
-  const { user } = useSession(); // shared mode (M07-J03): only the owner sees Members and sharing
+  const { user, mode } = useSession(); // shared mode (M07-J03): only the owner sees Members and sharing, plugins and webhooks
   const { data, error: loadError } = useApi(aiUrl.profiles, String(bump));
   const { data: books } = useApi('/api/books');
   const [editing, setEditing] = useState(/** @type {null | { id: string | null, form: typeof EMPTY, hasKey: boolean }} */ (null));
@@ -235,6 +237,12 @@ export function SettingsView() {
         </p>
       )}
       <PreferencesSettings />
+      {(mode !== 'shared' || user?.role === 'owner') && (
+        <>
+          <PluginsSettings />
+          <WebhooksSettings />
+        </>
+      )}
       <section aria-labelledby="ai-setup-heading">
         <h2 id="ai-setup-heading">Set up AI (optional)</h2>
         <p className="placeholder-text">

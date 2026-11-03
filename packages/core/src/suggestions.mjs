@@ -15,7 +15,8 @@ import { createReceiptEngine } from './receipts.mjs';
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
 const errKey = (d) => `${d.code}|${d.file}|${d.location ?? ''}`;
 const TARGET_KINDS = ['scene', 'entry', 'thread', 'event'];
-const SOURCES = ['ai', 'claude-book', 'author', 'reviewer'];
+const SOURCES = ['ai', 'claude-book', 'author', 'reviewer', 'plugin'];
+const PLUGIN_SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const MODES = ['suggest', 'state', 'canon'];
 /** Folders a new-file suggestion may not create files in. */
 const NEW_FILE_BLOCKED = ['suggestions/', 'ai/', 'archive/', 'provenance/', 'activity/', '.storyforge/'];
@@ -97,6 +98,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
       target_missing: target !== '' && !targetDoc,
       base_sha256: typeof doc.fm.base_sha256 === 'string' ? doc.fm.base_sha256 : '',
       source: String(doc.fm.source),
+      plugin: typeof doc.fm.plugin === 'string' ? doc.fm.plugin : null,
       by: doc.fm.by && typeof doc.fm.by === 'object' && typeof doc.fm.by.name === 'string' ? { ...(typeof doc.fm.by.id === 'string' ? { id: doc.fm.by.id } : {}), name: doc.fm.by.name } : null,
       mode: String(doc.fm.mode),
       created: String(doc.fm.created ?? ''),
@@ -128,10 +130,11 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
    *   rationale?: string, ai?: Record<string, any>, expectSha256?: string }} args
    */
   async function createSuggestion(bookId, args = {}) {
-    const { target, proposedText, proposedRange, source, mode = 'suggest', rationale, ai, expectSha256 } = args ?? {};
+    const { target, proposedText, proposedRange, source, mode = 'suggest', rationale, ai, expectSha256, plugin } = args ?? {};
     const by = args?.by ?? currentBy(); // shared mode: who made it (FORMAT 9.3)
     if (typeof target !== 'string' || target === '') return fail('BAD_ARGS', { message: 'target must be the id of a scene, entry, thread or event' });
     if (!SOURCES.includes(/** @type {string} */ (source))) return fail('BAD_ARGS', { message: `source must be one of ${SOURCES.join(', ')}` });
+    if (source === 'plugin' ? typeof plugin !== 'string' || !PLUGIN_SLUG_RE.test(plugin) : plugin !== undefined) return fail('BAD_ARGS', { message: 'plugin is the plugin slug, and only for source plugin' });
     if (!MODES.includes(mode)) return fail('BAD_ARGS', { message: `mode must be one of ${MODES.join(', ')}` });
     if ((proposedText === undefined) === (proposedRange === undefined)) return fail('BAD_ARGS', { message: 'give exactly one of proposedText and proposedRange' });
     if (proposedText !== undefined && typeof proposedText !== 'string') return fail('BAD_ARGS', { message: 'proposedText must be a string' });
@@ -164,7 +167,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
     const slugBase = slugify(`${titleOf(doc)} ${source === 'ai' ? 'rewrite' : 'change'}`).slice(0, 40).replace(/-+$/g, '') || 'suggestion';
     let built;
     try {
-      built = buildSuggestion({ id, targetId: target, targetPath: doc.rel, baseBytes: cur.bytes, proposedBytes: proposed, source, mode, ...(rationale?.trim() ? { rationale } : {}), ...(source === 'ai' && ai ? { ai } : {}), ...(by ? { by } : {}), created });
+      built = buildSuggestion({ id, targetId: target, targetPath: doc.rel, baseBytes: cur.bytes, proposedBytes: proposed, source, mode, ...(rationale?.trim() ? { rationale } : {}), ...(source === 'ai' && ai ? { ai } : {}), ...(source === 'plugin' ? { plugin } : {}), ...(by ? { by } : {}), created });
     } catch (e) {
       if (/** @type {any} */ (e)?.code === 'NO_CHANGE') return fail('NO_CHANGE', { message: 'the proposal is identical to the current text' });
       throw e;
@@ -295,7 +298,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
           if (targetDoc) {
             try {
               const t = await tx.read(targetDoc.rel);
-              if (t) await receipts.stageDecision(store, tx, { decision: 'decline', parsed, ids, suggestionId, source: String(doc.fm.source), targetId, targetRel: targetDoc.rel, before: t.bytes, after: t.bytes });
+              if (t) await receipts.stageDecision(store, tx, { decision: 'decline', parsed, ids, suggestionId, source: String(doc.fm.source), plugin: doc.fm.plugin, targetId, targetRel: targetDoc.rel, before: t.bytes, after: t.bytes });
             } catch {
               // a receipt problem never blocks the author's decision
             }
@@ -338,7 +341,7 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
         await tx.write(doc.rel, Buffer.from(text, 'utf8'), { baseSha256: sugCur.sha256 });
         // M05-J07: the accept receipt (and the flush of the author's pending changes before it) is part of this batch: target and receipt land together
         try {
-          await receipts.stageDecision(store, tx, { decision: 'accept', parsed, ids, suggestionId, source: String(doc.fm.source), targetId, targetRel, before: beforeBytes, after: bytes });
+          await receipts.stageDecision(store, tx, { decision: 'accept', parsed, ids, suggestionId, source: String(doc.fm.source), plugin: doc.fm.plugin, targetId, targetRel, before: beforeBytes, after: bytes });
         } catch {
           // a receipt problem never blocks the author's decision
         }

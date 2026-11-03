@@ -3,6 +3,7 @@
 //   node apps/server/src/main.mjs --help                                lists every command and flag (help.mjs)
 //   node apps/server/src/main.mjs serve --shared [--shared-data <dir>] [--host <addr>] [--public-url <https://...>]   optional shared mode: accounts, roles, invites, share links, audit (M07-J03a)
 //   node apps/server/src/main.mjs shared init --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>]   create the owner and print the one-time setup link
+//   node apps/server/src/main.mjs shared reset-owner --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>]   lost owner password: new setup link (needs the server stopped)
 //   node apps/server/src/main.mjs audit verify [--shared-data <dir> | --library <path>]   check the shared-mode audit chain (exit 1 when broken or truncated)
 //   node apps/server/src/main.mjs rebuild --library <path>             rebuild every book's index
 //   node apps/server/src/main.mjs repair --library <path> [--apply]    print the repair plan; write only with --apply
@@ -277,7 +278,7 @@ async function prepareShared(bindHost) {
   const timer = setInterval(() => void data.prune().catch(() => {}), 10 * 60 * 1000);
   timer.unref();
   process.stdout.write(`Shared mode: accounts and audit log in ${dir}\n`);
-  return { gate, data, settings, audit: append, publicUrl };
+  return { gate, data, settings, audit: append, publicUrl, dir }; // `dir`: plugin tokens and webhook subscriptions are kept there too (M08-J02)
 }
 
 async function runServer() {

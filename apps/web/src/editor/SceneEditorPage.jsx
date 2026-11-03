@@ -27,6 +27,7 @@ import { ConflictPanel } from './ConflictPanel.jsx';
 import { StalePanel } from './StalePanel.jsx';
 import { continuityMarks, setContinuityMarks } from './continuity-marks.js';
 import { createDraftStore, draftKey } from './draft-store.js';
+import { RESTORED_NOTICE, decideRestore, getOfflineQueue } from './offline-queue.js';
 import { decoratedMarkdown, marksExtension, setMarks } from './extensions.js';
 import { focusExtensions } from './focus-extensions.js';
 import { LinkPicker } from './LinkPicker.jsx';
@@ -115,6 +116,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const [pickerText, setPickerText] = useState('');
   const [showMarks, setShowMarks] = useState(readShowMarks);
   const [offer, setOffer] = useState(null);
+  const [restoredFromQueue, setRestoredFromQueue] = useState(false); // shared mode: the buffer came back from the offline queue (M08-J04)
   const [discarded, setDiscarded] = useState([]);
   const [dialog, setDialog] = useState(null); // 'picker' | 'normalise' | 'discarded' | 'keep-mine'
   const [check, setCheck] = useState(/** @type {{ report: any | null, error: string | null } | null} */ (null)); // Check scene (M05-J06): the read-only report window
@@ -199,6 +201,8 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   // ---- the editor, the save controller and the draft store live and die with this scene
   useEffect(() => {
     const drafts = createDraftStore();
+    // shared mode, scenes only: unsent text is also kept in the offline queue (M08-J04); personal mode keeps the draft store alone
+    const queue = sharedMode && !resource ? getOfflineQueue() : null;
     const fileText = scene.body ?? '';
     const ctl = createSaveController({
       bookId: book.id,
@@ -207,6 +211,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       sha256: scene.sha256 ?? null,
       resourceUrl: resource?.url,
       shared: sharedMode && !resource,
+      offlineQueue: queue,
       drafts,
       onChange: setSnap,
       onSaved: (words) => writingRef.current.applySaved(words),
@@ -279,8 +284,25 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     viewRef.current = view;
 
     let cancelled = false;
-    drafts.get(key).then((draft) => {
-      if (cancelled || !draft) return;
+    Promise.all([drafts.get(key), queue ? queue.get(book.id, scene.id) : null]).then(([draft, entry]) => {
+      if (cancelled) return;
+      if (entry) {
+        // the queue is the same buffer as the draft: it is not offered a second time
+        const what = entry.text === fileText ? 'none' : decideRestore(entry, scene.sha256 ?? null);
+        if (what === 'none') {
+          void queue.remove(book.id, scene.id);
+        } else if (what === 'restore') {
+          // made against the version the server has now: back into the editor, saved as soon as the server can be reached
+          ctl.restoreDraft({ text: entry.text, base_sha256: entry.baseSha256 });
+          applyTextRef.current(entry.text);
+          setRestoredFromQueue(true);
+        } else {
+          // the server has newer text: the queue is never content. Send it from its old base; the server keeps it as a suggestion (409 STALE) and the stale panel opens.
+          void ctl.sendBuffered({ text: entry.text, baseSha256: entry.baseSha256 });
+        }
+        return;
+      }
+      if (!draft) return;
       if (draft.text === fileText) {
         void drafts.clear(key); // a leftover of a save that did land
         return;
@@ -598,6 +620,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   };
 
   const state = snap?.state ?? 'clean';
+  const showQueuedNotice = restoredFromQueue && state !== 'saved' && state !== 'clean' && state !== 'conflict';
   const mixed = lineKind === 'mixed';
   const pov = scene.pov ? names.nameOf(scene.pov) : null;
   const meta = resource ? [...resource.meta, `${words} ${words === 1 ? 'word' : 'words'}`] : [chapterLabel, scene.status ?? 'no status', pov ? `POV ${pov}` : null, `${words} ${words === 1 ? 'word' : 'words'}`].filter(Boolean);
@@ -655,6 +678,11 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
             Normalise line endings…
           </button>
         </section>
+      )}
+      {showQueuedNotice && (
+        <p className="editor-offline editor-queued" role="status" data-testid="queued-notice">
+          {RESTORED_NOTICE}
+        </p>
       )}
       {offer && state !== 'conflict' && (
         <section className="editor-notice" role="region" aria-label="Unsaved changes found">

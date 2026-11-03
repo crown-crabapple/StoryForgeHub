@@ -20,6 +20,7 @@ export const MODULES = [
   { id: 'insights', label: 'Insights', note: 'The Insights page.' },
   { id: 'tasks', label: 'Tasks', note: 'The Tasks page.' },
   { id: 'research', label: 'Research', note: 'The Notes page and the research section of the right rail.' },
+  { id: 'integrations', label: 'Integrations', note: 'Plugin access over the API and webhooks. Off: every API call is refused and nothing is sent.' },
 ];
 
 /** What the app looks like before the server has answered (and when it cannot): the reference look, every module on. */

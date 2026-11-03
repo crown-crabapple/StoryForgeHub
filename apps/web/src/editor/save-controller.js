@@ -7,6 +7,8 @@
 //   conflict: autosave stops until the author chooses (keepMine / adoptDisk / restore); nothing is merged
 //   shared mode (options.shared, M07-J03b): the server answers a stale save with 409 STALE and keeps the buffer as a suggestion (`conflict.suggestionId`);
 //   a change noticed on disk while the buffer is dirty is sent as a save at once, so it takes that same path instead of a client-side conflict
+//   shared mode with an offline queue (options.offlineQueue, M08-J04): while the state is offline the unsent buffer is also kept in the queue (one entry per scene, with its base sha);
+//   a confirmed save or a 409 STALE deletes the entry. The queue is only a store of unsent text: every send still goes through this controller's normal save with its base sha
 //
 // Text is always the serialised buffer (see buffer.js `serialise`), compared and sent as a whole string.
 
@@ -43,7 +45,7 @@ const quiet = (p) => {
  *   bookId: string, sceneId: string, text: string, sha256: string | null, resourceUrl?: string,
  *   fetch?: typeof fetch, drafts?: DraftStore | null, timers?: Timers, now?: () => number,
  *   onChange?: (snapshot: SaveSnapshot) => void,
- *   onSaved?: (words: { added: number, removed: number } | null) => void, shared?: boolean,
+ *   onSaved?: (words: { added: number, removed: number } | null) => void, shared?: boolean, offlineQueue?: ReturnType<typeof import('./offline-queue.js').createOfflineQueue> | null,
  * }} options  `text`/`sha256`: the scene body and file hash as loaded. `onSaved` runs after each successful save with the
  *   server's `words` ({ added, removed }) for that save, or null if the answer had none.
  */
@@ -51,6 +53,7 @@ export function createSaveController(options) {
   const { bookId, sceneId } = options;
   const fetchImpl = options.fetch ?? ((...a) => globalThis.fetch(...a));
   const drafts = options.drafts ?? null;
+  const queue = options.offlineQueue ?? null;
   // late-bound, so fake timers installed after creation still apply
   const timers = options.timers ?? { setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms), clearTimeout: (id) => globalThis.clearTimeout(id) };
   const now = options.now ?? (() => Date.now());
@@ -77,6 +80,7 @@ export function createSaveController(options) {
   /** @type {Promise<void> | null} */
   let inflight = null;
   const listeners = new Set(options.onChange ? [options.onChange] : []);
+  queue?.hold(bookId, sceneId); // this controller retries the scene itself: the queue's drain leaves it alone while the editor is open
 
   const snapshot = () => ({ ...s, conflict: s.conflict ? { ...s.conflict } : null, error: s.error ? { ...s.error } : null });
   const emit = () => {
@@ -101,9 +105,17 @@ export function createSaveController(options) {
   const restState = () => (s.savedAt ? 'saved' : 'clean');
 
   // ---- draft mirror
+  // ---- offline queue (shared mode): the unsent buffer, while the server cannot be reached
+  const queueNow = () => {
+    if (queue && s.text !== s.savedText) quiet(queue.put({ bookId, sceneId, baseSha256: s.baseSha256, text: s.text }));
+  };
+  const queueDrop = () => {
+    if (queue) quiet(queue.remove(bookId, sceneId));
+  };
   const mirrorNow = () => {
     draftTimer = cancel(draftTimer);
     if (drafts && s.text !== s.savedText) quiet(drafts.put(key, s.text, s.baseSha256));
+    if (s.state === 'offline') queueNow();
   };
   const scheduleMirror = () => {
     if (!drafts) return;
@@ -160,6 +172,7 @@ export function createSaveController(options) {
         s.savedAt = isoNow();
         s.attempt = 0;
         s.error = null;
+        queueDrop(); // confirmed: nothing is waiting any more
         try {
           const w = json.words;
           options.onSaved?.(w && Number.isFinite(w.added) && Number.isFinite(w.removed) ? { added: w.added, removed: w.removed } : null);
@@ -177,6 +190,7 @@ export function createSaveController(options) {
       } else if (status === 409) {
         mirrorNow();
         const stale = json?.error === 'STALE'; // shared mode: the buffer was kept as a suggestion
+        if (stale) queueDrop(); // it became a suggestion: nothing is waiting any more
         set({
           state: 'conflict',
           conflict: { currentSha256: json?.current?.sha256 ?? null, currentText: typeof json?.current?.body === 'string' ? json.current.body : null, ...(stale ? { stale: true, suggestionId: json?.suggestion?.id ?? null } : {}) },
@@ -186,6 +200,7 @@ export function createSaveController(options) {
         const attemptNo = s.attempt + 1;
         const wait = BACKOFF_MS[Math.min(attemptNo - 1, BACKOFF_MS.length - 1)];
         set({ state: 'offline', attempt: attemptNo, retryInMs: wait });
+        queueNow();
         retryTimer = timers.setTimeout(() => {
           retryTimer = null;
           void attempt();
@@ -374,9 +389,23 @@ export function createSaveController(options) {
       return 'conflict';
     },
 
+    /**
+     * A buffer that was waiting in the offline queue was written against `baseSha256`, and the server now has another version: send it from that base through the normal save.
+     * The server answers 409 STALE and keeps the text as a suggestion; the editor keeps showing the server's text (the queue is never content when the server has newer text).
+     * @param {{ text: string, baseSha256: string | null }} entry @returns {Promise<void>}
+     */
+    sendBuffered(entry) {
+      if (disposed || s.state === 'conflict') return Promise.resolve();
+      s.text = entry.text;
+      s.baseSha256 = entry.baseSha256;
+      set({ state: 'dirty', error: null });
+      return attempt();
+    },
+
     /** Stop timers (the editor is closing). The draft stays in the store while anything is unsaved. */
     dispose() {
       disposed = true;
+      queue?.release(bookId, sceneId);
       debounceTimer = cancel(debounceTimer);
       retryTimer = cancel(retryTimer);
       draftTimer = cancel(draftTimer);

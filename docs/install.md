@@ -64,6 +64,15 @@ folder is the same files, byte for byte, and StoryForge builds its index again o
 - **AI is optional and off until you turn it on.** If you add a provider in **Settings**, turn it on for a book and press Send, only then is the text you were shown in the
   preview sent to that provider (a model on this computer, or a cloud service you chose). Nothing a model writes changes your book until you apply it.
 
+## Upgrade
+
+1. Close StoryForge (the terminal window).
+2. Replace the StoryForge program folder with the new version (unzip over it, or `git pull` if you cloned it). Your books are not in that folder, so they are not touched.
+3. Run the launcher again (`StoryForge.cmd` or `./storyforge.sh`). If the dependency list changed it installs and builds again by itself; otherwise it starts in a few seconds.
+
+Indexes rebuild by themselves when their format changed, so the first open of a book may take a moment longer. An upgrade does not rewrite your book files. If you run StoryForge for
+a group on a server, [Self-hosting](self-hosting.md) has its upgrade steps.
+
 ## Removing StoryForge
 
 1. Delete the StoryForge program folder.
