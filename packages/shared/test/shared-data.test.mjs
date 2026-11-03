@@ -70,6 +70,22 @@ test('setup: a lapsed link can be reissued for the same pending owner only, and 
   assert.equal((await data.completeSetup(again.token, PW)).ok, true);
 });
 
+test('resetOwner: only an enabled owner; clears the password and every session; the new setup link works once', async () => {
+  const { data } = await withOwner();
+  const owner = await data.login('ilse', PW, 'a');
+  const inv = await data.createInvite({ role: 'editor', by: owner.user.id });
+  await data.acceptInvite(inv.token, { username: 'tobin', display_name: 'Tobin', password: 'tobins password' });
+  assert.equal((await data.resetOwner('tobin')).code, 'NOT_OWNER');
+  assert.equal((await data.resetOwner('nobody')).code, 'NOT_OWNER');
+  const r = await data.resetOwner('ILSE');
+  assert.equal(r.ok, true);
+  assert.equal(await data.resolveSession(owner.token), null, 'sessions ended');
+  assert.equal((await data.login('ilse', PW, 'b')).ok, false, 'the old password is gone');
+  assert.equal((await data.completeSetup(r.token, 'a brand new password')).ok, true);
+  assert.equal((await data.completeSetup(r.token, 'again again again')).code, 'GONE');
+  assert.equal((await data.login('ilse', 'a brand new password', 'c')).ok, true);
+});
+
 test('login: same answer for unknown user and wrong password; rate limit; sessions resolve and end', async () => {
   const { c, data } = await withOwner();
   const unknown = await data.login('nobody', PW, '10.0.0.1');

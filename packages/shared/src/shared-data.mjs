@@ -215,6 +215,25 @@ export async function openSharedData(dir, { now = Date.now } = {}) {
     },
 
     /**
+     * Operator recovery (M08-J01): clear an owner's password and end every session of theirs, then issue a new 30-minute setup link.
+     * Only for an existing, enabled owner; the CLI holds the library lock while it runs, so no server has this data open.
+     * @param {unknown} username
+     * @returns {Promise<{ ok: true, token: string, expires: number, user: string } | { ok: false, code: string, message: string }>}
+     */
+    async resetOwner(username) {
+      const u = userByName(username);
+      if (!u || u.disabled || roleOf(u.id) !== 'owner') return { ok: false, code: 'NOT_OWNER', message: 'no enabled owner has that user name' };
+      u.pw = null;
+      sessions.revokeUser(u.id);
+      const token = newToken();
+      data['setup.json'].setup = { user: u.id, token_hash: hashToken(token), expires: now() + SETUP_MS };
+      await save('users.json');
+      await save('sessions.json');
+      await save('setup.json');
+      return { ok: true, token, expires: data['setup.json'].setup.expires, user: u.id };
+    },
+
+    /**
      * Finish owner setup: set the password with the setup token (single use).
      * @param {unknown} token @param {unknown} password
      * @returns {Promise<{ ok: true, user: Principal } | { ok: false, code: string, message: string }>}
