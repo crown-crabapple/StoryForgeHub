@@ -512,7 +512,12 @@ export function matchWriteRoute(method, pathname) {
   if (c === 'ai' && e === undefined) {
     if (method === 'PUT' && d === 'profile') return { route: 'ai-book-profile', bookId: b };
     if (method === 'PUT' && d === 'records') return { route: 'ai-records', bookId: b };
-    if (method === 'POST' && ['context', 'send', 'apply', 'discard', 'cancel', 'cover-generate', 'cover-use', 'cover-delete'].includes(d)) return { route: `ai-${d}`, bookId: b };
+    if (method === 'POST' && ['context', 'send', 'apply', 'discard'].includes(d)) return { route: `ai-${d}`, bookId: b };
+    // M08-J03: stop a streamed reply; cover drafts (generate asks the image provider, only after consent; use and delete are edits of the book)
+    if (method === 'POST' && d === 'cancel') return { route: 'ai-cancel', bookId: b };
+    if (method === 'POST' && d === 'cover-generate') return { route: 'ai-cover-generate', bookId: b };
+    if (method === 'POST' && d === 'cover-use') return { route: 'ai-cover-use', bookId: b };
+    if (method === 'POST' && d === 'cover-delete') return { route: 'ai-cover-delete', bookId: b };
     return null;
   }
   if (method === 'POST' && c === 'repair' && d === undefined) return { route: 'repair', bookId: b };
