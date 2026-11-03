@@ -18,13 +18,16 @@ export const MAX_RESTORE_BYTES = 512 * 1024 * 1024;
  * @param {number} status
  * @param {unknown} body
  */
-function sendJson(res, status, body) {
+function sendJson(res, status, body, setCookie) {
   const text = JSON.stringify(body);
-  res.writeHead(status, {
+  /** @type {Record<string, string | number | string[]>} */
+  const headers = {
     'content-type': JSON_TYPE,
     'content-length': Buffer.byteLength(text),
     'cache-control': 'no-store',
-  });
+  };
+  if (setCookie && setCookie.length > 0) headers['set-cookie'] = setCookie;
+  res.writeHead(status, headers);
   res.end(text);
 }
 
@@ -82,9 +85,12 @@ function readUpload(req, max) {
  *   `recoverReport` is the result of the recover() run at startup; GET /api/recover/last serves it.
  *   `instance` is what GET /api/status reports about this process (the lock it holds); default: no lock.
  *   `maxRestoreBytes` is the size cap of the backup restore upload (default 512 MB; tests lower it).
- * @returns {import('node:http').Server} not yet listening; callers bind it to 127.0.0.1
+ *   `shared` (M07-J03) turns on shared mode: `gate` is createSharedGate(...) from shared-gate.mjs. Without it the server is in personal mode:
+ *   loopback clients only, no accounts, no policy.
+ * @returns {import('node:http').Server} not yet listening; callers bind it to 127.0.0.1 (personal mode) or the shared-mode host
  */
-export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES }) {
+export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES, shared = null }) {
+  const gate = shared ? shared.gate : null;
   let libraryHost = host ?? null;
   if (!libraryHost && repository) {
     try {
@@ -104,12 +110,44 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
     try {
       const address = server.address();
       const port = address && typeof address === 'object' ? address.port : 0;
-      if (!isRequestAllowed(req, port)) return sendJson(res, 403, { error: 'forbidden' });
+      if (!gate && !isRequestAllowed(req, port)) return sendJson(res, 403, { error: 'forbidden' });
 
       const target = (req.url ?? '/').split('#')[0];
       const queryAt = target.indexOf('?');
       const pathname = queryAt < 0 ? target : target.slice(0, queryAt);
       const queryString = queryAt < 0 ? '' : target.slice(queryAt + 1);
+
+      if (gate) {
+        // shared mode (M07-J03): any client address, but the Host must be ours, writes must come from our own pages, and every API route is
+        // checked against the caller's role. The web app itself (static files) is public so the login page can load.
+        if (!gate.hostOk(req, port)) return sendJson(res, 403, { error: 'forbidden' });
+        if (req.method !== 'GET' && !gate.originOk(req)) return sendJson(res, 403, { error: 'forbidden', code: 'ORIGIN' });
+        if (pathname.startsWith('/api/auth/')) {
+          let authBody = {};
+          if (req.method !== 'GET') {
+            if (!hasWriteHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
+            const read = await readBody(req);
+            if (read.tooLarge) return sendJson(res, 413, { error: 'too_large' });
+            try {
+              authBody = JSON.parse(read.buffer.toString('utf8') || '{}');
+            } catch {
+              return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
+            }
+          }
+          const r = await gate.handleAuth(req, req.method ?? 'GET', pathname, authBody, new URLSearchParams(queryString));
+          if (r) return sendJson(res, r.status, r.body, r.setCookie);
+        }
+        if (req.method !== 'GET' || isApiPath(pathname)) {
+          const who = await gate.principalOf(req);
+          const writeMatch = req.method !== 'GET' ? matchWriteRoute(req.method ?? '', pathname) : null;
+          const verdict = gate.decide(who, req.method ?? 'GET', pathname, writeMatch);
+          if (!verdict.ok) {
+            if (req.method !== 'GET') req.resume();
+            return sendJson(res, verdict.status, verdict.body);
+          }
+        }
+      }
+
       if (req.method !== 'GET') {
         const match = matchWriteRoute(req.method ?? '', pathname);
         if (!match) return sendJson(res, 405, { error: 'read_only' });
