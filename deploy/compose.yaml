@@ -1,0 +1,42 @@
+# StoryForge with Docker Compose (M08-J01). From the deploy/ folder:
+#   cp storyforge.env.example storyforge.env      then edit storyforge.env (the owner name and the public address)
+#   mkdir -p library config shared-data && sudo chown -R 10001:10001 library config shared-data     (the container runs as uid 10001)
+#   docker compose up -d --build
+#   docker compose logs storyforge                 the one-time setup link is printed here on the first start
+# The app listens on 127.0.0.1:4317 of this machine only. Put a TLS reverse proxy in front for anyone else (see the commented caddy service and docs/self-hosting.md).
+# There is no database service: the index is a disposable SQLite cache inside each book's .storyforge/ folder, rebuilt by the app when its format changes.
+name: storyforge
+
+services:
+  storyforge:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: storyforge:local
+    init: true
+    restart: unless-stopped
+    env_file:
+      - storyforge.env
+    ports:
+      - "127.0.0.1:4317:4317"
+    volumes:
+      - ./library:/library
+      - ./config:/config
+      - ./shared-data:/shared-data
+
+  # Optional: TLS with automatic certificates. To use it, remove the ports: block above (Caddy reaches the app over the compose network),
+  # copy Caddyfile.example to Caddyfile, put your domain in it, and remove the # signs below. Ports 80 and 443 must reach this machine.
+  # caddy:
+  #   image: caddy:2
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - storyforge
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy-data:/data
+  #
+# volumes:
+#   caddy-data:

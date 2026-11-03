@@ -6,6 +6,7 @@
 //   comment  reviewer and up            suggest  reviewer and up
 //   write    editor and up              ai       editor and up, and only when the owner allows AI for members
 //   admin    owner only                 auth     anyone (the login, logout, setup and invite-accept routes; they check what they need themselves)
+//   public   anyone (only /api/health, the liveness probe; a signed-out caller gets { ok: true } and nothing else)
 
 const RANK = { viewer: 1, reviewer: 2, editor: 3, owner: 4 };
 const NEEDS = { read: 1, export: 1, comment: 2, suggest: 2, write: 3, ai: 3, admin: 4 };
@@ -50,7 +51,8 @@ export function classifyRead(pathname) {
   const parts = pathname.split('/').filter(Boolean);
   if (parts[0] !== 'api') return null;
   const [, a, b, c, d] = parts;
-  if (a === 'health' && parts.length === 2) return { cls: 'read' };
+  // liveness probe: anyone (server.mjs answers a signed-out caller with only { ok: true })
+  if (a === 'health' && parts.length === 2) return { cls: 'public' };
   if (a === 'status' && parts.length === 2) return { cls: 'read' };
   if (a === 'auth') return { cls: 'auth' };
   if (a === 'shared') return { cls: 'admin' }; // members, invites, shares, audit
@@ -85,7 +87,7 @@ export const bookOfWrite = (match) => match.bookId;
  * @param {{ book?: string, shareable?: boolean, aiForMembers?: boolean, path?: string }} [ctx]  `shareable`: a read a share link may make (classifyRead)
  */
 export function allowed(principal, cls, ctx = {}) {
-  if (cls === 'auth') return true;
+  if (cls === 'auth' || cls === 'public') return true;
   if (!principal) return false;
   if (principal.kind === 'share') {
     // a share reads one book (and exports it when its scope says so); the top-level reads the reader page needs are allowed, nothing else

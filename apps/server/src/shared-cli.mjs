@@ -1,5 +1,6 @@
 // CLI for shared mode (M07-J03a):
 //   shared init --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>] [--port <n>]   create the owner and print the one-time setup link
+//   shared reset-owner --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>] [--port <n>]   lost owner password: clear it and every session of that owner, print a new setup link
 //   audit verify [--shared-data <dir> | --library <path>]   check the audit chain (exit 0 intact, 1 broken or truncated, 2 usage)
 // and the helpers `serve --shared` uses (default shared-data folder, the folder-inside-the-library check, --host and --public-url checks).
 // No filesystem access here: the shared-data files go through @storyforge/shared and @storyforge/store.
@@ -83,9 +84,8 @@ async function verifyAudit(dir) {
 export async function runSharedCommand(command, argv) {
   const complain = (/** @type {string} */ s) => process.stderr.write(`storyforge: ${s}\n`);
   const [sub, ...rest] = argv;
-  const wanted = command === 'shared' ? 'init' : 'verify';
-  if (sub !== wanted) {
-    complain(command === 'shared' ? 'usage: shared init --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>]' : 'usage: audit verify [--shared-data <dir> | --library <path>]');
+  if (!(command === 'shared' ? ['init', 'reset-owner'] : ['verify']).includes(/** @type {string} */ (sub))) {
+    complain(command === 'shared' ? 'usage: shared init|reset-owner --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>]' : 'usage: audit verify [--shared-data <dir> | --library <path>]');
     return 2;
   }
   const parsed = parseFlags(rest, ['--owner', '--library', '--shared-data', '--public-url', '--port']);
@@ -95,7 +95,7 @@ export async function runSharedCommand(command, argv) {
   }
   const v = parsed.values;
   if (command === 'shared' && !v['--owner']) {
-    complain('shared init needs --owner <username>');
+    complain(`shared ${sub} needs --owner <username>`);
     return 2;
   }
   let dir = v['--shared-data'] ? path.resolve(v['--shared-data']) : null;
@@ -142,17 +142,36 @@ export async function runSharedCommand(command, argv) {
     }
     base = pub.url;
   }
+  if (sub === 'reset-owner' && !libraryRoot) {
+    // without the library there is no lock to hold, and a running server would overwrite what this command writes
+    complain('shared reset-owner needs the library it serves (--library <path> or STORYFORGE_LIBRARY) so that it can make sure the server is stopped');
+    return 2;
+  }
   // a running server keeps the shared data in memory and would overwrite what this command writes: hold the library lock while we change it
   const lockPath = libraryRoot ? path.join(libraryRoot, LOCK_FILE) : null;
   if (lockPath) {
     const lock = await acquireLock(lockPath, { port: null });
     if (!lock.ok) {
-      complain(`StoryForge is running on this library; stop it first, then run shared init again. Lock file: ${lockPath}`);
+      complain(`StoryForge is running on this library; stop it first, then run shared ${sub} again. Lock file: ${lockPath}`);
       return 3;
     }
   }
   try {
     const data = await openSharedData(dir);
+    if (sub === 'reset-owner') {
+      const owner = /** @type {string} */ (v['--owner']);
+      const reset = await data.resetOwner(owner);
+      if (!reset.ok) {
+        complain(`${reset.message} (${owner}); nothing was changed`);
+        return 1;
+      }
+      await createAudit(dir).append({ actor: 'system', event: 'owner.reset', target: owner });
+      process.stdout.write(`Owner "${owner}" has no password now and is signed out everywhere.
+Open this link within 30 minutes to choose a new password (it works once):
+${base}/setup#token=${reset.token}
+`);
+      return 0;
+    }
     const r = await data.initOwner(/** @type {string} */ (v['--owner']));
     if (!r.ok) {
       complain(r.message);

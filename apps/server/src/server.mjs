@@ -169,6 +169,8 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
           const r = await gate.handleAuth(req, req.method ?? 'GET', pathname, authBody, new URLSearchParams(queryString));
           if (r) return sendJson(res, r.status, r.body, r.setCookie);
         }
+        // a liveness probe (container HEALTHCHECK, uptime monitors) needs no login; signed-out callers learn only that the server is up
+        if (req.method === 'GET' && pathname === '/api/health' && !(await gate.principalOf(req))) return sendJson(res, 200, { ok: true });
         if (req.method !== 'GET' || isApiPath(pathname)) {
           const who = await gate.principalOf(req);
           principal = who;
