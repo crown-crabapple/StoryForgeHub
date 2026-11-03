@@ -309,11 +309,11 @@ mark {
   border-bottom: 2px solid transparent;
 }
 .project-tab:hover {
-  color: #fff;
+  color: var(--text); /* was #fff: follows the theme (M07-J04 light and high-contrast) */
   text-decoration: none;
 }
 .project-tab[aria-current='page'] {
-  color: #fff;
+  color: var(--text); /* was #fff: follows the theme (M07-J04 light and high-contrast) */
   font-weight: 500;
   border-bottom-color: var(--accent);
 }
@@ -514,7 +514,7 @@ mark {
 }
 .paper h1 {
   margin: 0 0 var(--s2);
-  color: #fff;
+  color: var(--text); /* was #fff: follows the theme (M07-J04 light and high-contrast) */
   font-size: var(--fs-h2);
   line-height: 1.25;
   text-align: center;
@@ -2281,7 +2281,7 @@ mark {
 }
 .codex-cat[aria-current='true'] {
   background: var(--accent-soft);
-  color: #fff;
+  color: var(--text); /* was #fff: follows the theme (M07-J04 light and high-contrast) */
   font-weight: 500;
 }
 .codex-cat[data-kind='archived'] {
@@ -2507,7 +2507,7 @@ mark {
   text-underline-offset: 3px;
 }
 .codex-link:hover {
-  color: #fff;
+  color: var(--text); /* was #fff: follows the theme (M07-J04 light and high-contrast) */
 }
 .presence {
   display: flex;
@@ -2695,11 +2695,11 @@ mark {
   border-bottom: 2px solid transparent;
 }
 .view-tab:hover {
-  color: #fff;
+  color: var(--text); /* was #fff: follows the theme (M07-J04 light and high-contrast) */
   text-decoration: none;
 }
 .view-tab[aria-current='page'] {
-  color: #fff;
+  color: var(--text); /* was #fff: follows the theme (M07-J04 light and high-contrast) */
   font-weight: 500;
   border-bottom-color: var(--accent);
 }
