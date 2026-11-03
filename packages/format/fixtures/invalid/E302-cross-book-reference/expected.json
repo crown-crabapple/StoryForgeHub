@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E302",
+      "file": "book-a/manuscript/act-01-one/ch-001-one/0010-scene.md",
+      "location": "characters[0]"
+    }
+  ]
+}

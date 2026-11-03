@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "E208",
+      "file": "tidewater/codex/characters/ilse-hollis.md",
+      "location": "slug"
+    },
+    {
+      "code": "E208",
+      "file": "tidewater/codex/characters/ilse-hollis-again.md",
+      "location": "slug"
+    }
+  ]
+}

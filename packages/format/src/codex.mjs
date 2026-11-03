@@ -18,8 +18,9 @@ function labelsOf(d) {
 /**
  * @param {import('./load.mjs').Doc[]} docs typed documents of one book
  * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ * @param {Set<string>} [seriesTypes] types the book's series defines in its shared codex/_types (I403 when the book overrides one)
  */
-export function checkCodex(docs, add) {
+export function checkCodex(docs, add, seriesTypes = new Set()) {
   /** @type {Map<string, import('./load.mjs').Doc[]>} */
   const typeFiles = new Map();
   /** @type {Map<string, Set<import('./load.mjs').Doc>>} folded name or alias -> entries using it */
@@ -37,6 +38,7 @@ export function checkCodex(docs, add) {
     }
   }
   for (const [type, list] of typeFiles) {
+    if (seriesTypes.has(type)) for (const d of list) add('I403', d.file, 'type', `type ${type} overrides the series type file for this book`);
     if (list.length < 2) continue;
     for (const d of list) add('E209', d.file, 'type', `type ${type} is defined by more than one file in codex/_types`);
   }

@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E301",
+      "file": "tidewater/codex/characters/ilse-hollis.md",
+      "location": "line 10"
+    }
+  ]
+}

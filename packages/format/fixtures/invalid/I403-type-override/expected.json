@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "I403",
+      "file": "tidewater/book-one/codex/_types/vessel.md",
+      "location": "type"
+    }
+  ]
+}

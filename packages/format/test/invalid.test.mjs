@@ -20,6 +20,10 @@ const CONTRACT_CASES = [
   'E209-duplicate-type', 'W304-shared-alias', 'W305-self-relation',
   'W306-planted-no-setup', 'E102-event-state', 'E301-event-state', 'E302-event-state', 'W307-duplicate-exception', 'W306-developed-no-develop', 'E301-develop-missing-scene',
   'E302-develop-wrong-kind', 'W308-suggestion-target-missing', 'E102-suggestion-hunk',
+  // M07-J01: shared worlds, cross-book links, labels, typed fields, user templates
+  'E210-book-series-slug', 'E303-cross-book-missing', 'W309-shadowed-entry', 'W311-unknown-label', 'W312-field-kind', 'I403-type-override',
+  'E102-label-duplicate', 'E102-label-color', 'E102-field-kind', 'E102-field-choices', 'E102-template-shape',
+  'E301-shared-private-link', 'E302-cross-book-reference', 'E208-shared-duplicate-slug', 'W303-cross-book-archived',
 ];
 
 test('invalid fixture set matches the contract case table', () => {

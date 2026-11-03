@@ -130,6 +130,13 @@ export const KINDS = {
   },
 };
 
+// Added 2026-11-02, M07-J01 (additive within v1): `labels` on book/series (definitions) and on documents (names).
+for (const k of ['series', 'book', 'act', 'chapter', 'scene', 'entry', 'thread', 'event', 'doc']) KINDS[k].fields.labels = 'list';
+
+/** Kinds of a typed field in a codex type file (spec 5.1). */
+export const FIELD_KINDS = ['text', 'number', 'date', 'link', 'choice', 'list'];
+const LABEL_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+
 /** List-valued reference fields whose items must be strings. */
 const STRING_LIST_FIELDS = new Set([
   'characters', 'locations', 'plot_threads', 'events', 'setup', 'develop', 'payoff', 'scenes', 'sources', 'links', 'fields',
@@ -237,6 +244,57 @@ function checkState(state, file, add) {
   });
 }
 
+/**
+ * Labels (spec 3.4): book.md / series.md define them as a list of { name, color }; documents name them as a list of strings.
+ * @param {{kind:string, file:string, fm:any}} doc
+ * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ */
+function checkLabels(doc, add) {
+  const { fm, file } = doc;
+  if (doc.kind === 'book' || doc.kind === 'series') {
+    const seen = new Set();
+    fm.labels.forEach((l, i) => {
+      if (!isPlainMap(l)) {
+        add('E102', file, `labels[${i}]`, 'label must be a mapping with name and color');
+        return;
+      }
+      if (typeof l.name !== 'string' || l.name.trim() === '') add('E102', file, `labels[${i}].name`, 'label name must be a non-empty string');
+      else {
+        const key = l.name.trim().toLowerCase();
+        if (seen.has(key)) add('E102', file, `labels[${i}].name`, `label name ${l.name} is used twice (names compare case-insensitively)`);
+        seen.add(key);
+      }
+      if (typeof l.color !== 'string' || !LABEL_COLOR_RE.test(l.color)) add('E102', file, `labels[${i}].color`, 'label color must be a quoted colour like "#3A5F7D"');
+    });
+  } else {
+    fm.labels.forEach((l, i) => {
+      if (typeof l !== 'string') add('E102', file, `labels[${i}]`, 'list item must be a string');
+    });
+  }
+}
+
+/**
+ * Type file `fields` items (spec 5.1): a string label, or { label, kind, choices? }. E102 at `fields[i]`.
+ * @param {any[]} items @param {string} file
+ * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ */
+function checkTypeFields(items, file, add) {
+  const isStrings = (v) => Array.isArray(v) && v.every((c) => typeof c === 'string');
+  items.forEach((item, i) => {
+    const loc = `fields[${i}]`;
+    if (typeof item === 'string') return;
+    if (!isPlainMap(item) || typeof item.label !== 'string' || item.label.trim() === '') {
+      add('E102', file, loc, 'field must be a string label or a mapping with label, kind and optional choices');
+    } else if (typeof item.kind !== 'string' || !FIELD_KINDS.includes(item.kind)) {
+      add('E102', file, loc, `field kind must be one of ${FIELD_KINDS.join(', ')}`);
+    } else if (item.kind === 'choice' && !(isStrings(item.choices) && item.choices.length > 0)) {
+      add('E102', file, loc, 'a choice field needs choices: a non-empty list of strings');
+    } else if (item.choices !== undefined && item.choices !== null && !isStrings(item.choices)) {
+      add('E102', file, loc, 'choices must be a list of strings');
+    }
+  });
+}
+
 const HUNK_STATUSES = ['pending', 'accepted', 'declined'];
 const DIFF_HEADER_RE = /^@@ -(\d+),(\d+) \+(\d+),(\d+) @@ (\S+)$/;
 
@@ -319,7 +377,7 @@ export function checkFields(doc, ctx, add) {
       add('E102', file, key, `${key} ${problem}`);
       continue;
     }
-    if (type === 'list' && STRING_LIST_FIELDS.has(key)) {
+    if (type === 'list' && STRING_LIST_FIELDS.has(key) && key !== 'labels' && !(key === 'fields' && doc.kind === 'codex-type')) {
       fm[key].forEach((item, i) => {
         if (typeof item !== 'string') add('E102', file, `${key}[${i}]`, 'list item must be a string');
       });
@@ -337,6 +395,9 @@ export function checkFields(doc, ctx, add) {
       if (!isPlainMap(r) || typeof r.to !== 'string') add('E102', file, `related[${i}].to`, 'related item needs a string `to`');
     });
   }
+
+  if (Array.isArray(fm.labels)) checkLabels(doc, add);
+  if (doc.kind === 'codex-type' && Array.isArray(fm.fields)) checkTypeFields(fm.fields, file, add);
 
   if (doc.kind === 'codex-type' && typeof fm.type === 'string' && !/^[a-z]+$/.test(fm.type)) {
     add('E102', file, 'type', 'type must be a lower-case word (a-z)');

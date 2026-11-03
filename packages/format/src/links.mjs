@@ -1,5 +1,5 @@
 // Link and reference resolution (spec 1.8): front-matter references, body links, citations.
-// Emits E103 (body paths), E301, E302, W301, W302, W303, W305, I402, and records every explicit reference
+// Emits E103 (body paths), E301, E302, E303, W301, W302, W303, W305, I402, and records every explicit reference
 // as a link record (see extractLinks in index.mjs), so nothing else has to resolve links again.
 import path from 'node:path';
 import { exists, mapLimit, getReadConcurrency } from './fs.mjs';
@@ -79,9 +79,79 @@ export function* proseLines(body, startLine) {
 
 /**
  * One explicit reference and what it resolved to. `resolution`: ok, previous_slug, archived, wrong_kind,
- * broken, cross_book. `src_path` is relative to the book root.
+ * broken, cross_book (a cross-book link the validation root cannot see, I402). `src_path` is relative to the
+ * book root (to the validated root for a shared entry). A cross-book link that resolved also carries
+ * `target_owner` ({ kind, id, slug, title, path } of the book or series that owns the target, path relative
+ * to the validated root), `target_title` and `target_file` (the target's file, relative to the validated root).
  * @typedef {{ src_id: string|null, src_path: string, location: string, raw: string,
- *             target_id: string|null, target_kind: string|null, resolution: string }} LinkRecord
+ *             target_id: string|null, target_kind: string|null, resolution: string,
+ *             target_owner?: { kind: 'book'|'series', id: string|null, slug: string, title: string|null, path: string },
+ *             target_title?: string|null, target_file?: string }} LinkRecord
+ */
+
+/**
+ * The lookup tables of one set of documents (a book's own, or a series' shared entries).
+ * @typedef {{ byId: Map<string, Doc>, bySlug: Map<string, Doc[]>, byPrev: Map<string, Doc[]> }} Namespace
+ */
+
+/** @param {Doc[]} docs @param {{ entriesOnly?: boolean }} [opts] @returns {Namespace} */
+export function makeNamespace(docs, { entriesOnly = false } = {}) {
+  /** @type {Namespace} */
+  const ns = { byId: new Map(), bySlug: new Map(), byPrev: new Map() };
+  const push = (map, key, d) => {
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(d);
+  };
+  for (const d of docs) {
+    if (!d.kind) continue;
+    if (typeof d.fm.id === 'string' && !ns.byId.has(d.fm.id)) ns.byId.set(d.fm.id, d);
+    if (entriesOnly ? d.kind === 'entry' : NAMED.includes(d.kind)) {
+      if (typeof d.fm.slug === 'string') push(ns.bySlug, d.fm.slug, d);
+      if (Array.isArray(d.fm.previous_slugs)) for (const p of d.fm.previous_slugs) if (typeof p === 'string') push(ns.byPrev, p, d);
+    }
+  }
+  return ns;
+}
+
+/**
+ * Resolution steps 1 to 4 (spec 1.8) over layered namespaces: the book's own first, the series' shared entries
+ * after it (step 3a). A live match in any layer beats an archived one.
+ * @param {Namespace[]} layers @param {string} target @param {Map<string, Doc>|null} [libIds] library-wide IDs (for shared entries)
+ * @returns {{doc: Doc, viaPrevious: boolean}|null}
+ */
+export function findTarget(layers, target, libIds = null) {
+  if (ID_PREFIX_RE.test(target)) {
+    for (const ns of layers) {
+      const d = ns.byId.get(target);
+      if (d) return { doc: d, viaPrevious: false };
+    }
+    const d = libIds?.get(target);
+    return d ? { doc: d, viaPrevious: false } : null;
+  }
+  for (const wantLive of [true, false]) {
+    for (const ns of layers) {
+      for (const [map, viaPrevious] of [[ns.bySlug, false], [ns.byPrev, true]]) {
+        const list = map.get(target) ?? [];
+        const hit = wantLive ? list.find((d) => !d.archived) : list[0];
+        if (hit) return { doc: hit, viaPrevious };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * What a validation can see of other books, for cross-book links (spec 2). `complete` is true only when the root is
+ * a library: an unknown prefix is then E303, otherwise I402. `layers` are [own, shared]; `series` is the owner
+ * of the shared layer.
+ * @typedef {{ kind: 'book'|'series', slug: string, id: string|null, title: string|null, path: string, layers: Namespace[],
+ *             series: { kind: 'series', slug: string, id: string|null, title: string|null, path: string }|null }} CrossTarget
+ * @typedef {{ complete: boolean, books: Map<string, CrossTarget>, series: Map<string, CrossTarget> }} CrossWorld
+ */
+
+/**
+ * How a set of documents sees the world.
+ * @typedef {{ shared?: Namespace|null, sharedMode?: boolean, libIds?: Map<string, Doc>|null, cross?: CrossWorld|null }} ResolveContext
  */
 
 const idOf = (doc) => (typeof doc.fm.id === 'string' ? doc.fm.id : null);
@@ -92,13 +162,10 @@ const idOf = (doc) => (typeof doc.fm.id === 'string' ? doc.fm.id : null);
  * @param {(code:string,file:string,loc:string,msg:string)=>void} add
  * @returns {Promise<{eventScenes: Map<Doc, Set<Doc>>, links: LinkRecord[]}>}
  */
-export async function resolveLinks(docs, bookDir, add) {
-  /** @type {Map<string, Doc>} */
-  const byId = new Map();
-  /** @type {Map<string, Doc[]>} */
-  const bySlug = new Map();
-  /** @type {Map<string, Doc[]>} */
-  const byPrev = new Map();
+export async function resolveLinks(docs, bookDir, add, context = {}) {
+  const { shared = null, sharedMode = false, libIds = null, cross = null } = context;
+  const local = makeNamespace(docs, { entriesOnly: sharedMode });
+  const layers = shared ? [local, shared] : [local];
   /** @type {Map<string, Doc[]>} */
   const byCite = new Map();
   /** @type {Map<string, Doc>} */
@@ -106,7 +173,7 @@ export async function resolveLinks(docs, bookDir, add) {
   /** @type {LinkRecord[]} */
   const links = [];
   const record = (src, location, raw, targetId, targetKind, resolution) =>
-    links.push({ src_id: idOf(src), src_path: src.rel, location, raw, target_id: targetId, target_kind: targetKind, resolution });
+    links.push({ src_id: idOf(src), src_path: sharedMode ? src.file : src.rel, location, raw, target_id: targetId, target_kind: targetKind, resolution });
   const push = (map, key, d) => {
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(d);
@@ -133,13 +200,6 @@ export async function resolveLinks(docs, bookDir, add) {
   for (const d of docs) {
     if (!d.kind) continue;
     byRel.set(d.rel, d);
-    if (typeof d.fm.id === 'string' && !byId.has(d.fm.id)) byId.set(d.fm.id, d);
-    if (NAMED.includes(d.kind)) {
-      if (typeof d.fm.slug === 'string') push(bySlug, d.fm.slug, d);
-      if (Array.isArray(d.fm.previous_slugs)) {
-        for (const p of d.fm.previous_slugs) if (typeof p === 'string') push(byPrev, p, d);
-      }
-    }
     if (d.kind === 'source' && typeof d.fm.cite_key === 'string') push(byCite, d.fm.cite_key, d);
   }
 
@@ -152,32 +212,57 @@ export async function resolveLinks(docs, bookDir, add) {
 
   /** @param {string} target @returns {{doc:Doc, viaPrevious:boolean}|null} */
   function lookup(target) {
-    if (ID_PREFIX_RE.test(target)) {
-      const d = byId.get(target);
-      return d ? { doc: d, viaPrevious: false } : null;
+    return findTarget(layers, target, sharedMode ? libIds : null);
+  }
+
+  /**
+   * `[[<book-or-series-slug>:<target>]]` (spec 2). Bodies and entry fields only.
+   * @param {Doc} src @param {string} location @param {string} target
+   * @returns {Doc|null}
+   */
+  function resolveCross(src, location, target) {
+    const at = target.indexOf(':');
+    const prefix = target.slice(0, at).trim();
+    const rest = target.slice(at + 1).trim();
+    const other = cross ? (cross.books.get(prefix) ?? cross.series.get(prefix)) : null;
+    if (!cross || (!other && !cross.complete)) {
+      add('I402', src.file, location, `cross-book link not checked: ${target}`);
+      record(src, location, target, null, null, 'cross_book');
+      return null;
     }
-    for (const [map, viaPrevious] of [[bySlug, false], [byPrev, true]]) {
-      const live = (map.get(target) ?? []).find((d) => !d.archived);
-      if (live) return { doc: live, viaPrevious };
+    const hit = other && rest !== '' ? findTarget(other.layers, rest, null) : null;
+    if (!other || !hit) {
+      add('E303', src.file, location, other ? `cross-book link target not found: ${target}` : `cross-book link target not found: no book or series named ${prefix}`);
+      record(src, location, target, null, null, 'broken');
+      return null;
     }
-    for (const [map, viaPrevious] of [[bySlug, false], [byPrev, true]]) {
-      const any = (map.get(target) ?? [])[0];
-      if (any) return { doc: any, viaPrevious };
-    }
-    return null;
+    if (hit.viaPrevious) add('W301', src.file, location, `${target} resolved only via previous_slugs`);
+    if (hit.doc.archived) add('W303', src.file, location, `${target} points into archive/`);
+    const id = idOf(hit.doc);
+    const owner = other.layers[0].byId.get(id ?? '') === hit.doc ? other : (other.series ?? other);
+    links.push({
+      src_id: idOf(src), src_path: sharedMode ? src.file : src.rel, location, raw: target, target_id: id, target_kind: hit.doc.kind,
+      resolution: hit.doc.archived ? 'archived' : hit.viaPrevious ? 'previous_slug' : 'ok',
+      target_owner: { kind: owner.kind, id: owner.id, slug: owner.slug, title: owner.title, path: owner.path },
+      target_title: typeof hit.doc.fm.title === 'string' ? hit.doc.fm.title : typeof hit.doc.fm.name === 'string' ? hit.doc.fm.name : null,
+      target_file: hit.doc.file,
+    });
+    return hit.doc;
   }
 
   /**
    * @param {Doc} src @param {string} location @param {string} raw
    * @param {string[]|null} kinds allowed target kinds
+   * @param {boolean} [allowCross] true for body links and entry `fields` values
    * @returns {Doc|null} resolved target, if any
    */
-  function resolveTarget(src, location, raw, kinds) {
+  function resolveTarget(src, location, raw, kinds, allowCross = false) {
     const target = raw.trim();
     if (target === '') return null;
     if (target.includes(':')) {
-      add('I402', src.file, location, `cross-book link not checked: ${target}`);
-      record(src, location, target, null, null, 'cross_book');
+      if (allowCross) return resolveCross(src, location, target);
+      add('E302', src.file, location, `cross-book links are only allowed in bodies and entry fields, not in references: ${target}`);
+      record(src, location, target, null, null, 'wrong_kind');
       return null;
     }
     const hit = lookup(target);
@@ -265,14 +350,14 @@ export async function resolveLinks(docs, bookDir, add) {
     if (d.kind === 'entry' && fm.fields && typeof fm.fields === 'object' && !Array.isArray(fm.fields)) {
       for (const [label, value] of Object.entries(fm.fields)) {
         if (typeof value !== 'string') continue;
-        for (const m of value.matchAll(WIKI_RE)) resolveTarget(d, `fields.${label}`, m[1].split('|')[0], null);
+        for (const m of value.matchAll(WIKI_RE)) resolveTarget(d, `fields.${label}`, m[1].split('|')[0], null, true);
       }
     }
 
     // body links
     for (const [lineNo, text] of proseLines(d.body, d.bodyStartLine)) {
       const location = `line ${lineNo}`;
-      for (const m of text.matchAll(WIKI_RE)) resolveTarget(d, location, m[1].split('|')[0], null);
+      for (const m of text.matchAll(WIKI_RE)) resolveTarget(d, location, m[1].split('|')[0], null, true);
       for (const m of text.matchAll(CITE_RE)) resolveCite(d, location, m[1]);
       for (const m of text.matchAll(MDLINK_RE)) await checkFileLink(d, location, m[3]);
     }

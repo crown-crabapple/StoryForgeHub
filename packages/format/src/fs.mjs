@@ -66,6 +66,22 @@ export async function walkMarkdown(dir) {
   return out.sort(byCodePoint);
 }
 
+/**
+ * Markdown files of a series folder that belong to its shared world: everything below `codex/` and `archive/`
+ * (paths relative to the series folder, forward slashes, sorted). Other series-level folders are ignored.
+ * @param {string} seriesDir
+ * @returns {Promise<string[]>}
+ */
+export async function walkSharedMarkdown(seriesDir) {
+  /** @type {string[]} */
+  const out = [];
+  for (const sub of ['codex', 'archive']) {
+    if (!(await isDirectory(path.join(seriesDir, sub)))) continue;
+    for (const rel of await walkMarkdown(path.join(seriesDir, sub))) out.push(`${sub}/${rel}`);
+  }
+  return out.sort(byCodePoint);
+}
+
 /** @param {string} p */
 export async function readText(p) {
   return readFile(p, 'utf8');
