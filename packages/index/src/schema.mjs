@@ -1,7 +1,7 @@
 // Table definitions for index.sqlite. Bump SCHEMA_VERSION when anything here changes: an index with
 // a different version is treated as stale and rebuilt from the files.
 
-export const SCHEMA_VERSION = 2; // 2: graph table (M04-J01)
+export const SCHEMA_VERSION = 3; // 2: graph table (M04-J01); 3: world_nodes (series shared entries, cross-book targets) and shared_files (M07-J01)
 export const FORMAT = 'storyforge-format/1';
 export const INDEX_FILE = 'index.sqlite';
 
@@ -39,6 +39,14 @@ CREATE TABLE graph (
 );
 CREATE INDEX graph_from ON graph (from_id);
 CREATE INDEX graph_to ON graph (to_id);
+-- graph nodes that are not this book's own documents: the series' shared entries (owner 'series', path relative to the library root)
+-- and cross-book targets (external = 1: only id, kind, title and path of the other book's object)
+CREATE TABLE world_nodes (
+  id TEXT NOT NULL, kind TEXT NOT NULL, type TEXT, title TEXT, owner TEXT NOT NULL, series_id TEXT, book_id TEXT,
+  external INTEGER NOT NULL, path TEXT NOT NULL
+);
+-- the series files this book's index was built from (path relative to the book root, e.g. ../codex/characters/x.md)
+CREATE TABLE shared_files (path TEXT PRIMARY KEY, sha256 TEXT NOT NULL, size INTEGER NOT NULL, mtime_ms REAL NOT NULL);
 CREATE TABLE diagnostics (
   code TEXT NOT NULL, severity TEXT NOT NULL, file TEXT NOT NULL, location TEXT NOT NULL, message TEXT NOT NULL
 );
@@ -46,4 +54,4 @@ CREATE VIRTUAL TABLE fts USING fts5(id UNINDEXED, kind UNINDEXED, title, body, t
 `;
 
 /** Tables compared by tests and by "refresh equals rebuild" (everything but meta.built_at). */
-export const TABLES = ['files', 'objects', 'scenes', 'excluded', 'links', 'mentions', 'graph', 'diagnostics'];
+export const TABLES = ['files', 'objects', 'scenes', 'excluded', 'links', 'mentions', 'graph', 'world_nodes', 'shared_files', 'diagnostics'];

@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W312",
+      "file": "tidewater/book-one/codex/vessels/heron.md",
+      "location": "fields.Tonnage"
+    }
+  ]
+}

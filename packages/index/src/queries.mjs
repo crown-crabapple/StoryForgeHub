@@ -159,6 +159,14 @@ export function makeQueries(db) {
         `SELECT id, kind, CASE WHEN kind = 'entry' THEN type END AS type, title AS name FROM objects WHERE kind IN (${GRAPH_KINDS.map(() => '?').join(', ')}) ORDER BY rowid`,
         ...GRAPH_KINDS,
       );
+      // the series' shared entries and cross-book targets (M07-J01), after the book's own nodes
+      for (const r of all('SELECT id, kind, type, title, owner, series_id, book_id, external, path FROM world_nodes ORDER BY rowid')) {
+        nodes.push({
+          id: r.id, kind: r.kind, type: r.type, name: r.title, owner: r.owner,
+          ...(r.series_id !== null ? { series_id: r.series_id } : {}), ...(r.book_id !== null ? { book_id: r.book_id } : {}),
+          ...(r.external ? { external: true } : {}), path: r.path,
+        });
+      }
       const edges = all('SELECT from_id, to_id, kind, rel, label, src_path, location, count FROM graph ORDER BY rowid').map((r) => ({
         from: r.from_id,
         to: r.to_id,

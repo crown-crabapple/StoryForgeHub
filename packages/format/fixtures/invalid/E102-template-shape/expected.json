@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E102",
+      "file": "_templates/broken/template.md",
+      "location": "description"
+    }
+  ]
+}

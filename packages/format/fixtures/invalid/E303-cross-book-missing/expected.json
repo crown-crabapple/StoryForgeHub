@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "E303",
+      "file": "book-a/manuscript/act-01-one/ch-001-one/0010-a.md",
+      "location": "line 10"
+    },
+    {
+      "code": "E303",
+      "file": "book-a/manuscript/act-01-one/ch-001-one/0010-a.md",
+      "location": "line 12"
+    }
+  ]
+}

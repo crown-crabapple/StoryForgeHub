@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W309",
+      "file": "tidewater/book-one/codex/characters/ilse-hollis.md",
+      "location": "slug"
+    }
+  ]
+}

@@ -28,12 +28,14 @@ export async function discover(rootDir, mode, add) {
     // probe every child for book.md / series.md concurrently, then walk them in order
     const probes = await mapLimit(names, getReadConcurrency(), async (name) => {
       const childDir = path.join(dir, name);
+      if (mode === 'library' && level === 0 && name === '_templates') return { isBook: false, isSeries: false, skip: true };
       const isBook = await isFile(path.join(childDir, 'book.md'));
       const isSeries = !isBook && mode === 'library' && level + 1 === 1 && (await isFile(path.join(childDir, 'series.md')));
       return { isBook, isSeries };
     });
     for (const [idx, name] of names.entries()) {
-      const { isBook, isSeries } = probes[idx];
+      const { isBook, isSeries, skip } = probes[idx];
+      if (skip) continue; // `_templates/` is not a book or series (FORMAT 2)
       const childRel = join(rel, name);
       const childDir = path.join(dir, name);
       const childLevel = level + 1;
@@ -59,8 +61,9 @@ export async function discover(rootDir, mode, add) {
  * E202 (duplicate series_number within a series) and E203 (duplicate book slug in the library).
  * @param {{path:string, file:string, seriesPath:string|null, fm:any}[]} entries one per book.md that parsed
  * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ * @param {{file:string, fm:any}[]} [seriesEntries] one per series.md that parsed (E210)
  */
-export function checkBookUniqueness(entries, add) {
+export function checkBookUniqueness(entries, add, seriesEntries = []) {
   /** @param {string} code @param {string} field @param {(e:any)=>string|number|null} keyOf */
   const report = (code, field, keyOf) => {
     /** @type {Map<string, typeof entries>} */
@@ -77,6 +80,14 @@ export function checkBookUniqueness(entries, add) {
     }
   };
   report('E203', 'slug', (e) => (typeof e.fm.slug === 'string' ? e.fm.slug : null));
+  // E210: a book slug equal to a series slug (a cross-book link prefix would be ambiguous)
+  const seriesSlugs = new Map(seriesEntries.filter((s) => typeof s.fm.slug === 'string').map((s) => [s.fm.slug, s]));
+  for (const e of entries) {
+    const s = typeof e.fm.slug === 'string' ? seriesSlugs.get(e.fm.slug) : undefined;
+    if (!s) continue;
+    add('E210', e.file, 'slug', `book slug ${e.fm.slug} is also a series slug`);
+    add('E210', s.file, 'slug', `series slug ${e.fm.slug} is also a book slug`);
+  }
   report('E202', 'series_number', (e) =>
     e.seriesPath !== null && Number.isInteger(e.fm.series_number) ? `${e.seriesPath}#${e.fm.series_number}` : null);
 }

@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W309",
+      "file": "tidewater/low-tide/codex/locations/port-aldine.md",
+      "location": "slug"
+    }
+  ]
+}

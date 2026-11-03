@@ -1,0 +1,14 @@
+{
+  "diagnostics": [
+    {
+      "code": "E210",
+      "file": "tidewater/series.md",
+      "location": "slug"
+    },
+    {
+      "code": "E210",
+      "file": "tidewater/book-one/book.md",
+      "location": "slug"
+    }
+  ]
+}

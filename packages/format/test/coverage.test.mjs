@@ -9,6 +9,8 @@ const SPEC_CODES = [
   'E208', 'E209', 'E301', 'E302', 'W101', 'W201', 'W202', 'W203', 'W204', 'W301', 'W302', 'W303',
   'W304', 'W305', 'W306', 'W307', 'W308', 'I401',
   'I402',
+  // M07-J01 (additive within v1)
+  'E210', 'E303', 'W309', 'W311', 'W312', 'I403',
 ];
 
 const covered = new Map(); // code -> case names

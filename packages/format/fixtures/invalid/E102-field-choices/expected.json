@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E102",
+      "file": "codex/_types/vessel.md",
+      "location": "fields[1]"
+    }
+  ]
+}

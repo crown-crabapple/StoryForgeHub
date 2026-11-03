@@ -15,6 +15,7 @@ The bytes in this folder are exact (`.gitattributes` marks `packages/format/fixt
 | `suggestion/` | `salt-orchard` plus `suggestions/2026/20261102-140322-arrival-eyes.md`: a pending suggestion with three hunks on Arrival (M05-J06). Zero diagnostics. |
 | `continuity-exception/` | `salt-orchard` plus `planning/continuity/maren-eyes.md` (suppresses its CF1) and `old-note.md` (names no finding: a stale exception). Zero diagnostics; `expected-continuity.json` has the finding under `suppressed` and the stale exception. |
 | `spec-example/` | Byte copy of the spec's `salt-orchard-mini` example, `.storyforge/` decoy included. Exactly four diagnostics: `I402`, `W201`, `W202`, `W301`. |
+| `tidewater/` | Shared series world (M07-J01): series `tidewater/` with labels, shared `ilse-hollis` and `port-aldine` entries and a shared `vessel` type with typed fields; books `salt-orchard-2` and `low-tide` that use `ilse-hollis` by bare slug with no copy, a `[[low-tide:the-lost-ledger]]` cross-book link, a book-local `port-aldine` shadowing the shared one, labels on scenes and entries; a library template `_templates/mystery-arc/`; and a standalone book `pilgrims-road` that must not see the shared entries. Exactly one diagnostic: `W309` on the shadowing entry. |
 
 `salt-orchard/expected-continuity.json` pins the one finding the continuity engine reports for it (CF1, Eyes Grey vs green). `expected.json` in each valid folder holds the expected `diagnostics`, and where relevant the scene `order` (IDs), the chronological `timeline` (event slugs) and the `excluded` scenes (variant, archived).
 
@@ -29,3 +30,5 @@ One folder per defect, named `<code>-<short-name>`. Each is a minimal valid book
 ## Regenerating
 
 `test/build-fixtures.mjs --write` regenerates `invalid/*`, `valid/salt-orchard` (and its `expected-continuity.json`), `valid/continuity-cases`, `valid/continuity-exception`, `valid/suggestion`, `valid/library` and `valid/spec-example/expected.json`. The committed files are the source of truth; the script is only a convenience and does nothing without `--write`. It never touches the spec-example copy.
+
+`test/build-world-fixtures.mjs --write` regenerates `valid/tidewater` and the M07-J01 invalid cases (`E210`, `E303`, `W309`, `W311`, `W312`, `I403`, `E102-label-*`, `E102-field-*`, `E102-template-shape`, `E301-shared-private-link`, `E302-cross-book-reference`, `E208-shared-duplicate-slug`, `W303-cross-book-archived`) the same way.
