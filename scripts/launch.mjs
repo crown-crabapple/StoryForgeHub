@@ -12,16 +12,31 @@ const at = (p) => fileURLToPath(new URL(p, import.meta.url));
 const INSTALLED = at('../node_modules/.package-lock.json');
 const LOCK = at('../package-lock.json');
 const DIST = at('../apps/web/dist/index.html');
+// the web app's source entry; a release zip ships the built app (apps/web/dist) without it, so a release never builds and installs only what runs
+const WEB_SOURCE = at('../apps/web/index.html');
 
 /**
  * What the launcher has to do before it can start the server. Pure, so a test can check the decision.
  * `lockTime`: when package-lock.json last changed; `installedTime`: when the last install finished (null when there was none). Times in ms.
- * @param {{ lockTime: number, installedTime: number | null, modules: boolean, dist: boolean }} s
- * @returns {{ install: boolean, build: boolean }}
+ * `source`: the web app's source is here (a checkout); false in a release, which ships the built app and cannot rebuild it.
+ * @param {{ lockTime: number, installedTime: number | null, modules: boolean, dist: boolean, source?: boolean }} s
+ * @returns {{ install: boolean, build: boolean, release: boolean }}
  */
-export function planSetup({ lockTime, installedTime, modules, dist }) {
+export function planSetup({ lockTime, installedTime, modules, dist, source = true }) {
   const install = !modules || installedTime === null || lockTime > installedTime;
-  return { install, build: install || !dist };
+  if (!source) return { install, build: false, release: true };
+  return { install, build: install || !dist, release: false };
+}
+
+/** The plan for the copy of StoryForge this file is in (a test imports an unzipped release's copy to check what its launcher will do). */
+export function currentPlan() {
+  return planSetup({
+    lockTime: statSync(LOCK).mtimeMs,
+    installedTime: existsSync(INSTALLED) ? statSync(INSTALLED).mtimeMs : null,
+    modules: existsSync(fileURLToPath(new URL('../node_modules', import.meta.url))),
+    dist: existsSync(DIST),
+    source: existsSync(WEB_SOURCE),
+  });
 }
 
 /** Major version of a Node version string like "22.11.0". @param {string} v */
@@ -37,15 +52,14 @@ function main() {
     console.error(`StoryForge needs Node.js ${MIN_NODE} or newer; this is ${process.versions.node}. Install a current version from https://nodejs.org and run this again.`);
     return 1;
   }
-  const plan = planSetup({
-    lockTime: statSync(LOCK).mtimeMs,
-    installedTime: existsSync(INSTALLED) ? statSync(INSTALLED).mtimeMs : null,
-    modules: existsSync(fileURLToPath(new URL('../node_modules', import.meta.url))),
-    dist: existsSync(DIST),
-  });
+  const plan = currentPlan();
+  if (plan.release && !existsSync(DIST)) {
+    console.error('StoryForge: this copy has no built app (apps/web/dist is missing). Unpack the release zip again, or use a source checkout and run npm run build.');
+    return 1;
+  }
   if (plan.install) {
     console.log('StoryForge: installing what it needs (first run, or the dependency list changed). This needs the internet once and can take a few minutes.');
-    if (run('npm', ['ci']) !== 0) {
+    if (run('npm', plan.release ? ['ci', '--omit=dev'] : ['ci']) !== 0) {
       console.error('StoryForge: "npm ci" failed. Check the messages above (is the internet reachable?) and run this again.');
       return 1;
     }

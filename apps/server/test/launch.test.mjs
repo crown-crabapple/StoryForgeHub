@@ -193,11 +193,14 @@ const { planSetup, nodeMajor } = await import(pathToFileURL(path.join(REPO_ROOT,
 
 test('launcher: install and build on the first run, and again when package-lock.json is newer than the last install; build alone when only the build is missing; nothing when up to date', () => {
   const ok = { lockTime: 100, installedTime: 200, modules: true, dist: true };
-  assert.deepEqual(planSetup(ok), { install: false, build: false });
-  assert.deepEqual(planSetup({ ...ok, modules: false, installedTime: null }), { install: true, build: true }, 'first run');
-  assert.deepEqual(planSetup({ ...ok, installedTime: null }), { install: true, build: true }, 'node_modules without a record of an install: install once');
-  assert.deepEqual(planSetup({ ...ok, lockTime: 300 }), { install: true, build: true }, 'package-lock.json changed after the last install');
-  assert.deepEqual(planSetup({ ...ok, dist: false }), { install: false, build: true }, 'build missing');
+  assert.deepEqual(planSetup(ok), { install: false, build: false, release: false });
+  assert.deepEqual(planSetup({ ...ok, modules: false, installedTime: null }), { install: true, build: true, release: false }, 'first run');
+  assert.deepEqual(planSetup({ ...ok, installedTime: null }), { install: true, build: true, release: false }, 'node_modules without a record of an install: install once');
+  assert.deepEqual(planSetup({ ...ok, lockTime: 300 }), { install: true, build: true, release: false }, 'package-lock.json changed after the last install');
+  assert.deepEqual(planSetup({ ...ok, dist: false }), { install: false, build: true, release: false }, 'build missing');
+  // a release zip ships the built app without its source: install only what runs, never build
+  assert.deepEqual(planSetup({ ...ok, modules: false, installedTime: null, source: false }), { install: true, build: false, release: true }, 'release, first run');
+  assert.deepEqual(planSetup({ ...ok, source: false }), { install: false, build: false, release: true }, 'release, up to date');
   assert.equal(nodeMajor('22.11.0'), 22);
   assert.equal(nodeMajor('v20.1.0'), 20);
 });

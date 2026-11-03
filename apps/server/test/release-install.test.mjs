@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { unzip } from '@storyforge/export';
 import { FIXTURES, REPO_ROOT } from './helpers.mjs';
 import { buildRelease } from '../../../scripts/release-build.mjs';
@@ -33,6 +34,10 @@ test('the unzipped release installs with npm ci --omit=dev --offline and serves 
   }
   const app = path.join(home, `storyforge-${r.version}`);
   assert.ok(fs.existsSync(path.join(app, 'package-lock.json')));
+  assert.ok(!fs.existsSync(path.join(app, 'apps', 'web', 'index.html')), 'the release ships the built app, not its source');
+  // what StoryForge.cmd / storyforge.sh will do in this copy: install only what runs, and never try to rebuild the app (its source is not shipped)
+  const launcher = await import(pathToFileURL(path.join(app, 'scripts', 'launch.mjs')).href);
+  assert.deepEqual(launcher.currentPlan(), { install: true, build: false, release: true }, 'first run of the unzipped release');
 
   const install = spawnSync('npm ci --omit=dev --offline --ignore-scripts --no-audit --no-fund', { cwd: app, encoding: 'utf8', shell: true, timeout: 240000, windowsHide: true });
   if (install.status !== 0) {
@@ -46,6 +51,7 @@ test('the unzipped release installs with npm ci --omit=dev --offline and serves 
   }
   assert.ok(!fs.existsSync(path.join(app, 'node_modules', 'vite')), 'development dependencies are not installed');
   assert.ok(fs.existsSync(path.join(app, 'node_modules', '@storyforge', 'core')), 'the workspace packages are linked');
+  assert.deepEqual(launcher.currentPlan(), { install: false, build: false, release: true }, 'after the install the launcher goes straight to the server');
 
   const library = path.join(tmp, 'salt-orchard');
   fs.cpSync(path.join(FIXTURES, 'valid', 'salt-orchard'), library, { recursive: true });
