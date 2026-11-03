@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "StoryForge v2 - Markdown-first novel studio",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -15,7 +16,9 @@
     "start": "node scripts/start.mjs",
     "dev": "npm run dev -w @storyforge/web",
     "test:large": "npm run test:large -w @storyforge/server",
-    "bench": "node bench/run.mjs"
+    "bench": "node bench/run.mjs",
+    "ci": "node scripts/ci.mjs",
+    "release:build": "node scripts/release-build.mjs"
   },
   "engines": {
     "node": ">=22"

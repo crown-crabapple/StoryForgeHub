@@ -1,0 +1,38 @@
+# StoryForge CI: one command, `npm run ci`, on every operating system. The same command runs on a contributor's machine.
+# Written for GitHub Actions; it has not been run, because the repository has no remote yet.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci (${{ matrix.os }}, Node 24)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: npm run ci
+        shell: bash
+        run: npm run ci -- --install
+      - name: Upload the release zip
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storyforge-release-${{ matrix.os }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
