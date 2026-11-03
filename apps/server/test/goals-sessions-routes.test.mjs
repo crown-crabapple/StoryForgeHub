@@ -157,9 +157,10 @@ test('sessions: a finished sprint or timer is a row in the month file; the writi
   assert.deepEqual(lines.slice(-3).map((l) => l.split('|')[6].trim()), ['sprint', 'timer', 'session'], 'newest last');
 
   await ctx.repo.flushActivity();
-  const today = (await send(ctx.port, 'GET', b('/activity'))).json.today;
-  assert.equal(today.sessions, 1, 'only the session counts in the writing log');
-  assert.equal(today.minutes, 25);
+  // summed over the days shown: a run just after midnight puts the 25-minute session on the day it started, not "today"
+  const days = (await send(ctx.port, 'GET', b('/activity'))).json.days;
+  assert.equal(days.reduce((n, d) => n + d.sessions, 0), 1, 'only the session counts in the writing log');
+  assert.equal(days.reduce((n, d) => n + d.minutes, 0), 25);
 });
 
 test('sessions: the old { minutes } body works as before and writes no row; refusals write nothing', async () => {
