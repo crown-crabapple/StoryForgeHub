@@ -150,14 +150,14 @@ function AiWorkshopButton() {
 
 export { Outline };
 
-/** Three-column book page: outline rail, main column, inspector. `onChanged` runs after a structure command wrote. */
-export function BookLayout({ book, activeId, inspector, onChanged, children }) {
+/** Three-column book page: outline rail, main column, inspector. `onChanged` runs after a structure command wrote. `openPanel` (tests): the drawer that starts open. */
+export function BookLayout({ book, activeId, inspector, onChanged, openPanel = null, children }) {
   return (
     <EditorBridgeProvider>
       <AiProvider key={book.id} book={book}>
         <WritingProvider key={book.id} bookId={book.id}>
           <InvalidBanner book={book} />
-          <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector}>
+          <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector} openPanel={openPanel}>
             <AiWorkshopButton />
             {children}
           </Workspace>

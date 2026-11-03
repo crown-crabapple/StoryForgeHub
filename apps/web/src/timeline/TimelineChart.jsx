@@ -35,6 +35,7 @@ export function TimelineChart({ model, selectedId = null, table = false, onTable
           {table ? 'Show as chart' : 'Show as table'}
         </button>
       </div>
+      <p className="tl-phone-note muted">On a small screen the plot is left out. The events are listed in order below; use Show as table for the book position and story rank of each.</p>
       {points.length === 0 ? (
         <p className="muted">No event is in the book yet, so there is nothing to plot. Link an event to a scene to see it here.</p>
       ) : table ? (

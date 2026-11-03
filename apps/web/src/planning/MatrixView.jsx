@@ -66,6 +66,40 @@ function CellMenu({ thread, card, cell, onMark, onClose }) {
 }
 
 /**
+ * The phone form of the matrix (M08-J04): the 2D table does not fit 360 px, so each thread is a heading with the scenes that use it in book order and the role in each
+ * (setup, development, payoff). Read only; the table is the place to mark. Shown below 768 px; the table is shown from 768 px up (responsive.css).
+ * @param {{ bookId: string, model: ReturnType<typeof import('./model.js').buildModel> }} props
+ */
+export function MatrixList({ bookId, model }) {
+  return (
+    <div className="matrix-list" data-testid="matrix-list">
+      {model.threads.map((t) => {
+        const used = model.scenes.map((card) => ({ card, cell: matrixCell(model, t, card.id) })).filter((x) => x.cell.roles.length > 0 || x.cell.dot);
+        return (
+          <section key={t.id} className="matrix-thread" aria-label={`Scenes of ${t.title}`}>
+            <h2 className="matrix-thread-title">
+              {t.title} <StateChip state={t.status} />
+            </h2>
+            {used.length === 0 ? (
+              <p className="muted">No scene uses this thread yet.</p>
+            ) : (
+              <ul>
+                {used.map(({ card, cell }) => (
+                  <li key={card.id}>
+                    <Link to={sceneHref(bookId, card.id)}>{card.title || <span className="muted">Untitled scene</span>}</Link>
+                    <span className="muted"> {cell.roles.length > 0 ? cell.roles.map((r) => ROLES.find((x) => x.key === r).label).join(', ') : "named in the scene's own thread list"}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * The scene-by-thread matrix: scenes down in book order (grouped by chapter), threads across, each header with its state chip. A cell shows S / D / P from the
  * thread's lists, or a dot when only the scene's own `plot_threads` names the thread. Pressing a cell opens its menu.
  * `onMark(thread, list, sceneId, present)` edits the thread file (present = add).
@@ -82,7 +116,9 @@ export function MatrixView({ bookId, model, onMark }) {
   if (model.threads.length === 0) return <p className="muted">This book has no plot threads yet. Create one in the Threads list.</p>;
   const columns = model.threads;
   return (
-    <div className="matrix-wrap">
+    <>
+      <MatrixList bookId={bookId} model={model} />
+      <div className="matrix-wrap">
       <table className="matrix" aria-label="Scenes by plot thread">
         <thead>
           <tr>
@@ -150,6 +186,7 @@ export function MatrixView({ bookId, model, onMark }) {
           </tbody>
         ))}
       </table>
-    </div>
+      </div>
+    </>
   );
 }
