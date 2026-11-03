@@ -55,6 +55,16 @@ command -v systemctl >/dev/null 2>&1 || die "systemd is needed"
 
 envval() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1; }
 
+# wait until StoryForge answers its health check (node:http, not fetch: fetch drops a Host header, and StoryForge answers only for its public host name)
+wait_healthy() { # <node> <port> <host name>
+  w=0
+  until "$1" -e "require('node:http').get({host:'127.0.0.1',port:$2,path:'/api/health',headers:{Host:'$3'},timeout:3000},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1)).on('timeout',()=>process.exit(1))" 2>/dev/null; do
+    w=$((w + 1))
+    [ "$w" -lt 60 ] || return 1
+    sleep 1
+  done
+}
+
 if [ "$SETUP_LINK" -eq 1 ]; then
   [ -f "$ENV_FILE" ] && [ -e /opt/storyforge ] || die "StoryForge is not installed here yet (no $ENV_FILE)"
   NODE=$(command -v node) || die "node is not on PATH"
@@ -62,14 +72,16 @@ if [ "$SETUP_LINK" -eq 1 ]; then
   say "stopping StoryForge for a moment to issue a new setup link for $OWNER"
   systemctl stop storyforge
   set +e
-  OUT=$(cd /opt/storyforge && runuser -u storyforge -- env XDG_CONFIG_HOME="$STATE/config" "$NODE" apps/server/src/main.mjs shared init \
+  OUT=$(cd /opt/storyforge && runuser -u storyforge -- env XDG_CONFIG_HOME="$STATE/config" NODE_OPTIONS=--disable-warning=ExperimentalWarning "$NODE" apps/server/src/main.mjs shared init \
     --owner "$OWNER" --library "$LIBRARY" --shared-data "$STATE/shared-data" --public-url "$(envval STORYFORGE_PUBLIC_URL)" --port "$(envval STORYFORGE_PORT)" 2>&1)
   RC=$?
   set -e
   systemctl start storyforge
   printf '%s\n' "$OUT"
+  URL=$(envval STORYFORGE_PUBLIC_URL)
+  wait_healthy "$NODE" "$(envval STORYFORGE_PORT)" "${URL#https://}" || die "StoryForge did not answer within 60 s after the restart; see journalctl -u storyforge"
   [ "$RC" -eq 0 ] || die "no new link: $OWNER may already have a password. Then use: systemctl stop storyforge, then (in /opt/storyforge, as the storyforge user) node apps/server/src/main.mjs shared reset-owner --owner $OWNER --library $LIBRARY --shared-data $STATE/shared-data --public-url <url>, then systemctl start storyforge"
-  say "StoryForge started again; the link above lasts 30 minutes"
+  say "StoryForge is running again; the link above lasts 30 minutes"
   exit 0
 fi
 [ -n "$ZIP" ] && [ -f "$ZIP" ] || die "--zip <release zip> is required and must exist"
@@ -85,7 +97,7 @@ if [ -f "$ENV_FILE" ]; then
   # an existing install: the domain comes from its env file unless given again
   OLD_URL=$(envval STORYFORGE_PUBLIC_URL)
   [ -n "$DOMAIN" ] || DOMAIN=${OLD_URL#https://}
-  [ -n "$OWNER" ] && say "note: --owner is used on the first install only; $ENV_FILE already exists"
+  if [ -n "$OWNER" ]; then say "note: --owner is used on the first install only; $ENV_FILE already exists"; fi
 else
   [ -n "$DOMAIN" ] || die "--domain is required on the first install"
   [ -n "$OWNER" ] || die "--owner is required on the first install"
@@ -141,7 +153,9 @@ chown storyforge:storyforge /srv/storyforge "$LIBRARY" "$STATE" "$STATE/shared-d
 chmod 750 "$STATE" "$STATE/shared-data"
 
 # --- settings, written once ---
+FIRST=0
 if [ ! -f "$ENV_FILE" ]; then
+  FIRST=1
   say "writing $ENV_FILE"
   KEY=$("$NODE" -e "process.stdout.write(require('node:crypto').randomBytes(32).toString('base64'))")
   umask 027
@@ -171,19 +185,13 @@ sed -e "s#^ExecStart=.*#ExecStart=$NODE deploy/entrypoint.mjs#" \
   /opt/storyforge/deploy/storyforge.service > "$UNIT"
 systemctl daemon-reload
 systemctl enable storyforge >/dev/null 2>&1
-say "starting StoryForge $VERSION${PREVIOUS:+ (was $PREVIOUS)}"
+if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$DEST" ]; then say "starting StoryForge $VERSION (was $PREVIOUS)"; else say "starting StoryForge $VERSION"; fi
 systemctl restart storyforge
 
-i=0
-# node:http, not fetch: fetch drops a Host header, and StoryForge answers only for its public host name
-until "$NODE" -e "require('node:http').get({host:'127.0.0.1',port:$PORT,path:'/api/health',headers:{Host:'$DOMAIN'},timeout:3000},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1)).on('timeout',()=>process.exit(1))" 2>/dev/null; do
-  i=$((i + 1))
-  if [ "$i" -ge 60 ]; then
-    journalctl -u storyforge -n 30 --no-pager >&2 || true
-    die "StoryForge did not answer on 127.0.0.1:$PORT within 60 s (log above)${PREVIOUS:+. To go back: ln -sfn $PREVIOUS /opt/storyforge && systemctl restart storyforge}"
-  fi
-  sleep 1
-done
+if ! wait_healthy "$NODE" "$PORT" "$DOMAIN"; then
+  journalctl -u storyforge -n 30 --no-pager >&2 || true
+  die "StoryForge did not answer on 127.0.0.1:$PORT within 60 s (log above)${PREVIOUS:+. To go back: ln -sfn $PREVIOUS /opt/storyforge && systemctl restart storyforge}"
+fi
 say "StoryForge answers on 127.0.0.1:$PORT"
 
 # --- Caddy ---
@@ -213,12 +221,11 @@ EOF
 fi
 
 # --- done ---
-LINK=$(journalctl -u storyforge --no-pager -o cat 2>/dev/null | grep -Eo 'https://[^ ]*/setup[^ ]*' | tail -n 1 || true)
 say "done: StoryForge $VERSION at https://$DOMAIN"
-if [ -n "$LINK" ]; then
-  say "first owner: open this one-time link to choose the password: $LINK"
-else
-  say "if this is the first install, the one-time setup link is in: journalctl -u storyforge | grep setup"
+if [ "$FIRST" -eq 1 ]; then
+  # only on the first install: an older link in the journal may have expired or been used
+  LINK=$(journalctl -u storyforge --no-pager -o cat 2>/dev/null | grep -Eo 'https://[^ ]*/setup[^ ]*' | tail -n 1 || true)
+  if [ -n "$LINK" ]; then say "first owner: open this one-time link within 30 minutes to choose the password: $LINK"; fi
 fi
-say "the setup link lasts 30 minutes; for a new one: sh $0 --setup-link"
+say "a new setup link for the first owner (until it has a password): sh $0 --setup-link"
 say "library: $LIBRARY   accounts and audit: $STATE/shared-data   settings: $ENV_FILE"
