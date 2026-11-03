@@ -274,7 +274,7 @@ export function createTaskMethods({ root, afterWrite = () => {}, reconcile, now 
       return fail(r.code, r.message ? { message: r.message } : {});
     }
     await refresh(found.book);
-    return { ok: true, code: 'OK', file, slug, id, opId: r.opId, undo: { op: r.opId } };
+    return { ok: true, code: 'OK', file, slug, id, opId: r.opId };
   }
 
   /**

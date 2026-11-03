@@ -665,7 +665,7 @@ export async function handleWrite(repository, match, body, state) {
       const r = await repository.createTask(bookId, body);
       if (!r.ok && r.code === 'TASK_EXISTS') return { status: 409, body: { error: 'TASK_EXISTS', code: r.code, message: r.message, existing: r.existing } };
       if (!r.ok && r.code === 'FINDING_NOT_FOUND') return { status: 404, body: { error: r.code, code: r.code, message: r.message } };
-      return respond(r, 201, (x) => (x.dryRun ? { ok: true, dryRun: true, file: x.file, text: x.text } : { ok: true, id: x.id, slug: x.slug, file: x.file, opId: x.opId ?? null, undo: x.undo ?? null }));
+      return respond(r, 201, (x) => (x.dryRun ? { ok: true, dryRun: true, file: x.file, text: x.text } : { ok: true, id: x.id, slug: x.slug, file: x.file, opId: x.opId ?? null }));
     }
     case 'task-status': {
       if (typeof body.status !== 'string') return badRequest("expected { status: 'open' | 'doing' | 'done' | 'dropped' }");
