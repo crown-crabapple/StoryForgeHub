@@ -45,6 +45,7 @@ test('save status: refused or unreachable writes do not claim a save and do not 
 
 test('routes: library, book, scene, raw file, tabs and unknown paths', () => {
   assert.deepEqual(parseRoute('/'), { name: 'library' });
+  assert.deepEqual(parseRoute('/settings/members'), { name: 'members' });
   assert.deepEqual(parseRoute('/books/b1'), { name: 'book', bookId: 'b1', sceneId: null, file: null });
   assert.deepEqual(parseRoute('/books/b1/', '?scene=s1'), { name: 'book', bookId: 'b1', sceneId: 's1', file: null });
   assert.deepEqual(parseRoute('/books/b1', '?file=a%2Fb.md'), { name: 'book', bookId: 'b1', sceneId: null, file: 'a/b.md' });
