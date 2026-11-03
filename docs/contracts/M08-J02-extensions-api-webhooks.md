@@ -1,0 +1,132 @@
+# M08-J02 contract — extension, API and webhook boundary
+
+Binding: DECISIONS 1, 9, 11, 12; FEATURE-REGISTER F18; M05-J06 suggestions (a proposal changes nothing until accepted); M07-J03 shared mode and policy; M07-J04 modules.
+
+**Principle:** StoryForge never runs plugin code. A plugin is a separate program the author starts. It talks to StoryForge over a versioned HTTP API with a scoped token the author granted. It can read what its scope allows and **propose** changes as suggestions. It can never write a canonical file. Failure isolation comes from the process boundary: a crashing or hostile plugin can only lose its own token.
+
+## 1. Plugin manifest — `<library>/_plugins/<id>/plugin.md` (author data, optional)
+
+```yaml
+---
+schema: storyforge.plugin/v1
+id: note_…
+plugin: word-frequency          # slug, unique in the library
+name: Word frequency
+version: 1.2.0                  # semver of the plugin
+api: 1                          # API major version it targets
+permissions: [read]             # read | propose | events
+books: all                      # all | [book-slug, …]
+homepage: ""                    # optional, informational
+---
+What it does, in plain words.
+```
+
+- `_plugins/` is skipped by the book scanner, like `_templates/`.
+- Validator rules:
+  - bad shape → `E102`;
+  - an unknown permission → `E102` at `permissions[i]`;
+  - `api` greater than the server's API major → `W315` "needs a newer StoryForge" (warning).
+- A manifest grants nothing by itself. It describes what the plugin will ask for.
+
+## 2. Tokens and permissions (coordinator-written core)
+
+**Grant:**
+- Settings → Plugins lists the manifests. **Grant access** shows the permissions and books, then creates a token after the author confirms.
+- The token is 32 random bytes, shown once. Only `sha256(token)` is stored, in user config `plugin-tokens.json` (personal mode) or shared data (shared mode, owner only).
+- The stored record: `{ id: tok_…, plugin, permissions, books, created, last_used, revoked }`.
+- A token can be revoked at any time.
+
+**Use:**
+- `Authorization: Bearer <token>`, on `/api/v1/*` only.
+- A bearer request carries no cookies, so the browser write-header guard does not apply. Personal mode stays loopback-only for every request.
+
+**Permissions:**
+- `read`: the v1 read routes, for the granted books only.
+- `propose`: also `POST /api/v1/books/:b/proposals`.
+- `events`: also manage its own webhook subscriptions (§4).
+
+**Anything else is refused** (`403 PLUGIN_SCOPE`): every existing `/api/*` route, every non-v1 route, every write, admin, AI, export, backup, and receipts.
+
+**Shared mode:** only the owner grants tokens. A plugin token is not a member and has no role. The policy is its own, decided before the member policy, and every call is audited (`plugin.<route>`, token id).
+
+## 3. API v1 — `/api/v1/…` (documented in `docs/api.md`, compatibility policy below)
+
+**Read routes (JSON, stable shapes):**
+- `GET /api/v1` gives `{ api: 1, server: <version> }`.
+- `GET /api/v1/books` lists the granted books.
+- `GET /api/v1/books/:b` gives the book, acts, chapters and scenes (ids, titles, order, status, words).
+- `GET /api/v1/books/:b/scenes/:id` gives front matter and body.
+- `GET /api/v1/books/:b/entries`, `…/entries/:id`, `…/threads`, `…/events`.
+- `GET /api/v1/books/:b/search?q=`.
+- `GET /api/v1/books/:b/graph`.
+- `GET /api/v1/books/:b/diagnostics`.
+
+**Proposals:**
+- Request: `POST /api/v1/books/:b/proposals { target, text | hunks, rationale }`.
+- It creates a **suggestion** with `source: plugin`, `plugin: <slug>` and `by: { name: <plugin name> }`. FORMAT §9.3 gains `plugin` as a source, additive within v1.
+- Response: `201 { suggestion }`.
+- Nothing changes until the author accepts hunks in the existing review. Accepting writes receipts as for any suggestion, naming the plugin.
+
+**Compatibility policy:**
+- Within API major 1, fields are only added.
+- Removing or renaming a field means v2. v1 stays served for at least one minor release after v2 ships.
+- Plugins should ignore unknown fields.
+
+## 4. Webhooks — events out, content out only by opt-in
+
+**Subscriptions:**
+- Stored in user config `webhooks.json` (shared mode: shared data, owner only).
+- Record: `{ id, url, events: [...], books, include_content: false, secret_hash, created, revoked }`.
+- They can be made in Settings, or by a plugin with `events` for its own `url`.
+
+**Events:**
+- `scene.saved`, `scene.created`, `scene.moved`, `entry.changed`, `suggestion.created`, `suggestion.decided`, `export.done`, `backup.done`.
+- Payload: `{ event, at, book_id, target_id, path, sha256, by? }`. **No text** unless `include_content: true`.
+  - That flag is set only by the author in Settings, with a clear warning, and never by a plugin.
+  - With it on, the scene body is added.
+
+**Delivery:**
+- POST JSON, with the header `x-storyforge-signature: sha256=<hmac(secret, body)>`.
+- The secret is generated by StoryForge and shown once at creation. It must be kept to sign, so it is stored in user config (shared mode: shared data), never in the library, a backup or a log. In M08-J03 it moves to the same secure storage as AI keys.
+- Timeout 5 s, 3 retries with backoff. After 20 consecutive failures the subscription is disabled.
+- **URL rules:**
+  - `http://` is allowed only for loopback, `https://` otherwise;
+  - private-network addresses are refused unless the author ticks "allow local network";
+  - no redirects followed.
+
+**Network boundary:** outbound HTTP lives in **one** new module, `packages/integrations/src/webhook-transport.mjs`. The ESLint network rule allows exactly that file plus the existing AI transport. With no subscription there is zero traffic (zero-traffic test).
+
+Turning the `integrations` module off (M07-J04, new module id) stops all API v1 access and webhook delivery.
+
+## 5. Samples (in repo, `examples/`)
+
+- `examples/plugin-word-frequency/`: a read-only plugin.
+  - A Node script with no dependencies, plus its `plugin.md`.
+  - Given a token, it reads a book over API v1 and prints the top words per chapter.
+- `examples/webhook-receiver/`: a Node HTTP receiver.
+  - It verifies the signature and appends events to a local file.
+
+## 6. Acceptance
+
+1. **The sample plugin works against fixture data:**
+   - grant `read` for `salt-orchard`;
+   - run the plugin script against a test server;
+   - expected output matches a golden.
+2. **The webhook consumer works:**
+   - subscribe the sample receiver (loopback) to `scene.saved`;
+   - save a scene;
+   - the receiver gets one signed event with ids and hashes and **no text**;
+   - a bad signature is rejected by the receiver;
+   - with `include_content` off the body is never sent (byte search).
+3. **A write attempt is denied without the permission and the acceptance path:**
+   - a `read` token on `POST …/proposals` → 403, nothing written;
+   - any token on `PUT /api/books/:b/scenes/:id/body`, or any non-v1 write → 403, nothing written (snapshot);
+   - a `propose` token creates a suggestion, but the scene file is unchanged until the author accepts in the normal review.
+4. **Scope:**
+   - a token for book A cannot read book B;
+   - a revoked token → 401;
+   - a token is never accepted as a cookie;
+   - cookies are never accepted on `/api/v1` writes.
+5. **Zero traffic** with no subscriptions. The `integrations` module off → 403 / no delivery.
+6. **The manifest** validates, is skipped by the scanner, and gives `W315` for a newer `api`.
+7. `npm ci && npm run build && npm run lint && npm test` pass on a clean clone.
