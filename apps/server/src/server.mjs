@@ -7,6 +7,7 @@ import { handlePluginRequest } from './api-v1.mjs';
 import { createAiService } from './ai-routes.mjs';
 import { bearerOf } from './plugin-policy.mjs';
 import { handleMcpRequest } from './mcp-route.mjs';
+import { guardSeriesWrite, scopeRead } from './book-scope.mjs';
 import { createPluginService } from './plugin-service.mjs';
 import { createPresence } from './presence.mjs';
 import { checkModule, moduleOn, receiptsGate } from './preferences.mjs';
@@ -336,6 +337,12 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         } catch {
           return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
         }
+        // per-book access (book-scope.mjs): a member limited to some books may not change shared series data
+        const seriesRefusal = gate ? await guardSeriesWrite(principal, match, parsed, current()) : null;
+        if (seriesRefusal) {
+          await record(seriesRefusal.status);
+          return sendJson(res, seriesRefusal.status, seriesRefusal.body);
+        }
         // shared mode: the request runs as its user, so receipts, suggestions and comments say who made them (`by`); personal mode runs as nobody
         const by = principal?.kind === 'user' ? { id: principal.id, name: principal.display_name } : null;
         const { status, body } = await runAs(by, () => handleWrite(current(), match, parsed, state, principal ? { principal } : {}));
@@ -344,7 +351,12 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         return sendJson(res, status, body);
       }
       if (isApiPath(pathname)) {
-        const { status, body, raw } = await handleApi(current(), pathname, state, new URLSearchParams(queryString));
+        // per-book access (book-scope.mjs): a member limited to some books sees only those books in the reads that cover the library
+        const scope = gate ? scopeRead(principal, pathname, new URLSearchParams(queryString)) : { ok: /** @type {const} */ (true), narrow: null };
+        if (!scope.ok) return sendJson(res, scope.status, scope.body);
+        const answer = await handleApi(current(), pathname, state, new URLSearchParams(queryString));
+        const { status, raw } = answer;
+        const body = scope.narrow && status === 200 && !raw ? scope.narrow(answer.body) : answer.body;
         if (raw) {
           const dl = status === 200 ? /^\/api\/books\/([^/]+)\/(export|backup)$/.exec(pathname) : null;
           if (dl) void hookEvents.afterDownload(current(), /** @type {'export' | 'backup'} */ (dl[2]), decodeURIComponent(dl[1]), raw).catch(() => {});

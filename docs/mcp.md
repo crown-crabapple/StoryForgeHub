@@ -4,7 +4,9 @@ StoryForge speaks the Model Context Protocol (MCP), so Claude Code and Claude De
 
 ## 1. Get a token
 
-Open Settings, then Plugins, then **Grant access to another plugin** (see [plugins.md](plugins.md)). Pick the books and the permissions, and copy the token when it is shown. It is shown once.
+Open Settings, then **Connect Claude**. Give the connection a name, pick the books, and choose whether Claude may suggest changes. The token is shown once, with the address and ready-to-copy setup for Claude Code (and, on your own computer, Claude Desktop). The card lists your Claude connections; Revoke cuts one off at once. In shared mode only the owner sees it.
+
+You can also make a token by hand: Settings, then Plugins, then **Grant access to another plugin** (see [plugins.md](plugins.md)).
 
 - `read` allows the 11 read tools.
 - `propose` allows the 3 propose tools.

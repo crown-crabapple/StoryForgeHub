@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { BOOK_ROLES, NO_ACCESS, accessSummary, booksFromRows, highestRole, rowsFromBooks } from './bookAccess.js';
 import { ROLE_WORDS } from './session.jsx';
 
 const INVITE_ROLES = ['editor', 'reviewer', 'viewer'];
@@ -38,18 +39,80 @@ function LinkOnce({ link, onDismiss }) {
   );
 }
 
+/** One select per book: No access / Viewer / Reviewer / Editor. @param {{ books: { id: string, title: string }[], rows: Record<string, string>, who: string, onChange: (rows: Record<string, string>) => void, disabled?: boolean }} props */
+function BookRows({ books, rows, who, onChange, disabled = false }) {
+  return (
+    <ul className="members-list" aria-label={`Books for ${who}`}>
+      {books.map((b) => (
+        <li key={b.id}>
+          {b.title}{' '}
+          <select aria-label={`Access to ${b.title} for ${who}`} value={rows[b.id] ?? NO_ACCESS} disabled={disabled} onChange={(e) => onChange({ ...rows, [b.id]: e.target.value })}>
+            <option value={NO_ACCESS}>No access</option>
+            {BOOK_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {ROLE_WORDS[r]}
+              </option>
+            ))}
+          </select>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Inline panel to change which books one member can open. @param {{ member: any, books: { id: string, title: string }[], busy: boolean, onSave: (books: Record<string, string> | null) => void, onCancel: () => void }} props */
+function AccessPanel({ member, books, busy, onSave, onCancel }) {
+  const [all, setAll] = useState(!member.books);
+  const [rows, setRows] = useState(() => rowsFromBooks(books, member.books));
+  const picked = booksFromRows(rows);
+  const none = !all && Object.keys(picked).length === 0;
+  const name = member.display_name;
+  return (
+    <section className="members-access" aria-label={`Book access for ${name}`}>
+      <fieldset>
+        <legend>Books {name} can open</legend>
+        <label className="choice">
+          <input type="radio" name={`access-${member.user}`} checked={all} disabled={busy} onChange={() => setAll(true)} />
+          All books (as {ROLE_WORDS[member.role]})
+        </label>
+        <label className="choice">
+          <input type="radio" name={`access-${member.user}`} checked={!all} disabled={busy} onChange={() => setAll(false)} />
+          Only these books
+        </label>
+      </fieldset>
+      {!all && <BookRows books={books} rows={rows} who={name} onChange={setRows} disabled={busy} />}
+      {none && (
+        <p className="field-hint" role="status">
+          Pick at least one book, or choose All books.
+        </p>
+      )}
+      <button type="button" className="btn btn-small btn-primary" disabled={busy || none} onClick={() => onSave(all ? null : picked)}>
+        Save access
+      </button>
+      <button type="button" className="btn btn-small" disabled={busy} onClick={onCancel}>
+        Cancel
+      </button>
+    </section>
+  );
+}
+
 /**
  * Settings, Members (owner only): members and roles, invitations, share links and "Allow AI for members". The server decides what each role may do; this page only asks.
  * @param {{
  *   members: any[], invites: any[], shares: any[], settings: { ai_for_members: boolean }, books: { id: string, title: string }[], currentUserId?: string | null,
  *   link?: { kind: string, url: string } | null, error?: string | null, busy?: boolean,
- *   onRole: (user: string, role: string) => void, onRemove: (user: string) => void, onInvite: (p: { role: string, days: number }) => void, onRevokeInvite: (id: string) => void,
+ *   onRole: (user: string, role: string) => void, onBooks: (user: string, books: Record<string, string> | null) => void, onRemove: (user: string) => void, onInvite: (p: { role: string, days: number, books?: Record<string, string> }) => void, onRevokeInvite: (id: string) => void,
  *   onShare: (p: { book: string, scope: string, days: number }) => void, onRevokeShare: (id: string) => void, onAi: (on: boolean) => void, onDismissLink: () => void,
  * }} props
  */
-export function MembersPage({ members, invites, shares, settings, books, currentUserId = null, link = null, error = null, busy = false, onRole, onRemove, onInvite, onRevokeInvite, onShare, onRevokeShare, onAi, onDismissLink }) {
+export function MembersPage({ members, invites, shares, settings, books, currentUserId = null, link = null, error = null, busy = false, onRole, onBooks, onRemove, onInvite, onRevokeInvite, onShare, onRevokeShare, onAi, onDismissLink }) {
   const [inviteRole, setInviteRole] = useState('editor');
   const [inviteDays, setInviteDays] = useState('7');
+  const [inviteAll, setInviteAll] = useState(true);
+  const [inviteRows, setInviteRows] = useState(() => rowsFromBooks(books, null));
+  const [editing, setEditing] = useState(/** @type {string | null} */ (null));
+  const invitePicked = booksFromRows(inviteRows);
+  const inviteNone = !inviteAll && Object.keys(invitePicked).length === 0;
   const [shareBook, setShareBook] = useState(books[0]?.id ?? '');
   const [shareScope, setShareScope] = useState('read');
   const [shareDays, setShareDays] = useState('30');
@@ -71,6 +134,7 @@ export function MembersPage({ members, invites, shares, settings, books, current
 
       <section aria-labelledby="members-h">
         <h2 id="members-h">Members</h2>
+        <p className="field-hint">A member with only some books cannot see the others. Shared series data can only be changed by members with all books.</p>
         <table className="members-table">
           <caption className="sr-only">People who can sign in, and their roles</caption>
           <thead>
@@ -78,6 +142,7 @@ export function MembersPage({ members, invites, shares, settings, books, current
               <th scope="col">Name</th>
               <th scope="col">User name</th>
               <th scope="col">Role</th>
+              <th scope="col">Access</th>
               <th scope="col">
                 <span className="sr-only">Actions</span>
               </th>
@@ -100,6 +165,30 @@ export function MembersPage({ members, invites, shares, settings, books, current
                     </select>
                   </td>
                   <td>
+                    {m.role === 'owner' ? (
+                      'All books (owner)'
+                    ) : (
+                      <>
+                        {accessSummary(m.books)}{' '}
+                        <button type="button" className="btn btn-small" disabled={busy} aria-expanded={editing === m.user} aria-label={`Edit access for ${m.display_name}`} onClick={() => setEditing(editing === m.user ? null : m.user)}>
+                          Edit access
+                        </button>
+                        {editing === m.user && (
+                          <AccessPanel
+                            member={m}
+                            books={books}
+                            busy={busy}
+                            onCancel={() => setEditing(null)}
+                            onSave={(map) => {
+                              onBooks(m.user, map);
+                              setEditing(null);
+                            }}
+                          />
+                        )}
+                      </>
+                    )}
+                  </td>
+                  <td>
                     <button type="button" className="btn btn-small" disabled={busy || lastOwner} aria-label={`Remove ${m.display_name}`} onClick={() => onRemove(m.user)}>
                       Remove
                     </button>
@@ -120,12 +209,31 @@ export function MembersPage({ members, invites, shares, settings, books, current
           aria-label="Invite someone"
           onSubmit={(e) => {
             e.preventDefault();
-            onInvite({ role: inviteRole, days: Number(inviteDays) });
+            if (inviteNone) return;
+            if (inviteAll) onInvite({ role: inviteRole, days: Number(inviteDays) });
+            else onInvite({ role: highestRole(invitePicked) ?? inviteRole, days: Number(inviteDays), books: invitePicked });
           }}
         >
+          <fieldset className="field">
+            <legend>Books</legend>
+            <label className="choice">
+              <input type="radio" name="invite-books" checked={inviteAll} onChange={() => setInviteAll(true)} />
+              All books
+            </label>
+            <label className="choice">
+              <input type="radio" name="invite-books" checked={!inviteAll} onChange={() => setInviteAll(false)} />
+              Only these books
+            </label>
+            {!inviteAll && <BookRows books={books} rows={inviteRows} who="the new member" onChange={setInviteRows} />}
+            {inviteNone && (
+              <p className="field-hint" role="status">
+                Pick at least one book, or choose All books.
+              </p>
+            )}
+          </fieldset>
           <div className="field">
-            <label htmlFor="invite-role">Role</label>
-            <select id="invite-role" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
+            <label htmlFor="invite-role">Role{inviteAll ? '' : ' (for all books; off while choosing books)'}</label>
+            <select id="invite-role" value={inviteRole} disabled={!inviteAll} onChange={(e) => setInviteRole(e.target.value)}>
               {INVITE_ROLES.map((r) => (
                 <option key={r} value={r}>
                   {ROLE_WORDS[r]}
@@ -137,7 +245,7 @@ export function MembersPage({ members, invites, shares, settings, books, current
             <label htmlFor="invite-days">Valid for (days, up to 30)</label>
             <input id="invite-days" type="number" min="1" max="30" value={inviteDays} onChange={(e) => setInviteDays(e.target.value)} />
           </div>
-          <button type="submit" className="btn btn-primary" disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy || inviteNone}>
             Create invite link
           </button>
         </form>
@@ -147,7 +255,7 @@ export function MembersPage({ members, invites, shares, settings, books, current
           <ul className="members-list" aria-label="Open invitations">
             {liveInvites.map((i) => (
               <li key={i.id}>
-                {ROLE_WORDS[i.role]} invitation, valid until {when(i.expires)}
+                {ROLE_WORDS[i.role]} invitation{i.books ? `, only ${accessSummary(i.books).replace('Only ', '')}` : ''}, valid until {when(i.expires)}
                 <button type="button" className="btn btn-small" disabled={busy} aria-label={`Revoke the ${ROLE_WORDS[i.role]} invitation valid until ${when(i.expires)}`} onClick={() => onRevokeInvite(i.id)}>
                   Revoke
                 </button>

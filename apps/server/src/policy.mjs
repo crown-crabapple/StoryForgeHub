@@ -81,6 +81,21 @@ export function classifyRead(pathname) {
 }
 
 /**
+ * Does this member reach only some books? Owners never are limited.
+ * @param {any} principal @returns {boolean}
+ */
+export const isLimited = (principal) => principal?.kind === 'user' && principal.role !== 'owner' && principal.books !== null && principal.books !== undefined;
+
+/**
+ * The member's role on one book: their library role when not limited, else the role listed for that exact book id, else null (no access).
+ * @param {any} principal @param {string} bookId @returns {string | null}
+ */
+export function roleOnBook(principal, bookId) {
+  if (!isLimited(principal)) return principal?.kind === 'user' ? principal.role : null;
+  return typeof bookId === 'string' && Object.hasOwn(principal.books, bookId) ? principal.books[bookId] : null;
+}
+
+/**
  * The book a write route is about, from its match.
  * @param {{ bookId?: string }} match
  */
@@ -103,7 +118,18 @@ export function allowed(principal, cls, ctx = {}) {
     if (cls === 'export') return principal.scope.includes('export');
     return false;
   }
-  const rank = RANK[/** @type {keyof typeof RANK} */ (principal.role)] ?? 0;
+  // per-book access: a member with a book list has a role only on those books. A route about a book uses that book's role (none = refused); a route about
+  // no book is open to such a member only as a read (and server.mjs narrows those reads to the member's books via book-scope.mjs). Fail closed: the book in
+  // the path must equal a listed id exactly (an encoded or slug form simply finds no role).
+  let role = principal.role;
+  if (isLimited(principal)) {
+    if (ctx.book !== undefined) {
+      role = roleOnBook(principal, ctx.book);
+      if (role === null) return false;
+    } else if (cls === 'read') role = 'viewer';
+    else return false;
+  }
+  const rank = RANK[/** @type {keyof typeof RANK} */ (role)] ?? 0;
   const need = NEEDS[/** @type {keyof typeof NEEDS} */ (cls)];
   if (need === undefined || rank < need) return false;
   if (cls === 'ai' && principal.role !== 'owner' && !ctx.aiForMembers) return false;

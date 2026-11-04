@@ -9,6 +9,10 @@ import { createSessionTable } from './sessions.mjs';
 import { hashToken, isTokenShape, newId, newToken } from './tokens.mjs';
 
 export const ROLES = Object.freeze(['owner', 'editor', 'reviewer', 'viewer']);
+/** The roles a member can have on one book (per-book access); owners always have every book. */
+export const BOOK_ROLES = Object.freeze(['editor', 'reviewer', 'viewer']);
+/** The most books one member or invite may list. */
+export const MAX_MEMBER_BOOKS = 500;
 export const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 const DAY = 24 * 60 * 60 * 1000;
 export const INVITE_DEFAULT_MS = 7 * DAY;
@@ -18,6 +22,20 @@ export const SETUP_MS = 30 * 60 * 1000;
 const SHARE_SCOPES = new Set(['read', 'export']);
 const HEX64 = /^[0-9a-f]{64}$/;
 const ID_RE = (p) => new RegExp(`^${p}_[0-9A-HJKMNP-TV-Z]{26}$`);
+
+/**
+ * Per-book access: absent/null means every book (the member's library role applies); otherwise a plain object { <book id>: 'editor' | 'reviewer' | 'viewer' }
+ * listing the ONLY books the member may reach. An empty object is allowed (no book at all). Owners never have one.
+ * @param {unknown} v @returns {boolean}
+ */
+export function isBookMap(v) {
+  if (v === undefined || v === null) return true;
+  if (typeof v !== 'object' || Array.isArray(v) || Object.getPrototypeOf(v) !== Object.prototype) return false;
+  const keys = Object.keys(v);
+  return keys.length <= MAX_MEMBER_BOOKS && keys.every((k) => /^book_[0-9A-HJKMNP-TV-Z]{26}$/.test(k) && BOOK_ROLES.includes(/** @type {any} */ (v)[k]));
+}
+/** A frozen copy of a book map, or null for "every book". @param {any} v @returns {Readonly<Record<string, string>> | null} */
+const copyBooks = (v) => (v === undefined || v === null ? null : Object.freeze(Object.fromEntries(Object.entries(v))));
 const USR = ID_RE('usr');
 const INV = ID_RE('inv');
 const SHR = ID_RE('shr');
@@ -69,7 +87,7 @@ const FILES = {
       check(f, v, (x) => isObj(x) && x.version === 1 && Array.isArray(x.members), 'top level');
       const seen = new Set();
       for (const m of v.members) {
-        check(f, m, (x) => isObj(x) && USR.test(x.user) && ROLES.includes(x.role) && !seen.has(x.user), 'member');
+        check(f, m, (x) => isObj(x) && USR.test(x.user) && ROLES.includes(x.role) && !seen.has(x.user) && isBookMap(x.books) && !(x.role === 'owner' && x.books != null), 'member');
         seen.add(m.user);
       }
     },
@@ -89,7 +107,7 @@ const FILES = {
     check(f, v) {
       check(f, v, (x) => isObj(x) && x.version === 1 && Array.isArray(x.invites), 'top level');
       for (const i of v.invites) {
-        check(f, i, (x) => isObj(x) && INV.test(x.id) && HEX64.test(x.token_hash) && ROLES.includes(x.role) && x.role !== 'owner' && isTime(x.created) && isTime(x.expires)
+        check(f, i, (x) => isObj(x) && INV.test(x.id) && HEX64.test(x.token_hash) && ROLES.includes(x.role) && x.role !== 'owner' && isBookMap(x.books) && isTime(x.created) && isTime(x.expires)
           && USR.test(x.by) && (x.used === null || USR.test(x.used)) && typeof x.revoked === 'boolean', 'invite');
       }
     },
@@ -114,7 +132,8 @@ const FILES = {
 };
 
 /**
- * @typedef {{ kind: 'user', id: string, username: string, display_name: string, role: string } | { kind: 'share', id: string, book: string, scope: string[] }} Principal
+ * @typedef {{ kind: 'user', id: string, username: string, display_name: string, role: string, books: Readonly<Record<string, string>> | null } | { kind: 'share', id: string, book: string, scope: string[] }} Principal
+ * `books` (user): null = every book with `role`; otherwise the only books this member may reach, each with its own role.
  */
 
 /**
@@ -154,13 +173,15 @@ export async function openSharedData(dir, { now = Date.now } = {}) {
   const members = () => /** @type {any[]} */ (data['members.json'].members);
   const userById = (id) => users().find((u) => u.id === id) ?? null;
   const userByName = (name) => (typeof name === 'string' ? (users().find((u) => u.username === name.toLowerCase()) ?? null) : null);
-  const roleOf = (id) => members().find((m) => m.user === id)?.role ?? null;
+  const memberOf = (id) => members().find((m) => m.user === id) ?? null;
   const owners = () => members().filter((m) => m.role === 'owner' && !userById(m.user)?.disabled);
 
   /** @param {any} u @returns {Principal | null} */
   function principalOf(u) {
-    const role = u && !u.disabled ? roleOf(u.id) : null;
-    return role ? { kind: 'user', id: u.id, username: u.username, display_name: u.display_name, role } : null;
+    const m = u && !u.disabled ? memberOf(u.id) : null;
+    if (!m) return null;
+    // an owner always has every book (the file check refuses an owner with a book list)
+    return { kind: 'user', id: u.id, username: u.username, display_name: u.display_name, role: m.role, books: m.role === 'owner' ? null : copyBooks(m.books) };
   }
 
   /** @param {string} username @param {string} display_name @returns {string | null} */
@@ -222,7 +243,7 @@ export async function openSharedData(dir, { now = Date.now } = {}) {
      */
     async resetOwner(username) {
       const u = userByName(username);
-      if (!u || u.disabled || roleOf(u.id) !== 'owner') return { ok: false, code: 'NOT_OWNER', message: 'no enabled owner has that user name' };
+      if (!u || u.disabled || memberOf(u.id)?.role !== 'owner') return { ok: false, code: 'NOT_OWNER', message: 'no enabled owner has that user name' };
       u.pw = null;
       sessions.revokeUser(u.id);
       const token = newToken();
@@ -313,7 +334,7 @@ export async function openSharedData(dir, { now = Date.now } = {}) {
     listMembers() {
       return members().map((m) => {
         const u = userById(m.user);
-        return { user: m.user, username: u?.username ?? null, display_name: u?.display_name ?? null, role: m.role, disabled: u?.disabled ?? true };
+        return { user: m.user, username: u?.username ?? null, display_name: u?.display_name ?? null, role: m.role, books: m.role === 'owner' ? null : copyBooks(m.books), disabled: u?.disabled ?? true };
       });
     },
 
@@ -327,6 +348,23 @@ export async function openSharedData(dir, { now = Date.now } = {}) {
       if (typeof role !== 'string' || !ROLES.includes(role)) return { ok: false, code: 'BAD_ARGS', message: `role must be one of ${ROLES.join(', ')}` };
       if (m.role === 'owner' && role !== 'owner' && owners().length <= 1) return { ok: false, code: 'LAST_OWNER', message: 'the last owner cannot be demoted' };
       m.role = role;
+      if (role === 'owner') delete m.books; // an owner has every book
+      await save('members.json');
+      return { ok: true };
+    },
+
+    /**
+     * Per-book access for a member: null = every book (with the member's role); { <book id>: role } = only these books. Owners always have every book.
+     * @param {string} userId @param {unknown} books
+     * @returns {Promise<{ ok: true } | { ok: false, code: string, message: string }>}
+     */
+    async setBooks(userId, books) {
+      const m = members().find((x) => x.user === userId);
+      if (!m) return { ok: false, code: 'NOT_FOUND', message: 'no such member' };
+      if (m.role === 'owner') return { ok: false, code: 'OWNER_ALL_BOOKS', message: 'an owner always has every book' };
+      if (!isBookMap(books)) return { ok: false, code: 'BAD_ARGS', message: `books must be null (every book) or { <book id>: ${BOOK_ROLES.join(' | ')} } with at most ${MAX_MEMBER_BOOKS} books` };
+      if (books === null || books === undefined) delete m.books;
+      else m.books = { ...copyBooks(books) };
       await save('members.json');
       return { ok: true };
     },
@@ -349,15 +387,16 @@ export async function openSharedData(dir, { now = Date.now } = {}) {
     // ---------- invitations ----------
 
     /**
-     * @param {{ role: unknown, expiresMs?: number, by: string }} p
+     * @param {{ role: unknown, books?: unknown, expiresMs?: number, by: string }} p  `books`: null/absent = every book, else the only books the new member gets
      * @returns {Promise<{ ok: true, token: string, invite: any } | { ok: false, code: string, message: string }>}
      */
-    async createInvite({ role, expiresMs, by }) {
+    async createInvite({ role, books = null, expiresMs, by }) {
       if (typeof role !== 'string' || !ROLES.includes(role) || role === 'owner') return { ok: false, code: 'BAD_ARGS', message: 'role must be editor, reviewer or viewer' };
+      if (!isBookMap(books)) return { ok: false, code: 'BAD_ARGS', message: `books must be null (every book) or { <book id>: ${BOOK_ROLES.join(' | ')} }` };
       const life = lifetime(expiresMs, INVITE_DEFAULT_MS, INVITE_MAX_MS);
       if (life === null) return { ok: false, code: 'BAD_ARGS', message: 'an invite lasts at most 30 days' };
       const token = newToken();
-      const invite = { id: newId('inv'), token_hash: hashToken(token), role, created: now(), expires: now() + life, by, used: null, revoked: false };
+      const invite = { id: newId('inv'), token_hash: hashToken(token), role, ...(books ? { books: { ...copyBooks(books) } } : {}), created: now(), expires: now() + life, by, used: null, revoked: false };
       data['invites.json'].invites.push(invite);
       await save('invites.json');
       return { ok: true, token, invite: withoutHash(invite) };
@@ -413,7 +452,7 @@ export async function openSharedData(dir, { now = Date.now } = {}) {
       const user = { id: newId('usr'), username: name, display_name: shown, pw, created: now(), disabled: false };
       inv.used = user.id;
       users().push(user);
-      members().push({ user: user.id, role: inv.role });
+      members().push({ user: user.id, role: inv.role, ...(inv.books ? { books: { ...inv.books } } : {}) });
       await save('invites.json');
       await save('users.json');
       await save('members.json');

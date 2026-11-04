@@ -46,7 +46,7 @@ export const SHARED_ROUTES = Object.freeze(['shared-member-role', 'shared-member
 
 /** @param {{ ok: false, code: string, message: string }} r */
 const refusal = (r) => {
-  const status = r.code === 'NOT_FOUND' ? 404 : r.code === 'LAST_OWNER' ? 409 : 400;
+  const status = r.code === 'NOT_FOUND' ? 404 : r.code === 'LAST_OWNER' || r.code === 'OWNER_ALL_BOOKS' ? 409 : 400;
   return { status, body: { error: status === 404 ? 'not_found' : status === 409 ? 'conflict' : 'bad_request', code: r.code, message: r.message } };
 };
 
@@ -84,9 +84,19 @@ export async function handleSharedWrite(match, body, ctx) {
   };
   switch (match.route) {
     case 'shared-member-role': {
+      // PUT /api/shared/members/:id { role?, books? }: the library role, and/or per-book access (books: null = every book, { <book id>: role } = only these)
       if (!b) return bad('body must be a JSON object');
-      const r = await ctx.data.setRole(match.id, b.role);
-      return done('member.role', `${match.id}:${typeof b.role === 'string' ? b.role : '?'}`, r.ok ? { status: 200, body: { ok: true } } : refusal(r));
+      const hasRole = b.role !== undefined;
+      const hasBooks = Object.hasOwn(b, 'books');
+      if (!hasRole && !hasBooks) return bad('give role and/or books');
+      if (hasRole) {
+        const r = await ctx.data.setRole(match.id, b.role);
+        const res = await done('member.role', `${match.id}:${typeof b.role === 'string' ? b.role : '?'}`, r.ok ? { status: 200, body: { ok: true } } : refusal(r));
+        if (!r.ok || !hasBooks) return res;
+      }
+      const r = await ctx.data.setBooks(match.id, b.books);
+      const what = b.books === null ? 'all' : r.ok ? Object.entries(b.books).map(([k, v]) => `${k}=${v}`).join(',') || 'none' : '?';
+      return done('member.books', `${match.id}:${what}`, r.ok ? { status: 200, body: { ok: true } } : refusal(r));
     }
     case 'shared-member-remove': {
       const r = await ctx.data.removeMember(match.id);
@@ -96,9 +106,9 @@ export async function handleSharedWrite(match, body, ctx) {
       if (!b) return bad('body must be a JSON object');
       const life = lifetime(b.expires_days, false);
       if (!life.ok) return bad(life.message);
-      const r = await ctx.data.createInvite({ role: b.role, expiresMs: life.ms, by: ctx.actor });
+      const r = await ctx.data.createInvite({ role: b.role, books: b.books ?? null, expiresMs: life.ms, by: ctx.actor });
       if (!r.ok) return done('invite.create', '-', refusal(r));
-      return done('invite.create', `${r.invite.id}:${r.invite.role}`, { status: 201, body: { invite: r.invite, link: `${ctx.base}/invite#token=${r.token}` } });
+      return done('invite.create', `${r.invite.id}:${r.invite.role}${r.invite.books ? `:${Object.keys(r.invite.books).length} books` : ''}`, { status: 201, body: { invite: r.invite, link: `${ctx.base}/invite#token=${r.token}` } });
     }
     case 'shared-invite-revoke': {
       const r = await ctx.data.revokeInvite(match.id);

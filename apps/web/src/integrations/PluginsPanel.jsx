@@ -16,7 +16,7 @@ const booksText = (/** @type {'all' | string[]} */ books) => (books === 'all' ? 
 const when = (/** @type {number | null} */ ms) => (ms === null || ms === undefined ? 'never' : new Date(ms).toISOString().slice(0, 16).replace('T', ' '));
 
 /** Copy `text` to the clipboard; false when the browser will not let us. @param {string} text */
-async function copyText(text) {
+export async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
     return true;

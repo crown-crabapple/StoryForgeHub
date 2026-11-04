@@ -150,11 +150,15 @@ account.
    - **owner**: everything, including members, invites, share links, AI settings, backup and restore;
    - **editor**: write and edit;
    - **reviewer**: read, comment and suggest; **viewer**: read.
+
+   A member (or an invite) has **All books** with one role, or **Only these books** with a role per book. A member with only some books cannot open, search
+   or list the others. Shared series data (shared codex entries, series labels) changes every book of the series, so only a member with all books can change it;
+   a member with one book of a series can still read it. Owners always have all books. Change it any time with **Edit access** on the Members page.
 3. A read-only **share link** for one book works without an account (read, or read and export), always with an expiry and always revocable.
 
 If the setup link ran out (30 minutes) before it was used, see "Re-issuing a setup link" below.
 
-To let Claude Code or Claude Desktop use the shared server, create a plugin token and connect to `https://<your domain>/mcp`: see [mcp.md](mcp.md).
+To let Claude Code or Claude Desktop use the shared server, use **Connect Claude** in Settings and connect to `https://<your domain>/mcp`: see [mcp.md](mcp.md).
 
 ## Upgrade
 

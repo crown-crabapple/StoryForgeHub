@@ -93,8 +93,9 @@ export function MembersView() {
       busy={busy}
       onDismissLink={() => setLink(null)}
       onRole={(id, role) => run(() => putJson(`/api/shared/members/${encodeURIComponent(id)}`, { role }))}
+      onBooks={(id, books) => run(() => putJson(`/api/shared/members/${encodeURIComponent(id)}`, { books }))}
       onRemove={(id) => run(() => deleteJson(`/api/shared/members/${encodeURIComponent(id)}`))}
-      onInvite={({ role, days }) => run(() => postJson('/api/shared/invites', { role, expires_days: days }), (j) => setLink({ kind: 'invitation', url: j.link }))}
+      onInvite={({ role, days, books }) => run(() => postJson('/api/shared/invites', { role, expires_days: days, ...(books ? { books } : {}) }), (j) => setLink({ kind: 'invitation', url: j.link }))}
       onRevokeInvite={(id) => run(() => deleteJson(`/api/shared/invites/${encodeURIComponent(id)}`))}
       onShare={({ book, scope, days }) => run(() => postJson('/api/shared/shares', { book, scope, expires_days: days }), (j) => setLink({ kind: 'share', url: j.link }))}
       onRevokeShare={(id) => run(() => deleteJson(`/api/shared/shares/${encodeURIComponent(id)}`))}

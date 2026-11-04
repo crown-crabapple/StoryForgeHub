@@ -1,6 +1,7 @@
 // Settings. The only AI entry in the app: "Set up AI (optional)". StoryForge works completely without it; with no provider profile nothing is ever sent anywhere.
 import { useState } from 'react';
 import { useApi } from '../api.js';
+import { ClaudeSettings } from '../integrations/ClaudePanel.jsx';
 import { PluginsSettings } from '../integrations/PluginsPanel.jsx';
 import { WebhooksSettings } from '../integrations/WebhooksPanel.jsx';
 import { PreferencesSettings } from '../prefs/PreferencesSettings.jsx';
@@ -322,13 +323,20 @@ export function SettingsView() {
     <main id="main" tabIndex={-1} className="page settings-page">
       <h1>Settings</h1>
       {user?.role === 'owner' && (
-        <p>
-          <Link to="/settings/members">Members and sharing</Link>
-        </p>
+        <section aria-labelledby="members-sharing-heading" className="pref-section">
+          <h2 id="members-sharing-heading">Members and sharing</h2>
+          <p className="muted">Invite people, change their roles, and share a book read-only.</p>
+          <p>
+            <Link to="/settings/members" className="btn">
+              Open Members and sharing
+            </Link>
+          </p>
+        </section>
       )}
       <PreferencesSettings />
       {(mode !== 'shared' || user?.role === 'owner') && (
         <>
+          <ClaudeSettings mode={mode} />
           <PluginsSettings />
           <WebhooksSettings />
         </>
