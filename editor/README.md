@@ -10,7 +10,8 @@ from the docroot.
   bundle. It's under the docroot, so a normal `htdocs` deploy includes it. **Node
   is NOT needed on the server.**
 - **Source (this folder, NOT deployed):** `package.json`, `vite.config.js`,
-  `src/main.js`, `src/codex-md.js`, `src/editor.css`, and the test suites in
+  `src/main.js`, `src/codex-md.js`, `src/codex-card.js`, `src/mentions.js`,
+  `src/editor.css`, and the test suites in
   `test/`. `03-setup-app.sh` excludes `editor/` and `node_modules/` from the
   server deploy.
 
@@ -64,8 +65,10 @@ round-trip.
 ## Surfaces (`src/main.js`)
 - **Entry** (`#codex-prose`) — the P4 editor: metadata form + prose sections;
   submit assembles the Codex markdown into `#md-out` for the normal
-  `entry_save` POST. Live mentions (P5) highlight recognized names; clicking
-  one now inserts a WikiLink **node**.
+  `entry_save` POST. Live mentions (P5) highlight recognized names; hovering
+  or clicking one opens the Codex card (`src/codex-card.js`), whose
+  **Link here** button inserts a `[[slug|Text]]` WikiLink **node** (visible
+  text unchanged). A bare click never edits.
 - **Chapter** (`#chapter-wys` + `#chapter-md`) — Track C2. The textarea stays
   the buffer of record: the rich view **writes through** on every update and
   fires `input`, so the Phase 15 tooling (autosave, style check, scene rail,

@@ -123,6 +123,19 @@ function inline_md($s) {
     return $s;
 }
 
+/* --- UI plan Phase 1: the Codex card's page data --- */
+/** db_key => ['label','color'] for the card badge and the scene rail dots. */
+function codex_db_colors($profile) {
+    $out = [];
+    foreach (dbmeta_for($profile ?: 'fiction') as $k => $m) $out[$k] = ['label'=>$m['singular'] ?? $k, 'color'=>$m['hue'] ?? '#888'];
+    return $out;
+}
+/** <script>window.__scene=…</script>. JSON_HEX_TAG/AMP so entry text such as
+ *  "</script>" in an excerpt can never close the tag. */
+function scene_script($scene) {
+    return '<script>window.__scene='.json_encode($scene, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP).';</script>';
+}
+
 /* --- Phase 5: auto-link recognized entry names/aliases in rendered prose --- */
 function mention_targets_cached($book_id) {
     static $c = [];

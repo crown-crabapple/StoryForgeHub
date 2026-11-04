@@ -17,78 +17,13 @@
  * Every serialization goes through serializeCodex(); the corpus test in
  * editor/test is the gate for the layer's fidelity.
  */
-import { Editor, Extension } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
-import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { Editor } from '@tiptap/core'
 import { buildCodexExtensions, serializeCodex, roundTripCheck } from './codex-md.js'
+import { buildMentionExtension } from './mentions.js'
+import { attachCodexCard, close as closeCodexCard, tallyMentions, linkMention } from './codex-card.js'
 import './editor.css'
 
 function esc(v) { return (v == null ? '' : String(v)) }
-function reEscape(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
-
-/*
- * Live mention highlighting (P5): decorate recognized entry names/aliases in
- * prose text — longest-match-first, word-boundary, one highlight per span.
- * Click a highlight to link it: the text becomes a [[wiki-link]] NODE (Track
- * C1 — no more raw-bracket insertion).
- */
-const mentionKey = new PluginKey('codexMentions')
-
-function buildMentionExtension(targets) {
-  const compiled = targets.map((t) => ({
-    slug: t.slug,
-    re: new RegExp('(?<!\\w)' + reEscape(t.phrase) + '(?!\\w)', 'giu'),
-  }))
-
-  return Extension.create({
-    name: 'codexMentions',
-    addProseMirrorPlugins() {
-      return [new Plugin({
-        key: mentionKey,
-        props: {
-          decorations(state) {
-            const decos = []
-            state.doc.descendants((node, pos) => {
-              if (!node.isText || !node.text) return
-              const text = node.text
-              const used = new Array(text.length).fill(false)
-              const overlaps = (s, e) => { for (let k = s; k < e; k++) if (used[k]) return true; return false }
-              const mark = (s, e) => { for (let k = s; k < e; k++) used[k] = true }
-              for (const c of compiled) {
-                c.re.lastIndex = 0
-                let m
-                while ((m = c.re.exec(text)) !== null) {
-                  const s = m.index, e = s + m[0].length
-                  if (e === s) { c.re.lastIndex++; continue }
-                  if (overlaps(s, e)) continue
-                  mark(s, e)
-                  decos.push(Decoration.inline(pos + s, pos + e, {
-                    class: 'cm-mention',
-                    'data-slug': c.slug,
-                  }))
-                }
-              }
-            })
-            return DecorationSet.create(state.doc, decos)
-          },
-          handleClickOn(view, _pos, _node, _nodePos, event) {
-            const el = event.target
-            if (!el || !el.classList || !el.classList.contains('cm-mention')) return false
-            const slug = el.getAttribute('data-slug')
-            if (!slug) return false
-            const from = view.posAtDOM(el, 0)
-            const to = from + (el.textContent || '').length
-            if (to <= from) return false
-            event.preventDefault()
-            const wl = view.state.schema.nodes.codexWikilink
-            view.dispatch(view.state.tr.replaceWith(from, to, wl.create({ target: slug })))
-            return true
-          },
-        },
-      })]
-    },
-  })
-}
 
 function readMentionTargets() {
   const el = document.getElementById('codex-mention-targets')
@@ -101,6 +36,28 @@ function readMentionTargets() {
   const S = window.__scene
   if (S && Array.isArray(S.targets)) return S.targets.filter((t) => t && t.phrase && t.slug)
   return []
+}
+
+/** Card data for this page (window.__scene: meta/db/book/canLink), or null. */
+function readCardScene() {
+  const S = window.__scene
+  return (S && S.meta && typeof S.meta === 'object') ? S : null
+}
+
+/** Codex card on a TipTap surface's mention highlights. */
+function attachEditorCard(editor, root, { localLabel = null, localText = null } = {}) {
+  const S = readCardScene()
+  if (!S) return
+  const targets = readMentionTargets()
+  attachCodexCard(root, {
+    selector: '.cm-mention',
+    meta: S.meta, db: S.db || {}, book: S.book,
+    canLink: !!S.canLink,
+    onLink: (el, slug) => linkMention(editor, el, slug),
+    localLabel,
+    localCount: localText ? (slug) => tallyMentions(localText(), targets)[slug] || 0 : null,
+  })
+  editor.on('update', () => closeCodexCard())   // positions moved: never act on a stale pin
 }
 
 function makeEditor(mount, { mentions = true } = {}) {
@@ -155,6 +112,7 @@ function bootEntry() {
 
   const editor = makeEditor(mount)
   editor.commands.setContent(initial)
+  attachEditorCard(editor, mount)
 
   const fieldsWrap = document.getElementById('meta-fields')
   document.getElementById('add-field')?.addEventListener('click', () => addFieldRow(fieldsWrap))
@@ -174,8 +132,9 @@ function bootEntry() {
  * TipTap view writes through to it (firing 'input' so autosave/rail/counters
  * keep working) and a toggle flips between the two views of the same buffer. */
 
-function bootWriteThrough({ ta, mount, toggle, notice, modeKey, mentions }) {
+function bootWriteThrough({ ta, mount, toggle, notice, modeKey, mentions, localLabel = null }) {
   const editor = makeEditor(mount, { mentions })
+  if (mentions) attachEditorCard(editor, mount, { localLabel, localText: localLabel ? () => ta.value : null })
   const check = roundTripCheck(editor, ta.value)
 
   let mode = 'raw'
@@ -202,6 +161,7 @@ function bootWriteThrough({ ta, mount, toggle, notice, modeKey, mentions }) {
       toggle.title = 'Switch to raw Markdown'
       if (notice) notice.hidden = check.verdict !== 'tidy'
     } else {
+      closeCodexCard()
       mount.hidden = true
       ta.style.display = ''
       toggle.textContent = 'Rich text'
@@ -250,6 +210,7 @@ function bootChapter() {
     notice: document.getElementById('wysNotice'),
     modeKey: 'codexChapterMode',
     mentions: true,
+    localLabel: 'in this chapter',
   })
 
   // The md-toolbar drives BOTH modes: in rich mode the buttons run editor
@@ -310,10 +271,31 @@ function bootGeneric() {
   return bootedAny
 }
 
+/* ------------------------------------------------------------ reader page
+ * The chapter reader renders mentions server-side as <a class="mention">; the
+ * card attaches to those (read-only: no Link here). */
+
+function bootReader() {
+  const body = document.getElementById('chapterbody')
+  const S = readCardScene()
+  if (!body || !S) return false
+  const targets = Array.isArray(S.targets) ? S.targets : []
+  attachCodexCard(body, {
+    selector: 'a.mention',
+    meta: S.meta, db: S.db || {}, book: S.book,
+    canLink: false,
+    followLinks: true,
+    localLabel: 'in this chapter',
+    localCount: (slug) => tallyMentions(body.textContent || '', targets)[slug] || 0,
+  })
+  return true
+}
+
 function boot() {
   bootEntry()
   bootChapter()
   bootGeneric()
+  bootReader()
 }
 
 if (document.readyState !== 'loading') boot()
