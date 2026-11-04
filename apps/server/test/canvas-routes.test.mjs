@@ -13,7 +13,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { validate } from '../../../packages/format/src/index.mjs';
 import { WRITE_CLASSES } from '../src/policy.mjs';
-import { BOOK, KEY, LOWTIDE, closeAll, freshBook, move, readAll, send } from './move-helpers.mjs';
+import { BOOK, KEY, LOWTIDE, closeAll, freshBook, move, readAll, send, startApi } from './move-helpers.mjs';
 
 after(closeAll);
 
@@ -140,7 +140,8 @@ test('a hand-written JSON Canvas (no storyforge keys) opens and saves; a broken 
 });
 
 test('story cards follow a scene move; archive and restore move the file; deleting .storyforge/ changes nothing; validate() gains no diagnostics', async () => {
-  const { root, port } = await freshBook();
+  const { root, port: firstPort, repo } = await freshBook();
+  let port = firstPort;
   await newCanvas(port, 'Board');
   const got = await send(port, 'GET', u('canvases', 'board'));
   const keyPath = got.json.targets.find((t) => t.ref === KEY);
@@ -160,7 +161,10 @@ test('story cards follow a scene move; archive and restore move the file; deleti
   }
 
   const snapshot = (await send(port, 'GET', u('canvases', 'board'))).json;
+  // Close the index first: Windows will not delete an open sqlite file. Then read the canvas from a new server with no index.
+  await repo.close();
   await fs.rm(path.join(root, '.storyforge'), { recursive: true, force: true });
+  port = (await startApi(root)).port;
   const fresh = (await send(port, 'GET', u('canvases', 'board'))).json;
   assert.deepEqual(fresh.canvas, snapshot.canvas);
   assert.equal(fresh.sha256, snapshot.sha256);

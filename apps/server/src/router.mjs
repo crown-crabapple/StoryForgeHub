@@ -606,7 +606,8 @@ export function matchWriteRoute(method, pathname) {
   // M09-J01 canvases
   if (method === 'POST' && c === 'canvases' && d === undefined) return { route: 'canvas-create', bookId: b };
   if (method === 'PUT' && c === 'canvases' && d !== undefined && e === undefined) return { route: 'canvas-save', bookId: b, slug: d };
-  if (method === 'POST' && c === 'canvases' && d !== undefined && (e === 'archive' || e === 'restore')) return { route: `canvas-${e}`, bookId: b, slug: d };
+  if (method === 'POST' && c === 'canvases' && d !== undefined && e === 'archive') return { route: 'canvas-archive', bookId: b, slug: d };
+  if (method === 'POST' && c === 'canvases' && d !== undefined && e === 'restore') return { route: 'canvas-restore', bookId: b, slug: d };
   return null;
 }
 
