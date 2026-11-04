@@ -1,0 +1,3965 @@
+From 360b24983b5e5eac4c38340a111a9d3f6a866c0c Mon Sep 17 00:00:00 2001
+From: Stephen Appleby <sappleby@tuscaloosacityschools.com>
+Date: Wed, 4 Nov 2026 15:09:23 -0600
+Subject: [PATCH] Canvas: Storyflow-style visual boards stored as JSON Canvas
+ files (M09-J01)
+
+- planning/canvases/<slug>.canvas in JSON Canvas 1.0 (Obsidian-compatible); StoryForge extras under a storyforge key
+- notes, to-dos, colour swatches, images (assets/canvas/), web links, groups, columns, labelled arrows
+- story cards linked by id to scenes, Codex entries, threads, events and notes; paths refreshed on save
+- API: GET/POST /canvases, GET/PUT /canvases/:slug, archive/restore; upload ?for=canvas; policy classes; board module gate
+- web: Canvas tab with pan/zoom (wheel zooms), drag, resize, connect, inline editing, undo/redo, autosave with conflict banner
+- shortcuts in the registry (canvas scope); tests for format, routes, model and render
+---
+ CHANGELOG.md                                |   1 +
+ apps/server/src/policy.mjs                  |   2 +
+ apps/server/src/router.mjs                  |  39 +-
+ apps/server/src/server.mjs                  |   2 +-
+ apps/server/test/canvas-routes.test.mjs     | 190 ++++++
+ apps/web/src/App.jsx                        |   2 +
+ apps/web/src/canvas/CanvasBoard.jsx         | 608 +++++++++++++++++++
+ apps/web/src/canvas/CanvasCard.jsx          | 226 +++++++
+ apps/web/src/canvas/CanvasView.jsx          | 397 ++++++++++++
+ apps/web/src/canvas/canvas.css              | 636 ++++++++++++++++++++
+ apps/web/src/canvas/model.js                | 406 +++++++++++++
+ apps/web/src/canvas/requests.js             |  58 ++
+ apps/web/src/main.jsx                       |   1 +
+ apps/web/src/routes.js                      |   3 +-
+ apps/web/src/shortcuts/registry.js          |  22 +
+ apps/web/test/ai-render.test.mjs            |   4 +-
+ apps/web/test/canvas.test.mjs               | 239 ++++++++
+ apps/web/test/customization.test.mjs        |   5 +-
+ apps/web/test/insights-tasks.test.mjs       |   6 +-
+ apps/web/test/render.test.mjs               |   7 +-
+ apps/web/test/state.test.mjs                |   2 +-
+ apps/web/test/timeline-notes.test.mjs       |   2 +-
+ docs/contracts/M09-J01-canvas.md            |  97 +++
+ docs/format.md                              |   4 +-
+ packages/core/src/fs-canvas.mjs             | 168 ++++++
+ packages/core/src/fs-repository.mjs         |  28 +
+ packages/core/src/fs-writes.mjs             |   4 +-
+ packages/core/src/repository.mjs            |   6 +
+ packages/format/src/canvas.mjs              | 124 ++++
+ packages/format/src/index.mjs               |   3 +
+ packages/format/src/preferences.mjs         |   1 +
+ packages/format/test/canvas-format.test.mjs |  74 +++
+ packages/manuscript/src/canvas.mjs          |  90 +++
+ packages/manuscript/src/index.mjs           |   1 +
+ packages/manuscript/src/research.mjs        |  10 +-
+ 35 files changed, 3444 insertions(+), 24 deletions(-)
+ create mode 100644 apps/server/test/canvas-routes.test.mjs
+ create mode 100644 apps/web/src/canvas/CanvasBoard.jsx
+ create mode 100644 apps/web/src/canvas/CanvasCard.jsx
+ create mode 100644 apps/web/src/canvas/CanvasView.jsx
+ create mode 100644 apps/web/src/canvas/canvas.css
+ create mode 100644 apps/web/src/canvas/model.js
+ create mode 100644 apps/web/src/canvas/requests.js
+ create mode 100644 apps/web/test/canvas.test.mjs
+ create mode 100644 docs/contracts/M09-J01-canvas.md
+ create mode 100644 packages/core/src/fs-canvas.mjs
+ create mode 100644 packages/format/src/canvas.mjs
+ create mode 100644 packages/format/test/canvas-format.test.mjs
+ create mode 100644 packages/manuscript/src/canvas.mjs
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index f5a6d75..32d3f32 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,6 +8,7 @@ All notable changes to StoryForge are listed here. The format follows [Keep a Ch
+ 
+ - **MCP service:** `POST /mcp` (Streamable HTTP, bearer plugin token, JSON replies, no SSE or session) and `storyforge mcp`, a stdio bridge to the running server, for Claude Code and Claude Desktop. 14 tools named like the legacy `codex_*` tools (11 read, 3 propose); writes are proposals the author accepts or rejects. See [docs/mcp.md](docs/mcp.md).
+ - **Connect Claude** in Settings: create an MCP token for Claude (name, books, may suggest), shown once with ready-to-copy setup; list and revoke connections.
++- **Canvas** (`/books/:id/canvas`): infinite visual boards for mood images, colour swatches, Markdown notes, to-do lists, web links, columns, groups and labelled arrows, plus live story cards for scenes, Codex entries, threads, events and notes that follow the book. Each canvas is a JSON Canvas file (`planning/canvases/<slug>.canvas`, Obsidian-compatible) saved through the store; the scroll wheel zooms; keys are in the shortcut registry. Contract: [docs/contracts/M09-J01-canvas.md](docs/contracts/M09-J01-canvas.md).
+ - **Per-book access for members** (shared mode): All books with one role, or Only these books with a role per book, for members and invites. A limited member cannot open, search or list other books; shared series data needs all-books access to change.
+ 
+ ## [0.1.0]
+diff --git a/apps/server/src/policy.mjs b/apps/server/src/policy.mjs
+index 699d534..b08c24c 100644
+--- a/apps/server/src/policy.mjs
++++ b/apps/server/src/policy.mjs
+@@ -35,6 +35,8 @@ export const WRITE_CLASSES = Object.freeze({
+   'ai-records': 'admin', 'ai-profile-secure': 'admin', 'ai-profile-discover': 'admin',
+   // M07-J01b series worlds: shared-entry moves and labels are ordinary edits; saving a library template writes library-level files
+   'entry-move-to-series': 'write', 'entry-copy-to-book': 'write', 'labels-set': 'write', 'template-save': 'admin',
++  // M09-J01 canvases (planning/canvases/*.canvas; planning material, never prose)
++  'canvas-create': 'write', 'canvas-save': 'write', 'canvas-archive': 'write', 'canvas-restore': 'write',
+   // M07-J02 goals and revision tasks (book files; never prose)
+   'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
+   // M07-J04 profiles: per-machine appearance settings of the server process, so in shared mode only the owner changes them
+diff --git a/apps/server/src/router.mjs b/apps/server/src/router.mjs
+index 42dc168..ace6a30 100644
+--- a/apps/server/src/router.mjs
++++ b/apps/server/src/router.mjs
+@@ -254,6 +254,15 @@ export async function handleApi(repository, pathname, state, params = new URLSea
+       return notes ? { status: 200, body: notes } : NOT_FOUND;
+     }
+     if (c === 'attachments' && d === undefined) return handleAttachment(repository, b, params);
++    // M09-J01: canvases (planning/canvases/<slug>.canvas)
++    if (c === 'canvases' && d === undefined) {
++      const list = await repository.listCanvases(b);
++      return list ? { status: 200, body: list } : NOT_FOUND;
++    }
++    if (c === 'canvases' && d !== undefined && e === undefined) {
++      const canvas = await repository.getCanvas(b, d);
++      return canvas ? { status: 200, body: canvas } : NOT_FOUND;
++    }
+     // M05-J04 status; M08-J03: the cover generator's state, a draft picture, and a streamed reply in progress
+     if (c === 'ai' && ['status', 'cover', 'cover-draft', 'stream'].includes(d) && e === undefined) return handleAiRead(repository, state, d, b, params);
+     if (c === 'graph' && d === undefined) {
+@@ -594,6 +603,10 @@ export function matchWriteRoute(method, pathname) {
+   // M05-J07: "Record now" (flush the author's pending changes to a scene into a receipt)
+   if (method === 'POST' && c === 'receipts' && d === 'flush' && e === undefined) return { route: 'receipts-flush', bookId: b };
+   if (method === 'POST' && c === 'attachments' && d === undefined) return { route: 'attachment-upload', bookId: b };
++  // M09-J01 canvases
++  if (method === 'POST' && c === 'canvases' && d === undefined) return { route: 'canvas-create', bookId: b };
++  if (method === 'PUT' && c === 'canvases' && d !== undefined && e === undefined) return { route: 'canvas-save', bookId: b, slug: d };
++  if (method === 'POST' && c === 'canvases' && d !== undefined && (e === 'archive' || e === 'restore')) return { route: `canvas-${e}`, bookId: b, slug: d };
+   return null;
+ }
+ 
+@@ -1069,6 +1082,24 @@ async function handleStructure(repository, match, body) {
+       const r = await repository.restoreNote(bookId, /** @type {string} */ (match.noteId), { dryRun, baseSha256: body.base_sha256 });
+       return respond(r, 200, structureBody);
+     }
++    // ---- M09-J01 canvases: the only files these routes write are planning/canvases/<slug>.canvas (archive/ when archived)
++    case 'canvas-create': {
++      const r = await repository.createCanvas(bookId, { title: body.title, slug: body.slug, dryRun });
++      return respond(r, created, structureBody);
++    }
++    case 'canvas-save': {
++      if (typeof body.base_sha256 !== 'string') return badRequest('expected { canvas: object, base_sha256: string }');
++      const r = await repository.saveCanvas(bookId, /** @type {string} */ (match.slug), { canvas: body.canvas, baseSha256: body.base_sha256 });
++      if (!r.ok && r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', current: r.current ?? null } };
++      return respond(r, 200, (x) => ({ ok: true, sha256: x.sha256, path: x.path }));
++    }
++    case 'canvas-archive':
++    case 'canvas-restore': {
++      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
++      const call = match.route === 'canvas-archive' ? repository.archiveCanvas : repository.restoreCanvas;
++      const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
++      return respond(r, 200, structureBody);
++    }
+     // ---- M05-J02 continuity exceptions: the only files these routes write are planning/continuity/<slug>.md (archive/ when removed)
+     case 'continuity-exception-create': {
+       for (const k of ['fingerprint', 'rationale', 'title']) if (body[k] !== undefined && typeof body[k] !== 'string') return badRequest(`${k} must be a string`);
+@@ -1093,12 +1124,14 @@ async function handleStructure(repository, match, body) {
+ /**
+  * POST /api/books/:b/attachments?name=<file name>[&note=<book-relative note path or note id>]: the raw bytes of one file (at most 25 MB; the caller has already
+  * limited the body). 201 { path, name, markdown } with the link to insert in the note; 400 bad name or empty; 413 too large; 415 type not allowed.
+- * @param {FileRepository} repository @param {{ bookId?: string }} match @param {{ name: string | null, note: string | null, bytes: Buffer }} upload
++ * `for=canvas` (M09-J01) stores under assets/canvas/ instead of assets/research/.
++ * @param {FileRepository} repository @param {{ bookId?: string }} match @param {{ name: string | null, note: string | null, purpose?: string | null, bytes: Buffer }} upload
+  * @returns {Promise<ApiResult>}
+  */
+-export async function handleUpload(repository, match, { name, note, bytes }) {
++export async function handleUpload(repository, match, { name, note, purpose = null, bytes }) {
+   if (name === null || name.trim() === '') return badRequest('name is required (the file name)');
+-  const r = await repository.uploadAttachment(/** @type {string} */ (match.bookId), { name, bytes, ...(note !== null ? { note } : {}) });
++  if (purpose !== null && purpose !== 'research' && purpose !== 'canvas') return badRequest('for must be research or canvas');
++  const r = await repository.uploadAttachment(/** @type {string} */ (match.bookId), { name, bytes, ...(note !== null ? { note } : {}), ...(purpose !== null ? { purpose } : {}) });
+   if (r.ok) return { status: 201, body: { ok: true, path: r.path, name: r.name, markdown: r.markdown } };
+   if (r.code === 'NOT_FOUND') return NOT_FOUND;
+   const status = r.code === 'TOO_LARGE' ? 413 : r.code === 'UNSUPPORTED_TYPE' ? 415 : r.code === 'REFUSED_PATH_TAKEN' ? 409 : 400;
+diff --git a/apps/server/src/server.mjs b/apps/server/src/server.mjs
+index da2867f..ad4b8a0 100644
+--- a/apps/server/src/server.mjs
++++ b/apps/server/src/server.mjs
+@@ -310,7 +310,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
+           const up = await readUpload(req, MAX_UPLOAD_BYTES);
+           if (up.tooLarge) return sendJson(res, 413, { error: 'too_large', code: 'TOO_LARGE', message: 'attachments can be at most 25 MB' });
+           const query = new URLSearchParams(queryString);
+-          const { status, body } = await handleUpload(current(), match, { name: query.get('name'), note: query.get('note'), bytes: up.buffer });
++          const { status, body } = await handleUpload(current(), match, { name: query.get('name'), note: query.get('note'), purpose: query.get('for'), bytes: up.buffer });
+           await record(status);
+           return sendJson(res, status, body);
+         }
+diff --git a/apps/server/test/canvas-routes.test.mjs b/apps/server/test/canvas-routes.test.mjs
+new file mode 100644
+index 0000000..8d070b5
+--- /dev/null
++++ b/apps/server/test/canvas-routes.test.mjs
+@@ -0,0 +1,190 @@
++// M09-J01 acceptance 1-6 for canvases (planning/canvases/<slug>.canvas, JSON Canvas):
++//   GET  /api/books/:b/canvases                  { canvases, archived }
++//   GET  /api/books/:b/canvases/:slug            { slug, title, path, sha256, canvas, problem, refs, targets }
++//   POST /api/books/:b/canvases                  { title, slug?, dryRun? }
++//   PUT  /api/books/:b/canvases/:slug            { canvas, base_sha256 }
++//   POST /api/books/:b/canvases/:slug/archive | restore
++//   POST /api/books/:b/attachments?name=&for=canvas
++// Contract: docs/contracts/M09-J01-canvas.md.
++import { test, after } from 'node:test';
++import assert from 'node:assert/strict';
++import { createHash } from 'node:crypto';
++import fs from 'node:fs/promises';
++import path from 'node:path';
++import { validate } from '../../../packages/format/src/index.mjs';
++import { WRITE_CLASSES } from '../src/policy.mjs';
++import { BOOK, KEY, LOWTIDE, closeAll, freshBook, move, readAll, send } from './move-helpers.mjs';
++
++after(closeAll);
++
++const MAREN = 'entry_01S5000000000000000000000G';
++const u = (...p) => `/api/books/${BOOK}/${p.join('/')}`;
++const sha = (b) => createHash('sha256').update(b).digest('hex');
++const read = (root, rel) => fs.readFile(path.join(root, ...rel.split('/')));
++const codes = async (root) => (await validate(root)).diagnostics.map((d) => `${d.code}|${d.file}`).sort();
++
++async function newCanvas(port, title = 'Neon Shadows', slug) {
++  const r = await send(port, 'POST', u('canvases'), { body: { title, ...(slug ? { slug } : {}) } });
++  assert.equal(r.status, 201, r.text);
++  return r.json;
++}
++
++test('create: an empty JSON Canvas file under planning/canvases/, listed with its title; a dry run writes nothing; a taken name is 409', async () => {
++  const { root, port } = await freshBook();
++  const before = await readAll(root);
++  const codesBefore = await codes(root);
++  const dry = await send(port, 'POST', u('canvases'), { body: { title: 'Neon Shadows', dryRun: true } });
++  assert.equal(dry.status, 200, dry.text);
++  assert.equal(dry.json.path, 'planning/canvases/neon-shadows.canvas');
++  assert.deepEqual([...(await readAll(root)).keys()].sort(), [...before.keys()].sort(), 'a dry run writes nothing');
++
++  const made = await newCanvas(port);
++  assert.equal(made.slug, 'neon-shadows');
++  assert.deepEqual(await codes(root), codesBefore, 'a canvas adds no diagnostics to validate()');
++  const doc = JSON.parse((await read(root, 'planning/canvases/neon-shadows.canvas')).toString('utf8'));
++  assert.deepEqual(doc, { nodes: [], edges: [], storyforge: { schema: 'storyforge.canvas/v1', title: 'Neon Shadows' } });
++
++  const list = await send(port, 'GET', u('canvases'));
++  assert.equal(list.status, 200);
++  assert.deepEqual(list.json.canvases.map((c) => [c.slug, c.title, c.nodes, c.problem]), [['neon-shadows', 'Neon Shadows', 0, null]]);
++  assert.deepEqual(list.json.archived, []);
++
++  const again = await send(port, 'POST', u('canvases'), { body: { title: 'Neon Shadows' } });
++  assert.equal(again.status, 409, again.text);
++  assert.equal(again.json.code, 'REFUSED_PATH_TAKEN');
++  assert.equal((await send(port, 'POST', u('canvases'), { body: { title: '!!!' } })).status, 400);
++});
++
++test('save: nodes and edges round-trip; story-card paths are refreshed; unknown keys are kept; the answer carries the new sha256', async () => {
++  const { root, port } = await freshBook();
++  await newCanvas(port, 'Board');
++  const got = await send(port, 'GET', u('canvases', 'board'));
++  assert.equal(got.status, 200, got.text);
++  assert.ok(got.json.targets.some((t) => t.ref === MAREN && t.kind === 'entry'));
++  assert.ok(got.json.targets.some((t) => t.ref === KEY && t.kind === 'scene'));
++  const canvas = {
++    nodes: [
++      { id: 'n1', type: 'text', text: '# Atmosphere\n- rain', x: 10.4, y: 20, width: 250, height: 120, obsidianOnly: true },
++      { id: 'n2', type: 'text', text: '**Pearl Bush**\n#E8DDD4', x: 300, y: 20, width: 120, height: 120, color: '#E8DDD4', storyforge: { kind: 'swatch', name: 'Pearl Bush', hex: '#E8DDD4' } },
++      { id: 'n3', type: 'file', file: 'wrong/path.md', x: 0, y: 200, width: 260, height: 140, storyforge: { ref: MAREN } },
++      { id: 'n4', type: 'file', file: 'codex/nowhere.md', x: 300, y: 200, width: 260, height: 140, storyforge: { ref: 'entry_GONE' } },
++      { id: 'g1', type: 'group', label: 'Wall', x: -20, y: -20, width: 600, height: 400, storyforge: { kind: 'column' } },
++      { id: 'l1', type: 'link', url: 'https://example.com/ref', x: 600, y: 0, width: 200, height: 80 },
++    ],
++    edges: [{ id: 'e1', fromNode: 'n1', fromSide: 'right', toNode: 'n2', toSide: 'left', toEnd: 'arrow', label: 'palette' }],
++    storyforge: { schema: 'storyforge.canvas/v1', title: 'Board' },
++    extraTopLevel: { kept: 1 },
++  };
++  const r = await send(port, 'PUT', u('canvases', 'board'), { body: { canvas, base_sha256: got.json.sha256 } });
++  assert.equal(r.status, 200, r.text);
++  const bytes = await read(root, 'planning/canvases/board.canvas');
++  assert.equal(r.json.sha256, sha(bytes));
++  const doc = JSON.parse(bytes.toString('utf8'));
++  assert.equal(doc.nodes[0].x, 10, 'coordinates are saved as integers');
++  assert.equal(doc.nodes[0].obsidianOnly, true, 'unknown node keys are kept');
++  assert.deepEqual(doc.extraTopLevel, { kept: 1 }, 'unknown top-level keys are kept');
++  assert.equal(doc.nodes[2].file, 'codex/characters/maren-hollis.md', 'a story card file is refreshed to its target');
++  assert.equal(doc.nodes[3].file, 'codex/nowhere.md', 'a broken story card keeps its file');
++
++  const back = await send(port, 'GET', u('canvases', 'board'));
++  assert.equal(back.json.refs.n3.state, 'ok');
++  assert.equal(back.json.refs.n3.kind, 'entry');
++  assert.equal(back.json.refs.n3.title, 'Maren Hollis');
++  assert.equal(back.json.refs.n4.state, 'broken');
++});
++
++test('refusals write nothing: a bad canvas is 400 REFUSED_BAD_CANVAS; a stale base is 409 with the current canvas', async () => {
++  const { root, port } = await freshBook();
++  await newCanvas(port, 'Board');
++  const { json } = await send(port, 'GET', u('canvases', 'board'));
++  const before = await read(root, 'planning/canvases/board.canvas');
++  const bad = [
++    { nodes: [{ id: 'a', type: 'text', text: 'x', x: 0, y: 0, width: 10, height: 10 }, { id: 'a', type: 'text', text: 'y', x: 0, y: 0, width: 10, height: 10 }], edges: [] },
++    { nodes: [{ id: 'a', type: 'shape', x: 0, y: 0, width: 10, height: 10 }], edges: [] },
++    { nodes: [{ id: 'a', type: 'link', url: 'javascript:alert(1)', x: 0, y: 0, width: 10, height: 10 }], edges: [] },
++    { nodes: [{ id: 'a', type: 'file', file: '../../etc/passwd', x: 0, y: 0, width: 10, height: 10 }], edges: [] },
++    { nodes: [{ id: 'a', type: 'text', text: 'x', x: 'left', y: 0, width: 10, height: 10 }], edges: [] },
++    { nodes: [{ id: 'a', type: 'text', text: 'x', x: 0, y: 0, width: 10, height: 10 }], edges: [{ id: 'e', fromNode: 'a', toNode: 'zzz' }] },
++    { nodes: [{ id: 'a', type: 'text', text: 'x', x: 0, y: 0, width: 10, height: 10, color: 'red' }], edges: [] },
++    'not a canvas',
++  ];
++  for (const canvas of bad) {
++    const r = await send(port, 'PUT', u('canvases', 'board'), { body: { canvas, base_sha256: json.sha256 } });
++    assert.equal(r.status, 400, `${JSON.stringify(canvas).slice(0, 80)}: ${r.text}`);
++    assert.equal(r.json.code, 'REFUSED_BAD_CANVAS');
++  }
++  assert.ok((await read(root, 'planning/canvases/board.canvas')).equals(before), 'byte-identical after refusals');
++
++  const ok = await send(port, 'PUT', u('canvases', 'board'), { body: { canvas: { nodes: [], edges: [], storyforge: { title: 'Mine' } }, base_sha256: json.sha256 } });
++  assert.equal(ok.status, 200, ok.text);
++  const stale = await send(port, 'PUT', u('canvases', 'board'), { body: { canvas: { nodes: [], edges: [] }, base_sha256: json.sha256 } });
++  assert.equal(stale.status, 409, stale.text);
++  assert.equal(stale.json.current.sha256, ok.json.sha256);
++  assert.equal(stale.json.current.canvas.storyforge.title, 'Mine');
++  assert.equal((await send(port, 'PUT', u('canvases', 'nope'), { body: { canvas: { nodes: [], edges: [] }, base_sha256: 'x' } })).status, 404);
++});
++
++test('a hand-written JSON Canvas (no storyforge keys) opens and saves; a broken file is listed with its problem', async () => {
++  const hand = JSON.stringify({ nodes: [{ id: 'abc123', type: 'text', text: 'From Obsidian', x: -100, y: 40, width: 250, height: 60, color: '4' }], edges: [] }, null, '\t');
++  const { port } = await freshBook('valid/salt-orchard', async (root) => {
++    await fs.mkdir(path.join(root, 'planning', 'canvases'), { recursive: true });
++    await fs.writeFile(path.join(root, 'planning', 'canvases', 'from-obsidian.canvas'), hand);
++    await fs.writeFile(path.join(root, 'planning', 'canvases', 'broken.canvas'), '{ nope');
++  });
++  const list = await send(port, 'GET', u('canvases'));
++  assert.deepEqual(list.json.canvases.map((c) => [c.slug, c.title, c.nodes, c.problem === null]), [['broken', 'broken', 0, false], ['from-obsidian', 'from-obsidian', 1, true]]);
++  const got = await send(port, 'GET', u('canvases', 'from-obsidian'));
++  assert.equal(got.json.canvas.nodes[0].text, 'From Obsidian');
++  const r = await send(port, 'PUT', u('canvases', 'from-obsidian'), { body: { canvas: got.json.canvas, base_sha256: got.json.sha256 } });
++  assert.equal(r.status, 200, r.text);
++});
++
++test('story cards follow a scene move; archive and restore move the file; deleting .storyforge/ changes nothing; validate() gains no diagnostics', async () => {
++  const { root, port } = await freshBook();
++  await newCanvas(port, 'Board');
++  const got = await send(port, 'GET', u('canvases', 'board'));
++  const keyPath = got.json.targets.find((t) => t.ref === KEY);
++  assert.ok(keyPath);
++  const canvas = { nodes: [{ id: 's1', type: 'file', file: 'x.md', x: 0, y: 0, width: 260, height: 140, storyforge: { ref: KEY } }], edges: [] };
++  const saved = await send(port, 'PUT', u('canvases', 'board'), { body: { canvas, base_sha256: got.json.sha256 } });
++  assert.equal(saved.status, 200, saved.text);
++  const p1 = (await send(port, 'GET', u('canvases', 'board'))).json.refs.s1.path;
++  const m = await move(port, KEY, { chapter: 3, after: LOWTIDE });
++  assert.equal(m.status, 200, m.text);
++  {
++    const after = await send(port, 'GET', u('canvases', 'board'));
++    assert.notEqual(after.json.refs.s1.path, p1, 'the ref resolves to the moved scene');
++    const again = await send(port, 'PUT', u('canvases', 'board'), { body: { canvas: after.json.canvas, base_sha256: after.json.sha256 } });
++    assert.equal(again.status, 200, again.text);
++    assert.equal(JSON.parse((await read(root, 'planning/canvases/board.canvas')).toString('utf8')).nodes[0].file, after.json.refs.s1.path);
++  }
++
++  const snapshot = (await send(port, 'GET', u('canvases', 'board'))).json;
++  await fs.rm(path.join(root, '.storyforge'), { recursive: true, force: true });
++  const fresh = (await send(port, 'GET', u('canvases', 'board'))).json;
++  assert.deepEqual(fresh.canvas, snapshot.canvas);
++  assert.equal(fresh.sha256, snapshot.sha256);
++
++  const arch = await send(port, 'POST', u('canvases', 'board', 'archive'), { body: {} });
++  assert.equal(arch.status, 200, arch.text);
++  await fs.access(path.join(root, 'archive', 'planning', 'canvases', 'board.canvas'));
++  const list = (await send(port, 'GET', u('canvases'))).json;
++  assert.deepEqual([list.canvases.length, list.archived.map((c) => c.slug)], [0, ['board']]);
++  assert.equal((await send(port, 'POST', u('canvases'), { body: { title: 'Board' } })).status, 409, 'an archived name is taken');
++  const rest = await send(port, 'POST', u('canvases', 'board', 'restore'), { body: {} });
++  assert.equal(rest.status, 200, rest.text);
++  await fs.access(path.join(root, 'planning', 'canvases', 'board.canvas'));
++  assert.deepEqual((await codes(root)).filter((c) => c.includes('canvas')), [], 'canvases add no diagnostics');
++});
++
++test('upload for=canvas stores under assets/canvas/; every canvas write route has a policy class', async () => {
++  const { root, port } = await freshBook();
++  const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
++  const r = await send(port, 'POST', `${u('attachments')}?name=Mood%20Board.png&for=canvas`, { headers: { 'content-type': 'image/png', 'x-storyforge': '1' }, body: png.toString('latin1') });
++  assert.equal(r.status, 201, r.text);
++  assert.equal(r.json.path, 'assets/canvas/mood-board.png');
++  await fs.access(path.join(root, 'assets', 'canvas', 'mood-board.png'));
++  const badFor = await send(port, 'POST', `${u('attachments')}?name=a.png&for=elsewhere`, { headers: { 'content-type': 'image/png', 'x-storyforge': '1' }, body: 'x' });
++  assert.equal(badFor.status, 400);
++  for (const route of ['canvas-create', 'canvas-save', 'canvas-archive', 'canvas-restore']) assert.equal(WRITE_CLASSES[route], 'write', route);
++});
+diff --git a/apps/web/src/App.jsx b/apps/web/src/App.jsx
+index f7352dd..0403f5a 100644
+--- a/apps/web/src/App.jsx
++++ b/apps/web/src/App.jsx
+@@ -4,6 +4,7 @@ import { BookView } from './BookView.jsx';
+ import { CodexView } from './codex/CodexView.jsx';
+ import { ContinuityView } from './continuity/ContinuityView.jsx';
+ import { NotesView } from './notes/NotesView.jsx';
++import { CanvasView } from './canvas/CanvasView.jsx';
+ import { TimelineView } from './timeline/TimelineView.jsx';
+ import { InsightsView } from './insights/InsightsView.jsx';
+ import { TasksView } from './tasks/TasksView.jsx';
+@@ -97,6 +98,7 @@ function Routes() {
+     } else if (route.tab === 'timeline') view = <TimelineView bookId={route.bookId} search={search} />;
+     else if (route.tab === 'continuity') view = <ContinuityView bookId={route.bookId} search={search} />;
+     else if (route.tab === 'notes') view = <NotesView bookId={route.bookId} search={search} />;
++    else if (route.tab === 'canvas') view = <CanvasView bookId={route.bookId} search={search} />;
+     else if (route.tab === 'insights') view = <InsightsView bookId={route.bookId} search={search} />;
+     else if (route.tab === 'tasks') view = <TasksView bookId={route.bookId} search={search} />;
+     else view = <CodexView bookId={route.bookId} search={search} places={route.tab === 'places'} />;
+diff --git a/apps/web/src/canvas/CanvasBoard.jsx b/apps/web/src/canvas/CanvasBoard.jsx
+new file mode 100644
+index 0000000..bd9ffdc
+--- /dev/null
++++ b/apps/web/src/canvas/CanvasBoard.jsx
+@@ -0,0 +1,608 @@
++// The interactive board of one canvas (M09-J01): pan and zoom, select, drag, resize, connect, edit in place, and the Storyflow-style toolbar.
++// It owns only what is on the screen (view, selection, the gesture in progress); the canvas document lives in CanvasView, which saves it.
++import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
++import { Dialog } from '../shell/Dialog.jsx';
++import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
++import { CardBody, ContainerHead } from './CanvasCard.jsx';
++import {
++  KIND_LABEL,
++  REF_KIND_LABEL,
++  assetUrl,
++  bounds,
++  cardName,
++  carried,
++  columnMembers,
++  connect,
++  cssColor,
++  duplicate,
++  edgeGeometry,
++  fitView,
++  isContainer,
++  layoutColumns,
++  makeNode,
++  moveBy,
++  nodeKind,
++  patchEdge,
++  patchNode,
++  readingOrder,
++  refOf,
++  removeIds,
++  safeUrl,
++  snap,
++  toWorld,
++  zoomAt,
++} from './model.js';
++import { IMAGE_ACCEPT } from './requests.js';
++
++/** The toolbar, in order: [tool, label]. Each tool's key is the registry command canvas.<tool>. */
++export const TOOLS = [
++  ['note', 'Note'],
++  ['todo', 'To-do list'],
++  ['swatch', 'Colour swatch'],
++  ['image', 'Image'],
++  ['story', 'Story card'],
++  ['link', 'Web link'],
++  ['column', 'Column'],
++  ['group', 'Group'],
++  ['connect', 'Connect two cards'],
++];
++const TOOL_GLYPH = { note: 'Aa', todo: '☑', swatch: '◐', image: '▣', story: '✦', link: '🔗', column: '▥', group: '▢', connect: '↗' };
++
++/**
++ * @param {{ bookId: string, doc: { nodes: any[], edges: any[] }, refs: Record<string, any>, targets: any[], readOnly: boolean, fitKey: string,
++ *   onChange: (next: any, opts?: { commit?: boolean }) => void, onUndo: () => void, onRedo: () => void,
++ *   onUploadImage: (file: File) => Promise<{ ok: true, path: string } | { ok: false, message: string }>, onProblem: (message: string | null) => void }} props
++ */
++export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onChange, onUndo, onRedo, onUploadImage, onProblem }) {
++  const shortcuts = useShortcuts(); // the canvas keys come from the shortcut registry (M07-J04), so they can be rebound
++  const boardRef = useRef(null);
++  const fileRef = useRef(null);
++  const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
++  const [selected, setSelected] = useState(() => new Set());
++  const [edgeSel, setEdgeSel] = useState(null);
++  const [editing, setEditing] = useState(null);
++  const [tool, setTool] = useState('select');
++  const [pending, setPending] = useState(null); // connect: the first card
++  const [picker, setPicker] = useState(null); // story card picker: { at }
++  const [linkAsk, setLinkAsk] = useState(null); // web link: { at }
++  const gesture = useRef(null);
++  const docRef = useRef(doc);
++  const viewRef = useRef(view);
++  const adds = useRef(0);
++  useEffect(() => {
++    docRef.current = doc;
++    viewRef.current = view;
++  });
++
++  const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc.nodes]);
++  const ordered = useMemo(() => readingOrder(doc.nodes), [doc.nodes]);
++
++  // fit the canvas into the board when another canvas opens
++  useLayoutEffect(() => {
++    const el = boardRef.current;
++    if (!el) return;
++    const r = el.getBoundingClientRect();
++    setView(fitView(bounds(docRef.current.nodes), r.width, r.height));
++    setSelected(new Set());
++    setEditing(null);
++    setEdgeSel(null);
++  }, [fitKey]);
++
++  const fit = useCallback(() => {
++    const r = boardRef.current?.getBoundingClientRect();
++    if (r) setView(fitView(bounds(docRef.current.nodes), r.width, r.height));
++  }, []);
++  const zoomBy = useCallback((factor) => {
++    const r = boardRef.current?.getBoundingClientRect();
++    if (r) setView((v) => zoomAt(v, factor, r.width / 2, r.height / 2));
++  }, []);
++
++  // wheel: zooms around the pointer; Shift+wheel pans (a listener of our own, so preventDefault works). A card being edited keeps its own scrolling.
++  useEffect(() => {
++    const el = boardRef.current;
++    if (!el) return undefined;
++    const onWheel = (e) => {
++      if (e.target.closest?.('textarea, .cv-edge-edit')) return;
++      e.preventDefault();
++      const r = el.getBoundingClientRect();
++      if (e.shiftKey) setView((v) => ({ ...v, x: v.x - (e.deltaX || e.deltaY), y: v.y - (e.deltaX ? e.deltaY : 0) }));
++      else {
++        const step = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // lines -> pixels
++        setView((v) => zoomAt(v, Math.exp(-step * 0.0015), e.clientX - r.left, e.clientY - r.top));
++      }
++    };
++    el.addEventListener('wheel', onWheel, { passive: false });
++    return () => el.removeEventListener('wheel', onWheel);
++  }, []);
++
++  /** Where a new card goes: the middle of what is on screen, a little lower and right for each one added in a row. */
++  const dropPoint = () => {
++    const r = boardRef.current?.getBoundingClientRect() ?? { width: 800, height: 600 };
++    const k = (adds.current++ % 6) * 24;
++    return toWorld(viewRef.current, r.width / 2 + k, r.height / 2 + k);
++  };
++
++  const add = (node, { edit = false } = {}) => {
++    onChange(layoutColumns({ ...docRef.current, nodes: [...docRef.current.nodes, node] }));
++    setSelected(new Set([node.id]));
++    setEdgeSel(null);
++    if (edit) setEditing(node.id);
++  };
++
++  function pickTool(t) {
++    if (readOnly) return;
++    onProblem(null);
++    setPending(null);
++    if (t === 'connect') {
++      setTool((cur) => (cur === 'connect' ? 'select' : 'connect'));
++      return;
++    }
++    setTool('select');
++    const at = dropPoint();
++    if (t === 'image') fileRef.current?.click();
++    else if (t === 'story') setPicker({ at });
++    else if (t === 'link') setLinkAsk({ at, url: '' });
++    else add(makeNode(t, at), { edit: t === 'note' || t === 'todo' || t === 'group' || t === 'column' });
++  }
++
++  async function onFile(file) {
++    if (!file) return;
++    const at = dropPoint();
++    const r = await onUploadImage(file);
++    if (!r.ok) return onProblem(r.message);
++    const size = await imageSize(assetUrl(bookId, r.path));
++    add(makeNode('image', at, { file: r.path, size }));
++  }
++
++  // ------------------------------------------------------------ gestures
++
++  function onBoardPointerDown(e) {
++    if (e.button !== 0 && e.button !== 1) return;
++    boardRef.current.focus({ preventScroll: true });
++    if (!e.shiftKey) setSelected(new Set());
++    setEdgeSel(null);
++    setEditing(null);
++    setPending(null);
++    gesture.current = { kind: 'pan', x0: e.clientX, y0: e.clientY, view0: viewRef.current, moved: false };
++    boardRef.current.setPointerCapture?.(e.pointerId);
++  }
++
++  function onCardPointerDown(e, node) {
++    if (e.button !== 0) return;
++    e.stopPropagation();
++    if (editing === node.id) return;
++    setEdgeSel(null);
++    if (tool === 'connect' && !readOnly) {
++      if (!pending) setPending(node.id);
++      else {
++        onChange(connect(docRef.current, pending, node.id));
++        setPending(null);
++        setTool('select');
++      }
++      return;
++    }
++    let sel = selected;
++    if (e.shiftKey) {
++      sel = new Set(selected);
++      if (sel.has(node.id)) sel.delete(node.id);
++      else sel.add(node.id);
++    } else if (!selected.has(node.id)) sel = new Set([node.id]);
++    setSelected(sel);
++    if (editing && editing !== node.id) setEditing(null);
++    if (readOnly) return;
++    const ids = new Set(sel);
++    for (const id of sel) {
++      const n = byId.get(id);
++      if (n && isContainer(n)) for (const c of carried(docRef.current.nodes, n)) ids.add(c.id);
++    }
++    gesture.current = { kind: 'move', x0: e.clientX, y0: e.clientY, ids, origin: docRef.current, moved: false };
++    boardRef.current.setPointerCapture?.(e.pointerId);
++  }
++
++  function onResizePointerDown(e, node) {
++    e.stopPropagation();
++    if (readOnly) return;
++    gesture.current = { kind: 'resize', x0: e.clientX, y0: e.clientY, id: node.id, w0: node.width, h0: node.height, origin: docRef.current, moved: false };
++    boardRef.current.setPointerCapture?.(e.pointerId);
++  }
++
++  function onPointerMove(e) {
++    const g = gesture.current;
++    if (!g) return;
++    const dx = e.clientX - g.x0;
++    const dy = e.clientY - g.y0;
++    if (!g.moved && Math.hypot(dx, dy) < 3) return;
++    g.moved = true;
++    const z = viewRef.current.zoom;
++    if (g.kind === 'pan') setView({ ...g.view0, x: g.view0.x + dx, y: g.view0.y + dy });
++    else if (g.kind === 'move') onChange(moveBy(g.origin, g.ids, snap(dx / z), snap(dy / z)), { commit: false });
++    else if (g.kind === 'resize') onChange(patchNode(g.origin, g.id, (n) => ({ ...n, width: Math.max(80, snap(g.w0 + dx / z)), height: Math.max(48, snap(g.h0 + dy / z)) })), { commit: false });
++  }
++
++  function onPointerUp(e) {
++    const g = gesture.current;
++    gesture.current = null;
++    boardRef.current?.releasePointerCapture?.(e.pointerId);
++    if (!g || !g.moved || g.kind === 'pan') return;
++    onChange(layoutColumns(docRef.current), { commit: true, base: g.origin });
++  }
++
++  // ------------------------------------------------------------ keys
++
++  /** canvas.* commands (from the shortcut registry, so they can be rebound) and the fixed widget keys: arrows nudge, Backspace deletes, Escape clears. */
++  function onKeyDown(e) {
++    if (editing || e.target.closest?.('input, textarea, select, a, .cv-toolbar, .cv-zoom, .cv-edge-edit')) return;
++    const command = shortcuts.commandFor(e.nativeEvent ?? e, 'canvas');
++    const write = !readOnly;
++    const del = () => {
++      if (edgeSel) {
++        onChange(removeIds(docRef.current, new Set([edgeSel])));
++        setEdgeSel(null);
++      } else if (selected.size > 0) {
++        onChange(layoutColumns(removeIds(docRef.current, selected)));
++        setSelected(new Set());
++      }
++    };
++    const run = {
++      'canvas.undo': () => onUndo(),
++      'canvas.redo': () => onRedo(),
++      'canvas.duplicate': () => {
++        if (selected.size === 0 || !write) return;
++        const r = duplicate(docRef.current, selected);
++        onChange(r.canvas);
++        setSelected(r.ids);
++      },
++      'canvas.delete': () => write && del(),
++      'canvas.edit': () => write && selected.size === 1 && setEditing([...selected][0]),
++      'canvas.fit': () => fit(),
++      'canvas.zoomIn': () => zoomBy(1.2),
++      'canvas.zoomOut': () => zoomBy(1 / 1.2),
++    };
++    const tool = command?.startsWith('canvas.') ? TOOLS.find(([t]) => `canvas.${t}` === command) : null;
++    if (command && (run[command] || tool)) {
++      e.preventDefault();
++      if (run[command]) run[command]();
++      else pickTool(tool[0]);
++      return;
++    }
++    if (e.ctrlKey || e.metaKey || e.altKey) return;
++    if (e.key === 'Backspace' && write) {
++      e.preventDefault();
++      del();
++      return;
++    }
++    if (e.key === 'Escape') {
++      setSelected(new Set());
++      setEdgeSel(null);
++      setPending(null);
++      setTool('select');
++      return;
++    }
++    const step = e.shiftKey ? 40 : 8;
++    const arrows = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
++    if (arrows[e.key] && selected.size > 0 && write) {
++      e.preventDefault();
++      onChange(layoutColumns(moveBy(docRef.current, selected, ...arrows[e.key])));
++    }
++  }
++
++  // keep focus on the board's own cards: a card that receives focus (Tab) is the selection
++  const onCardFocus = (node) => {
++    if (!selected.has(node.id) && !gesture.current) setSelected(new Set([node.id]));
++  };
++
++  const patch = (id) => (fn, commit = true) => onChange(patchNode(docRef.current, id, fn), { commit });
++  const doneEditing = () => {
++    setEditing(null);
++    onChange(layoutColumns(docRef.current), { commit: true });
++    boardRef.current?.focus({ preventScroll: true });
++  };
++
++  const containers = ordered.filter(isContainer);
++  const cards = ordered.filter((n) => !isContainer(n));
++  const world = { transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` };
++  const edgeEditing = edgeSel ? doc.edges.find((x) => x.id === edgeSel) : null;
++  const edgeMid = edgeEditing && byId.get(edgeEditing.fromNode) && byId.get(edgeEditing.toNode) ? edgeGeometry(edgeEditing, byId.get(edgeEditing.fromNode), byId.get(edgeEditing.toNode)).mid : null;
++  function onEdgeLabel(e) {
++    const label = e.target.value;
++    onChange(patchEdge(docRef.current, edgeSel, (x) => ({ ...x, label })), { commit: false });
++  }
++  function onEdgeBlur() {
++    onChange(docRef.current, { commit: true });
++  }
++  function onEdgeKey(e) {
++    e.stopPropagation();
++    if (e.key === 'Enter' || e.key === 'Escape') {
++      e.currentTarget.blur();
++      setEdgeSel(null);
++      boardRef.current?.focus({ preventScroll: true });
++    }
++  }
++  function onEdgeArrow() {
++    onChange(patchEdge(docRef.current, edgeSel, (x) => ({ ...x, toEnd: (x.toEnd ?? 'arrow') === 'arrow' ? 'none' : 'arrow' })));
++  }
++  function onEdgeRemove() {
++    onChange(removeIds(docRef.current, new Set([edgeSel])));
++    setEdgeSel(null);
++  }
++
++  const renderNode = (n) => {
++    const kind = nodeKind(n);
++    const refInfo = kind === 'story' ? refOf(n, refs, targets) : null;
++    const isSel = selected.has(n.id);
++    const color = cssColor(n.color);
++    const cls = ['cv-node', `cv-${kind}`, isSel ? 'is-selected' : '', pending === n.id ? 'is-pending' : '', editing === n.id ? 'is-editing' : ''].filter(Boolean).join(' ');
++    const style = { left: n.x, top: n.y, width: n.width, height: n.height, ...(color && kind !== 'swatch' ? { '--cv-tint': color } : {}) };
++    return (
++      <div
++        key={n.id}
++        className={cls}
++        style={style}
++        tabIndex={0}
++        role="group"
++        aria-label={cardName(n, refInfo)}
++        aria-roledescription={KIND_LABEL[kind].toLowerCase()}
++        data-id={n.id}
++        onPointerDown={(e) => onCardPointerDown(e, n)}
++        onDoubleClick={(e) => {
++          e.stopPropagation();
++          if (!readOnly && ['note', 'todo', 'swatch', 'link', 'group', 'column'].includes(kind)) setEditing(n.id);
++        }}
++        onFocus={() => onCardFocus(n)}
++      >
++        {isContainer(n) ? (
++          <ContainerHead node={n} editing={editing === n.id} onPatch={patch(n.id)} onDone={doneEditing} count={kind === 'column' ? columnMembers(doc.nodes, n).length : 0} />
++        ) : (
++          <CardBody node={n} bookId={bookId} refInfo={refInfo} editing={editing === n.id} readOnly={readOnly} onPatch={patch(n.id)} onDone={doneEditing} />
++        )}
++        {isSel && !readOnly && selected.size === 1 && editing !== n.id && <span className="cv-resize" aria-hidden="true" onPointerDown={(e) => onResizePointerDown(e, n)} />}
++      </div>
++    );
++  };
++
++  return (
++    <div className="cv-board-wrap">
++      <div
++        ref={boardRef}
++        className={`cv-board${tool === 'connect' ? ' is-connecting' : ''}`}
++        tabIndex={0}
++        role="application"
++        aria-roledescription="canvas"
++        aria-label={`Canvas board, ${doc.nodes.length} cards. Tab moves between cards; Enter edits; arrow keys move; the toolbar keys add cards.`}
++        onPointerDown={onBoardPointerDown}
++        onPointerMove={onPointerMove}
++        onPointerUp={onPointerUp}
++        onPointerCancel={onPointerUp}
++        onKeyDown={onKeyDown}
++      >
++        <div className="cv-world" style={world}>
++          <div className="cv-layer cv-layer-groups">{containers.map(renderNode)}</div>
++          <svg className="cv-edges" aria-hidden="true" width="1" height="1" overflow="visible">
++            <defs>
++              <marker id="cv-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
++                <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
++              </marker>
++            </defs>
++            {doc.edges.map((ed) => {
++              const a = byId.get(ed.fromNode);
++              const b = byId.get(ed.toNode);
++              if (!a || !b) return null;
++              const g = edgeGeometry(ed, a, b);
++              const color = cssColor(ed.color);
++              return (
++                <g key={ed.id} className={edgeSel === ed.id ? 'cv-edge is-selected' : 'cv-edge'} style={color ? { '--cv-edge': color } : undefined}>
++                  <path
++                    className="cv-edge-hit"
++                    d={g.d}
++                    onPointerDown={(e) => {
++                      e.stopPropagation();
++                      setSelected(new Set());
++                      setEdgeSel(ed.id);
++                      boardRef.current?.focus({ preventScroll: true });
++                    }}
++                  />
++                  <path className="cv-edge-line" d={g.d} markerEnd={(ed.toEnd ?? 'arrow') === 'arrow' ? 'url(#cv-arrow)' : undefined} markerStart={ed.fromEnd === 'arrow' ? 'url(#cv-arrow)' : undefined} />
++                  {ed.label && edgeSel !== ed.id && (
++                    <text className="cv-edge-label" x={g.mid.x} y={g.mid.y} textAnchor="middle" dominantBaseline="middle">
++                      {ed.label}
++                    </text>
++                  )}
++                </g>
++              );
++            })}
++          </svg>
++          <div className="cv-layer cv-layer-cards">{cards.map(renderNode)}</div>
++          {edgeEditing && !readOnly && edgeMid && (
++            <div className="cv-edge-edit" style={{ left: edgeMid.x, top: edgeMid.y }} onPointerDown={(e) => e.stopPropagation()}>
++              <input type="text" aria-label="Connection label" placeholder="Label" value={edgeEditing.label ?? ''} onChange={onEdgeLabel} onBlur={onEdgeBlur} onKeyDown={onEdgeKey} />
++              <button type="button" className="btn" onClick={onEdgeArrow}>
++                {(edgeEditing.toEnd ?? 'arrow') === 'arrow' ? 'No arrow' : 'Arrow'}
++              </button>
++              <button type="button" className="btn" onClick={onEdgeRemove}>
++                Remove
++              </button>
++            </div>
++          )}
++        </div>
++        {doc.nodes.length === 0 && (
++          <div className="cv-hint" aria-hidden="true">
++            <p>An empty canvas.</p>
++            <p>Add a note, an image, a colour swatch or a card for a character or scene from the toolbar below.</p>
++          </div>
++        )}
++        {tool === 'connect' && (
++          <p className="cv-mode" role="status">
++            {pending ? 'Now choose the card to connect to.' : 'Choose the card to connect from.'} Escape cancels.
++          </p>
++        )}
++      </div>
++
++      <div className="cv-zoom" role="group" aria-label="Zoom">
++        <button type="button" className="cv-tool" onClick={() => zoomBy(1.2)} aria-label="Zoom in" title="Zoom in (=)">
++          +
++        </button>
++        <span className="cv-zoom-value" aria-live="polite">
++          {Math.round(view.zoom * 100)}%
++        </span>
++        <button type="button" className="cv-tool" onClick={() => zoomBy(1 / 1.2)} aria-label="Zoom out" title="Zoom out (-)">
++          −
++        </button>
++        <button type="button" className="cv-tool" onClick={fit} aria-label="Fit everything" title="Fit (F)">
++          ⤢
++        </button>
++        <button type="button" className="cv-tool" onClick={onUndo} aria-label="Undo" title="Undo (Ctrl+Z)" disabled={readOnly}>
++          ↶
++        </button>
++        <button type="button" className="cv-tool" onClick={onRedo} aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={readOnly}>
++          ↷
++        </button>
++      </div>
++
++      {!readOnly && (
++        <div className="cv-toolbar" role="toolbar" aria-label="Add to the canvas">
++          {TOOLS.map(([t, label]) => {
++            const key = shortcuts.bindings?.[`canvas.${t}`] ?? null;
++            return (
++            <button
++              key={t}
++              type="button"
++              className="cv-tool"
++              aria-label={label}
++              aria-keyshortcuts={key ?? undefined}
++              aria-pressed={t === 'connect' ? tool === 'connect' : undefined}
++              title={key ? `${label} (${key})` : label}
++              onClick={() => pickTool(t)}
++            >
++              <span aria-hidden="true">{TOOL_GLYPH[t]}</span>
++            </button>
++            );
++          })}
++          <input ref={fileRef} type="file" accept={IMAGE_ACCEPT} hidden onChange={(e) => {
++            const f = e.target.files?.[0];
++            e.target.value = '';
++            onFile(f);
++          }} />
++        </div>
++      )}
++
++      {picker && (
++        <StoryPicker
++          targets={targets}
++          onClose={() => setPicker(null)}
++          onPick={(t) => {
++            add(makeNode('story', picker.at, { ref: t.ref }));
++            setPicker(null);
++          }}
++        />
++      )}
++      {linkAsk && (
++        <LinkDialog
++          onClose={() => setLinkAsk(null)}
++          onAdd={(url) => {
++            add(makeNode('link', linkAsk.at, { url }));
++            setLinkAsk(null);
++          }}
++        />
++      )}
++    </div>
++  );
++}
++
++/** The natural size of an image, scaled to at most 320 px wide (280 x 200 when it cannot be loaded). @param {string} src */
++function imageSize(src) {
++  return new Promise((resolve) => {
++    if (typeof Image === 'undefined') return resolve([280, 200]);
++    const img = new Image();
++    img.onload = () => {
++      const w = Math.min(320, img.naturalWidth || 280);
++      resolve([snap(w), snap(Math.max(48, (w * (img.naturalHeight || 200)) / (img.naturalWidth || 280)))]);
++    };
++    img.onerror = () => resolve([280, 200]);
++    img.src = src;
++  });
++}
++
++/** Choose a scene, Codex entry, thread, event or note for a story card. */
++export function StoryPicker({ targets, onPick, onClose }) {
++  const [q, setQ] = useState('');
++  const [kind, setKind] = useState('all');
++  const kinds = [...new Set(targets.map((t) => t.kind))];
++  const needle = q.trim().toLowerCase();
++  const shown = targets.filter((t) => (kind === 'all' || t.kind === kind) && (needle === '' || `${t.title} ${t.subtitle}`.toLowerCase().includes(needle))).slice(0, 200);
++  return (
++    <Dialog label="Add a story card" onClose={onClose} className="cv-picker">
++      <h2>Add a story card</h2>
++      <p className="muted">The card stays linked to the book: it follows a scene that moves and opens the real thing.</p>
++      <div className="cv-picker-filters">
++        <label className="sr-only" htmlFor="cv-picker-q">
++          Find
++        </label>
++        <input id="cv-picker-q" type="search" placeholder="Find a scene, character, place, thread…" value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" />
++        <div role="group" aria-label="Kind" className="cv-picker-kinds">
++          {['all', ...kinds].map((k) => (
++            <button key={k} type="button" className="chip" aria-pressed={kind === k} onClick={() => setKind(k)}>
++              {k === 'all' ? 'All' : REF_KIND_LABEL[k] ?? k}
++            </button>
++          ))}
++        </div>
++      </div>
++      <ul className="cv-picker-list">
++        {shown.map((t) => (
++          <li key={t.ref}>
++            <button type="button" onClick={() => onPick(t)}>
++              <span className="cv-meta">{REF_KIND_LABEL[t.kind] ?? t.kind}</span>
++              <span className="cv-picker-title">{t.title}</span>
++              <span className="muted">{t.subtitle}</span>
++            </button>
++          </li>
++        ))}
++        {shown.length === 0 && <li className="muted">Nothing matches.</li>}
++      </ul>
++      <div className="dialog-actions">
++        <button type="button" className="btn" onClick={onClose}>
++          Cancel
++        </button>
++      </div>
++    </Dialog>
++  );
++}
++
++/** Ask for a web address (http, https or mailto). */
++function LinkDialog({ onAdd, onClose }) {
++  const [url, setUrl] = useState('');
++  const [problem, setProblem] = useState(null);
++  return (
++    <Dialog label="Add a web link" onClose={onClose}>
++      <h2>Add a web link</h2>
++      <form
++        onSubmit={(e) => {
++          e.preventDefault();
++          const ok = safeUrl(url);
++          if (!ok) return setProblem('Give a full web address that starts with http, https or mailto.');
++          return onAdd(ok);
++        }}
++      >
++        <div className="form-row">
++          <label>
++            <span className="form-label">Web address</span>
++            <input type="url" name="url" value={url} onChange={(e) => setUrl(e.target.value)} autoComplete="off" aria-invalid={problem ? 'true' : undefined} />
++          </label>
++          <p className="muted form-hint">The link opens in a new tab. Nothing is fetched from it.</p>
++          {problem && (
++            <p className="error" role="alert">
++              {problem}
++            </p>
++          )}
++        </div>
++        <div className="dialog-actions">
++          <button type="button" className="btn" onClick={onClose}>
++            Cancel
++          </button>
++          <button type="submit" className="btn btn-primary">
++            Add link
++          </button>
++        </div>
++      </form>
++    </Dialog>
++  );
++}
+diff --git a/apps/web/src/canvas/CanvasCard.jsx b/apps/web/src/canvas/CanvasCard.jsx
+new file mode 100644
+index 0000000..a3e1c2c
+--- /dev/null
++++ b/apps/web/src/canvas/CanvasCard.jsx
+@@ -0,0 +1,226 @@
++// One card on a canvas (M09-J01): how each kind looks, read-only and while editing. The board (CanvasBoard.jsx) places, selects and moves cards.
++import { useEffect, useRef } from 'react';
++import { Link } from '../router.jsx';
++import { REF_KIND_LABEL, assetUrl, cssColor, hexToRgb, hostOf, inkOn, markdownBlocks, nodeKind, safeUrl, storyHref, swatchText, taskCounts, toggleTask } from './model.js';
++
++/** Inline runs of a Markdown block. @param {{ runs: any[] }} props */
++function Runs({ runs }) {
++  return runs.map((r, i) => {
++    if (r.t === 'b') return <strong key={i}>{r.text}</strong>;
++    if (r.t === 'i') return <em key={i}>{r.text}</em>;
++    if (r.t === 'code') return <code key={i}>{r.text}</code>;
++    if (r.t === 'link')
++      return (
++        <a key={i} href={r.href} target="_blank" rel="noopener noreferrer" onPointerDown={(e) => e.stopPropagation()}>
++          {r.text}
++        </a>
++      );
++    return <span key={i}>{r.text}</span>;
++  });
++}
++
++/** A note's (or to-do's) rendered Markdown; task boxes toggle through `onToggle(line)` (none = read-only). */
++export function MarkdownView({ text, onToggle = null, label = 'Task' }) {
++  const blocks = markdownBlocks(text);
++  if (blocks.length === 0) return <p className="cv-empty">Empty. Double-click to write.</p>;
++  const out = [];
++  let list = null;
++  const flush = () => {
++    if (list) out.push(<ul key={`l${out.length}`}>{list}</ul>);
++    list = null;
++  };
++  blocks.forEach((b, i) => {
++    if (b.type === 'li' || b.type === 'task') {
++      list ??= [];
++      list.push(
++        b.type === 'task' ? (
++          <li key={i} className="cv-task">
++            <label onPointerDown={(e) => e.stopPropagation()}>
++              <input type="checkbox" checked={b.checked} disabled={!onToggle} onChange={() => onToggle?.(b.line)} aria-label={`${label}: ${b.runs.map((r) => r.text).join('')}`} />
++              <span className={b.checked ? 'cv-done' : undefined}>
++                <Runs runs={b.runs} />
++              </span>
++            </label>
++          </li>
++        ) : (
++          <li key={i}>
++            <Runs runs={b.runs} />
++          </li>
++        ),
++      );
++      return;
++    }
++    flush();
++    // a card heading is a bold line, not a document heading (cards are not sections of the page)
++    if (b.type === 'h')
++      out.push(
++        <p key={i} className={`cv-h cv-h${b.level}`}>
++          <Runs runs={b.runs} />
++        </p>,
++      );
++    else if (b.type === 'hr') out.push(<hr key={i} />);
++    else
++      out.push(
++        <p key={i}>
++          <Runs runs={b.runs} />
++        </p>,
++      );
++  });
++  flush();
++  return out;
++}
++
++/** A textarea that takes focus when it appears and ends editing on Escape (Ctrl/Cmd+Enter too). */
++function EditText({ value, onChange, onDone, label }) {
++  const ref = useRef(null);
++  useEffect(() => {
++    ref.current?.focus();
++    ref.current?.setSelectionRange(ref.current.value.length, ref.current.value.length);
++  }, []);
++  return (
++    <textarea
++      ref={ref}
++      className="cv-edit"
++      aria-label={label}
++      value={value}
++      onChange={(e) => onChange(e.target.value)}
++      onBlur={onDone}
++      onPointerDown={(e) => e.stopPropagation()}
++      onKeyDown={(e) => {
++        e.stopPropagation();
++        if (e.key === 'Escape' || (e.key === 'Enter' && (e.ctrlKey || e.metaKey))) {
++          e.preventDefault();
++          onDone();
++        }
++      }}
++    />
++  );
++}
++
++/** A one-line field for labels, names and addresses. */
++function EditLine({ value, onChange, onDone, label, type = 'text' }) {
++  const ref = useRef(null);
++  useEffect(() => ref.current?.select(), []);
++  return (
++    <input
++      ref={ref}
++      type={type}
++      className="cv-edit-line"
++      aria-label={label}
++      value={value}
++      onChange={(e) => onChange(e.target.value)}
++      onBlur={onDone}
++      onPointerDown={(e) => e.stopPropagation()}
++      onKeyDown={(e) => {
++        e.stopPropagation();
++        if (e.key === 'Escape' || e.key === 'Enter') {
++          e.preventDefault();
++          onDone();
++        }
++      }}
++    />
++  );
++}
++
++/**
++ * The inside of one card.
++ * @param {{ node: any, bookId: string, refInfo: any, editing: boolean, readOnly: boolean, onPatch: (fn: (n: any) => any, commit?: boolean) => void, onDone: () => void }} props
++ *   `onPatch(fn, false)` changes the card while typing (no undo step); `onDone` ends editing (one undo step for the whole edit).
++ */
++export function CardBody({ node, bookId, refInfo, editing, readOnly, onPatch, onDone }) {
++  const kind = nodeKind(node);
++  if (kind === 'note' || kind === 'todo') {
++    if (editing) return <EditText label={kind === 'todo' ? 'To-do list (one "- [ ]" line per item)' : 'Note text (Markdown)'} value={node.text} onChange={(text) => onPatch((n) => ({ ...n, text }), false)} onDone={onDone} />;
++    const counts = kind === 'todo' ? taskCounts(node.text) : null;
++    return (
++      <div className="cv-md">
++        {counts && counts.total > 0 && (
++          <p className="cv-meta">
++            {counts.done} of {counts.total} done
++          </p>
++        )}
++        <MarkdownView text={node.text} onToggle={readOnly ? null : (line) => onPatch((n) => ({ ...n, text: toggleTask(n.text, line) }))} />
++      </div>
++    );
++  }
++  if (kind === 'swatch') {
++    const { name, hex } = node.storyforge;
++    const [r, g, b] = hexToRgb(hex);
++    const setSwatch = (next, commit) => onPatch((n) => ({ ...n, color: next.hex, text: swatchText(next.name, next.hex), storyforge: { ...n.storyforge, ...next } }), commit);
++    return (
++      <div className="cv-swatch">
++        <div className="cv-swatch-chip" style={{ background: hex, color: inkOn(hex) }} aria-hidden="true" />
++        {editing ? (
++          <div className="cv-swatch-edit">
++            <EditLine label="Swatch name" value={name} onChange={(v) => setSwatch({ name: v, hex }, false)} onDone={onDone} />
++            <input type="color" aria-label="Swatch colour" value={hex.toLowerCase()} onPointerDown={(e) => e.stopPropagation()} onChange={(e) => setSwatch({ name, hex: e.target.value.toUpperCase() }, false)} />
++          </div>
++        ) : (
++          <div className="cv-swatch-text">
++            <strong>{name}</strong>
++            <span>Hex {hex.toUpperCase()}</span>
++            <span>
++              RGB ({r}, {g}, {b})
++            </span>
++          </div>
++        )}
++      </div>
++    );
++  }
++  if (kind === 'image') return <img className="cv-img" src={assetUrl(bookId, node.file)} alt={node.file.split('/').pop()} draggable={false} />;
++  if (kind === 'story') {
++    const ok = refInfo?.state === 'ok';
++    return (
++      <div className={`cv-story cv-story-${refInfo?.state ?? 'broken'}`}>
++        <p className="cv-meta">{ok ? REF_KIND_LABEL[refInfo.kind] ?? refInfo.kind : refInfo?.state === 'archived' ? `${REF_KIND_LABEL[refInfo.kind] ?? 'Item'} · archived` : 'Missing from the book'}</p>
++        <p className="cv-story-title">{refInfo?.title ?? node.storyforge.ref}</p>
++        {refInfo?.summary && <p className="cv-story-summary">{refInfo.summary}</p>}
++        {ok && (
++          <Link className="cv-open" to={storyHref(bookId, refInfo)} onPointerDown={(e) => e.stopPropagation()}>
++            Open
++          </Link>
++        )}
++      </div>
++    );
++  }
++  if (kind === 'file')
++    return (
++      <div className="cv-story">
++        <p className="cv-meta">File</p>
++        <p className="cv-story-title">{node.file}</p>
++      </div>
++    );
++  if (kind === 'link') {
++    if (editing) return <EditLine label="Web address" value={node.url} onChange={(url) => onPatch((n) => ({ ...n, url }), false)} onDone={onDone} />;
++    const href = safeUrl(node.url);
++    return (
++      <div className="cv-link">
++        <p className="cv-meta">{hostOf(node.url)}</p>
++        {href ? (
++          <a href={href} target="_blank" rel="noopener noreferrer" onPointerDown={(e) => e.stopPropagation()}>
++            {node.url}
++          </a>
++        ) : (
++          <span>{node.url}</span>
++        )}
++      </div>
++    );
++  }
++  return null;
++}
++
++/** The label strip of a group or column (editable in place). */
++export function ContainerHead({ node, editing, onPatch, onDone, count }) {
++  const kind = nodeKind(node);
++  const color = cssColor(node.color);
++  return (
++    <div className="cv-head" style={color ? { borderColor: color } : undefined}>
++      {editing ? (
++        <EditLine label={`${kind === 'column' ? 'Column' : 'Group'} name`} value={node.label ?? ''} onChange={(label) => onPatch((n) => ({ ...n, label }), false)} onDone={onDone} />
++      ) : (
++        <span className="cv-head-label">{node.label || (kind === 'column' ? 'Column' : 'Group')}</span>
++      )}
++      {kind === 'column' && <span className="cv-meta">{count}</span>}
++    </div>
++  );
++}
+diff --git a/apps/web/src/canvas/CanvasView.jsx b/apps/web/src/canvas/CanvasView.jsx
+new file mode 100644
+index 0000000..b0ec69f
+--- /dev/null
++++ b/apps/web/src/canvas/CanvasView.jsx
+@@ -0,0 +1,397 @@
++// /books/:id/canvas (M09-J01): the list of canvases and the open one. Loads the canvas, keeps the undo history, and saves every change on its own
++// (debounced, guarded by the sha256 last seen; a 409 shows the conflict banner).
++import { useCallback, useEffect, useRef, useState } from 'react';
++import { useApi } from '../api.js';
++import { Dialog } from '../shell/Dialog.jsx';
++import { Link, useNavigate } from '../router.jsx';
++import { useWrites } from '../shell/writes.jsx';
++import { bookVersion, useStatus } from '../status.jsx';
++import { CanvasBoard } from './CanvasBoard.jsx';
++import { canvasHref, canvasUrl, history, parseCanvasSearch, record, redo, undo } from './model.js';
++import { archiveCanvas, createCanvas, explainCanvasFailure, restoreCanvas, saveCanvas, uploadCanvasImage } from './requests.js';
++
++const enc = encodeURIComponent;
++export const SAVE_DELAY_MS = 800;
++
++/** @param {{ bookId: string, search?: string }} props */
++export function CanvasView({ bookId, search = '' }) {
++  const { status } = useStatus();
++  const navigate = useNavigate();
++  const [bump, setBump] = useState(0);
++  const version = `${bookVersion(status, bookId)}|${bump}`;
++  const { data: list, error, loading } = useApi(`/api/books/${enc(bookId)}/canvases`, version);
++  const { canvas: wanted } = parseCanvasSearch(search);
++  const canvases = list?.canvases ?? [];
++  const slug = wanted && canvases.some((c) => c.slug === wanted) ? wanted : (canvases[0]?.slug ?? null);
++  const [creating, setCreating] = useState(false);
++  const [problem, setProblem] = useState(null);
++
++  async function archive(c) {
++    const r = await archiveCanvas(bookId, c.slug, c.sha256);
++    if (r.status !== 200) return setProblem(explainCanvasFailure(r.status, r.json));
++    setBump((n) => n + 1);
++    navigate(canvasHref(bookId));
++  }
++  async function restore(c) {
++    const r = await restoreCanvas(bookId, c.slug);
++    if (r.status !== 200) return setProblem(explainCanvasFailure(r.status, r.json));
++    setBump((n) => n + 1);
++    navigate(canvasHref(bookId, c.slug));
++  }
++
++  if (loading && !list) {
++    return (
++      <main id="main" tabIndex={-1} className="page muted">
++        Loading…
++      </main>
++    );
++  }
++  if (error) {
++    return (
++      <main id="main" tabIndex={-1} className="page error">
++        {error}
++      </main>
++    );
++  }
++  if (!list) {
++    return (
++      <main id="main" tabIndex={-1} className="page">
++        <h1>Book not found</h1>
++        <p>
++          <Link to="/">Back to the library</Link>
++        </p>
++      </main>
++    );
++  }
++  return (
++    <main id="main" tabIndex={-1} className="cv-page">
++      <CanvasPage
++        bookId={bookId}
++        list={list}
++        slug={slug}
++        problem={problem}
++        onDismiss={() => setProblem(null)}
++        onNew={() => setCreating(true)}
++        onArchive={archive}
++        onRestore={restore}
++        onSaved={() => setBump((n) => n + 1)}
++      />
++      {creating && (
++        <NewCanvasDialog
++          onClose={() => setCreating(false)}
++          onSubmit={async (title) => {
++            const r = await createCanvas(bookId, { title });
++            if (r.status !== 201) return { error: explainCanvasFailure(r.status, r.json) };
++            setCreating(false);
++            setBump((n) => n + 1);
++            navigate(canvasHref(bookId, r.json.slug));
++            return null;
++          }}
++        />
++      )}
++    </main>
++  );
++}
++
++/**
++ * The page without fetching the list (render tests use it with a fixed list): the side list and the open canvas.
++ * @param {{ bookId: string, list: { canvases: any[], archived: any[] }, slug: string | null, problem?: string | null, onDismiss?: () => void, onNew: () => void,
++ *   onArchive: (c: any) => void, onRestore: (c: any) => void, onSaved?: () => void, initial?: any }} props  `initial` (tests): the open canvas instead of fetching it
++ */
++export function CanvasPage({ bookId, list, slug, problem = null, onDismiss = () => {}, onNew, onArchive, onRestore, onSaved = () => {}, initial = null }) {
++  const open = list.canvases.find((c) => c.slug === slug) ?? null;
++  return (
++    <div className="cv-layout">
++      <aside className="cv-list" aria-label="Canvases">
++        <div className="cv-list-head">
++          <h1>Canvas</h1>
++          <button type="button" className="btn btn-primary" onClick={onNew}>
++            New canvas
++          </button>
++        </div>
++        {list.canvases.length === 0 ? (
++          <p className="muted">No canvases yet. A canvas is a board for mood images, colour palettes, notes and cards for your characters and scenes. It is saved as a file in planning/canvases/.</p>
++        ) : (
++          <ul>
++            {list.canvases.map((c) => (
++              <li key={c.slug}>
++                <Link to={canvasHref(bookId, c.slug)} aria-current={c.slug === slug ? 'page' : undefined} className="cv-list-item">
++                  <span>{c.title}</span>
++                  <span className="muted">{c.problem ? 'cannot be read' : `${c.nodes} ${c.nodes === 1 ? 'card' : 'cards'}`}</span>
++                </Link>
++              </li>
++            ))}
++          </ul>
++        )}
++        {list.archived.length > 0 && (
++          <details className="cv-archived">
++            <summary>Archived ({list.archived.length})</summary>
++            <ul>
++              {list.archived.map((c) => (
++                <li key={c.slug}>
++                  <span>{c.title}</span>
++                  <button type="button" className="btn" onClick={() => onRestore(c)}>
++                    Restore
++                  </button>
++                </li>
++              ))}
++            </ul>
++          </details>
++        )}
++        {problem && (
++          <div className="error cv-problem" role="alert">
++            <p>{problem}</p>
++            <button type="button" className="btn" onClick={onDismiss}>
++              Dismiss
++            </button>
++          </div>
++        )}
++      </aside>
++      <section className="cv-main" aria-label={open ? `Canvas ${open.title}` : 'Canvas'}>
++        {open ? (
++          <OpenCanvas key={open.slug} bookId={bookId} summary={open} onArchive={() => onArchive(open)} onSaved={onSaved} initial={initial} />
++        ) : (
++          <div className="cv-none">
++            <h2>Start a canvas</h2>
++            <p className="muted">Pin up mood images, build a colour palette, sketch a plot with arrows, or lay out a cast wall with live cards from your Codex.</p>
++            <button type="button" className="btn btn-primary" onClick={onNew}>
++              New canvas
++            </button>
++          </div>
++        )}
++      </section>
++    </div>
++  );
++}
++
++/** One canvas: fetch, history, autosave, conflict banner. */
++function OpenCanvas({ bookId, summary, onArchive, onSaved, initial }) {
++  const { data, error } = useApi(initial ? null : canvasUrl(bookId, summary.slug), '');
++  const loaded = initial ?? data;
++  if (error) return <p className="error">{error}</p>;
++  if (!loaded) return <p className="muted cv-loading">Loading…</p>;
++  return <Editor key={loaded.sha256} bookId={bookId} loaded={loaded} onArchive={onArchive} onSaved={onSaved} />;
++}
++
++function Editor({ bookId, loaded, onArchive, onSaved }) {
++  const { track } = useWrites();
++  const [hist, setHist] = useState(() => history(loaded.canvas));
++  const [live, setLive] = useState(null);
++  const [save, setSave] = useState({ state: 'saved', sha: loaded.sha256, message: null });
++  const [conflict, setConflict] = useState(null);
++  const [problem, setProblem] = useState(null);
++  const refs = loaded.refs ?? {};
++  const saved = useRef(loaded.canvas);
++  const shaRef = useRef(loaded.sha256);
++  const timer = useRef(null);
++  const readOnly = loaded.problem !== null && loaded.problem !== undefined;
++  const doc = live ?? hist.present;
++
++  const flush = useCallback(
++    async (canvas, sha = shaRef.current) => {
++      clearTimeout(timer.current);
++      setSave((s) => ({ ...s, state: 'saving', message: null }));
++      const r = await track(bookId, () => saveCanvas(bookId, loaded.slug, canvas, sha));
++      if (r.status === 200) {
++        shaRef.current = r.json.sha256;
++        saved.current = canvas;
++        setSave({ state: 'saved', sha: r.json.sha256, message: null });
++        onSaved();
++      } else if (r.status === 409) {
++        setConflict(r.json?.current ?? null);
++        setSave((s) => ({ ...s, state: 'conflict', message: null }));
++      } else setSave((s) => ({ ...s, state: 'error', message: explainCanvasFailure(r.status, r.json) }));
++    },
++    [bookId, loaded.slug, track, onSaved],
++  );
++
++  // every committed change saves itself after a short pause
++  useEffect(() => {
++    if (readOnly || conflict || hist.present === saved.current) return undefined;
++    setSave((s) => (s.state === 'saving' ? s : { ...s, state: 'pending' }));
++    clearTimeout(timer.current);
++    timer.current = setTimeout(() => flush(hist.present), SAVE_DELAY_MS);
++    return () => clearTimeout(timer.current);
++  }, [hist.present, readOnly, conflict, flush]);
++
++  // leaving the page with a change not yet sent: send it now
++  const latest = useRef(hist.present);
++  useEffect(() => {
++    latest.current = hist.present;
++  });
++  useEffect(
++    () => () => {
++      if (latest.current !== saved.current && !readOnly) saveCanvas(bookId, loaded.slug, latest.current, shaRef.current);
++    },
++    [bookId, loaded.slug, readOnly],
++  );
++
++  const onChange = useCallback((next, { commit = true } = {}) => {
++    if (!commit) return setLive(next);
++    setLive(null);
++    setHist((h) => record(h, next));
++  }, []);
++
++  const title = doc?.storyforge?.title ?? loaded.title;
++  const setTitle = (t) => onChange({ ...hist.present, storyforge: { schema: 'storyforge.canvas/v1', ...(hist.present.storyforge ?? {}), title: t } });
++
++  return (
++    <div className="cv-editor">
++      <header className="cv-bar">
++        <TitleField key={title} value={title} disabled={readOnly} onCommit={(t) => t.trim() && t !== title && setTitle(t.trim())} />
++        <p className="cv-file muted">{loaded.path}</p>
++        <SaveLine save={save} onRetry={() => flush(hist.present)} />
++        <button type="button" className="btn" onClick={onArchive}>
++          Archive
++        </button>
++      </header>
++      {readOnly && (
++        <p className="warning cv-banner" role="alert">
++          This file cannot be read as a canvas ({loaded.problem}). It is shown read-only; fix the file in a text editor.
++        </p>
++      )}
++      {conflict && (
++        <div className="warning cv-banner" role="alert">
++          <p>This canvas changed on disk since you opened it (another window, another person or a text editor).</p>
++          <button
++            type="button"
++            className="btn"
++            onClick={() => {
++              if (conflict.canvas) {
++                shaRef.current = conflict.sha256;
++                saved.current = conflict.canvas;
++                setHist(history(conflict.canvas));
++                setLive(null);
++                setSave({ state: 'saved', sha: conflict.sha256, message: null });
++              }
++              setConflict(null);
++            }}
++            disabled={!conflict.canvas}
++          >
++            Load the file
++          </button>
++          <button
++            type="button"
++            className="btn btn-primary"
++            onClick={() => {
++              const sha = conflict.sha256;
++              shaRef.current = sha;
++              setConflict(null);
++              flush(hist.present, sha);
++            }}
++          >
++            Keep mine
++          </button>
++        </div>
++      )}
++      {problem && (
++        <div className="error cv-banner" role="alert">
++          <p>{problem}</p>
++          <button type="button" className="btn" onClick={() => setProblem(null)}>
++            Dismiss
++          </button>
++        </div>
++      )}
++      <CanvasBoard
++        bookId={bookId}
++        doc={doc}
++        refs={refs}
++        targets={loaded.targets ?? []}
++        readOnly={readOnly}
++        fitKey={loaded.slug}
++        onChange={onChange}
++        onUndo={() => {
++          setLive(null);
++          setHist(undo);
++        }}
++        onRedo={() => {
++          setLive(null);
++          setHist(redo);
++        }}
++        onUploadImage={(file) => track(bookId, () => uploadCanvasImage(bookId, file).then((r) => ({ ...r, status: r.ok ? 201 : 400 })))}
++        onProblem={setProblem}
++      />
++    </div>
++  );
++}
++
++function TitleField({ value, disabled, onCommit }) {
++  const [v, setV] = useState(value);
++  return (
++    <input
++      className="cv-title"
++      aria-label="Canvas title"
++      value={v}
++      disabled={disabled}
++      onChange={(e) => setV(e.target.value)}
++      onBlur={() => onCommit(v)}
++      onKeyDown={(e) => {
++        if (e.key === 'Enter') e.currentTarget.blur();
++        if (e.key === 'Escape') {
++          setV(value);
++          e.currentTarget.blur();
++        }
++      }}
++    />
++  );
++}
++
++const SAVE_TEXT = { saved: 'Saved', pending: 'Not saved yet', saving: 'Saving…', conflict: 'Not saved: changed on disk', error: 'Not saved' };
++function SaveLine({ save, onRetry }) {
++  return (
++    <p className={`cv-save cv-save-${save.state}`} role="status" aria-live="polite">
++      {SAVE_TEXT[save.state]}
++      {save.state === 'error' && (
++        <>
++          {save.message ? ` (${save.message})` : ''}{' '}
++          <button type="button" className="btn" onClick={onRetry}>
++            Retry
++          </button>
++        </>
++      )}
++    </p>
++  );
++}
++
++function NewCanvasDialog({ onSubmit, onClose }) {
++  const [title, setTitle] = useState('');
++  const [error, setError] = useState(null);
++  const [busy, setBusy] = useState(false);
++  return (
++    <Dialog label="New canvas" onClose={onClose}>
++      <h2>New canvas</h2>
++      <form
++        onSubmit={async (e) => {
++          e.preventDefault();
++          if (title.trim() === '') return setError('Give it a title.');
++          setBusy(true);
++          const r = await onSubmit(title.trim());
++          setBusy(false);
++          if (r?.error) setError(r.error);
++          return undefined;
++        }}
++      >
++        <div className="form-row">
++          <label>
++            <span className="form-label">Title</span>
++            <input type="text" name="title" value={title} autoComplete="off" onChange={(e) => setTitle(e.target.value)} />
++          </label>
++          <p className="muted form-hint">Saved as planning/canvases/&lt;name&gt;.canvas, a JSON Canvas file that Obsidian can open too.</p>
++          {error && (
++            <p className="error" role="alert">
++              {error}
++            </p>
++          )}
++        </div>
++        <div className="dialog-actions">
++          <button type="button" className="btn" onClick={onClose}>
++            Cancel
++          </button>
++          <button type="submit" className="btn btn-primary" disabled={busy}>
++            Create
++          </button>
++        </div>
++      </form>
++    </Dialog>
++  );
++}
+diff --git a/apps/web/src/canvas/canvas.css b/apps/web/src/canvas/canvas.css
+new file mode 100644
+index 0000000..332de3f
+--- /dev/null
++++ b/apps/web/src/canvas/canvas.css
+@@ -0,0 +1,636 @@
++/* M09-J01 Canvas: list on the left, an infinite board on the right with a floating toolbar (Storyflow-style). Colours come from the theme tokens;
++   card tints use the JSON Canvas colour of a card (--cv-tint), mixed into the surface so text keeps its contrast. */
++
++.cv-page {
++  display: flex;
++  flex: 1;
++  min-height: 0;
++  height: calc(100dvh - var(--topbar) - 48px);
++}
++.cv-layout {
++  display: flex;
++  flex: 1;
++  min-width: 0;
++  min-height: 0;
++}
++.cv-list {
++  width: 240px;
++  flex: none;
++  overflow-y: auto;
++  padding: var(--s4);
++  border-right: 1px solid var(--divider);
++  background: var(--surface);
++  display: flex;
++  flex-direction: column;
++  gap: var(--s3);
++}
++.cv-list-head {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: var(--s2);
++}
++.cv-list-head h1 {
++  font-size: var(--fs-15, 15px);
++  margin: 0;
++}
++.cv-list ul {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++}
++.cv-list-item {
++  display: flex;
++  flex-direction: column;
++  padding: var(--s2) var(--s3);
++  border-radius: var(--r-control);
++  color: var(--text);
++  text-decoration: none;
++}
++.cv-list-item:hover {
++  background: var(--surface-2);
++}
++.cv-list-item[aria-current='page'] {
++  background: var(--accent-soft);
++}
++.cv-list-item .muted {
++  font-size: 12px;
++}
++.cv-archived li {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: var(--s2);
++  padding: var(--s1) 0;
++}
++.cv-problem {
++  display: flex;
++  flex-direction: column;
++  gap: var(--s2);
++}
++
++.cv-main {
++  flex: 1;
++  min-width: 0;
++  display: flex;
++  flex-direction: column;
++}
++.cv-none {
++  margin: auto;
++  max-width: 420px;
++  text-align: center;
++  display: flex;
++  flex-direction: column;
++  gap: var(--s3);
++  align-items: center;
++}
++.cv-loading {
++  padding: var(--s6);
++}
++.cv-editor {
++  flex: 1;
++  min-height: 0;
++  display: flex;
++  flex-direction: column;
++}
++.cv-bar {
++  display: flex;
++  align-items: center;
++  gap: var(--s3);
++  padding: var(--s2) var(--s4);
++  border-bottom: 1px solid var(--divider);
++}
++.cv-title {
++  font: inherit;
++  font-weight: 600;
++  font-size: 15px;
++  color: var(--text);
++  background: transparent;
++  border: 1px solid transparent;
++  border-radius: var(--r-control);
++  padding: var(--s1) var(--s2);
++  min-width: 0;
++  flex: 0 1 320px;
++}
++.cv-title:hover,
++.cv-title:focus {
++  border-color: var(--border);
++}
++.cv-file {
++  font-size: 12px;
++  flex: 1;
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  margin: 0;
++}
++.cv-save {
++  margin: 0;
++  font-size: 12px;
++  color: var(--muted);
++  white-space: nowrap;
++}
++.cv-save-error,
++.cv-save-conflict {
++  color: var(--warning);
++}
++.cv-banner {
++  display: flex;
++  align-items: center;
++  gap: var(--s3);
++  padding: var(--s2) var(--s4);
++  margin: 0;
++  border-bottom: 1px solid var(--divider);
++}
++.cv-banner p {
++  margin: 0;
++  flex: 1;
++}
++
++/* ---------------------------------------------------------------- board */
++
++.cv-board-wrap {
++  position: relative;
++  flex: 1;
++  min-height: 0;
++}
++.cv-board {
++  position: absolute;
++  inset: 0;
++  overflow: hidden;
++  background-color: var(--bg);
++  background-image: radial-gradient(var(--divider) 1px, transparent 1px);
++  background-size: 24px 24px;
++  touch-action: none;
++  user-select: none;
++  cursor: grab;
++}
++.cv-board:active {
++  cursor: grabbing;
++}
++.cv-board.is-connecting,
++.cv-board.is-connecting .cv-node {
++  cursor: crosshair;
++}
++.cv-board:focus-visible {
++  outline: var(--focus);
++  outline-offset: -2px;
++}
++.cv-world {
++  position: absolute;
++  left: 0;
++  top: 0;
++  transform-origin: 0 0;
++}
++.cv-layer {
++  position: absolute;
++  left: 0;
++  top: 0;
++}
++.cv-layer-groups {
++  z-index: 1;
++}
++.cv-edges {
++  position: absolute;
++  left: 0;
++  top: 0;
++  overflow: visible;
++  z-index: 2;
++}
++.cv-layer-cards {
++  z-index: 3;
++}
++.cv-hint {
++  position: absolute;
++  inset: 0;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  color: var(--muted);
++  pointer-events: none;
++  text-align: center;
++  padding: var(--s6);
++}
++.cv-mode {
++  position: absolute;
++  top: var(--s3);
++  left: 50%;
++  transform: translateX(-50%);
++  margin: 0;
++  padding: var(--s1) var(--s3);
++  border-radius: var(--r-control);
++  background: var(--surface);
++  border: 1px solid var(--accent);
++  color: var(--text);
++  z-index: 10;
++}
++
++/* ---------------------------------------------------------------- cards */
++
++.cv-node {
++  position: absolute;
++  box-sizing: border-box;
++  border-radius: var(--r-card);
++  background: color-mix(in srgb, var(--cv-tint, var(--surface)) 14%, var(--surface));
++  border: 1px solid color-mix(in srgb, var(--cv-tint, var(--border)) 60%, var(--border));
++  color: var(--text);
++  overflow: hidden;
++  cursor: default;
++  font-size: 13px;
++  line-height: 1.45;
++  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
++}
++.cv-node:focus-visible {
++  outline: var(--focus);
++  outline-offset: var(--focus-offset);
++}
++.cv-node.is-selected {
++  border-color: var(--accent);
++  box-shadow: 0 0 0 1px var(--accent);
++  z-index: 1;
++}
++.cv-node.is-pending {
++  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
++}
++.cv-group,
++.cv-column {
++  background: color-mix(in srgb, var(--cv-tint, var(--surface)) 6%, transparent);
++  border-style: dashed;
++  box-shadow: none;
++}
++.cv-column {
++  border-style: solid;
++  background: color-mix(in srgb, var(--cv-tint, var(--surface)) 10%, var(--surface));
++}
++.cv-head {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: var(--s2);
++  padding: var(--s2) var(--s3);
++  font-weight: 600;
++  height: 44px;
++  box-sizing: border-box;
++}
++.cv-head-label {
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++.cv-md {
++  padding: var(--s3);
++  height: 100%;
++  box-sizing: border-box;
++  overflow: auto;
++  user-select: text;
++}
++.cv-md > :first-child {
++  margin-top: 0;
++}
++.cv-md p,
++.cv-md ul {
++  margin: 0 0 var(--s2);
++}
++.cv-md ul {
++  padding-left: 1.2em;
++}
++.cv-md .cv-h {
++  font-weight: 700;
++  font-size: 14px;
++}
++.cv-md .cv-h1 {
++  font-size: 16px;
++}
++.cv-md a,
++.cv-link a {
++  color: var(--accent);
++}
++.cv-md code {
++  font-size: 12px;
++  background: var(--surface-2);
++  padding: 0 3px;
++  border-radius: 4px;
++}
++.cv-task {
++  list-style: none;
++  margin-left: -1.2em;
++}
++.cv-task label {
++  display: flex;
++  gap: var(--s2);
++  align-items: flex-start;
++}
++.cv-task input {
++  margin-top: 3px;
++  accent-color: var(--accent);
++}
++.cv-done {
++  text-decoration: line-through;
++  color: var(--muted);
++}
++.cv-empty {
++  color: var(--muted);
++  margin: 0;
++}
++.cv-meta {
++  margin: 0 0 var(--s1);
++  font-size: 11px;
++  text-transform: uppercase;
++  letter-spacing: 0.04em;
++  color: var(--muted);
++}
++.cv-edit {
++  box-sizing: border-box;
++  width: 100%;
++  height: 100%;
++  resize: none;
++  border: 0;
++  padding: var(--s3);
++  font: inherit;
++  font-family: var(--font-ui);
++  color: var(--text);
++  background: var(--surface);
++}
++.cv-edit-line {
++  box-sizing: border-box;
++  width: 100%;
++  font: inherit;
++  color: var(--text);
++  background: var(--surface);
++  border: 1px solid var(--border);
++  border-radius: var(--r-control);
++  padding: var(--s1) var(--s2);
++}
++.cv-link {
++  padding: var(--s3);
++  overflow-wrap: anywhere;
++}
++.cv-link .cv-edit-line {
++  margin-top: var(--s1);
++}
++.cv-img {
++  display: block;
++  width: 100%;
++  height: 100%;
++  object-fit: cover;
++  pointer-events: none;
++}
++.cv-story {
++  padding: var(--s3);
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++  height: 100%;
++  box-sizing: border-box;
++  border-left: 3px solid var(--accent);
++}
++.cv-story-title {
++  margin: 0;
++  font-weight: 600;
++  font-size: 14px;
++}
++.cv-story-summary {
++  margin: 0;
++  color: var(--text-2);
++  overflow: hidden;
++  display: -webkit-box;
++  -webkit-line-clamp: 3;
++  -webkit-box-orient: vertical;
++}
++.cv-story-broken,
++.cv-story-archived {
++  border-left-color: var(--warning);
++}
++.cv-open {
++  margin-top: auto;
++  align-self: flex-start;
++  color: var(--accent);
++  font-size: 12px;
++}
++.cv-swatch {
++  display: flex;
++  flex-direction: column;
++  height: 100%;
++}
++.cv-swatch-chip {
++  flex: 1;
++  min-height: 40px;
++}
++.cv-swatch-text,
++.cv-swatch-edit {
++  display: flex;
++  flex-direction: column;
++  padding: var(--s2);
++  font-size: 11px;
++  color: var(--muted);
++  gap: 2px;
++}
++.cv-swatch-text strong {
++  color: var(--text);
++  font-size: 12px;
++}
++.cv-swatch-edit input[type='color'] {
++  width: 100%;
++  height: 24px;
++  border: 0;
++  padding: 0;
++  background: none;
++}
++.cv-resize {
++  position: absolute;
++  right: 0;
++  bottom: 0;
++  width: 14px;
++  height: 14px;
++  cursor: nwse-resize;
++  background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
++  border-bottom-right-radius: var(--r-card);
++}
++
++/* ---------------------------------------------------------------- edges */
++
++.cv-edge {
++  --cv-edge: var(--muted);
++}
++.cv-edge-line {
++  fill: none;
++  stroke: var(--cv-edge);
++  stroke-width: 2;
++  pointer-events: none;
++}
++.cv-edge-hit {
++  fill: none;
++  stroke: transparent;
++  stroke-width: 14;
++  pointer-events: stroke;
++  cursor: pointer;
++}
++.cv-edge.is-selected .cv-edge-line {
++  stroke: var(--accent);
++  stroke-width: 3;
++}
++.cv-edge-label {
++  fill: var(--text);
++  font-size: 12px;
++  paint-order: stroke;
++  stroke: var(--bg);
++  stroke-width: 4px;
++}
++.cv-edge-edit {
++  position: absolute;
++  transform: translate(-50%, -50%);
++  z-index: 5;
++  display: flex;
++  gap: var(--s1);
++  padding: var(--s1);
++  border-radius: var(--r-control);
++  background: var(--surface);
++  border: 1px solid var(--accent);
++}
++.cv-edge-edit input {
++  font: inherit;
++  color: var(--text);
++  background: var(--bg);
++  border: 1px solid var(--border);
++  border-radius: var(--r-control);
++  padding: var(--s1) var(--s2);
++  width: 140px;
++}
++
++/* ---------------------------------------------------------------- toolbar and zoom */
++
++.cv-toolbar,
++.cv-zoom {
++  position: absolute;
++  z-index: 10;
++  display: flex;
++  align-items: center;
++  gap: var(--s1);
++  padding: var(--s1);
++  background: var(--surface);
++  border: 1px solid var(--border);
++  border-radius: 14px;
++  box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
++}
++.cv-toolbar {
++  bottom: var(--s4);
++  left: 50%;
++  transform: translateX(-50%);
++}
++.cv-zoom {
++  bottom: var(--s4);
++  left: var(--s4);
++}
++.cv-zoom-value {
++  min-width: 44px;
++  text-align: center;
++  font-size: 12px;
++  color: var(--muted);
++}
++.cv-tool {
++  width: 36px;
++  height: 36px;
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  border: 0;
++  border-radius: 10px;
++  background: transparent;
++  color: var(--text);
++  font: inherit;
++  font-size: 16px;
++  cursor: pointer;
++}
++.cv-tool:hover {
++  background: var(--surface-2);
++}
++.cv-tool[aria-pressed='true'] {
++  background: var(--accent);
++  color: var(--accent-ink);
++}
++.cv-tool:disabled {
++  opacity: 0.4;
++  cursor: default;
++}
++.cv-tool:focus-visible {
++  outline: var(--focus);
++  outline-offset: 1px;
++}
++
++/* ---------------------------------------------------------------- story picker */
++
++.cv-picker {
++  width: min(560px, calc(100vw - 32px));
++}
++.cv-picker-filters {
++  display: flex;
++  flex-direction: column;
++  gap: var(--s2);
++  margin-bottom: var(--s3);
++}
++.cv-picker-filters input {
++  font: inherit;
++  color: var(--text);
++  background: var(--bg);
++  border: 1px solid var(--border);
++  border-radius: var(--r-input);
++  padding: var(--s2) var(--s3);
++}
++.cv-picker-kinds {
++  display: flex;
++  flex-wrap: wrap;
++  gap: var(--s1);
++}
++.cv-picker-list {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++  max-height: 320px;
++  overflow-y: auto;
++}
++.cv-picker-list button {
++  width: 100%;
++  display: grid;
++  grid-template-columns: 92px 1fr;
++  grid-template-rows: auto auto;
++  column-gap: var(--s2);
++  text-align: left;
++  padding: var(--s2);
++  border: 0;
++  border-radius: var(--r-control);
++  background: transparent;
++  color: var(--text);
++  font: inherit;
++  cursor: pointer;
++}
++.cv-picker-list button:hover,
++.cv-picker-list button:focus-visible {
++  background: var(--surface-2);
++}
++.cv-picker-list .cv-meta {
++  grid-row: span 2;
++  align-self: center;
++}
++.cv-picker-title {
++  font-weight: 600;
++}
++
++@media (max-width: 720px) {
++  .cv-layout {
++    flex-direction: column;
++  }
++  .cv-list {
++    width: auto;
++    max-height: 30vh;
++    border-right: 0;
++    border-bottom: 1px solid var(--divider);
++  }
++  .cv-file {
++    display: none;
++  }
++}
+diff --git a/apps/web/src/canvas/model.js b/apps/web/src/canvas/model.js
+new file mode 100644
+index 0000000..b387266
+--- /dev/null
++++ b/apps/web/src/canvas/model.js
+@@ -0,0 +1,406 @@
++// The Canvas page's pure model (M09-J01): node kinds and defaults, safe Markdown blocks, to-do lists, column layout, edge geometry, view fitting and the
++// undo history. Nothing here touches the DOM or the network, so all of it is tested in node.
++
++const enc = encodeURIComponent;
++
++/** /books/:id/canvas with the optional ?canvas=<slug>. @param {string} bookId @param {string | null} [slug] */
++export const canvasHref = (bookId, slug = null) => `/books/${enc(bookId)}/canvas${slug ? `?canvas=${enc(slug)}` : ''}`;
++/** @param {string} search */
++export function parseCanvasSearch(search) {
++  const p = new URLSearchParams(search);
++  return { canvas: p.get('canvas') };
++}
++/** GET / PUT url of one canvas. @param {string} bookId @param {string} slug */
++export const canvasUrl = (bookId, slug) => `/api/books/${enc(bookId)}/canvases/${enc(slug)}`;
++/** The attachment route for a book-relative assets/ path. @param {string} bookId @param {string} rel */
++export const assetUrl = (bookId, rel) => `/api/books/${enc(bookId)}/attachments?path=${enc(rel)}`;
++
++// ---------------------------------------------------------------- kinds
++
++export const IMAGE_RE = /^assets\/.+\.(png|jpe?g|webp|gif)$/i;
++export const GRID = 8;
++export const COLUMN_HEAD = 44;
++export const COLUMN_PAD = 12;
++export const COLUMN_GAP = 12;
++/** JSON Canvas preset colours "1"-"6" (red, orange, yellow, green, cyan, purple). */
++export const PRESET_COLORS = { 1: '#E5534B', 2: '#E8743B', 3: '#E0C04B', 4: '#57AB5A', 5: '#39C5CF', 6: '#986EE2' };
++export const SWATCH_PALETTE = ['#E8DDD4', '#7DA7C9', '#2A2F3A', '#B5651D', '#D9CBB0', '#3E5C76', '#C2A878', '#6B4E71'];
++
++/** What the author sees: note | todo | swatch | image | story | file | link | group | column. @param {any} n */
++export function nodeKind(n) {
++  const k = n?.storyforge?.kind;
++  if (n.type === 'group') return k === 'column' ? 'column' : 'group';
++  if (n.type === 'link') return 'link';
++  if (n.type === 'file') return typeof n.storyforge?.ref === 'string' ? 'story' : IMAGE_RE.test(n.file) ? 'image' : 'file';
++  if (k === 'swatch' && /^#[0-9a-f]{6}$/i.test(n.storyforge?.hex ?? '')) return 'swatch';
++  if (k === 'todo') return 'todo';
++  return 'note';
++}
++export const isContainer = (n) => n.type === 'group';
++
++export const DEFAULT_SIZE = {
++  note: [260, 160],
++  todo: [260, 180],
++  swatch: [140, 150],
++  image: [280, 200],
++  story: [260, 150],
++  file: [260, 90],
++  link: [260, 90],
++  group: [480, 320],
++  column: [300, 360],
++};
++
++/** A fresh node id (16 hex characters, as Obsidian makes them). @param {() => number} [rand] */
++export function newId(rand = Math.random) {
++  let s = '';
++  for (let i = 0; i < 16; i++) s += Math.floor(rand() * 16).toString(16);
++  return s;
++}
++
++/**
++ * A new node of an author-facing kind, centred on `at` (world coordinates), snapped to the grid.
++ * @param {string} kind @param {{ x: number, y: number }} at @param {Record<string, any>} [extra] @param {() => number} [rand]
++ */
++export function makeNode(kind, at, extra = {}, rand = Math.random) {
++  const [w, h] = extra.size ?? DEFAULT_SIZE[kind] ?? DEFAULT_SIZE.note;
++  const base = { id: newId(rand), x: snap(at.x - w / 2), y: snap(at.y - h / 2), width: w, height: h };
++  switch (kind) {
++    case 'todo':
++      return { ...base, type: 'text', text: extra.text ?? '- [ ] ', storyforge: { kind: 'todo' } };
++    case 'swatch': {
++      const hex = (extra.hex ?? SWATCH_PALETTE[Math.floor(rand() * SWATCH_PALETTE.length)]).toUpperCase();
++      const name = extra.name ?? 'Swatch';
++      return { ...base, type: 'text', text: swatchText(name, hex), color: hex, storyforge: { kind: 'swatch', name, hex } };
++    }
++    case 'image':
++    case 'file':
++      return { ...base, type: 'file', file: extra.file };
++    case 'story':
++      return { ...base, type: 'file', file: extra.file ?? 'unknown.md', storyforge: { ref: extra.ref } };
++    case 'link':
++      return { ...base, type: 'link', url: extra.url };
++    case 'group':
++      return { ...base, type: 'group', label: extra.label ?? 'Group' };
++    case 'column':
++      return { ...base, type: 'group', label: extra.label ?? 'Column', storyforge: { kind: 'column' } };
++    default:
++      return { ...base, type: 'text', text: extra.text ?? '' };
++  }
++}
++export const snap = (v) => Math.round(v / GRID) * GRID;
++/** The JSON Canvas text a swatch carries (what Obsidian shows). @param {string} name @param {string} hex */
++export const swatchText = (name, hex) => `**${name.replace(/\*/g, '')}**\n${hex}`;
++
++/** @param {string} hex #rrggbb @returns {[number, number, number]} */
++export function hexToRgb(hex) {
++  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex ?? '');
++  return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : [0, 0, 0];
++}
++/** Black or white, whichever reads better on `hex`. @param {string} hex */
++export function inkOn(hex) {
++  const [r, g, b] = hexToRgb(hex).map((c) => {
++    const s = c / 255;
++    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
++  });
++  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.179 ? '#141414' : '#F5F5F5';
++}
++/** The CSS colour of a node or edge `color` ("1"-"6" or #hex), or null. @param {string | undefined} c */
++export const cssColor = (c) => (c === undefined ? null : PRESET_COLORS[/** @type {keyof typeof PRESET_COLORS} */ (c)] ?? (/^#[0-9a-f]{3,6}$/i.test(c) ? c : null));
++
++/** A web address the canvas may open: http(s) or mailto, else null. @param {unknown} raw */
++export function safeUrl(raw) {
++  if (typeof raw !== 'string') return null;
++  const s = raw.trim();
++  try {
++    const u = new URL(s);
++    return u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'mailto:' ? s : null;
++  } catch {
++    return null;
++  }
++}
++/** Host name of a link (or the address itself). @param {string} url */
++export function hostOf(url) {
++  try {
++    return new URL(url).host || url;
++  } catch {
++    return url;
++  }
++}
++
++// ---------------------------------------------------------------- Markdown (safe subset; produces data, never HTML)
++
++const INLINE_RE = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*|_([^_]+)_)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)\s]+)\))/g;
++
++/** Inline runs: { t: 'text' | 'b' | 'i' | 'code' | 'link', text, href? }. A link that is not http(s) / mailto stays text. @param {string} s */
++export function inlineRuns(s) {
++  const out = [];
++  let last = 0;
++  for (const m of s.matchAll(INLINE_RE)) {
++    if (m.index > last) out.push({ t: 'text', text: s.slice(last, m.index) });
++    if (m[1]) out.push({ t: 'b', text: m[2] });
++    else if (m[3]) out.push({ t: 'i', text: m[4] ?? m[5] });
++    else if (m[6]) out.push({ t: 'code', text: m[7] });
++    else {
++      const href = safeUrl(m[10]);
++      out.push(href ? { t: 'link', text: m[9], href } : { t: 'text', text: m[0] });
++    }
++    last = m.index + m[0].length;
++  }
++  if (last < s.length) out.push({ t: 'text', text: s.slice(last) });
++  return out;
++}
++
++/**
++ * Blocks of a note: { type: 'h', level, runs } | { type: 'li', runs } | { type: 'task', checked, line, runs } | { type: 'p', runs } | { type: 'hr' }.
++ * `line` is the 0-based source line of a task (for toggling it).
++ * @param {string} text
++ */
++export function markdownBlocks(text) {
++  const blocks = [];
++  const lines = String(text ?? '').split('\n');
++  for (let i = 0; i < lines.length; i++) {
++    const line = lines[i];
++    let m;
++    if (line.trim() === '') continue;
++    if ((m = /^(#{1,3})\s+(.*)$/.exec(line))) blocks.push({ type: 'h', level: m[1].length, runs: inlineRuns(m[2]) });
++    else if ((m = /^\s*[-*+]\s+\[( |x|X)\]\s?(.*)$/.exec(line))) blocks.push({ type: 'task', checked: m[1] !== ' ', line: i, runs: inlineRuns(m[2]) });
++    else if ((m = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/.exec(line))) blocks.push({ type: 'li', runs: inlineRuns(m[1]) });
++    else if (/^\s*(?:---+|\*\*\*+)\s*$/.test(line)) blocks.push({ type: 'hr' });
++    else blocks.push({ type: 'p', runs: inlineRuns(line) });
++  }
++  return blocks;
++}
++
++/** Flip the task box on source line `line`. @param {string} text @param {number} line */
++export function toggleTask(text, line) {
++  const lines = text.split('\n');
++  const m = /^(\s*[-*+]\s+\[)( |x|X)(\].*)$/.exec(lines[line] ?? '');
++  if (!m) return text;
++  lines[line] = `${m[1]}${m[2] === ' ' ? 'x' : ' '}${m[3]}`;
++  return lines.join('\n');
++}
++/** { done, total } of a to-do text. @param {string} text */
++export function taskCounts(text) {
++  const tasks = markdownBlocks(text).filter((b) => b.type === 'task');
++  return { done: tasks.filter((t) => /** @type {any} */ (t).checked).length, total: tasks.length };
++}
++/** The plain text of a note, for names and previews. @param {string} text */
++export const plainText = (text) =>
++  markdownBlocks(text)
++    .map((b) => ('runs' in b ? b.runs.map((r) => r.text).join('') : ''))
++    .filter(Boolean)
++    .join(' ');
++
++// ---------------------------------------------------------------- geometry
++
++const centre = (n) => ({ x: n.x + n.width / 2, y: n.y + n.height / 2 });
++const inside = (p, r) => p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height;
++const contains = (outer, n) => n.x >= outer.x && n.y >= outer.y && n.x + n.width <= outer.x + outer.width && n.y + n.height <= outer.y + outer.height;
++
++/** The cards a column holds: non-group nodes whose centre is inside it (and in no later column). @param {any[]} nodes @param {any} col */
++export function columnMembers(nodes, col) {
++  const cols = nodes.filter((n) => nodeKind(n) === 'column');
++  return nodes.filter((n) => !isContainer(n) && inside(centre(n), col) && cols.filter((c) => inside(centre(n), c)).at(-1)?.id === col.id).sort((a, b) => a.y - b.y || a.x - b.x);
++}
++
++/** What moves with a container: a column's members; for a group, every node fully inside it. @param {any[]} nodes @param {any} g */
++export function carried(nodes, g) {
++  if (nodeKind(g) === 'column') return columnMembers(nodes, g);
++  return nodes.filter((n) => n.id !== g.id && contains(g, n));
++}
++
++/** Stack every column's cards top to bottom at the column's width; the column grows (or shrinks, to a minimum) to fit. @param {{ nodes: any[] }} canvas */
++export function layoutColumns(canvas) {
++  const cols = canvas.nodes.filter((n) => nodeKind(n) === 'column');
++  if (cols.length === 0) return canvas;
++  const moved = new Map();
++  const grown = new Map();
++  for (const col of cols) {
++    let y = col.y + COLUMN_HEAD;
++    for (const m of columnMembers(canvas.nodes, col)) {
++      moved.set(m.id, { x: col.x + COLUMN_PAD, y, width: Math.max(40, col.width - 2 * COLUMN_PAD) });
++      y += m.height + COLUMN_GAP;
++    }
++    grown.set(col.id, Math.max(DEFAULT_SIZE.column[1] / 2, y - col.y + COLUMN_PAD - COLUMN_GAP));
++  }
++  let changed = false;
++  const nodes = canvas.nodes.map((n) => {
++    const m = moved.get(n.id);
++    if (m && (m.x !== n.x || m.y !== n.y || m.width !== n.width)) {
++      changed = true;
++      return { ...n, ...m };
++    }
++    const h = grown.get(n.id);
++    if (h !== undefined && h !== n.height) {
++      changed = true;
++      return { ...n, height: h };
++    }
++    return n;
++  });
++  return changed ? { ...canvas, nodes } : canvas;
++}
++
++/** The point on a side of a node. @param {any} n @param {string} side */
++export function anchor(n, side) {
++  switch (side) {
++    case 'top':
++      return { x: n.x + n.width / 2, y: n.y };
++    case 'bottom':
++      return { x: n.x + n.width / 2, y: n.y + n.height };
++    case 'left':
++      return { x: n.x, y: n.y + n.height / 2 };
++    default:
++      return { x: n.x + n.width, y: n.y + n.height / 2 };
++  }
++}
++/** The facing sides of two nodes. @param {any} a @param {any} b @returns {[string, string]} */
++export function facingSides(a, b) {
++  const dx = centre(b).x - centre(a).x;
++  const dy = centre(b).y - centre(a).y;
++  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? ['right', 'left'] : ['left', 'right'];
++  return dy >= 0 ? ['bottom', 'top'] : ['top', 'bottom'];
++}
++const NORMAL = { top: [0, -1], bottom: [0, 1], left: [-1, 0], right: [1, 0] };
++/** SVG path (a cubic curve) and label point of an edge between two nodes. @param {any} edge @param {any} from @param {any} to */
++export function edgeGeometry(edge, from, to) {
++  const [fs, ts] = facingSides(from, to);
++  const fromSide = edge.fromSide ?? fs;
++  const toSide = edge.toSide ?? ts;
++  const a = anchor(from, fromSide);
++  const b = anchor(to, toSide);
++  const k = Math.min(160, Math.max(16, Math.hypot(b.x - a.x, b.y - a.y) / 2));
++  const c1 = { x: a.x + NORMAL[fromSide][0] * k, y: a.y + NORMAL[fromSide][1] * k };
++  const c2 = { x: b.x + NORMAL[toSide][0] * k, y: b.y + NORMAL[toSide][1] * k };
++  const mid = { x: (a.x + 3 * c1.x + 3 * c2.x + b.x) / 8, y: (a.y + 3 * c1.y + 3 * c2.y + b.y) / 8 };
++  return { d: `M ${a.x} ${a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${b.x} ${b.y}`, a, b, mid, toSide, fromSide };
++}
++
++/** The box around nodes, or null. @param {any[]} nodes */
++export function bounds(nodes) {
++  if (nodes.length === 0) return null;
++  const x = Math.min(...nodes.map((n) => n.x));
++  const y = Math.min(...nodes.map((n) => n.y));
++  return { x, y, width: Math.max(...nodes.map((n) => n.x + n.width)) - x, height: Math.max(...nodes.map((n) => n.y + n.height)) - y };
++}
++export const ZOOM_MIN = 0.1;
++export const ZOOM_MAX = 3;
++export const clampZoom = (z) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
++/** The view { x, y, zoom } that shows `box` inside a viewport of `w` x `h` with a margin; an empty canvas is centred on 0,0 at 100%. */
++export function fitView(box, w, h, margin = 48) {
++  if (!box || w <= 0 || h <= 0) return { x: w / 2, y: h / 2, zoom: 1 };
++  const zoom = clampZoom(Math.min(1, (w - 2 * margin) / Math.max(1, box.width), (h - 2 * margin) / Math.max(1, box.height)));
++  return { x: w / 2 - (box.x + box.width / 2) * zoom, y: h / 2 - (box.y + box.height / 2) * zoom, zoom };
++}
++/** Zoom by `factor` keeping the screen point (sx, sy) still. */
++export function zoomAt(view, factor, sx, sy) {
++  const zoom = clampZoom(view.zoom * factor);
++  const k = zoom / view.zoom;
++  return { zoom, x: sx - (sx - view.x) * k, y: sy - (sy - view.y) * k };
++}
++/** Screen point (relative to the board) to world coordinates. */
++export const toWorld = (view, sx, sy) => ({ x: (sx - view.x) / view.zoom, y: (sy - view.y) / view.zoom });
++
++/** Cards in reading order (top-left first, rows 40 px tall); containers before what they hold. @param {any[]} nodes */
++export const readingOrder = (nodes) => [...nodes].sort((a, b) => Math.floor(a.y / 40) - Math.floor(b.y / 40) || a.x - b.x || (isContainer(b) ? 1 : 0) - (isContainer(a) ? 1 : 0));
++
++// ---------------------------------------------------------------- edits
++
++/** Remove nodes (and the edges that touch them) and edges by id. @param {{ nodes: any[], edges: any[] }} c @param {Set<string>} ids */
++export function removeIds(c, ids) {
++  return { ...c, nodes: c.nodes.filter((n) => !ids.has(n.id)), edges: c.edges.filter((e) => !ids.has(e.id) && !ids.has(e.fromNode) && !ids.has(e.toNode)) };
++}
++/** Copies of nodes (and the edges between them), 24 px down and right, with new ids. Returns { canvas, ids }. */
++export function duplicate(c, ids, rand = Math.random) {
++  const map = new Map();
++  const copies = c.nodes.filter((n) => ids.has(n.id)).map((n) => {
++    const id = newId(rand);
++    map.set(n.id, id);
++    return { ...structuredClone(n), id, x: n.x + 24, y: n.y + 24 };
++  });
++  const edges = c.edges.filter((e) => map.has(e.fromNode) && map.has(e.toNode)).map((e) => ({ ...e, id: newId(rand), fromNode: map.get(e.fromNode), toNode: map.get(e.toNode) }));
++  return { canvas: { ...c, nodes: [...c.nodes, ...copies], edges: [...c.edges, ...edges] }, ids: new Set(map.values()) };
++}
++/** Move nodes by (dx, dy). @param {{ nodes: any[] }} c @param {Set<string>} ids */
++export const moveBy = (c, ids, dx, dy) => ({ ...c, nodes: c.nodes.map((n) => (ids.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n)) });
++/** Change one node. @param {{ nodes: any[] }} c @param {string} id @param {(n: any) => any} fn */
++export const patchNode = (c, id, fn) => ({ ...c, nodes: c.nodes.map((n) => (n.id === id ? fn(n) : n)) });
++/** Change one edge. @param {{ edges: any[] }} c @param {string} id @param {(e: any) => any} fn */
++export const patchEdge = (c, id, fn) => ({ ...c, edges: c.edges.map((e) => (e.id === id ? fn(e) : e)) });
++/** Connect two nodes with an arrow on their facing sides (no duplicate, no self-loop). Returns the canvas unchanged when it would be one. */
++export function connect(c, fromId, toId, rand = Math.random) {
++  if (fromId === toId || c.edges.some((e) => e.fromNode === fromId && e.toNode === toId)) return c;
++  const a = c.nodes.find((n) => n.id === fromId);
++  const b = c.nodes.find((n) => n.id === toId);
++  if (!a || !b) return c;
++  const [fromSide, toSide] = facingSides(a, b);
++  return { ...c, edges: [...c.edges, { id: newId(rand), fromNode: fromId, fromSide, toNode: toId, toSide, toEnd: 'arrow' }] };
++}
++
++// ---------------------------------------------------------------- history
++
++export const HISTORY_LIMIT = 100;
++/** @template T @param {T} present */
++export const history = (present) => ({ past: /** @type {T[]} */ ([]), present, future: /** @type {T[]} */ ([]) });
++/** @template T @param {{ past: T[], present: T, future: T[] }} h @param {T} next */
++export const record = (h, next) => (next === h.present ? h : { past: [...h.past, h.present].slice(-HISTORY_LIMIT), present: next, future: [] });
++/** @template T @param {{ past: T[], present: T, future: T[] }} h */
++export const undo = (h) => (h.past.length === 0 ? h : { past: h.past.slice(0, -1), present: /** @type {T} */ (h.past.at(-1)), future: [h.present, ...h.future] });
++/** @template T @param {{ past: T[], present: T, future: T[] }} h */
++export const redo = (h) => (h.future.length === 0 ? h : { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) });
++
++// ---------------------------------------------------------------- names and links
++
++export const KIND_LABEL = { note: 'Note', todo: 'To-do', swatch: 'Swatch', image: 'Image', story: 'Story card', file: 'File', link: 'Link', group: 'Group', column: 'Column' };
++export const REF_KIND_LABEL = { scene: 'Scene', entry: 'Codex', thread: 'Thread', event: 'Event', research: 'Research', doc: 'Planning doc', source: 'Source' };
++
++/** The accessible name of a card. @param {any} n @param {any} [ref] */
++export function cardName(n, ref = null) {
++  const kind = nodeKind(n);
++  const short = (s) => (s.length > 80 ? `${s.slice(0, 79)}…` : s);
++  switch (kind) {
++    case 'swatch':
++      return `Swatch: ${n.storyforge.name || 'unnamed'} ${n.storyforge.hex.toUpperCase()}`;
++    case 'todo': {
++      const { done, total } = taskCounts(n.text);
++      return `To-do: ${short(plainText(n.text.split('\n').filter((l) => !/^\s*[-*+]\s+\[/.test(l)).join('\n')) || 'list')} (${done} of ${total} done)`;
++    }
++    case 'story':
++      return ref?.state === 'ok' ? `${REF_KIND_LABEL[ref.kind] ?? 'Story card'}: ${ref.title}` : `Story card: ${ref?.state === 'archived' ? 'archived' : 'missing'} ${n.storyforge.ref}`;
++    case 'image':
++    case 'file':
++      return `${KIND_LABEL[kind]}: ${n.file.split('/').pop()}`;
++    case 'link':
++      return `Link: ${hostOf(n.url)}`;
++    case 'group':
++    case 'column':
++      return `${KIND_LABEL[kind]}: ${n.label || 'untitled'}`;
++    default:
++      return `Note: ${short(plainText(n.text)) || 'empty'}`;
++  }
++}
++
++/** Where a story card's Open goes. @param {string} bookId @param {{ kind: string, id: string, slug?: string | null }} ref */
++export function storyHref(bookId, ref) {
++  const b = `/books/${enc(bookId)}`;
++  switch (ref.kind) {
++    case 'scene':
++      return `${b}?scene=${enc(ref.id)}`;
++    case 'entry':
++      return `${b}/codex?entry=${enc(ref.slug ?? ref.id)}`;
++    case 'thread':
++      return `${b}?view=threads&thread=${enc(ref.id)}`;
++    case 'event':
++      return `${b}/timeline?event=${enc(ref.id)}`;
++    default:
++      return `${b}/notes?note=${enc(ref.id)}`;
++  }
++}
++
++/** The ref of a story card: the server's answer, else what the picker list says (a card just added). */
++export function refOf(node, refs, targets) {
++  const r = node?.storyforge?.ref;
++  if (typeof r !== 'string') return null;
++  if (refs?.[node.id] && refs[node.id].id === r) return refs[node.id];
++  const t = targets?.find((x) => x.ref === r);
++  return t ? { state: 'ok', kind: t.kind, id: t.ref, title: t.title, summary: t.subtitle, path: null, slug: t.slug ?? null } : (refs?.[node.id] ?? { state: 'broken', kind: null, id: r, title: null, summary: null, path: null });
++}
+diff --git a/apps/web/src/canvas/requests.js b/apps/web/src/canvas/requests.js
+new file mode 100644
+index 0000000..72cfc4a
+--- /dev/null
++++ b/apps/web/src/canvas/requests.js
+@@ -0,0 +1,58 @@
++// The Canvas page's writes (M09-J01): new canvas, save, archive / restore, image upload. Each returns { status, json } (status 0 = no answer).
++import { putJson } from '../api.js';
++import { send } from '../structure/helpers.js';
++import { canvasUrl } from './model.js';
++
++const enc = encodeURIComponent;
++const base = (bookId) => `/api/books/${enc(bookId)}/canvases`;
++
++/** @param {string} bookId @param {{ title: string, slug?: string }} v */
++export const createCanvas = (bookId, v) => send(base(bookId), v);
++/** @param {string} bookId @param {string} slug @param {string} sha */
++export const archiveCanvas = (bookId, slug, sha) => send(`${base(bookId)}/${enc(slug)}/archive`, sha ? { base_sha256: sha } : {});
++/** @param {string} bookId @param {string} slug */
++export const restoreCanvas = (bookId, slug) => send(`${base(bookId)}/${enc(slug)}/restore`, {});
++
++/** PUT the whole canvas. @param {string} bookId @param {string} slug @param {any} canvas @param {string} sha the file as last seen */
++export async function saveCanvas(bookId, slug, canvas, sha) {
++  try {
++    return await putJson(canvasUrl(bookId, slug), { canvas, base_sha256: sha });
++  } catch {
++    return { status: 0, json: null };
++  }
++}
++
++export const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif';
++export const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
++
++/**
++ * Upload one image for a canvas (stored under assets/canvas/). @param {string} bookId @param {File} file @param {typeof fetch} [fetchImpl]
++ * @returns {Promise<{ ok: true, path: string } | { ok: false, message: string }>}
++ */
++export async function uploadCanvasImage(bookId, file, fetchImpl = (...a) => globalThis.fetch(...a)) {
++  if (file.size > MAX_IMAGE_BYTES) return { ok: false, message: 'That file is too large. Images can be at most 25 MB.' };
++  if (!/\.(png|jpe?g|webp|gif)$/i.test(file.name)) return { ok: false, message: 'Only PNG, JPEG, WebP and GIF images can go on a canvas.' };
++  try {
++    const res = await fetchImpl(`/api/books/${enc(bookId)}/attachments?name=${enc(file.name)}&for=canvas`, {
++      method: 'POST',
++      headers: { 'content-type': file.type || 'application/octet-stream', 'x-storyforge': '1', accept: 'application/json' },
++      body: file,
++    });
++    const json = await res.json().catch(() => null);
++    if (res.status === 201 && typeof json?.path === 'string') return { ok: true, path: json.path };
++    return { ok: false, message: typeof json?.message === 'string' ? json.message : `The image was not added (${json?.code ?? res.status}).` };
++  } catch {
++    return { ok: false, message: 'The server could not be reached. Nothing was added.' };
++  }
++}
++
++/** A refusal in words. @param {number} status @param {any} json */
++export function explainCanvasFailure(status, json) {
++  if (status === 0) return 'The server could not be reached.';
++  if (json?.code === 'REFUSED_PATH_TAKEN') return 'A canvas (or an archived one) already has that name. Choose another title.';
++  if (json?.code === 'REFUSED_BAD_CANVAS') return `The canvas could not be saved: ${json.message}`;
++  if (json?.code === 'MODULE_OFF') return 'The board module is off, so canvases cannot be changed.';
++  if (status === 403) return 'You cannot change canvases in this book.';
++  if (status === 404) return 'That canvas is not there any more. Reload the page.';
++  return typeof json?.message === 'string' ? json.message : `The change was refused (${json?.code ?? status}).`;
++}
+diff --git a/apps/web/src/main.jsx b/apps/web/src/main.jsx
+index 0330f43..2616b06 100644
+--- a/apps/web/src/main.jsx
++++ b/apps/web/src/main.jsx
+@@ -10,6 +10,7 @@ import './theme/base.css';
+ import { App } from './App.jsx';
+ import './styles.css';
+ import './insights/insights.css';
++import './canvas/canvas.css';
+ import './responsive.css';
+ 
+ installFocusRestore();
+diff --git a/apps/web/src/routes.js b/apps/web/src/routes.js
+index 7fd125e..ceeedef 100644
+--- a/apps/web/src/routes.js
++++ b/apps/web/src/routes.js
+@@ -8,6 +8,7 @@ export const PROJECT_TABS = [
+   { key: 'continuity', label: 'Continuity', path: '/continuity' },
+   { key: 'places', label: 'Places', path: '/places' },
+   { key: 'notes', label: 'Notes', path: '/notes' },
++  { key: 'canvas', label: 'Canvas', path: '/canvas' },
+ ];
+ 
+ /** Further project pages (M07-J02), shown after the tabs above: the Insights dashboard and the revision Tasks. */
+@@ -17,7 +18,7 @@ export const MORE_TABS = [
+ ];
+ 
+ /** The module a project tab belongs to (M07-J04): with the module off the tab disappears. `insights` and `tasks` are J02's pages, gated by id so they follow once they exist. */
+-const TAB_MODULES = { timeline: 'timeline', continuity: 'continuity', notes: 'research', insights: 'insights', tasks: 'tasks' };
++const TAB_MODULES = { timeline: 'timeline', continuity: 'continuity', notes: 'research', canvas: 'board', insights: 'insights', tasks: 'tasks' };
+ /** @param {string} tab a PROJECT_TABS key @returns {string | null} */
+ export const tabModule = (tab) => TAB_MODULES[tab] ?? null;
+ 
+diff --git a/apps/web/src/shortcuts/registry.js b/apps/web/src/shortcuts/registry.js
+index 8ca197b..a3d9f0d 100644
+--- a/apps/web/src/shortcuts/registry.js
++++ b/apps/web/src/shortcuts/registry.js
+@@ -27,6 +27,24 @@ export const COMMANDS = [
+   { id: 'board.chapterForward', label: 'Move the card to the next chapter', scope: 'board', binding: 'Alt+ArrowRight', files: ['planning/BoardView.jsx'] },
+   { id: 'timeline.moveUp', label: 'Move the event earlier', scope: 'timeline', binding: 'Alt+ArrowUp', files: ['timeline/TimelinePage.jsx'] },
+   { id: 'timeline.moveDown', label: 'Move the event later', scope: 'timeline', binding: 'Alt+ArrowDown', files: ['timeline/TimelinePage.jsx'] },
++  // M09-J01 the Canvas board (keys work while the board or one of its cards has focus, never while you type in a card)
++  { id: 'canvas.note', label: 'Add a note', scope: 'canvas', binding: 'N', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.todo', label: 'Add a to-do list', scope: 'canvas', binding: 'T', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.swatch', label: 'Add a colour swatch', scope: 'canvas', binding: 'S', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.image', label: 'Add an image', scope: 'canvas', binding: 'I', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.story', label: 'Add a story card (scene, Codex entry, thread, event, note)', scope: 'canvas', binding: 'C', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.link', label: 'Add a web link', scope: 'canvas', binding: 'L', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.column', label: 'Add a column', scope: 'canvas', binding: 'W', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.group', label: 'Add a group', scope: 'canvas', binding: 'G', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.connect', label: 'Connect two cards', scope: 'canvas', binding: 'A', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.edit', label: 'Edit the selected card', scope: 'canvas', binding: 'Enter', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.delete', label: 'Delete the selection', scope: 'canvas', binding: 'Delete', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.duplicate', label: 'Duplicate the selection', scope: 'canvas', binding: 'Mod+D', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.undo', label: 'Undo on the canvas', scope: 'canvas', binding: 'Mod+Z', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.redo', label: 'Redo on the canvas', scope: 'canvas', binding: 'Mod+Shift+Z', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.fit', label: 'Fit everything on screen', scope: 'canvas', binding: 'F', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.zoomIn', label: 'Zoom in', scope: 'canvas', binding: '=', files: ['canvas/CanvasBoard.jsx'] },
++  { id: 'canvas.zoomOut', label: 'Zoom out', scope: 'canvas', binding: '-', files: ['canvas/CanvasBoard.jsx'] },
+   { id: 'dialog.close', label: 'Close the dialog', scope: 'dialog', binding: 'Escape', fixed: true, files: ['shell/Dialog.jsx'] },
+   { id: 'dialog.trap', label: "Move between the dialog's controls (Tab stays inside)", scope: 'dialog', binding: 'Tab', fixed: true, files: ['shell/Dialog.jsx'] },
+ ];
+@@ -54,6 +72,9 @@ export const WIDGET_KEYS = [
+   { file: 'tasks/TasksPage.jsx', keys: 'Arrow Up, Arrow Down, Home, End', what: 'move between tasks in the list' },
+   { file: 'shared/UserMenu.jsx', keys: 'Escape', what: 'close the account menu' },
+   { file: 'shell/useDrawer.js', keys: 'Escape, Tab', what: 'close a side drawer (Chapters or Details) and keep Tab inside it while it is open' },
++  { file: 'canvas/CanvasBoard.jsx', keys: 'Arrow keys (Shift for bigger steps), Backspace, Escape', what: 'move or delete the selected canvas cards; Escape clears the selection or stops connecting' },
++  { file: 'canvas/CanvasCard.jsx', keys: 'Escape, Enter, Ctrl+Enter', what: 'finish editing a canvas card' },
++  { file: 'canvas/CanvasView.jsx', keys: 'Enter, Escape', what: 'save or cancel the canvas title you are editing' },
+ ];
+ 
+ /** Chords nothing may be bound to (browser and OS ones, and the keys the keyboard walk needs). Same list as @storyforge/format RESERVED_CHORDS (a test compares them). */
+@@ -187,5 +208,6 @@ export const SCOPES = [
+   ['outline', 'In the chapter list'],
+   ['board', 'On the Board'],
+   ['timeline', 'On the Timeline'],
++  ['canvas', 'On a Canvas'],
+   ['dialog', 'In dialogs'],
+ ];
+diff --git a/apps/web/test/ai-render.test.mjs b/apps/web/test/ai-render.test.mjs
+index 223fce5..496af12 100644
+--- a/apps/web/test/ai-render.test.mjs
++++ b/apps/web/test/ai-render.test.mjs
+@@ -292,8 +292,8 @@ describe('Settings: Set up AI (optional)', () => {
+     assert.match(t, /no key/);
+     assert.match(t, /key saved in the settings file \(plain text\)/);
+     assert.match(t, /key not entered \(session\)/);
+-    assert.equal((out.match(/>Edit</g) ?? []).length, 3);
+-    assert.equal((out.match(/>Delete</g) ?? []).length, 3);
++    assert.equal((out.match(/<button[^>]*>Edit</g) ?? []).length, 3);
++    assert.equal((out.match(/<button[^>]*>Delete</g) ?? []).length, 3, 'one Delete button per profile (the shortcut list also names the Delete key)');
+     assert.equal((out.match(/Send a test message/g) ?? []).length, 3);
+   });
+ 
+diff --git a/apps/web/test/canvas.test.mjs b/apps/web/test/canvas.test.mjs
+new file mode 100644
+index 0000000..e8151cd
+--- /dev/null
++++ b/apps/web/test/canvas.test.mjs
+@@ -0,0 +1,239 @@
++// M09-J01 acceptance 7 (web half, no browser): the Canvas model (kinds, Markdown blocks, to-dos, column layout, edge geometry, fitting, history, names, links)
++// and render tests of the page with a real repository answer (a copy of salt-orchard with one canvas holding every kind of card), plus the a11y audit.
++import assert from 'node:assert/strict';
++import { after, before, describe, test } from 'node:test';
++import { fileURLToPath } from 'node:url';
++import { createElement as h } from 'react';
++import { renderToStaticMarkup } from 'react-dom/server';
++import { createServer } from 'vite';
++import { createFsRepository } from '../../../packages/core/src/index.mjs';
++import { copyFixture } from '../../server/test/helpers.mjs';
++import { audit } from './a11y-check.mjs';
++
++const webDir = fileURLToPath(new URL('..', import.meta.url));
++const BOOK = 'book_01S5000000000000000000000A';
++const MAREN = 'entry_01S5000000000000000000000G';
++const KEY = 'scene_01S50000000000000000000003';
++let vite;
++let model;
++let page;
++const d = {};
++const html = (el) => renderToStaticMarkup(el);
++const seq = (...values) => {
++  let i = 0;
++  return () => values[i++ % values.length];
++};
++
++const node = (id, extra) => ({ id, type: 'text', text: '', x: 0, y: 0, width: 100, height: 60, ...extra });
++
++before(async () => {
++  vite = await createServer({ root: webDir, logLevel: 'silent', server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', optimizeDeps: { noDiscovery: true, include: [] } });
++  model = await vite.ssrLoadModule('/src/canvas/model.js');
++  page = await vite.ssrLoadModule('/src/canvas/CanvasView.jsx');
++  const root = await copyFixture('valid/salt-orchard');
++  const repo = createFsRepository(root, { watch: false, pollMs: 0 });
++  try {
++    await repo.createCanvas(BOOK, { title: 'Neon Shadows' });
++    const got = await repo.getCanvas(BOOK, 'neon-shadows');
++    const canvas = {
++      ...got.canvas,
++      nodes: [
++        node('n1', { text: '# Atmosphere\n- rain-slicked streets\n[ref](https://example.com/a) and [bad](javascript:alert(1))', x: 0, y: 0, width: 260, height: 160 }),
++        node('t1', { text: 'Shot list\n- [x] alley\n- [ ] rooftop', x: 300, y: 0, width: 260, height: 160, storyforge: { kind: 'todo' } }),
++        node('s1', { text: '**Pearl Bush**\n#E8DDD4', color: '#E8DDD4', x: 600, y: 0, width: 140, height: 150, storyforge: { kind: 'swatch', name: 'Pearl Bush', hex: '#E8DDD4' } }),
++        { id: 'c1', type: 'file', file: 'x.md', x: 0, y: 200, width: 260, height: 150, storyforge: { ref: MAREN } },
++        { id: 'c2', type: 'file', file: 'gone.md', x: 300, y: 200, width: 260, height: 150, storyforge: { ref: 'entry_GONE' } },
++        { id: 'i1', type: 'file', file: 'assets/canvas/city.png', x: 600, y: 200, width: 280, height: 200 },
++        { id: 'l1', type: 'link', url: 'https://example.com/blade', x: 0, y: 400, width: 260, height: 90 },
++        { id: 'w1', type: 'group', label: 'Central themes', x: 900, y: 0, width: 300, height: 360, storyforge: { kind: 'column' } },
++      ],
++      edges: [{ id: 'e1', fromNode: 'n1', toNode: 't1', toEnd: 'arrow', label: 'leads to' }],
++    };
++    const saved = await repo.saveCanvas(BOOK, 'neon-shadows', { canvas, baseSha256: got.sha256 });
++    assert.ok(saved.ok, JSON.stringify(saved));
++    d.list = JSON.parse(JSON.stringify(await repo.listCanvases(BOOK)));
++    d.open = JSON.parse(JSON.stringify(await repo.getCanvas(BOOK, 'neon-shadows')));
++  } finally {
++    await repo.close?.();
++  }
++});
++after(async () => {
++  await vite?.close();
++});
++
++describe('model', () => {
++  test('kinds: every card type maps to what the author sees', () => {
++    const k = (n) => model.nodeKind(n);
++    assert.equal(k(node('a')), 'note');
++    assert.equal(k(node('a', { storyforge: { kind: 'todo' } })), 'todo');
++    assert.equal(k(node('a', { storyforge: { kind: 'swatch', hex: '#112233' } })), 'swatch');
++    assert.equal(k(node('a', { storyforge: { kind: 'swatch', hex: 'nope' } })), 'note', 'a broken swatch is shown as a note');
++    assert.equal(k({ type: 'file', file: 'assets/canvas/a.webp' }), 'image');
++    assert.equal(k({ type: 'file', file: 'research/a.pdf' }), 'file');
++    assert.equal(k({ type: 'file', file: 'x.md', storyforge: { ref: 'r' } }), 'story');
++    assert.equal(k({ type: 'link', url: 'x' }), 'link');
++    assert.equal(k({ type: 'group' }), 'group');
++    assert.equal(k({ type: 'group', storyforge: { kind: 'column' } }), 'column');
++  });
++
++  test('makeNode: centred and snapped, with the JSON Canvas fields of each kind', () => {
++    const rand = seq(0.1);
++    const sw = model.makeNode('swatch', { x: 100, y: 100 }, { hex: '#e8ddd4', name: 'Pearl' }, rand);
++    assert.deepEqual([sw.type, sw.color, sw.text, sw.storyforge], ['text', '#E8DDD4', '**Pearl**\n#E8DDD4', { kind: 'swatch', name: 'Pearl', hex: '#E8DDD4' }]);
++    assert.equal(sw.x % 8, 0);
++    assert.equal(sw.id.length, 16);
++    assert.deepEqual(model.makeNode('story', { x: 0, y: 0 }, { ref: 'entry_1' }, rand).storyforge, { ref: 'entry_1' });
++    assert.equal(model.makeNode('column', { x: 0, y: 0 }, {}, rand).storyforge.kind, 'column');
++    assert.match(model.makeNode('todo', { x: 0, y: 0 }, {}, rand).text, /^- \[ \]/);
++  });
++
++  test('Markdown: safe blocks only; a link that is not http(s) or mailto stays text', () => {
++    const b = model.markdownBlocks('# Title\n\nPlain **bold** _it_ `code`\n- item\n- [x] done\n---\n[ok](https://a.example/x) [no](javascript:alert(1)) <b>raw</b>');
++    assert.deepEqual(b.map((x) => x.type), ['h', 'p', 'li', 'task', 'hr', 'p']);
++    assert.deepEqual(b[1].runs.map((r) => r.t), ['text', 'b', 'text', 'i', 'text', 'code']);
++    const links = b[5].runs.filter((r) => r.t === 'link');
++    assert.deepEqual(links.map((l) => l.text), ['ok']);
++    assert.ok(b[5].runs.some((r) => r.t === 'text' && r.text.includes('javascript:')));
++    assert.ok(b[5].runs.some((r) => r.text.includes('<b>raw</b>')), 'HTML is text, never markup');
++  });
++
++  test('to-dos: toggle a line, count, ignore other lines', () => {
++    const t = 'List\n- [ ] one\n- [x] two\nnot a task';
++    assert.equal(model.toggleTask(t, 1), 'List\n- [x] one\n- [x] two\nnot a task');
++    assert.equal(model.toggleTask(t, 2), 'List\n- [ ] one\n- [ ] two\nnot a task');
++    assert.equal(model.toggleTask(t, 3), t);
++    assert.deepEqual(model.taskCounts(t), { done: 1, total: 2 });
++  });
++
++  test('columns: members stack top to bottom at the column width; the column grows to fit; groups carry what they contain', () => {
++    const col = { id: 'w', type: 'group', label: 'W', x: 0, y: 0, width: 300, height: 400, storyforge: { kind: 'column' } };
++    const a = node('a', { x: 50, y: 60, height: 100 });
++    const b = node('b', { x: 10, y: 20, height: 50 });
++    const out = node('o', { x: 900, y: 0 });
++    const c = model.layoutColumns({ nodes: [col, a, b, out], edges: [] });
++    const at = (id) => c.nodes.find((n) => n.id === id);
++    assert.deepEqual([at('b').x, at('b').y, at('b').width], [12, 44, 276], 'the higher card comes first');
++    assert.deepEqual([at('a').x, at('a').y], [12, 44 + 50 + 12]);
++    assert.equal(at('w').height, 44 + 50 + 12 + 100 + 12);
++    assert.deepEqual(at('o'), out, 'a card outside is left alone');
++    assert.equal(model.layoutColumns(c), c, 'a laid-out canvas is returned as it is');
++    const g = { id: 'g', type: 'group', x: 0, y: 0, width: 500, height: 500 };
++    assert.deepEqual(model.carried([g, a, out], g).map((n) => n.id), ['a']);
++  });
++
++  test('edges: facing sides, a curve between them, a label point between the ends', () => {
++    const a = node('a', { x: 0, y: 0, width: 100, height: 100 });
++    const b = node('b', { x: 300, y: 0, width: 100, height: 100 });
++    const g = model.edgeGeometry({ id: 'e', fromNode: 'a', toNode: 'b' }, a, b);
++    assert.deepEqual([g.fromSide, g.toSide, g.a, g.b], ['right', 'left', { x: 100, y: 50 }, { x: 300, y: 50 }]);
++    assert.match(g.d, /^M 100 50 C /);
++    assert.ok(g.mid.x > 100 && g.mid.x < 300);
++    assert.deepEqual(model.facingSides(a, node('c', { x: 0, y: 400 })), ['bottom', 'top']);
++    const c = model.connect({ nodes: [a, b], edges: [] }, 'a', 'b', seq(0.5));
++    assert.equal(c.edges.length, 1);
++    assert.equal(model.connect(c, 'a', 'b'), c, 'no duplicate');
++    assert.equal(model.connect(c, 'a', 'a'), c, 'no self-loop');
++  });
++
++  test('view: fit, zoom about a point, screen to world', () => {
++    const v = model.fitView({ x: 0, y: 0, width: 1000, height: 500 }, 1096, 596, 48);
++    assert.equal(v.zoom, 1);
++    assert.deepEqual([v.x, v.y], [48, 48]);
++    assert.deepEqual(model.fitView(null, 800, 600), { x: 400, y: 300, zoom: 1 });
++    const z = model.zoomAt({ x: 0, y: 0, zoom: 1 }, 2, 100, 100);
++    assert.deepEqual(model.toWorld(z, 100, 100), { x: 100, y: 100 }, 'the point under the pointer stays still');
++    assert.equal(model.clampZoom(99), model.ZOOM_MAX);
++  });
++
++  test('edits and history: remove takes its edges; duplicate copies edges between copies; undo / redo', () => {
++    const c = { nodes: [node('a'), node('b'), node('c')], edges: [{ id: 'e', fromNode: 'a', toNode: 'b' }] };
++    assert.deepEqual(model.removeIds(c, new Set(['b'])).edges, []);
++    const dup = model.duplicate(c, new Set(['a', 'b']), seq(0.3, 0.6, 0.9));
++    assert.equal(dup.canvas.nodes.length, 5);
++    assert.equal(dup.canvas.edges.length, 2);
++    let hst = model.history(c);
++    const c2 = model.moveBy(c, new Set(['a']), 8, 0);
++    hst = model.record(hst, c2);
++    assert.equal(model.record(hst, c2), hst, 'the same document records nothing');
++    hst = model.undo(hst);
++    assert.equal(hst.present, c);
++    hst = model.redo(hst);
++    assert.equal(hst.present, c2);
++  });
++
++  test('names and links: accessible names per kind; story cards open the real thing', () => {
++    assert.equal(model.cardName(node('s', { storyforge: { kind: 'swatch', name: 'Pearl Bush', hex: '#e8ddd4' } })), 'Swatch: Pearl Bush #E8DDD4');
++    assert.equal(model.cardName(node('t', { text: 'Shots\n- [x] a\n- [ ] b', storyforge: { kind: 'todo' } })), 'To-do: Shots (1 of 2 done)');
++    assert.equal(model.cardName({ type: 'file', file: 'x', storyforge: { ref: 'r' } }, { state: 'ok', kind: 'entry', title: 'Maren' }), 'Codex: Maren');
++    assert.equal(model.cardName({ type: 'link', url: 'mailto:a@b.example' }), 'Link: mailto:a@b.example');
++    assert.equal(model.storyHref('b', { kind: 'scene', id: 's' }), '/books/b?scene=s');
++    assert.equal(model.storyHref('b', { kind: 'entry', id: 'e', slug: 'maren' }), '/books/b/codex?entry=maren');
++    assert.equal(model.storyHref('b', { kind: 'thread', id: 't' }), '/books/b?view=threads&thread=t');
++    assert.equal(model.storyHref('b', { kind: 'event', id: 'v' }), '/books/b/timeline?event=v');
++    assert.equal(model.storyHref('b', { kind: 'research', id: 'n' }), '/books/b/notes?note=n');
++    assert.equal(model.safeUrl('javascript:alert(1)'), null);
++    assert.equal(model.inkOn('#FFFFFF'), '#141414');
++    assert.equal(model.inkOn('#000000'), '#F5F5F5');
++    assert.deepEqual(model.hexToRgb('#E8DDD4'), [232, 221, 212]);
++  });
++});
++
++describe('page', () => {
++  const render = (props = {}) =>
++    html(h(page.CanvasPage, { bookId: BOOK, list: d.list, slug: 'neon-shadows', onNew: () => {}, onArchive: () => {}, onRestore: () => {}, initial: d.open, ...props }));
++
++  test('the repository answer: refs resolve, targets list scenes and entries, the story card file was refreshed', () => {
++    assert.equal(d.open.refs.c1.state, 'ok');
++    assert.equal(d.open.refs.c1.title, 'Maren Hollis');
++    assert.equal(d.open.refs.c2.state, 'broken');
++    assert.equal(d.open.canvas.nodes.find((n) => n.id === 'c1').file, 'codex/characters/maren-hollis.md');
++    assert.ok(d.open.targets.some((t) => t.ref === KEY && t.kind === 'scene'));
++    assert.deepEqual(d.list.canvases.map((c) => [c.slug, c.title, c.nodes]), [['neon-shadows', 'Neon Shadows', 8]]);
++  });
++
++  test('every kind of card renders with its name; links are safe; the toolbar names every tool', () => {
++    const markup = render();
++    for (const name of ['Note: Atmosphere', 'To-do: Shot list (1 of 2 done)', 'Swatch: Pearl Bush #E8DDD4', 'Codex: Maren Hollis', 'Story card: missing entry_GONE', 'Image: city.png', 'Link: example.com', 'Column: Central themes']) {
++      assert.ok(markup.includes(`aria-label="${name}`), name);
++    }
++    assert.match(markup, /href="https:\/\/example\.com\/a" target="_blank" rel="noopener noreferrer"/);
++    assert.doesNotMatch(markup, /href="javascript:/);
++    assert.match(markup, /Missing from the book/);
++    assert.match(markup, /href="\/books\/book_01S5000000000000000000000A\/codex\?entry=maren-hollis"/);
++    assert.match(markup, /src="\/api\/books\/book_01S5000000000000000000000A\/attachments\?path=assets%2Fcanvas%2Fcity\.png"/);
++    assert.match(markup, /RGB \(232, 221, 212\)/);
++    assert.match(markup, /type="checkbox" aria-label="Task: alley" checked=""/);
++    assert.match(markup, /type="checkbox" aria-label="Task: rooftop"\/>/);
++    assert.match(markup, /class="cv-edge-label"[^>]*>leads to</);
++    const toolbar = /<div class="cv-toolbar" role="toolbar" aria-label="Add to the canvas">([\s\S]*?)<\/div>/.exec(markup)[1];
++    assert.deepEqual([...toolbar.matchAll(/aria-label="([^"]+)"/g)].map((x) => x[1]), ['Note', 'To-do list', 'Colour swatch', 'Image', 'Story card', 'Web link', 'Column', 'Group', 'Connect two cards']);
++    assert.match(toolbar, /aria-keyshortcuts="N"/);
++    assert.match(markup, /planning\/canvases\/neon-shadows\.canvas/);
++  });
++
++  test('cards come in reading order (top-left first) so Tab walks them sensibly', () => {
++    const markup = render();
++    const names = [...markup.matchAll(/class="cv-node cv-(?!column|group)[^"]*"[^>]*aria-label="([^"]+)"/g)].map((x) => x[1].split(':')[0]);
++    assert.deepEqual(names, ['Note', 'To-do', 'Swatch', 'Codex', 'Story card', 'Image', 'Link']);
++  });
++
++  test('an empty book: the start panel and the New canvas button; an unreadable file opens read-only without a toolbar', () => {
++    const empty = html(h(page.CanvasPage, { bookId: BOOK, list: { canvases: [], archived: [] }, slug: null, onNew: () => {}, onArchive: () => {}, onRestore: () => {} }));
++    assert.match(empty, /Start a canvas/);
++    assert.equal([...empty.matchAll(/>New canvas</g)].length, 2);
++    const broken = render({ initial: { ...d.open, problem: 'not JSON', canvas: { nodes: [], edges: [] } } });
++    assert.match(broken, /cannot be read as a canvas \(not JSON\)/);
++    assert.doesNotMatch(broken, /role="toolbar"/);
++  });
++
++  test('archived canvases are listed with Restore', () => {
++    const markup = render({ list: { ...d.list, archived: [{ slug: 'old', title: 'Old board', nodes: 0 }] } });
++    assert.match(markup, /Archived \(1\)/);
++    assert.match(markup, /Old board/);
++    assert.match(markup, />Restore</);
++  });
++
++  test('accessibility audit of the page', () => {
++    assert.deepEqual(audit(`<main id="main">${render()}</main>`, { landmarks: ['main'] }), []);
++  });
++});
+diff --git a/apps/web/test/customization.test.mjs b/apps/web/test/customization.test.mjs
+index 3567f23..8bff765 100644
+--- a/apps/web/test/customization.test.mjs
++++ b/apps/web/test/customization.test.mjs
+@@ -217,8 +217,8 @@ describe('modules', () => {
+   const tabs = (markup) => [...walk(parse(markup))].filter((n) => n.attrs.class === 'project-tab').map((n) => n.attrs.href.replace('/books/book_1', '') || '/');
+   test('a tab of a module that is off disappears from the project navigation', () => {
+     const on = html(withPrefs(prefs(), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
+-    assert.deepEqual(tabs(on), ['/', '/codex', '/timeline', '/continuity', '/places', '/notes']);
+-    const off = html(withPrefs(prefs({ off: ['timeline', 'continuity', 'research'] }), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
++    assert.deepEqual(tabs(on), ['/', '/codex', '/timeline', '/continuity', '/places', '/notes', '/canvas']);
++    const off = html(withPrefs(prefs({ off: ['timeline', 'continuity', 'research', 'board'] }), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
+     assert.deepEqual(tabs(off), ['/', '/codex', '/places']);
+   });
+ 
+@@ -227,6 +227,7 @@ describe('modules', () => {
+     assert.equal(m.tabModule('tasks'), 'tasks');
+     assert.equal(m.tabModule('timeline'), 'timeline');
+     assert.equal(m.tabModule('notes'), 'research');
++    assert.equal(m.tabModule('canvas'), 'board', 'M09-J01: the Canvas follows the board module');
+     assert.equal(m.tabModule('codex'), null);
+     assert.deepEqual(m.MODULES.map((x) => x.id), Object.keys(ALL_ON));
+   });
+diff --git a/apps/web/test/insights-tasks.test.mjs b/apps/web/test/insights-tasks.test.mjs
+index 79a0f84..e970cb3 100644
+--- a/apps/web/test/insights-tasks.test.mjs
++++ b/apps/web/test/insights-tasks.test.mjs
+@@ -53,18 +53,18 @@ const page = (props) => html(h(mod('/src/insights/InsightsPage.jsx').InsightsPag
+ const tasksPage = (props) => html(h(mod('/src/tasks/TasksPage.jsx').TasksPage, { bookId: BOOK, data: d.tasks, ...props }));
+ 
+ describe('routes and navigation', () => {
+-  test('/books/:id/insights and /tasks are tabs; their hrefs parse back; the six project tabs are untouched', () => {
++  test('/books/:id/insights and /tasks are tabs; their hrefs parse back; the project tabs are untouched (M09-J01 added Canvas after Notes)', () => {
+     const { parseRoute, tabHref, PROJECT_TABS, MORE_TABS } = mod('/src/routes.js');
+     assert.deepEqual(parseRoute(`/books/${BOOK}/insights`), { name: 'tab', bookId: BOOK, tab: 'insights' });
+     assert.deepEqual(parseRoute(`/books/${BOOK}/tasks`, '?task=x'), { name: 'tab', bookId: BOOK, tab: 'tasks' });
+     assert.equal(tabHref(BOOK, 'insights'), `/books/${BOOK}/insights`);
+     assert.equal(tabHref(BOOK, 'tasks'), `/books/${BOOK}/tasks`);
+-    assert.deepEqual(PROJECT_TABS.map((t) => t.key), ['manuscript', 'codex', 'timeline', 'continuity', 'places', 'notes']);
++    assert.deepEqual(PROJECT_TABS.map((t) => t.key), ['manuscript', 'codex', 'timeline', 'continuity', 'places', 'notes', 'canvas']);
+     assert.deepEqual(MORE_TABS.map((t) => t.label), ['Insights', 'Tasks']);
+     assert.equal(parseRoute(`/books/${BOOK}/nope`).name, 'notfound');
+   });
+ 
+-  test('the shell has the project nav (six links) and a second, named nav with Insights and Tasks; aria-current marks the active one', () => {
++  test('the shell has the project nav (seven links) and a second, named nav with Insights and Tasks; aria-current marks the active one', () => {
+     const shell = (tab) => html(h(mod('/src/shell/AppShell.jsx').AppShell, { books: d.books, bookId: BOOK, tab }, h('main', { id: 'main' }, h('h1', null, 'x'))));
+     const markup = shell('insights');
+     assert.equal([...markup.matchAll(/<nav\b[^>]*aria-label="Project"/g)].length, 1);
+diff --git a/apps/web/test/render.test.mjs b/apps/web/test/render.test.mjs
+index 29f916e..513f55b 100644
+--- a/apps/web/test/render.test.mjs
++++ b/apps/web/test/render.test.mjs
+@@ -137,7 +137,7 @@ test('workspace: rail nav, main and inspector aside in that order, with the Chap
+   assert.match(html, /data-open="false"/);
+ });
+ 
+-test('project nav: six real links, aria-current only on the active tab', () => {
++test('project nav: seven real links, aria-current only on the active tab', () => {
+   for (const [tab, label] of [
+     ['manuscript', 'Manuscript'],
+     ['codex', 'Codex'],
+@@ -145,14 +145,15 @@ test('project nav: six real links, aria-current only on the active tab', () => {
+     ['continuity', 'Continuity'],
+     ['places', 'Places'],
+     ['notes', 'Notes'],
++    ['canvas', 'Canvas'],
+   ]) {
+     const html = render(h(m.ProjectNav, { bookId: BOOK_ID, active: tab }));
+-    assert.equal(count(html, /<a /g), 6);
++    assert.equal(count(html, /<a /g), 7);
+     assert.equal(count(html, /aria-current="page"/g), 1);
+     assert.match(html, new RegExp(`aria-current="page"[^>]*>${label}<|class="project-tab" aria-current="page">${label}<`));
+   }
+   const html = render(h(m.ProjectNav, { bookId: BOOK_ID, active: 'codex' }));
+-  for (const href of ['', '/codex', '/timeline', '/continuity', '/places', '/notes']) assert.ok(html.includes(`href="/books/${BOOK_ID}${href}"`), href);
++  for (const href of ['', '/codex', '/timeline', '/continuity', '/places', '/notes', '/canvas']) assert.ok(html.includes(`href="/books/${BOOK_ID}${href}"`), href);
+ });
+ 
+ test('top bar: logo link, book switcher button, save status, search and no Share or avatar', () => {
+diff --git a/apps/web/test/state.test.mjs b/apps/web/test/state.test.mjs
+index 6ded363..bb85327 100644
+--- a/apps/web/test/state.test.mjs
++++ b/apps/web/test/state.test.mjs
+@@ -58,7 +58,7 @@ test('routes: library, book, scene, raw file, tabs and unknown paths', () => {
+ test('routes: every project tab has a link that parses back to itself', () => {
+   assert.deepEqual(
+     PROJECT_TABS.map((t) => t.label),
+-    ['Manuscript', 'Codex', 'Timeline', 'Continuity', 'Places', 'Notes'],
++    ['Manuscript', 'Codex', 'Timeline', 'Continuity', 'Places', 'Notes', 'Canvas'],
+   );
+   for (const t of PROJECT_TABS) {
+     const route = parseRoute(tabHref('book one', t.key));
+diff --git a/apps/web/test/timeline-notes.test.mjs b/apps/web/test/timeline-notes.test.mjs
+index abc2293..a618b25 100644
+--- a/apps/web/test/timeline-notes.test.mjs
++++ b/apps/web/test/timeline-notes.test.mjs
+@@ -975,7 +975,7 @@ describe('acceptance 7: Research sections and the Places tab', () => {
+   });
+ 
+   test('routes: Timeline, Places and Notes are real project tabs in order; /books/:id/places|timeline|notes parse as tabs; places URLs round-trip', () => {
+-    assert.deepEqual(mod.routes.PROJECT_TABS.map((t) => t.key), ['manuscript', 'codex', 'timeline', 'continuity', 'places', 'notes']);
++    assert.deepEqual(mod.routes.PROJECT_TABS.map((t) => t.key), ['manuscript', 'codex', 'timeline', 'continuity', 'places', 'notes', 'canvas']);
+     for (const tab of ['timeline', 'places', 'notes']) assert.deepEqual(mod.routes.parseRoute(`/books/${SO}/${tab}`), { name: 'tab', bookId: SO, tab });
+     assert.equal(mod.routes.tabHref(SO, 'places'), `/books/${SO}/places`);
+     assert.equal(mod.codex.placesHref(SO), `/books/${SO}/places`);
+diff --git a/docs/contracts/M09-J01-canvas.md b/docs/contracts/M09-J01-canvas.md
+new file mode 100644
+index 0000000..76d0d2b
+--- /dev/null
++++ b/docs/contracts/M09-J01-canvas.md
+@@ -0,0 +1,97 @@
++# M09-J01 contract — Canvas (visual moodboard and planning board)
++
++Binding: FORMAT-v1 §1 (book folder, files are canonical), §6.3 (planning), §9 (`.storyforge/` is disposable); contracts M01-J01 (layer rule), M04-J03 (board patterns),
++M04-J04 §4 (attachments: upload, serve, allowlist), M07-J03 §3 (route policy), M07-J04 (modules).
++
++Inspiration: Storyflow-style infinite canvases (notes, image walls, colour swatches, connectors, columns). StoryForge's version keeps every canvas a plain file in the book
++folder, in an open format, and makes the book itself (scenes, Codex entries, threads, events, research notes) something you can drop onto the canvas.
++
++## 1. Format
++
++- One canvas = one file: `planning/canvases/<slug>.canvas`, UTF-8 JSON in the **JSON Canvas 1.0** format (jsoncanvas.org; the format Obsidian uses). Opening the book
++  folder as an Obsidian vault shows the same canvas; every StoryForge extra degrades to a plain JSON Canvas node.
++- Top level: `{ "nodes": [...], "edges": [...], "storyforge": { "schema": "storyforge.canvas/v1", "title": "..." } }`. `storyforge` is optional; without it the title is the
++  slug. Unknown keys (top level, node, edge) are kept on save.
++- Node types (JSON Canvas `type`) and the StoryForge kinds layered on them (`node.storyforge.kind`):
++
++| What the author sees | JSON Canvas | `storyforge` extra | Without StoryForge |
++|---|---|---|---|
++| Note | `text` (Markdown) | — | a text card |
++| To-do list | `text` with `- [ ]` / `- [x]` lines | `{ kind: "todo" }` | a task list |
++| Colour swatch | `text`, `color: "#rrggbb"`, text `**Name**` + hex | `{ kind: "swatch", name, hex }` | a coloured text card |
++| Image | `file` → `assets/canvas/<name>` | — | an image |
++| Story card | `file` → the object's book-relative `.md` path | `{ ref: "<id>" }` | a file embed |
++| Web link | `link` (`url`) | — | a link card |
++| Group | `group` (`label`) | — | a group |
++| Column ("wall") | `group` (`label`) | `{ kind: "column" }` | a group |
++
++- Edges: JSON Canvas edges (`fromNode`, `fromSide`, `toNode`, `toSide`, `fromEnd`, `toEnd`, `color`, `label`). Default `toEnd: "arrow"`.
++- **Story cards are by id.** `storyforge.ref` is the permanent id of a scene, entry, thread, event or note; `file` is a convenience copy that StoryForge refreshes to the
++  object's current path on every save (a scene that moves chapters keeps its card). A ref that no longer resolves is shown as a broken card, never removed.
++- Not canon: a canvas is planning material. It is never exported, never counted, never read by continuity. It is in backups (it is a file in the book).
++
++### 1.1 Validation (`parseCanvas`, `@storyforge/format`, pure)
++
++Refused on save with `REFUSED_BAD_CANVAS` (400, `message` names the node or edge and the rule); a file on disk that breaks a rule is listed with its `problem` and opens read-only.
++
++- The document is a JSON object; `nodes` and `edges` are arrays (missing = empty). At most 2,000 nodes, 4,000 edges, 5 MB serialised.
++- `id`: string, 1–64 characters, unique across nodes and edges.
++- `x`, `y`, `width`, `height`: finite numbers (saved rounded to integers); `width`, `height` ≥ 1.
++- `color`: `"1"`–`"6"` or `#rgb` / `#rrggbb`.
++- `text`: string ≤ 100,000 characters. `link.url`: `http:`, `https:` or `mailto:` only. `file`: book-relative, forward slashes, no `..`, no leading `/`, no `\`, no NUL.
++- `storyforge.ref`: string ≤ 80. `storyforge.hex`: `#rrggbb`. `storyforge.kind`: any short string; `todo`, `swatch`, `column` are understood, others shown as their base type.
++- Edge `fromNode` / `toNode` name a node; sides `top|right|bottom|left`; ends `none|arrow`.
++
++## 2. API
++
++| Route | Class | Answer |
++|---|---|---|
++| `GET /api/books/:b/canvases` | read | `{ canvases: [{ slug, title, path, nodes, edges, sha256, updated_at, problem }], archived: [...] }` |
++| `GET /api/books/:b/canvases/:slug` | read | `{ slug, title, path, sha256, canvas, problem, refs: { <nodeId>: { state, kind, id, title, summary, path } }, targets: [...] }` |
++| `POST /api/books/:b/canvases` `{ title, slug?, dryRun? }` | write | 201 `{ slug, path }`; `REFUSED_PATH_TAKEN` 409 |
++| `PUT /api/books/:b/canvases/:slug` `{ canvas, base_sha256 }` | write | 200 `{ sha256 }`; 409 `{ current: { sha256, canvas } }`; 400 `REFUSED_BAD_CANVAS` |
++| `POST /api/books/:b/canvases/:slug/archive` / `restore` `{ base_sha256?, dryRun? }` | write | moves to / from `archive/planning/canvases/` |
++| `POST /api/books/:b/attachments?name=…&for=canvas` | write | as M04-J04 §4, stored under `assets/canvas/` |
++
++- `refs[nodeId].state`: `ok` | `archived` | `broken`. `kind`: `scene` | `entry` | `thread` | `event` | `research` | `doc` | `source`.
++- `targets`: everything a story card may point at (scenes in book order, live entries, threads, events, research notes): `{ ref, kind, title, subtitle }`.
++- Writes go through the store (single writer). Create, archive and restore are one batch with a dry run and never delete. The save is a whole-file write guarded by `base_sha256`.
++- Module: the canvas routes and tab belong to the `board` module (off → tab hidden, writes 403 `MODULE_OFF`).
++
++## 3. UI — `/books/:id/canvas`
++
++- **Canvas list** (left): canvases with card counts, New canvas, Archive, archived canvases with Restore.
++- **Board:** infinite pan/zoom (the scroll wheel zooms around the pointer; drag empty space or Shift+wheel to pan; the zoom buttons; Fit), select (click, Shift+click), move (drag; arrow keys nudge by 8, Shift by 40),
++  resize (corner handle), delete (Delete / Backspace), duplicate (Ctrl/⌘+D), Undo / Redo (Ctrl/⌘+Z / Ctrl/⌘+Shift+Z, in memory).
++- **Toolbar** (bottom, Storyflow-style), each with a key: Note `N`, To-do `T`, Swatch `S`, Image `I` (upload), Story card `C` (picker over `targets`), Link `L`,
++  Column `W`, Group `G`, Connect `A` (click a card, then another).
++- **Cards:** notes render Markdown safely (escaped; http(s) links open in a new tab; nothing is fetched); double-click or Enter edits. To-do boxes toggle in place.
++  Swatches show the colour, name, hex and RGB. Story cards show kind, title, summary and Open (goes to the scene in Write view or the object's page). Images use the
++  attachment route. Links show host and URL and open in a new tab.
++- **Columns:** a card dropped inside a column is stacked into it (top to bottom, the column's width, 12 px gaps); the column grows to fit. Dragging the column moves its cards.
++- **Saving:** every change saves itself (debounced 800 ms) with `base_sha256`. A 409 shows "This canvas changed on disk" with **Load the file** / **Keep mine** (saves over
++  it with the new `base_sha256`). Status line: Saved / Saving / Not saved (with Retry).
++- Accessibility: every card is focusable with a name ("Note: …", "Swatch: Pearl Bush #E8DDD4"); Tab walks cards in reading order (top-left first); the toolbar is a labelled
++  toolbar; Enter edits, Escape leaves editing.
++
++## 4. Acceptance
++
++1. **Plain file, open format:** a canvas made through the API is `planning/canvases/<slug>.canvas`, valid JSON Canvas; a canvas written by hand in JSON Canvas (no
++   `storyforge` keys) opens and saves without losing unknown keys.
++2. **Story cards follow the book:** after a scene move (M03-J03) the canvas `refs` resolve to the new path, and the next save rewrites `file`; an archived target is
++   `archived`, a missing one `broken`, and neither is removed.
++3. **Refusals write nothing:** a bad canvas is 400 `REFUSED_BAD_CANVAS` and the file is byte-identical; a stale `base_sha256` is 409 with the current canvas.
++4. **Survive cache loss:** delete `.storyforge/`, reload: the canvas list and every canvas are identical (they are read from the files).
++5. **Validation is unchanged:** adding canvases adds no diagnostics to `validate()`.
++6. **Policy:** every new write route has a class in `WRITE_CLASSES`; a share link reads no canvas.
++7. **Tests:** `parseCanvas` rules; route tests for 1–5; web model tests for column layout, edge geometry, Markdown rendering and the history stack; render tests for the
++   page, each card kind, a broken story card and the conflict banner.
++8. **Manual (real browser):** make a canvas; add a note, a to-do (tick it), a swatch, an uploaded image, a story card for a character and a scene, a link, a column with
++   three cards, an arrow with a label; reload — all there; open the file in a text editor — it is readable JSON Canvas.
++
++`npm ci && npm run build && npm run lint && npm test` pass on a clean clone.
++
++## 5. Not in this job (follow-ups)
++
++AI image cards (M05 AI workshop, preview and Send), freehand drawing, tables, nested canvases (a card that opens another canvas), marquee selection, real-time multi-user
++editing in shared mode (today: the last writer gets the 409 banner), search over canvas text, MCP / API v1 canvas tools, Present mode.
+diff --git a/docs/format.md b/docs/format.md
+index 4c7a2d0..64b2583 100644
+--- a/docs/format.md
++++ b/docs/format.md
+@@ -17,7 +17,7 @@ my-library/                  any folder; holds one or more books
+           0010-arrival.md    one scene per file
+           0020-the-key.md
+     codex/                   characters, locations, factions, objects, lore (one file each)
+-    planning/                plot threads, timeline events, plans
++    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas)
+     research/                research notes and sources
+     assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
+     activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
+@@ -51,7 +51,7 @@ Scenes marked as an alternate version of another scene (`variant_of`) are kept b
+ | --- | --- |
+ | Scenes in `manuscript/` | `research/` notes (canon only if a note says `canon: true`) |
+ | `codex/` entries | `suggestions/` until you accept them |
+-| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text) |
++| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards |
+ | `book.md`, `act.md`, `chapter.md` | `archive/` (left out of order, counts and export) |
+ | `assets/` the book uses | `legacy/` (see below) |
+ 
+diff --git a/packages/core/src/fs-canvas.mjs b/packages/core/src/fs-canvas.mjs
+new file mode 100644
+index 0000000..72c0719
+--- /dev/null
++++ b/packages/core/src/fs-canvas.mjs
+@@ -0,0 +1,168 @@
++// FsRepository canvases (M09-J01): planning/canvases/<slug>.canvas, JSON Canvas files. Reads come from the files on every call (nothing is kept in the index), so a
++// canvas edited outside the app shows up on the next read and deleting .storyforge/ changes nothing. Writes go through @storyforge/manuscript (the store).
++// No filesystem access here: listing and reading are the `listDir` / `readFileAt` functions fs-repository.mjs passes in.
++import { createHash } from 'node:crypto';
++import path from 'node:path';
++import { CANVAS_DIR, CANVAS_EXT, canvasTitle, extractDocs, parseCanvas, validate } from '@storyforge/format';
++import { archiveCanvas, createCanvas, restoreCanvas, saveCanvas } from '@storyforge/manuscript';
++
++const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
++const str = (v) => (typeof v === 'string' && v.trim() !== '' ? v : null);
++const SLUG_OF_RE = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.canvas$/;
++const TARGET_KINDS = ['scene', 'entry', 'thread', 'event', 'research', 'doc', 'source'];
++const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
++
++/**
++ * @param {{ root: string, readValidate?: () => Promise<any>, listDir: (libRel: string) => Promise<string[]>, readFileAt: (libRel: string) => Promise<{ bytes: Buffer, mtimeMs: number } | null>,
++ *   afterWrite?: (bookPath: string) => void }} deps
++ */
++export function createCanvasMethods({ root, readValidate = () => validate(root), listDir, readFileAt, afterWrite = () => {} }) {
++  async function load(bookId) {
++    const result = await readValidate();
++    const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
++    if (!book) return null;
++    const prefix = book.path ? `${book.path}/` : '';
++    return { result, book, prefix, bookRoot: book.path === '' ? root : path.join(root, ...book.path.split('/')) };
++  }
++
++  /** Every canvas file of one folder: [{ slug, title, path, nodes, edges, sha256, updated_at, problem }] sorted by title. */
++  async function listIn(ctx, folder) {
++    const out = [];
++    for (const name of await listDir(`${ctx.prefix}${folder}`)) {
++      const m = SLUG_OF_RE.exec(name);
++      if (!m) continue;
++      const rel = `${folder}/${name}`;
++      const f = await readFileAt(`${ctx.prefix}${rel}`);
++      if (!f) continue;
++      const parsed = parseCanvas(f.bytes.toString('utf8'));
++      out.push({
++        slug: m[1],
++        title: parsed.ok ? canvasTitle(parsed.canvas, m[1]) : m[1],
++        path: rel,
++        nodes: parsed.ok ? parsed.canvas.nodes.length : 0,
++        edges: parsed.ok ? parsed.canvas.edges.length : 0,
++        sha256: sha(f.bytes),
++        updated_at: new Date(f.mtimeMs).toISOString(),
++        problem: parsed.ok ? null : parsed.message,
++      });
++    }
++    return out.sort((a, b) => a.title.localeCompare(b.title) || a.slug.localeCompare(b.slug));
++  }
++
++  /** What a story card may point at, and how to resolve one: { targets, resolve(ref) }. */
++  function storyIndex(ctx) {
++    const docs = extractDocs(ctx.result, ctx.book.path).filter((d) => TARGET_KINDS.includes(d.kind) && typeof d.fm.id === 'string');
++    const order = new Map(ctx.book.order.map((s) => [s.id, s]));
++    const bookRel = (file) => (ctx.prefix && file.startsWith(ctx.prefix) ? file.slice(ctx.prefix.length) : file);
++    const titleOf = (d) => str(d.fm.title) ?? str(d.fm.name) ?? str(d.fm.slug) ?? d.fm.id;
++    const subtitleOf = (d) => {
++      if (d.kind === 'scene') {
++        const s = order.get(d.fm.id);
++        return s ? `${s.chapter_label ?? `Chapter ${s.chapter}`} · scene ${s.position}` : 'Not in the book order';
++      }
++      if (d.kind === 'entry') return str(d.fm.type) ?? 'entry';
++      if (d.kind === 'thread') return str(d.fm.status) ?? 'thread';
++      if (d.kind === 'event') return str(d.fm.when) ?? 'event';
++      return d.kind === 'doc' ? 'planning doc' : d.kind;
++    };
++    const byId = new Map();
++    for (const d of docs) {
++      const prev = byId.get(d.fm.id);
++      if (!prev || (prev.archived && !d.archived)) byId.set(d.fm.id, d);
++    }
++    const live = docs.filter((d) => !d.archived);
++    const rank = (d) => (d.kind === 'scene' ? (order.get(d.fm.id)?.position ?? 1e9) : 0);
++    const targets = live
++      .filter((d) => d.kind !== 'scene' || order.has(d.fm.id))
++      .sort((a, b) => TARGET_KINDS.indexOf(a.kind) - TARGET_KINDS.indexOf(b.kind) || rank(a) - rank(b) || titleOf(a).localeCompare(titleOf(b)))
++      .map((d) => ({ ref: d.fm.id, kind: d.kind, title: titleOf(d), subtitle: subtitleOf(d), slug: str(d.fm.slug) }));
++    const resolve = (ref) => {
++      const d = byId.get(ref) ?? docs.find((x) => x.fm.slug === ref);
++      if (!d) return { state: 'broken', kind: null, id: ref, title: null, summary: null, path: null, slug: null };
++      return { state: d.archived ? 'archived' : 'ok', kind: d.kind, id: d.fm.id, title: titleOf(d), summary: str(d.fm.summary) ?? subtitleOf(d), path: bookRel(d.file), slug: str(d.fm.slug) };
++    };
++    return { targets, resolve };
++  }
++
++  /** Copy of the canvas with every story card's `file` set to its target's current path (a broken or archived target keeps its path). */
++  function refreshPaths(canvas, resolve) {
++    let changed = false;
++    const nodes = canvas.nodes.map((n) => {
++      const ref = n?.storyforge?.ref;
++      if (n?.type !== 'file' || typeof ref !== 'string') return n;
++      const r = resolve(ref);
++      if (r.state !== 'ok' || r.path === n.file) return n;
++      changed = true;
++      return { ...n, file: r.path };
++    });
++    return changed ? { ...canvas, nodes } : canvas;
++  }
++
++  return {
++    /** GET /api/books/:b/canvases. Null when there is no such book. */
++    async listCanvases(bookId) {
++      const ctx = await load(bookId);
++      if (!ctx) return null;
++      return { canvases: await listIn(ctx, CANVAS_DIR), archived: await listIn(ctx, `archive/${CANVAS_DIR}`) };
++    },
++
++    /** GET /api/books/:b/canvases/:slug: { slug, title, path, sha256, canvas, problem, refs, targets }. Null when there is no such book or canvas. */
++    async getCanvas(bookId, slug) {
++      if (typeof slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
++      const ctx = await load(bookId);
++      if (!ctx) return null;
++      const rel = `${CANVAS_DIR}/${slug}${CANVAS_EXT}`;
++      const f = await readFileAt(`${ctx.prefix}${rel}`);
++      if (!f) return null;
++      const text = f.bytes.toString('utf8');
++      const parsed = parseCanvas(text);
++      const { targets, resolve } = storyIndex(ctx);
++      const canvas = parsed.ok ? parsed.canvas : { nodes: [], edges: [] };
++      const refs = {};
++      for (const n of canvas.nodes) if (typeof n?.storyforge?.ref === 'string') refs[n.id] = resolve(n.storyforge.ref);
++      return { slug, title: parsed.ok ? canvasTitle(canvas, slug) : slug, path: rel, sha256: sha(f.bytes), canvas, problem: parsed.ok ? null : parsed.message, refs, targets };
++    },
++
++    async createCanvas(bookId, args = {}) {
++      const ctx = await load(bookId);
++      if (!ctx) return fail('NOT_FOUND');
++      const r = await createCanvas(ctx.bookRoot, args);
++      if (r.ok && !r.dryRun) afterWrite(ctx.book.path);
++      return r;
++    },
++
++    /** Save the whole canvas (story-card paths refreshed first). CONFLICT carries `current: { sha256, canvas }`. */
++    async saveCanvas(bookId, slug, { canvas, baseSha256 } = {}) {
++      const ctx = await load(bookId);
++      if (!ctx) return fail('NOT_FOUND');
++      const parsed = parseCanvas(canvas);
++      const next = parsed.ok ? refreshPaths(parsed.canvas, storyIndex(ctx).resolve) : canvas;
++      const r = await saveCanvas(ctx.bookRoot, slug, { canvas: next, baseSha256 });
++      if (r.ok) {
++        if (r.changes?.length) afterWrite(ctx.book.path);
++        return r;
++      }
++      if (r.code === 'CONFLICT' && r.current) {
++        const now = parseCanvas(r.current.text);
++        return { ...r, current: { sha256: r.current.sha256, canvas: now.ok ? now.canvas : null, problem: now.ok ? null : now.message } };
++      }
++      return r;
++    },
++
++    async archiveCanvas(bookId, slug, args = {}) {
++      const ctx = await load(bookId);
++      if (!ctx) return fail('NOT_FOUND');
++      const r = await archiveCanvas(ctx.bookRoot, slug, args);
++      if (r.ok && !r.dryRun) afterWrite(ctx.book.path);
++      return r;
++    },
++
++    async restoreCanvas(bookId, slug, args = {}) {
++      const ctx = await load(bookId);
++      if (!ctx) return fail('NOT_FOUND');
++      const r = await restoreCanvas(ctx.bookRoot, slug, args);
++      if (r.ok && !r.dryRun) afterWrite(ctx.book.path);
++      return r;
++    },
++  };
++}
+diff --git a/packages/core/src/fs-repository.mjs b/packages/core/src/fs-repository.mjs
+index 9ef8547..99b4b7f 100644
+--- a/packages/core/src/fs-repository.mjs
++++ b/packages/core/src/fs-repository.mjs
+@@ -23,6 +23,7 @@ import { createInsightReads } from './fs-insights.mjs';
+ import { registerReceiptEngine } from './provenance.mjs';
+ import { createReceiptEngine } from './receipts.mjs';
+ import { createTimelineReads } from './fs-timeline.mjs';
++import { createCanvasMethods } from './fs-canvas.mjs';
+ import { countWords } from './word-count.mjs';
+ 
+ /** @typedef {import('./repository.mjs').FileRepository} FileRepository */
+@@ -1289,5 +1290,32 @@ export function createFsRepository(libraryRoot, options = {}) {
+   Object.assign(repository, createGoalMethods({ root, activity, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook }));
+   Object.assign(repository, createTaskMethods({ root, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook, now: options.clock }));
+   Object.assign(repository, createInsightReads({ root, manager, readValidate, activity, now: options.clock }));
++  // M09-J01: canvases (planning/canvases/*.canvas). Read from the files on every call; this module lists and reads for them.
++  Object.assign(
++    repository,
++    createCanvasMethods({
++      root,
++      readValidate,
++      afterWrite: (p) => manager.afterWrite(p),
++      async listDir(libRel) {
++        try {
++          return (await readdir(abs(libRel), { withFileTypes: true })).filter((e) => e.isFile() && !e.name.startsWith('.')).map((e) => e.name).sort();
++        } catch {
++          return [];
++        }
++      },
++      async readFileAt(libRel) {
++        try {
++          const real = await realpath(abs(libRel));
++          const rel = path.relative(await realpath(root), real);
++          if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
++          const [bytes, st] = await Promise.all([readFile(real), stat(real)]);
++          return st.isFile() ? { bytes, mtimeMs: st.mtimeMs } : null;
++        } catch {
++          return null;
++        }
++      },
++    }),
++  );
+   return repository;
+ }
+diff --git a/packages/core/src/fs-writes.mjs b/packages/core/src/fs-writes.mjs
+index 85419c0..76ffd47 100644
+--- a/packages/core/src/fs-writes.mjs
++++ b/packages/core/src/fs-writes.mjs
+@@ -557,14 +557,14 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
+      * Store an uploaded file as assets/research/<safe-name> (the store is the only writer; a taken name gets -2, -3). `notePath` is the note's book-relative path
+      * (or its id): the returned `markdown` is the link to insert relative to that note's folder. Refusals: BAD_NAME / BAD_ARGS (400), UNSUPPORTED_TYPE (415), TOO_LARGE (413).
+      */
+-    async uploadAttachment(bookId, { name, bytes, note } = {}) {
++    async uploadAttachment(bookId, { name, bytes, note, purpose } = {}) {
+       let notePath = note;
+       if (typeof note === 'string' && /^note_/.test(note)) {
+         const found = await findBook(bookId);
+         const doc = found ? extractDocs(await validate(root), found.book.path).find((d) => d.fm.id === note && !d.archived) : null;
+         notePath = doc ? doc.rel : undefined;
+       }
+-      return structure(bookId, (b) => uploadAttachment(b, { name, bytes, ...(typeof notePath === 'string' ? { notePath } : {}) }));
++      return structure(bookId, (b) => uploadAttachment(b, { name, bytes, ...(typeof notePath === 'string' ? { notePath } : {}), ...(purpose !== undefined ? { purpose } : {}) }));
+     },
+ 
+     /** Replace the body of a live event / research note / planning doc / source (the text after its front matter), keeping the front matter bytes. Same conflict rule as an entry body. */
+diff --git a/packages/core/src/repository.mjs b/packages/core/src/repository.mjs
+index 25dab49..b682986 100644
+--- a/packages/core/src/repository.mjs
++++ b/packages/core/src/repository.mjs
+@@ -219,6 +219,12 @@
+  *   setLabels(bookId: string, args: { scope?: 'book' | 'series', labels: { name: string, color: string }[], dryRun?: boolean }): Promise<StructureResult>,
+  *   getLinkTargets(bookId: string): Promise<{ book: any[], series: { slug: string, title: string | null, items: any[] } | null, books: { id: string, slug: string, title: string | null, items: any[] }[] } | null>,
+  *   saveAsTemplate(bookId: string, meta: { name?: string, title: string, description?: string }): Promise<WriteResult & { name?: string, path?: string }>,
++ *   listCanvases(bookId: string): Promise<{ canvases: any[], archived: any[] } | null>,  (M09-J01: planning/canvases/*.canvas)
++ *   getCanvas(bookId: string, slug: string): Promise<{ slug: string, title: string, path: string, sha256: string, canvas: any, problem: string | null, refs: Record<string, any>, targets: any[] } | null>,
++ *   createCanvas(bookId: string, args: { title: string, slug?: string, dryRun?: boolean }): Promise<StructureResult>,
++ *   saveCanvas(bookId: string, slug: string, args: { canvas: unknown, baseSha256: string }): Promise<WriteResult & { sha256?: string, current?: { sha256: string, canvas: any } }>,
++ *   archiveCanvas(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
++ *   restoreCanvas(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
+  *   close(): Promise<void>,
+  * }} FileRepository
+  *   While a book is `invalid` (a file broke outside the app) getBook serves the last valid structure plus `index_state`,
+diff --git a/packages/format/src/canvas.mjs b/packages/format/src/canvas.mjs
+new file mode 100644
+index 0000000..2287bba
+--- /dev/null
++++ b/packages/format/src/canvas.mjs
+@@ -0,0 +1,124 @@
++// M09-J01: canvases (planning/canvases/<slug>.canvas). JSON Canvas 1.0 (jsoncanvas.org) plus an optional `storyforge` object on the document and on nodes.
++// Pure: no filesystem access. parseCanvas() checks a document and returns a normalised copy (coordinates rounded, unknown keys kept); serializeCanvas() is the
++// one way a canvas is written, so a file StoryForge saves always has the same shape (two-space JSON, trailing newline).
++
++export const CANVAS_SCHEMA = 'storyforge.canvas/v1';
++export const CANVAS_DIR = 'planning/canvases';
++export const CANVAS_EXT = '.canvas';
++export const CANVAS_NODE_TYPES = ['text', 'file', 'link', 'group'];
++export const CANVAS_KINDS = ['todo', 'swatch', 'column'];
++export const CANVAS_SIDES = ['top', 'right', 'bottom', 'left'];
++export const CANVAS_ENDS = ['none', 'arrow'];
++export const CANVAS_LIMITS = Object.freeze({ nodes: 2000, edges: 4000, bytes: 5 * 1024 * 1024, text: 100000, id: 64, ref: 80, label: 500, url: 2000, file: 300 });
++
++const COLOR_RE = /^(?:[1-6]|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})$/;
++const HEX_RE = /^#[0-9a-fA-F]{6}$/;
++const URL_RE = /^(?:https?:\/\/[^\s]+|mailto:[^\s]+)$/i;
++const CONTROL_RE = new RegExp(`[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]`);
++const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
++const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
++
++/** A book-relative file path a canvas may name: forward slashes, no `..`, no leading `/`, no `\`, no NUL or control characters. @param {unknown} p */
++export function isCanvasFilePath(p) {
++  if (typeof p !== 'string' || p === '' || p.length > CANVAS_LIMITS.file || p.includes('\\') || p.startsWith('/') || CONTROL_RE.test(p) || p.includes('\0')) return false;
++  return p.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
++}
++
++/**
++ * Check a canvas document (an object, or the JSON text of one). Returns { ok: true, canvas } with a normalised copy, or { ok: false, message } naming the
++ * first rule broken. Unknown keys are kept as they are.
++ * @param {unknown} input
++ * @returns {{ ok: true, canvas: { nodes: any[], edges: any[], [k: string]: unknown } } | { ok: false, message: string }}
++ */
++export function parseCanvas(input) {
++  let doc = input;
++  if (typeof input === 'string') {
++    if (Buffer.byteLength(input, 'utf8') > CANVAS_LIMITS.bytes) return bad('the canvas is larger than 5 MB');
++    try {
++      doc = JSON.parse(input.replace(/^\uFEFF/, ''));
++    } catch (e) {
++      return bad(`not JSON: ${String(/** @type {any} */ (e)?.message ?? e)}`);
++    }
++  }
++  if (!isObject(doc)) return bad('a canvas is a JSON object with "nodes" and "edges"');
++  const d = /** @type {Record<string, any>} */ (doc);
++  const nodesIn = d.nodes ?? [];
++  const edgesIn = d.edges ?? [];
++  if (!Array.isArray(nodesIn)) return bad('"nodes" must be a list');
++  if (!Array.isArray(edgesIn)) return bad('"edges" must be a list');
++  if (nodesIn.length > CANVAS_LIMITS.nodes) return bad(`at most ${CANVAS_LIMITS.nodes} cards`);
++  if (edgesIn.length > CANVAS_LIMITS.edges) return bad(`at most ${CANVAS_LIMITS.edges} connections`);
++  if (d.storyforge !== undefined) {
++    if (!isObject(d.storyforge)) return bad('"storyforge" must be an object');
++    if (d.storyforge.title !== undefined && !shortText(d.storyforge.title, 300)) return bad('storyforge.title must be text of at most 300 characters');
++  }
++  const ids = new Set();
++  const nodes = [];
++  for (let i = 0; i < nodesIn.length; i++) {
++    const n = nodesIn[i];
++    const at = `nodes[${i}]`;
++    if (!isObject(n)) return bad(`${at} must be an object`);
++    const idProblem = checkId(n.id, ids);
++    if (idProblem) return bad(`${at}.id ${idProblem}`);
++    const where = `${at} (${n.id})`;
++    if (!CANVAS_NODE_TYPES.includes(n.type)) return bad(`${where}: type must be one of ${CANVAS_NODE_TYPES.join(', ')}`);
++    for (const k of ['x', 'y', 'width', 'height']) if (!isNum(n[k])) return bad(`${where}: ${k} must be a number`);
++    if (n.width < 1 || n.height < 1) return bad(`${where}: width and height must be at least 1`);
++    if (n.color !== undefined && !(typeof n.color === 'string' && COLOR_RE.test(n.color))) return bad(`${where}: color must be "1" to "6" or a #hex colour`);
++    if (n.type === 'text' && !(typeof n.text === 'string' && n.text.length <= CANVAS_LIMITS.text)) return bad(`${where}: text must be text of at most ${CANVAS_LIMITS.text} characters`);
++    if (n.type === 'file' && !isCanvasFilePath(n.file)) return bad(`${where}: file must be a book-relative path (forward slashes, no "..")`);
++    if (n.type === 'file' && n.subpath !== undefined && !shortText(n.subpath, 300)) return bad(`${where}: subpath must be short text`);
++    if (n.type === 'link' && !(typeof n.url === 'string' && n.url.length <= CANVAS_LIMITS.url && URL_RE.test(n.url))) return bad(`${where}: url must start with http:, https: or mailto:`);
++    if (n.type === 'group' && n.label !== undefined && !shortText(n.label, CANVAS_LIMITS.label)) return bad(`${where}: label must be text of at most ${CANVAS_LIMITS.label} characters`);
++    if (n.storyforge !== undefined) {
++      const s = n.storyforge;
++      if (!isObject(s)) return bad(`${where}: storyforge must be an object`);
++      if (s.kind !== undefined && !shortText(s.kind, 40)) return bad(`${where}: storyforge.kind must be short text`);
++      if (s.ref !== undefined && !(typeof s.ref === 'string' && s.ref !== '' && s.ref.length <= CANVAS_LIMITS.ref && !CONTROL_RE.test(s.ref))) return bad(`${where}: storyforge.ref must be an id`);
++      if (s.hex !== undefined && !(typeof s.hex === 'string' && HEX_RE.test(s.hex))) return bad(`${where}: storyforge.hex must be #rrggbb`);
++      if (s.name !== undefined && !shortText(s.name, 200)) return bad(`${where}: storyforge.name must be short text`);
++    }
++    nodes.push({ ...n, x: Math.round(n.x), y: Math.round(n.y), width: Math.max(1, Math.round(n.width)), height: Math.max(1, Math.round(n.height)) });
++  }
++  const nodeIds = new Set(nodes.map((n) => n.id));
++  const edges = [];
++  for (let i = 0; i < edgesIn.length; i++) {
++    const e = edgesIn[i];
++    const at = `edges[${i}]`;
++    if (!isObject(e)) return bad(`${at} must be an object`);
++    const idProblem = checkId(e.id, ids);
++    if (idProblem) return bad(`${at}.id ${idProblem}`);
++    const where = `${at} (${e.id})`;
++    if (!nodeIds.has(e.fromNode)) return bad(`${where}: fromNode must name a card`);
++    if (!nodeIds.has(e.toNode)) return bad(`${where}: toNode must name a card`);
++    for (const k of ['fromSide', 'toSide']) if (e[k] !== undefined && !CANVAS_SIDES.includes(e[k])) return bad(`${where}: ${k} must be one of ${CANVAS_SIDES.join(', ')}`);
++    for (const k of ['fromEnd', 'toEnd']) if (e[k] !== undefined && !CANVAS_ENDS.includes(e[k])) return bad(`${where}: ${k} must be none or arrow`);
++    if (e.color !== undefined && !(typeof e.color === 'string' && COLOR_RE.test(e.color))) return bad(`${where}: color must be "1" to "6" or a #hex colour`);
++    if (e.label !== undefined && !shortText(e.label, CANVAS_LIMITS.label)) return bad(`${where}: label must be text of at most ${CANVAS_LIMITS.label} characters`);
++    edges.push({ ...e });
++  }
++  const canvas = { ...d, nodes, edges };
++  if (Buffer.byteLength(serializeCanvas(canvas), 'utf8') > CANVAS_LIMITS.bytes) return bad('the canvas is larger than 5 MB');
++  return { ok: true, canvas };
++}
++
++/** The bytes StoryForge writes for a canvas: `nodes`, `edges`, then the other keys in their order; two-space JSON and a final newline. @param {Record<string, any>} canvas */
++export function serializeCanvas(canvas) {
++  const { nodes = [], edges = [], ...rest } = canvas;
++  return `${JSON.stringify({ nodes, edges, ...rest }, null, 2)}\n`;
++}
++
++/** A new, empty canvas document. @param {string} title */
++export const emptyCanvas = (title) => ({ nodes: [], edges: [], storyforge: { schema: CANVAS_SCHEMA, title } });
++
++/** The title of a canvas document: storyforge.title, else the slug. @param {any} canvas @param {string} slug */
++export const canvasTitle = (canvas, slug) => (isObject(canvas?.storyforge) && typeof canvas.storyforge.title === 'string' && canvas.storyforge.title.trim() !== '' ? canvas.storyforge.title : slug);
++
++function checkId(id, seen) {
++  if (typeof id !== 'string' || id === '' || id.length > CANVAS_LIMITS.id || CONTROL_RE.test(id)) return `must be text of 1 to ${CANVAS_LIMITS.id} characters`;
++  if (seen.has(id)) return `"${id}" is used twice`;
++  seen.add(id);
++  return null;
++}
++const shortText = (v, max) => typeof v === 'string' && v.length <= max && !CONTROL_RE.test(v.replace(/[\n\t]/g, ' '));
++const bad = (message) => ({ ok: /** @type {const} */ (false), message });
+diff --git a/packages/format/src/index.mjs b/packages/format/src/index.mjs
+index 137afd4..fb30220 100644
+--- a/packages/format/src/index.mjs
++++ b/packages/format/src/index.mjs
+@@ -210,3 +210,6 @@ export { PROMPT_INPUTS, PROMPT_TASKS, INPUT_FIELDS, PROMPT_SCHEMA, WORKFLOW_SCHE
+ 
+ // M08-J02: plugin manifests (_plugins/<id>/plugin.md). Additive within v1.
+ export { PLUGIN_SCHEMA, PLUGIN_PERMISSIONS, PLUGIN_API_MAJOR, parsePluginManifest, loadPlugins } from './plugins.mjs';
++
++// M09-J01: canvases (JSON Canvas files under planning/canvases/). Additive within v1: validate() does not read them.
++export { CANVAS_SCHEMA, CANVAS_DIR, CANVAS_EXT, CANVAS_NODE_TYPES, CANVAS_KINDS, CANVAS_SIDES, CANVAS_ENDS, CANVAS_LIMITS, isCanvasFilePath, parseCanvas, serializeCanvas, emptyCanvas, canvasTitle } from './canvas.mjs';
+diff --git a/packages/format/src/preferences.mjs b/packages/format/src/preferences.mjs
+index b4857e1..eb1d911 100644
+--- a/packages/format/src/preferences.mjs
++++ b/packages/format/src/preferences.mjs
+@@ -218,6 +218,7 @@ export function moduleOfRoute(route) {
+   if (route.startsWith('event-')) return 'timeline';
+   if (route.startsWith('thread-')) return 'threads';
+   if (route.startsWith('note-') || route === 'attachment-upload') return 'research';
++  if (route.startsWith('canvas-')) return 'board'; // M09-J01: canvases are visual planning, with the corkboard
+   return null;
+ }
+ 
+diff --git a/packages/format/test/canvas-format.test.mjs b/packages/format/test/canvas-format.test.mjs
+new file mode 100644
+index 0000000..3482c99
+--- /dev/null
++++ b/packages/format/test/canvas-format.test.mjs
+@@ -0,0 +1,74 @@
++// M09-J01 section 1.1: parseCanvas() rules and serializeCanvas() shape. Pure.
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { CANVAS_LIMITS, emptyCanvas, isCanvasFilePath, parseCanvas, serializeCanvas, canvasTitle } from '../src/index.mjs';
++
++const node = (extra = {}) => ({ id: 'a', type: 'text', text: 'x', x: 0, y: 0, width: 10, height: 10, ...extra });
++const refused = (doc, re) => {
++  const r = parseCanvas(doc);
++  assert.equal(r.ok, false, JSON.stringify(doc).slice(0, 120));
++  if (re) assert.match(/** @type {any} */ (r).message, re);
++};
++
++test('a valid canvas is normalised: integers, unknown keys kept, missing lists are empty', () => {
++  const r = parseCanvas({ nodes: [node({ x: 1.6, y: -2.4, width: 99.5, extra: { a: 1 } })], other: true });
++  assert.equal(r.ok, true);
++  const c = /** @type {any} */ (r).canvas;
++  assert.deepEqual([c.nodes[0].x, c.nodes[0].y, c.nodes[0].width], [2, -2, 100]);
++  assert.deepEqual(c.nodes[0].extra, { a: 1 });
++  assert.deepEqual(c.edges, []);
++  assert.equal(c.other, true);
++  assert.equal(parseCanvas('{"nodes":[],"edges":[]}').ok, true);
++  assert.equal(parseCanvas('﻿{}').ok, true, 'a byte-order mark and missing lists are fine');
++});
++
++test('every node type and the StoryForge kinds', () => {
++  const doc = {
++    nodes: [
++      node({ id: 't' }),
++      node({ id: 'f', type: 'file', file: 'assets/canvas/a.png', text: undefined }),
++      node({ id: 'l', type: 'link', url: 'https://example.com', text: undefined }),
++      node({ id: 'm', type: 'link', url: 'mailto:a@example.com', text: undefined }),
++      node({ id: 'g', type: 'group', label: 'Wall', text: undefined, storyforge: { kind: 'column' } }),
++      node({ id: 's', color: '#E8DDD4', storyforge: { kind: 'swatch', name: 'Pearl', hex: '#E8DDD4' } }),
++      node({ id: 'r', type: 'file', file: 'codex/characters/x.md', text: undefined, storyforge: { ref: 'entry_1' } }),
++      node({ id: 'c', color: '3' }),
++    ],
++    edges: [{ id: 'e', fromNode: 't', toNode: 'g', fromSide: 'right', toSide: 'left', toEnd: 'arrow', label: 'leads to', color: '#fff' }],
++  };
++  assert.equal(parseCanvas(doc).ok, true);
++});
++
++test('each rule is refused with a message that names the node or edge', () => {
++  refused([], /JSON object/);
++  refused('{', /not JSON/);
++  refused({ nodes: {} }, /nodes/);
++  refused({ nodes: [node(), node()] }, /used twice/);
++  refused({ nodes: [node({ id: '' })] }, /id/);
++  refused({ nodes: [node({ type: 'shape' })] }, /type must be/);
++  refused({ nodes: [node({ x: Infinity })] }, /x must be a number/);
++  refused({ nodes: [node({ width: 0 })] }, /at least 1/);
++  refused({ nodes: [node({ color: 'red' })] }, /color/);
++  refused({ nodes: [node({ text: 5 })] }, /text/);
++  refused({ nodes: [node({ text: 'x'.repeat(CANVAS_LIMITS.text + 1) })] }, /text/);
++  refused({ nodes: [node({ type: 'link', url: 'javascript:alert(1)' })] }, /url/);
++  refused({ nodes: [node({ type: 'link', url: 'file:///etc/passwd' })] }, /url/);
++  for (const file of ['../x.md', '/abs.md', 'a\\b.md', 'a//b.md', './a.md', '']) refused({ nodes: [node({ type: 'file', file })] }, /file/);
++  refused({ nodes: [node({ storyforge: 'x' })] }, /storyforge/);
++  refused({ nodes: [node({ storyforge: { hex: 'E8DDD4' } })] }, /hex/);
++  refused({ nodes: [node({ storyforge: { ref: '' } })] }, /ref/);
++  refused({ nodes: [node()], edges: [{ id: 'e', fromNode: 'a', toNode: 'b' }] }, /toNode/);
++  refused({ nodes: [node()], edges: [{ id: 'a', fromNode: 'a', toNode: 'a' }] }, /used twice/);
++  refused({ nodes: [node()], edges: [{ id: 'e', fromNode: 'a', toNode: 'a', fromSide: 'middle' }] }, /fromSide/);
++  refused({ nodes: [node()], edges: [{ id: 'e', fromNode: 'a', toNode: 'a', toEnd: 'diamond' }] }, /toEnd/);
++  refused({ nodes: Array.from({ length: CANVAS_LIMITS.nodes + 1 }, (_, i) => node({ id: `n${i}` })) }, /at most/);
++  refused({ storyforge: { title: 3 } }, /title/);
++});
++
++test('serializeCanvas: nodes, edges, then the rest; two-space JSON with a final newline; titles', () => {
++  const text = serializeCanvas({ storyforge: { title: 'T' }, edges: [], nodes: [] });
++  assert.equal(text, '{\n  "nodes": [],\n  "edges": [],\n  "storyforge": {\n    "title": "T"\n  }\n}\n');
++  assert.equal(canvasTitle(emptyCanvas('Mood'), 'mood'), 'Mood');
++  assert.equal(canvasTitle({ nodes: [] }, 'slug'), 'slug');
++  assert.equal(isCanvasFilePath('assets/canvas/a.png'), true);
++});
+diff --git a/packages/manuscript/src/canvas.mjs b/packages/manuscript/src/canvas.mjs
+new file mode 100644
+index 0000000..e1e3641
+--- /dev/null
++++ b/packages/manuscript/src/canvas.mjs
+@@ -0,0 +1,90 @@
++// Canvas commands (M09-J01): new canvas, save, archive / restore. Every command goes through the store; create, archive and restore are one batch with a dry run,
++// are refused when they would add a validation error, and never delete. A save is a whole-file write guarded by the sha256 the author last saw.
++import { CANVAS_DIR, CANVAS_EXT, emptyCanvas, parseCanvas, serializeCanvas } from '@storyforge/format';
++import { prepareCodex, stale } from './codex.mjs';
++import { fail, finish, guarded, readBytes } from './ops.mjs';
++import { SLUG_RE, slugify } from './util.mjs';
++
++const CONTROL_RE = new RegExp(`[\x00-\x1f\x7f\x85${String.fromCharCode(0x2028, 0x2029)}]`);
++const isText = (v) => typeof v === 'string' && !CONTROL_RE.test(v);
++/** Book-relative path of a live canvas. @param {string} slug */
++export const canvasPath = (slug) => `${CANVAS_DIR}/${slug}${CANVAS_EXT}`;
++const okSlug = (s) => typeof s === 'string' && SLUG_RE.test(s) && s.length <= 60;
++
++/**
++ * New, empty canvas at planning/canvases/<slug>.canvas. The slug comes from `slug`, else the title. A file already there: REFUSED_PATH_TAKEN.
++ * @param {string} bookRoot @param {{ title: string, slug?: string, dryRun?: boolean }} args
++ */
++export function createCanvas(bookRoot, args = {}) {
++  return guarded(async () => {
++    const { title, slug: given, dryRun = false } = args ?? {};
++    if (!isText(title) || title.trim() === '' || title.length > 300) return fail('REFUSED_BAD_ARGS', 'title must be a non-empty string without control characters (max 300)');
++    const slug = given !== undefined && given !== null && given !== '' ? given : slugify(title);
++    if (!okSlug(slug)) return fail('REFUSED_BAD_ARGS', given ? 'slug must be lower-case letters, digits and single hyphens (1-60 characters)' : 'the title has no letters or digits to make a file name from; give a slug');
++    const prep = await prepareCodex(bookRoot);
++    if (prep.result) return prep.result;
++    const { lb, store } = prep;
++    const to = canvasPath(slug);
++    if (await store.exists(`archive/${to}`)) return fail('REFUSED_PATH_TAKEN', `an archived canvas is called ${slug}; restore it or choose another name`, { path: `archive/${to}` });
++    const changes = [{ from: null, to, content: Buffer.from(serializeCanvas(emptyCanvas(title.trim())), 'utf8'), before: null }];
++    return finish({ bookRoot, store, lb, op: 'createCanvas', args: { title, file: to }, changes, dryRun, withDiff: true, extra: { slug, path: to } });
++  });
++}
++
++/**
++ * Save the whole canvas. `canvas` is checked with parseCanvas (REFUSED_BAD_CANVAS names the rule). `baseSha256` is the file the author last saw: another file on disk
++ * is CONFLICT with `current: { sha256, text }`, and nothing is written.
++ * @param {string} bookRoot @param {string} slug @param {{ canvas: unknown, baseSha256: string }} args
++ */
++export function saveCanvas(bookRoot, slug, args = {}) {
++  return guarded(async () => {
++    const { canvas, baseSha256 } = args ?? {};
++    if (!okSlug(slug)) return fail('NOT_FOUND', `no canvas ${slug}`);
++    if (typeof baseSha256 !== 'string') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
++    const parsed = parseCanvas(canvas);
++    if (!parsed.ok) return fail('REFUSED_BAD_CANVAS', parsed.message);
++    const prep = await prepareCodex(bookRoot);
++    if (prep.result) return prep.result;
++    const { store } = prep;
++    const rel = canvasPath(slug);
++    const cur = await store.read(rel);
++    if (!cur) return fail('NOT_FOUND', `no canvas ${slug}`);
++    const next = Buffer.from(serializeCanvas(parsed.canvas), 'utf8');
++    if (cur.sha256 === baseSha256 && next.equals(cur.bytes)) return { ok: true, code: 'OK', changes: [], sha256: cur.sha256, slug, path: rel };
++    const r = await store.write(rel, next, { baseSha256 });
++    if (r.ok) return { ok: true, code: 'OK', changes: [{ from: rel, to: rel }], sha256: r.sha256, slug, path: rel };
++    if (r.code === 'CONFLICT') {
++      const now = r.current?.bytes ?? cur.bytes;
++      return fail('CONFLICT', `${rel} changed on disk since it was read`, { current: { sha256: r.current?.sha256 ?? cur.sha256, text: now.toString('utf8') } });
++    }
++    return fail(r.code, r.message ?? 'the canvas could not be saved');
++  });
++}
++
++/** Move a canvas to archive/planning/canvases/. @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args */
++export function archiveCanvas(bookRoot, slug, args = {}) {
++  return moveCanvas(bookRoot, slug, args, false);
++}
++
++/** Move an archived canvas back. A live canvas with that name: REFUSED_PATH_TAKEN. @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args */
++export function restoreCanvas(bookRoot, slug, args = {}) {
++  return moveCanvas(bookRoot, slug, args, true);
++}
++
++function moveCanvas(bookRoot, slug, args, restoring) {
++  return guarded(async () => {
++    const { dryRun = false, baseSha256 } = args ?? {};
++    if (!okSlug(slug)) return fail('NOT_FOUND', `no canvas ${slug}`);
++    const prep = await prepareCodex(bookRoot);
++    if (prep.result) return prep.result;
++    const { lb, store } = prep;
++    const live = canvasPath(slug);
++    const from = restoring ? `archive/${live}` : live;
++    const to = restoring ? live : `archive/${live}`;
++    if (!(await store.exists(from))) return fail('NOT_FOUND', `no ${restoring ? 'archived ' : ''}canvas ${slug}`);
++    const before = await readBytes(store, from);
++    const changed = stale(before, baseSha256, from);
++    if (changed) return changed;
++    return finish({ bookRoot, store, lb, op: restoring ? 'restoreCanvas' : 'archiveCanvas', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
++  });
++}
+diff --git a/packages/manuscript/src/index.mjs b/packages/manuscript/src/index.mjs
+index 31649ec..41e15ae 100644
+--- a/packages/manuscript/src/index.mjs
++++ b/packages/manuscript/src/index.mjs
+@@ -23,3 +23,4 @@ export { __testHooks } from './commit.mjs';
+ export { ulid, slugify, SLUG_RE } from './util.mjs';
+ export { createEvent, setEventFields, archiveEvent, restoreEvent, orderText } from './timeline.mjs';
+ export { createNote, setNoteFields, archiveNote, restoreNote, uploadAttachment, safeAttachmentName, attachmentMarkdown, ATTACHMENT_TYPES, ATTACHMENT_DIR, MAX_ATTACHMENT_BYTES, SOURCE_FIELDS } from './research.mjs';
++export { createCanvas, saveCanvas, archiveCanvas, restoreCanvas, canvasPath } from './canvas.mjs';
+diff --git a/packages/manuscript/src/research.mjs b/packages/manuscript/src/research.mjs
+index 312bfa3..b5bd5e3 100644
+--- a/packages/manuscript/src/research.mjs
++++ b/packages/manuscript/src/research.mjs
+@@ -236,6 +236,8 @@ export const ATTACHMENT_TYPES = {
+ };
+ export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+ export const ATTACHMENT_DIR = 'assets/research';
++/** Where an upload is stored, by what it is for (M09-J01: canvas images go to assets/canvas/). */
++export const ATTACHMENT_DIRS = Object.freeze({ research: ATTACHMENT_DIR, canvas: 'assets/canvas' });
+ const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
+ 
+ /**
+@@ -268,12 +270,14 @@ export function attachmentMarkdown(notePath, rel, label) {
+ /**
+  * Store an uploaded file as assets/research/<safe-name> through the store (no overwrite: a taken name gets -2, -3, ...). The bytes are limited to 25 MB.
+  * `notePath` (book-relative, default research/x.md) decides what the returned `markdown` link is relative to.
+- * @param {string} bookRoot @param {{ name: string, bytes: Buffer, notePath?: string }} args
++ * `purpose` 'canvas' stores under assets/canvas/ instead (M09-J01).
++ * @param {string} bookRoot @param {{ name: string, bytes: Buffer, notePath?: string, purpose?: 'research' | 'canvas' }} args
+  * @returns {Promise<{ ok: true, code: 'OK', changes: object[], path: string, name: string, markdown: string } | { ok: false, code: string, message: string, changes: [] }>}
+  */
+ export function uploadAttachment(bookRoot, args = {}) {
+   return guarded(async () => {
+-    const { name, bytes, notePath = 'research/note.md' } = args ?? {};
++    const { name, bytes, notePath = 'research/note.md', purpose = 'research' } = args ?? {};
++    if (!Object.hasOwn(ATTACHMENT_DIRS, purpose)) return fail('BAD_ARGS', `for must be one of ${Object.keys(ATTACHMENT_DIRS).join(', ')}`);
+     if (!Buffer.isBuffer(bytes) || bytes.length === 0) return fail('BAD_ARGS', 'the file is empty');
+     if (bytes.length > MAX_ATTACHMENT_BYTES) return fail('TOO_LARGE', 'attachments can be at most 25 MB');
+     const safe = safeAttachmentName(name);
+@@ -284,7 +288,7 @@ export function uploadAttachment(bookRoot, args = {}) {
+     const stem = safe.name.slice(0, safe.name.length - ext.length);
+     for (let n = 1; n < 1000; n++) {
+       const stored = n === 1 ? safe.name : `${stem.slice(0, 80 - ext.length - String(n).length - 1)}-${n}${ext}`;
+-      const rel = `${ATTACHMENT_DIR}/${stored}`;
++      const rel = `${ATTACHMENT_DIRS[purpose]}/${stored}`;
+       if (await store.exists(rel)) continue;
+       const r = await store.create(rel, bytes);
+       if (r.ok) {
+-- 
+2.34.1
+
