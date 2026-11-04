@@ -975,7 +975,7 @@ describe('acceptance 7: Research sections and the Places tab', () => {
   });
 
   test('routes: Timeline, Places and Notes are real project tabs in order; /books/:id/places|timeline|notes parse as tabs; places URLs round-trip', () => {
-    assert.deepEqual(mod.routes.PROJECT_TABS.map((t) => t.key), ['manuscript', 'codex', 'timeline', 'continuity', 'places', 'notes']);
+    assert.deepEqual(mod.routes.PROJECT_TABS.map((t) => t.key), ['manuscript', 'codex', 'timeline', 'continuity', 'places', 'notes', 'canvas']);
     for (const tab of ['timeline', 'places', 'notes']) assert.deepEqual(mod.routes.parseRoute(`/books/${SO}/${tab}`), { name: 'tab', bookId: SO, tab });
     assert.equal(mod.routes.tabHref(SO, 'places'), `/books/${SO}/places`);
     assert.equal(mod.codex.placesHref(SO), `/books/${SO}/places`);

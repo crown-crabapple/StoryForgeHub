@@ -310,7 +310,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
           const up = await readUpload(req, MAX_UPLOAD_BYTES);
           if (up.tooLarge) return sendJson(res, 413, { error: 'too_large', code: 'TOO_LARGE', message: 'attachments can be at most 25 MB' });
           const query = new URLSearchParams(queryString);
-          const { status, body } = await handleUpload(current(), match, { name: query.get('name'), note: query.get('note'), bytes: up.buffer });
+          const { status, body } = await handleUpload(current(), match, { name: query.get('name'), note: query.get('note'), purpose: query.get('for'), bytes: up.buffer });
           await record(status);
           return sendJson(res, status, body);
         }

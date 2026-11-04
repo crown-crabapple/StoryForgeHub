@@ -1,0 +1,636 @@
+/* M09-J01 Canvas: list on the left, an infinite board on the right with a floating toolbar (Storyflow-style). Colours come from the theme tokens;
+   card tints use the JSON Canvas colour of a card (--cv-tint), mixed into the surface so text keeps its contrast. */
+
+.cv-page {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  height: calc(100dvh - var(--topbar) - 48px);
+}
+.cv-layout {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.cv-list {
+  width: 240px;
+  flex: none;
+  overflow-y: auto;
+  padding: var(--s4);
+  border-right: 1px solid var(--divider);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.cv-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+.cv-list-head h1 {
+  font-size: var(--fs-15, 15px);
+  margin: 0;
+}
+.cv-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cv-list-item {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--r-control);
+  color: var(--text);
+  text-decoration: none;
+}
+.cv-list-item:hover {
+  background: var(--surface-2);
+}
+.cv-list-item[aria-current='page'] {
+  background: var(--accent-soft);
+}
+.cv-list-item .muted {
+  font-size: 12px;
+}
+.cv-archived li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s1) 0;
+}
+.cv-problem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.cv-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cv-none {
+  margin: auto;
+  max-width: 420px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  align-items: center;
+}
+.cv-loading {
+  padding: var(--s6);
+}
+.cv-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cv-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--divider);
+}
+.cv-title {
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  padding: var(--s1) var(--s2);
+  min-width: 0;
+  flex: 0 1 320px;
+}
+.cv-title:hover,
+.cv-title:focus {
+  border-color: var(--border);
+}
+.cv-file {
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0;
+}
+.cv-save {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.cv-save-error,
+.cv-save-conflict {
+  color: var(--warning);
+}
+.cv-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  margin: 0;
+  border-bottom: 1px solid var(--divider);
+}
+.cv-banner p {
+  margin: 0;
+  flex: 1;
+}
+
+/* ---------------------------------------------------------------- board */
+
+.cv-board-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.cv-board {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--divider) 1px, transparent 1px);
+  background-size: 24px 24px;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.cv-board:active {
+  cursor: grabbing;
+}
+.cv-board.is-connecting,
+.cv-board.is-connecting .cv-node {
+  cursor: crosshair;
+}
+.cv-board:focus-visible {
+  outline: var(--focus);
+  outline-offset: -2px;
+}
+.cv-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.cv-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.cv-layer-groups {
+  z-index: 1;
+}
+.cv-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  z-index: 2;
+}
+.cv-layer-cards {
+  z-index: 3;
+}
+.cv-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  pointer-events: none;
+  text-align: center;
+  padding: var(--s6);
+}
+.cv-mode {
+  position: absolute;
+  top: var(--s3);
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: var(--s1) var(--s3);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  z-index: 10;
+}
+
+/* ---------------------------------------------------------------- cards */
+
+.cv-node {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--cv-tint, var(--surface)) 14%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--cv-tint, var(--border)) 60%, var(--border));
+  color: var(--text);
+  overflow: hidden;
+  cursor: default;
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+}
+.cv-node:focus-visible {
+  outline: var(--focus);
+  outline-offset: var(--focus-offset);
+}
+.cv-node.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  z-index: 1;
+}
+.cv-node.is-pending {
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
+}
+.cv-group,
+.cv-column {
+  background: color-mix(in srgb, var(--cv-tint, var(--surface)) 6%, transparent);
+  border-style: dashed;
+  box-shadow: none;
+}
+.cv-column {
+  border-style: solid;
+  background: color-mix(in srgb, var(--cv-tint, var(--surface)) 10%, var(--surface));
+}
+.cv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  font-weight: 600;
+  height: 44px;
+  box-sizing: border-box;
+}
+.cv-head-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-md {
+  padding: var(--s3);
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  user-select: text;
+}
+.cv-md > :first-child {
+  margin-top: 0;
+}
+.cv-md p,
+.cv-md ul {
+  margin: 0 0 var(--s2);
+}
+.cv-md ul {
+  padding-left: 1.2em;
+}
+.cv-md .cv-h {
+  font-weight: 700;
+  font-size: 14px;
+}
+.cv-md .cv-h1 {
+  font-size: 16px;
+}
+.cv-md a,
+.cv-link a {
+  color: var(--accent);
+}
+.cv-md code {
+  font-size: 12px;
+  background: var(--surface-2);
+  padding: 0 3px;
+  border-radius: 4px;
+}
+.cv-task {
+  list-style: none;
+  margin-left: -1.2em;
+}
+.cv-task label {
+  display: flex;
+  gap: var(--s2);
+  align-items: flex-start;
+}
+.cv-task input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+.cv-done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.cv-empty {
+  color: var(--muted);
+  margin: 0;
+}
+.cv-meta {
+  margin: 0 0 var(--s1);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.cv-edit {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  resize: none;
+  border: 0;
+  padding: var(--s3);
+  font: inherit;
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--surface);
+}
+.cv-edit-line {
+  box-sizing: border-box;
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: var(--s1) var(--s2);
+}
+.cv-link {
+  padding: var(--s3);
+  overflow-wrap: anywhere;
+}
+.cv-link .cv-edit-line {
+  margin-top: var(--s1);
+}
+.cv-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.cv-story {
+  padding: var(--s3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 100%;
+  box-sizing: border-box;
+  border-left: 3px solid var(--accent);
+}
+.cv-story-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 14px;
+}
+.cv-story-summary {
+  margin: 0;
+  color: var(--text-2);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.cv-story-broken,
+.cv-story-archived {
+  border-left-color: var(--warning);
+}
+.cv-open {
+  margin-top: auto;
+  align-self: flex-start;
+  color: var(--accent);
+  font-size: 12px;
+}
+.cv-swatch {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.cv-swatch-chip {
+  flex: 1;
+  min-height: 40px;
+}
+.cv-swatch-text,
+.cv-swatch-edit {
+  display: flex;
+  flex-direction: column;
+  padding: var(--s2);
+  font-size: 11px;
+  color: var(--muted);
+  gap: 2px;
+}
+.cv-swatch-text strong {
+  color: var(--text);
+  font-size: 12px;
+}
+.cv-swatch-edit input[type='color'] {
+  width: 100%;
+  height: 24px;
+  border: 0;
+  padding: 0;
+  background: none;
+}
+.cv-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, var(--accent) 50%);
+  border-bottom-right-radius: var(--r-card);
+}
+
+/* ---------------------------------------------------------------- edges */
+
+.cv-edge {
+  --cv-edge: var(--muted);
+}
+.cv-edge-line {
+  fill: none;
+  stroke: var(--cv-edge);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.cv-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.cv-edge.is-selected .cv-edge-line {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.cv-edge-label {
+  fill: var(--text);
+  font-size: 12px;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 4px;
+}
+.cv-edge-edit {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  display: flex;
+  gap: var(--s1);
+  padding: var(--s1);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  border: 1px solid var(--accent);
+}
+.cv-edge-edit input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: var(--s1) var(--s2);
+  width: 140px;
+}
+
+/* ---------------------------------------------------------------- toolbar and zoom */
+
+.cv-toolbar,
+.cv-zoom {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
+}
+.cv-toolbar {
+  bottom: var(--s4);
+  left: 50%;
+  transform: translateX(-50%);
+}
+.cv-zoom {
+  bottom: var(--s4);
+  left: var(--s4);
+}
+.cv-zoom-value {
+  min-width: 44px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cv-tool {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+.cv-tool:hover {
+  background: var(--surface-2);
+}
+.cv-tool[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.cv-tool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.cv-tool:focus-visible {
+  outline: var(--focus);
+  outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------- story picker */
+
+.cv-picker {
+  width: min(560px, calc(100vw - 32px));
+}
+.cv-picker-filters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-bottom: var(--s3);
+}
+.cv-picker-filters input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-input);
+  padding: var(--s2) var(--s3);
+}
+.cv-picker-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+.cv-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.cv-picker-list button {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: var(--s2);
+  text-align: left;
+  padding: var(--s2);
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.cv-picker-list button:hover,
+.cv-picker-list button:focus-visible {
+  background: var(--surface-2);
+}
+.cv-picker-list .cv-meta {
+  grid-row: span 2;
+  align-self: center;
+}
+.cv-picker-title {
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .cv-layout {
+    flex-direction: column;
+  }
+  .cv-list {
+    width: auto;
+    max-height: 30vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--divider);
+  }
+  .cv-file {
+    display: none;
+  }
+}

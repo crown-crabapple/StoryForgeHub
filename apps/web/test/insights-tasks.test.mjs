@@ -53,18 +53,18 @@ const page = (props) => html(h(mod('/src/insights/InsightsPage.jsx').InsightsPag
 const tasksPage = (props) => html(h(mod('/src/tasks/TasksPage.jsx').TasksPage, { bookId: BOOK, data: d.tasks, ...props }));
 
 describe('routes and navigation', () => {
-  test('/books/:id/insights and /tasks are tabs; their hrefs parse back; the six project tabs are untouched', () => {
+  test('/books/:id/insights and /tasks are tabs; their hrefs parse back; the project tabs are untouched (M09-J01 added Canvas after Notes)', () => {
     const { parseRoute, tabHref, PROJECT_TABS, MORE_TABS } = mod('/src/routes.js');
     assert.deepEqual(parseRoute(`/books/${BOOK}/insights`), { name: 'tab', bookId: BOOK, tab: 'insights' });
     assert.deepEqual(parseRoute(`/books/${BOOK}/tasks`, '?task=x'), { name: 'tab', bookId: BOOK, tab: 'tasks' });
     assert.equal(tabHref(BOOK, 'insights'), `/books/${BOOK}/insights`);
     assert.equal(tabHref(BOOK, 'tasks'), `/books/${BOOK}/tasks`);
-    assert.deepEqual(PROJECT_TABS.map((t) => t.key), ['manuscript', 'codex', 'timeline', 'continuity', 'places', 'notes']);
+    assert.deepEqual(PROJECT_TABS.map((t) => t.key), ['manuscript', 'codex', 'timeline', 'continuity', 'places', 'notes', 'canvas']);
     assert.deepEqual(MORE_TABS.map((t) => t.label), ['Insights', 'Tasks']);
     assert.equal(parseRoute(`/books/${BOOK}/nope`).name, 'notfound');
   });
 
-  test('the shell has the project nav (six links) and a second, named nav with Insights and Tasks; aria-current marks the active one', () => {
+  test('the shell has the project nav (seven links) and a second, named nav with Insights and Tasks; aria-current marks the active one', () => {
     const shell = (tab) => html(h(mod('/src/shell/AppShell.jsx').AppShell, { books: d.books, bookId: BOOK, tab }, h('main', { id: 'main' }, h('h1', null, 'x'))));
     const markup = shell('insights');
     assert.equal([...markup.matchAll(/<nav\b[^>]*aria-label="Project"/g)].length, 1);

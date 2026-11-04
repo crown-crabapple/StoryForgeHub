@@ -23,6 +23,7 @@ import { createInsightReads } from './fs-insights.mjs';
 import { registerReceiptEngine } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
 import { createTimelineReads } from './fs-timeline.mjs';
+import { createCanvasMethods } from './fs-canvas.mjs';
 import { countWords } from './word-count.mjs';
 
 /** @typedef {import('./repository.mjs').FileRepository} FileRepository */
@@ -1289,5 +1290,32 @@ export function createFsRepository(libraryRoot, options = {}) {
   Object.assign(repository, createGoalMethods({ root, activity, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook }));
   Object.assign(repository, createTaskMethods({ root, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook, now: options.clock }));
   Object.assign(repository, createInsightReads({ root, manager, readValidate, activity, now: options.clock }));
+  // M09-J01: canvases (planning/canvases/*.canvas). Read from the files on every call; this module lists and reads for them.
+  Object.assign(
+    repository,
+    createCanvasMethods({
+      root,
+      readValidate,
+      afterWrite: (p) => manager.afterWrite(p),
+      async listDir(libRel) {
+        try {
+          return (await readdir(abs(libRel), { withFileTypes: true })).filter((e) => e.isFile() && !e.name.startsWith('.')).map((e) => e.name).sort();
+        } catch {
+          return [];
+        }
+      },
+      async readFileAt(libRel) {
+        try {
+          const real = await realpath(abs(libRel));
+          const rel = path.relative(await realpath(root), real);
+          if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
+          const [bytes, st] = await Promise.all([readFile(real), stat(real)]);
+          return st.isFile() ? { bytes, mtimeMs: st.mtimeMs } : null;
+        } catch {
+          return null;
+        }
+      },
+    }),
+  );
   return repository;
 }

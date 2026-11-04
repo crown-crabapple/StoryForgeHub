@@ -219,6 +219,12 @@
  *   setLabels(bookId: string, args: { scope?: 'book' | 'series', labels: { name: string, color: string }[], dryRun?: boolean }): Promise<StructureResult>,
  *   getLinkTargets(bookId: string): Promise<{ book: any[], series: { slug: string, title: string | null, items: any[] } | null, books: { id: string, slug: string, title: string | null, items: any[] }[] } | null>,
  *   saveAsTemplate(bookId: string, meta: { name?: string, title: string, description?: string }): Promise<WriteResult & { name?: string, path?: string }>,
+ *   listCanvases(bookId: string): Promise<{ canvases: any[], archived: any[] } | null>,  (M09-J01: planning/canvases/*.canvas)
+ *   getCanvas(bookId: string, slug: string): Promise<{ slug: string, title: string, path: string, sha256: string, canvas: any, problem: string | null, refs: Record<string, any>, targets: any[] } | null>,
+ *   createCanvas(bookId: string, args: { title: string, slug?: string, dryRun?: boolean }): Promise<StructureResult>,
+ *   saveCanvas(bookId: string, slug: string, args: { canvas: unknown, baseSha256: string }): Promise<WriteResult & { sha256?: string, current?: { sha256: string, canvas: any } }>,
+ *   archiveCanvas(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
+ *   restoreCanvas(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
  *   close(): Promise<void>,
  * }} FileRepository
  *   While a book is `invalid` (a file broke outside the app) getBook serves the last valid structure plus `index_state`,

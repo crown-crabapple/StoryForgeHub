@@ -218,6 +218,7 @@ export function moduleOfRoute(route) {
   if (route.startsWith('event-')) return 'timeline';
   if (route.startsWith('thread-')) return 'threads';
   if (route.startsWith('note-') || route === 'attachment-upload') return 'research';
+  if (route.startsWith('canvas-')) return 'board'; // M09-J01: canvases are visual planning, with the corkboard
   return null;
 }
 

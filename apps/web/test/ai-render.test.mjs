@@ -292,8 +292,8 @@ describe('Settings: Set up AI (optional)', () => {
     assert.match(t, /no key/);
     assert.match(t, /key saved in the settings file \(plain text\)/);
     assert.match(t, /key not entered \(session\)/);
-    assert.equal((out.match(/>Edit</g) ?? []).length, 3);
-    assert.equal((out.match(/>Delete</g) ?? []).length, 3);
+    assert.equal((out.match(/<button[^>]*>Edit</g) ?? []).length, 3);
+    assert.equal((out.match(/<button[^>]*>Delete</g) ?? []).length, 3, 'one Delete button per profile (the shortcut list also names the Delete key)');
     assert.equal((out.match(/Send a test message/g) ?? []).length, 3);
   });
 

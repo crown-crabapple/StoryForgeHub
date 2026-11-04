@@ -10,6 +10,7 @@ import './theme/base.css';
 import { App } from './App.jsx';
 import './styles.css';
 import './insights/insights.css';
+import './canvas/canvas.css';
 import './responsive.css';
 
 installFocusRestore();

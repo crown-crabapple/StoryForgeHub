@@ -23,3 +23,4 @@ export { __testHooks } from './commit.mjs';
 export { ulid, slugify, SLUG_RE } from './util.mjs';
 export { createEvent, setEventFields, archiveEvent, restoreEvent, orderText } from './timeline.mjs';
 export { createNote, setNoteFields, archiveNote, restoreNote, uploadAttachment, safeAttachmentName, attachmentMarkdown, ATTACHMENT_TYPES, ATTACHMENT_DIR, MAX_ATTACHMENT_BYTES, SOURCE_FIELDS } from './research.mjs';
+export { createCanvas, saveCanvas, archiveCanvas, restoreCanvas, canvasPath } from './canvas.mjs';

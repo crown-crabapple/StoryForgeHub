@@ -4,6 +4,7 @@ import { BookView } from './BookView.jsx';
 import { CodexView } from './codex/CodexView.jsx';
 import { ContinuityView } from './continuity/ContinuityView.jsx';
 import { NotesView } from './notes/NotesView.jsx';
+import { CanvasView } from './canvas/CanvasView.jsx';
 import { TimelineView } from './timeline/TimelineView.jsx';
 import { InsightsView } from './insights/InsightsView.jsx';
 import { TasksView } from './tasks/TasksView.jsx';
@@ -97,6 +98,7 @@ function Routes() {
     } else if (route.tab === 'timeline') view = <TimelineView bookId={route.bookId} search={search} />;
     else if (route.tab === 'continuity') view = <ContinuityView bookId={route.bookId} search={search} />;
     else if (route.tab === 'notes') view = <NotesView bookId={route.bookId} search={search} />;
+    else if (route.tab === 'canvas') view = <CanvasView bookId={route.bookId} search={search} />;
     else if (route.tab === 'insights') view = <InsightsView bookId={route.bookId} search={search} />;
     else if (route.tab === 'tasks') view = <TasksView bookId={route.bookId} search={search} />;
     else view = <CodexView bookId={route.bookId} search={search} places={route.tab === 'places'} />;

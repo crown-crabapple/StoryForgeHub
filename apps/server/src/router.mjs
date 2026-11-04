@@ -254,6 +254,15 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       return notes ? { status: 200, body: notes } : NOT_FOUND;
     }
     if (c === 'attachments' && d === undefined) return handleAttachment(repository, b, params);
+    // M09-J01: canvases (planning/canvases/<slug>.canvas)
+    if (c === 'canvases' && d === undefined) {
+      const list = await repository.listCanvases(b);
+      return list ? { status: 200, body: list } : NOT_FOUND;
+    }
+    if (c === 'canvases' && d !== undefined && e === undefined) {
+      const canvas = await repository.getCanvas(b, d);
+      return canvas ? { status: 200, body: canvas } : NOT_FOUND;
+    }
     // M05-J04 status; M08-J03: the cover generator's state, a draft picture, and a streamed reply in progress
     if (c === 'ai' && ['status', 'cover', 'cover-draft', 'stream'].includes(d) && e === undefined) return handleAiRead(repository, state, d, b, params);
     if (c === 'graph' && d === undefined) {
@@ -594,6 +603,10 @@ export function matchWriteRoute(method, pathname) {
   // M05-J07: "Record now" (flush the author's pending changes to a scene into a receipt)
   if (method === 'POST' && c === 'receipts' && d === 'flush' && e === undefined) return { route: 'receipts-flush', bookId: b };
   if (method === 'POST' && c === 'attachments' && d === undefined) return { route: 'attachment-upload', bookId: b };
+  // M09-J01 canvases
+  if (method === 'POST' && c === 'canvases' && d === undefined) return { route: 'canvas-create', bookId: b };
+  if (method === 'PUT' && c === 'canvases' && d !== undefined && e === undefined) return { route: 'canvas-save', bookId: b, slug: d };
+  if (method === 'POST' && c === 'canvases' && d !== undefined && (e === 'archive' || e === 'restore')) return { route: `canvas-${e}`, bookId: b, slug: d };
   return null;
 }
 
@@ -1069,6 +1082,24 @@ async function handleStructure(repository, match, body) {
       const r = await repository.restoreNote(bookId, /** @type {string} */ (match.noteId), { dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
     }
+    // ---- M09-J01 canvases: the only files these routes write are planning/canvases/<slug>.canvas (archive/ when archived)
+    case 'canvas-create': {
+      const r = await repository.createCanvas(bookId, { title: body.title, slug: body.slug, dryRun });
+      return respond(r, created, structureBody);
+    }
+    case 'canvas-save': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('expected { canvas: object, base_sha256: string }');
+      const r = await repository.saveCanvas(bookId, /** @type {string} */ (match.slug), { canvas: body.canvas, baseSha256: body.base_sha256 });
+      if (!r.ok && r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', current: r.current ?? null } };
+      return respond(r, 200, (x) => ({ ok: true, sha256: x.sha256, path: x.path }));
+    }
+    case 'canvas-archive':
+    case 'canvas-restore': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const call = match.route === 'canvas-archive' ? repository.archiveCanvas : repository.restoreCanvas;
+      const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
+      return respond(r, 200, structureBody);
+    }
     // ---- M05-J02 continuity exceptions: the only files these routes write are planning/continuity/<slug>.md (archive/ when removed)
     case 'continuity-exception-create': {
       for (const k of ['fingerprint', 'rationale', 'title']) if (body[k] !== undefined && typeof body[k] !== 'string') return badRequest(`${k} must be a string`);
@@ -1093,12 +1124,14 @@ async function handleStructure(repository, match, body) {
 /**
  * POST /api/books/:b/attachments?name=<file name>[&note=<book-relative note path or note id>]: the raw bytes of one file (at most 25 MB; the caller has already
  * limited the body). 201 { path, name, markdown } with the link to insert in the note; 400 bad name or empty; 413 too large; 415 type not allowed.
- * @param {FileRepository} repository @param {{ bookId?: string }} match @param {{ name: string | null, note: string | null, bytes: Buffer }} upload
+ * `for=canvas` (M09-J01) stores under assets/canvas/ instead of assets/research/.
+ * @param {FileRepository} repository @param {{ bookId?: string }} match @param {{ name: string | null, note: string | null, purpose?: string | null, bytes: Buffer }} upload
  * @returns {Promise<ApiResult>}
  */
-export async function handleUpload(repository, match, { name, note, bytes }) {
+export async function handleUpload(repository, match, { name, note, purpose = null, bytes }) {
   if (name === null || name.trim() === '') return badRequest('name is required (the file name)');
-  const r = await repository.uploadAttachment(/** @type {string} */ (match.bookId), { name, bytes, ...(note !== null ? { note } : {}) });
+  if (purpose !== null && purpose !== 'research' && purpose !== 'canvas') return badRequest('for must be research or canvas');
+  const r = await repository.uploadAttachment(/** @type {string} */ (match.bookId), { name, bytes, ...(note !== null ? { note } : {}), ...(purpose !== null ? { purpose } : {}) });
   if (r.ok) return { status: 201, body: { ok: true, path: r.path, name: r.name, markdown: r.markdown } };
   if (r.code === 'NOT_FOUND') return NOT_FOUND;
   const status = r.code === 'TOO_LARGE' ? 413 : r.code === 'UNSUPPORTED_TYPE' ? 415 : r.code === 'REFUSED_PATH_TAKEN' ? 409 : 400;

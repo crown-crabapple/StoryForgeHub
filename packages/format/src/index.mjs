@@ -210,3 +210,6 @@ export { PROMPT_INPUTS, PROMPT_TASKS, INPUT_FIELDS, PROMPT_SCHEMA, WORKFLOW_SCHE
 
 // M08-J02: plugin manifests (_plugins/<id>/plugin.md). Additive within v1.
 export { PLUGIN_SCHEMA, PLUGIN_PERMISSIONS, PLUGIN_API_MAJOR, parsePluginManifest, loadPlugins } from './plugins.mjs';
+
+// M09-J01: canvases (JSON Canvas files under planning/canvases/). Additive within v1: validate() does not read them.
+export { CANVAS_SCHEMA, CANVAS_DIR, CANVAS_EXT, CANVAS_NODE_TYPES, CANVAS_KINDS, CANVAS_SIDES, CANVAS_ENDS, CANVAS_LIMITS, isCanvasFilePath, parseCanvas, serializeCanvas, emptyCanvas, canvasTitle } from './canvas.mjs';

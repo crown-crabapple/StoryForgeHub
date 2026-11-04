@@ -236,6 +236,8 @@ export const ATTACHMENT_TYPES = {
 };
 export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 export const ATTACHMENT_DIR = 'assets/research';
+/** Where an upload is stored, by what it is for (M09-J01: canvas images go to assets/canvas/). */
+export const ATTACHMENT_DIRS = Object.freeze({ research: ATTACHMENT_DIR, canvas: 'assets/canvas' });
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/;
 
 /**
@@ -268,12 +270,14 @@ export function attachmentMarkdown(notePath, rel, label) {
 /**
  * Store an uploaded file as assets/research/<safe-name> through the store (no overwrite: a taken name gets -2, -3, ...). The bytes are limited to 25 MB.
  * `notePath` (book-relative, default research/x.md) decides what the returned `markdown` link is relative to.
- * @param {string} bookRoot @param {{ name: string, bytes: Buffer, notePath?: string }} args
+ * `purpose` 'canvas' stores under assets/canvas/ instead (M09-J01).
+ * @param {string} bookRoot @param {{ name: string, bytes: Buffer, notePath?: string, purpose?: 'research' | 'canvas' }} args
  * @returns {Promise<{ ok: true, code: 'OK', changes: object[], path: string, name: string, markdown: string } | { ok: false, code: string, message: string, changes: [] }>}
  */
 export function uploadAttachment(bookRoot, args = {}) {
   return guarded(async () => {
-    const { name, bytes, notePath = 'research/note.md' } = args ?? {};
+    const { name, bytes, notePath = 'research/note.md', purpose = 'research' } = args ?? {};
+    if (!Object.hasOwn(ATTACHMENT_DIRS, purpose)) return fail('BAD_ARGS', `for must be one of ${Object.keys(ATTACHMENT_DIRS).join(', ')}`);
     if (!Buffer.isBuffer(bytes) || bytes.length === 0) return fail('BAD_ARGS', 'the file is empty');
     if (bytes.length > MAX_ATTACHMENT_BYTES) return fail('TOO_LARGE', 'attachments can be at most 25 MB');
     const safe = safeAttachmentName(name);
@@ -284,7 +288,7 @@ export function uploadAttachment(bookRoot, args = {}) {
     const stem = safe.name.slice(0, safe.name.length - ext.length);
     for (let n = 1; n < 1000; n++) {
       const stored = n === 1 ? safe.name : `${stem.slice(0, 80 - ext.length - String(n).length - 1)}-${n}${ext}`;
-      const rel = `${ATTACHMENT_DIR}/${stored}`;
+      const rel = `${ATTACHMENT_DIRS[purpose]}/${stored}`;
       if (await store.exists(rel)) continue;
       const r = await store.create(rel, bytes);
       if (r.ok) {

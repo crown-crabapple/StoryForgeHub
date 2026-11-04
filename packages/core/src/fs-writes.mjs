@@ -557,14 +557,14 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
      * Store an uploaded file as assets/research/<safe-name> (the store is the only writer; a taken name gets -2, -3). `notePath` is the note's book-relative path
      * (or its id): the returned `markdown` is the link to insert relative to that note's folder. Refusals: BAD_NAME / BAD_ARGS (400), UNSUPPORTED_TYPE (415), TOO_LARGE (413).
      */
-    async uploadAttachment(bookId, { name, bytes, note } = {}) {
+    async uploadAttachment(bookId, { name, bytes, note, purpose } = {}) {
       let notePath = note;
       if (typeof note === 'string' && /^note_/.test(note)) {
         const found = await findBook(bookId);
         const doc = found ? extractDocs(await validate(root), found.book.path).find((d) => d.fm.id === note && !d.archived) : null;
         notePath = doc ? doc.rel : undefined;
       }
-      return structure(bookId, (b) => uploadAttachment(b, { name, bytes, ...(typeof notePath === 'string' ? { notePath } : {}) }));
+      return structure(bookId, (b) => uploadAttachment(b, { name, bytes, ...(typeof notePath === 'string' ? { notePath } : {}), ...(purpose !== undefined ? { purpose } : {}) }));
     },
 
     /** Replace the body of a live event / research note / planning doc / source (the text after its front matter), keeping the front matter bytes. Same conflict rule as an entry body. */

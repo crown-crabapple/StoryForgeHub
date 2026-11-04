@@ -35,6 +35,8 @@ export const WRITE_CLASSES = Object.freeze({
   'ai-records': 'admin', 'ai-profile-secure': 'admin', 'ai-profile-discover': 'admin',
   // M07-J01b series worlds: shared-entry moves and labels are ordinary edits; saving a library template writes library-level files
   'entry-move-to-series': 'write', 'entry-copy-to-book': 'write', 'labels-set': 'write', 'template-save': 'admin',
+  // M09-J01 canvases (planning/canvases/*.canvas; planning material, never prose)
+  'canvas-create': 'write', 'canvas-save': 'write', 'canvas-archive': 'write', 'canvas-restore': 'write',
   // M07-J02 goals and revision tasks (book files; never prose)
   'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
   // M07-J04 profiles: per-machine appearance settings of the server process, so in shared mode only the owner changes them

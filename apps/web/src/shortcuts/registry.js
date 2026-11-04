@@ -27,6 +27,24 @@ export const COMMANDS = [
   { id: 'board.chapterForward', label: 'Move the card to the next chapter', scope: 'board', binding: 'Alt+ArrowRight', files: ['planning/BoardView.jsx'] },
   { id: 'timeline.moveUp', label: 'Move the event earlier', scope: 'timeline', binding: 'Alt+ArrowUp', files: ['timeline/TimelinePage.jsx'] },
   { id: 'timeline.moveDown', label: 'Move the event later', scope: 'timeline', binding: 'Alt+ArrowDown', files: ['timeline/TimelinePage.jsx'] },
+  // M09-J01 the Canvas board (keys work while the board or one of its cards has focus, never while you type in a card)
+  { id: 'canvas.note', label: 'Add a note', scope: 'canvas', binding: 'N', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.todo', label: 'Add a to-do list', scope: 'canvas', binding: 'T', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.swatch', label: 'Add a colour swatch', scope: 'canvas', binding: 'S', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.image', label: 'Add an image', scope: 'canvas', binding: 'I', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.story', label: 'Add a story card (scene, Codex entry, thread, event, note)', scope: 'canvas', binding: 'C', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.link', label: 'Add a web link', scope: 'canvas', binding: 'L', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.column', label: 'Add a column', scope: 'canvas', binding: 'W', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.group', label: 'Add a group', scope: 'canvas', binding: 'G', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.connect', label: 'Connect two cards', scope: 'canvas', binding: 'A', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.edit', label: 'Edit the selected card', scope: 'canvas', binding: 'Enter', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.delete', label: 'Delete the selection', scope: 'canvas', binding: 'Delete', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.duplicate', label: 'Duplicate the selection', scope: 'canvas', binding: 'Mod+D', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.undo', label: 'Undo on the canvas', scope: 'canvas', binding: 'Mod+Z', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.redo', label: 'Redo on the canvas', scope: 'canvas', binding: 'Mod+Shift+Z', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.fit', label: 'Fit everything on screen', scope: 'canvas', binding: 'F', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.zoomIn', label: 'Zoom in', scope: 'canvas', binding: '=', files: ['canvas/CanvasBoard.jsx'] },
+  { id: 'canvas.zoomOut', label: 'Zoom out', scope: 'canvas', binding: '-', files: ['canvas/CanvasBoard.jsx'] },
   { id: 'dialog.close', label: 'Close the dialog', scope: 'dialog', binding: 'Escape', fixed: true, files: ['shell/Dialog.jsx'] },
   { id: 'dialog.trap', label: "Move between the dialog's controls (Tab stays inside)", scope: 'dialog', binding: 'Tab', fixed: true, files: ['shell/Dialog.jsx'] },
 ];
@@ -54,6 +72,9 @@ export const WIDGET_KEYS = [
   { file: 'tasks/TasksPage.jsx', keys: 'Arrow Up, Arrow Down, Home, End', what: 'move between tasks in the list' },
   { file: 'shared/UserMenu.jsx', keys: 'Escape', what: 'close the account menu' },
   { file: 'shell/useDrawer.js', keys: 'Escape, Tab', what: 'close a side drawer (Chapters or Details) and keep Tab inside it while it is open' },
+  { file: 'canvas/CanvasBoard.jsx', keys: 'Arrow keys (Shift for bigger steps), Backspace, Escape', what: 'move or delete the selected canvas cards; Escape clears the selection or stops connecting' },
+  { file: 'canvas/CanvasCard.jsx', keys: 'Escape, Enter, Ctrl+Enter', what: 'finish editing a canvas card' },
+  { file: 'canvas/CanvasView.jsx', keys: 'Enter, Escape', what: 'save or cancel the canvas title you are editing' },
 ];
 
 /** Chords nothing may be bound to (browser and OS ones, and the keys the keyboard walk needs). Same list as @storyforge/format RESERVED_CHORDS (a test compares them). */
@@ -187,5 +208,6 @@ export const SCOPES = [
   ['outline', 'In the chapter list'],
   ['board', 'On the Board'],
   ['timeline', 'On the Timeline'],
+  ['canvas', 'On a Canvas'],
   ['dialog', 'In dialogs'],
 ];
