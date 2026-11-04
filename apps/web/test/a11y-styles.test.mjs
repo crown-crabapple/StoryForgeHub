@@ -108,7 +108,7 @@ test('responsive: below 900 px the rail folds behind the Chapters button and the
 });
 
 test('responsive: the sidebars of the Codex, Timeline, Notes and Continuity pages are one column at 899 px and below', () => {
-  assert.ok(RULES.find((r) => r.selector === '.codex' && maxWidth(r) === 899 && /minmax\(0,\s*1fr\)/.test(r.body)), 'codex single column');
+  assert.ok(RULES.find((r) => r.selector === '.codex-body' && r.media && maxWidth(r) >= 899 && /minmax\(0,\s*1fr\)/.test(r.body)), 'codex body single column');
   const tlnt = RULES.find((r) => r.selector === '.tl, .nt' && r.media && maxWidth(r) >= 899);
   assert.ok(tlnt && /minmax\(0,\s*1fr\)/.test(tlnt.body), 'timeline, notes and continuity single column');
 });

@@ -960,10 +960,11 @@ describe('acceptance 7: Research sections and the Places tab', () => {
   test('Places tab: the Codex locked to locations: titled Places, only the Locations row, only location cards, a way back to the whole Codex, no "New type"', () => {
     const html = renderPage({ typeKey: 'location', lockedType: 'location', onNewType: noop, onNewEntry: noop });
     assert.match(html, /<h1>Places<\/h1>/);
-    const aside = /<aside[^>]*aria-label="Codex categories"[\s\S]*?<\/aside>/.exec(html)[0];
-    const rows = [...aside.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((m) => textOf(m[1]));
+    const bar = /<div[^>]*class="codex-tabbar"[\s\S]*?<div[^>]*role="tabpanel"/.exec(html)[0];
+    const tablist = /<div[^>]*role="tablist"[^>]*aria-label="Codex sections"[\s\S]*?<\/div>/.exec(bar)[0];
+    const rows = [...tablist.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((m) => textOf(m[1]));
     assert.deepEqual(rows.filter((r) => /\d+$/.test(r)), ['Locations 2']);
-    assert.ok(anchors(aside).some((a) => a.href === `/books/${SO}/codex` && a.text.includes('The whole Codex')));
+    assert.ok(anchors(bar).some((a) => a.href === `/books/${SO}/codex` && a.text.includes('The whole Codex')));
     assert.ok(!/New type/.test(html));
     const cards = [...html.matchAll(/data-entry-id="([^"]+)"/g)].map((m) => m[1]);
     const locations = sets.so.entries.filter((e) => e.type === 'location').map((e) => e.id).sort();

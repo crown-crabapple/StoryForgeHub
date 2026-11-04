@@ -59,8 +59,8 @@ function renderPage(set, props = {}) {
   return renderToStaticMarkup(h(page.CodexPage, { bookId: set.bookId, types: set.types, entries: set.entries, chapters: set.chapters, typeKey: 'all', ...props }));
 }
 function sidebar(html) {
-  const aside = /<aside[^>]*aria-label="Codex categories"[\s\S]*?<\/aside>/.exec(html)?.[0] ?? '';
-  return [...aside.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
+  const tablist = /<div[^>]*role="tablist"[^>]*aria-label="Codex sections"[\s\S]*?<\/div>/.exec(html)?.[0] ?? '';
+  return [...tablist.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
     .map((m) => ({ attrs: m[1], text: textOf(m[2]) }))
     .map((b) => ({ ...b, ...(/^(.*?)\s*(\d+)$/.exec(b.text) ? { label: /^(.*?)\s*(\d+)$/.exec(b.text)[1], count: Number(/^(.*?)\s*(\d+)$/.exec(b.text)[2]) } : {}) }))
     .filter((b) => b.label !== undefined);
@@ -72,16 +72,15 @@ const anchors = (html) => [...decode(html).matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>
 
 // ------------------------------------------------------------------------------------------------ sidebar
 
-describe('sidebar "Story bible"', () => {
+describe('section tabs', () => {
   test('salt-orchard: All, built-in types with counts, Archived; selected row is marked', () => {
     const html = renderPage(data.so, { typeKey: 'character' });
-    assert.ok(textOf(html).includes('Story bible'));
     const rows = sidebar(html);
     assert.deepEqual(
       rows.map((r) => [r.label, r.count]),
       [['All', 10], ['Characters', 4], ['Locations', 2], ['Factions', 1], ['Objects', 2], ['Lore', 1], ['Archived', 0]],
     );
-    const current = rows.filter((r) => /aria-current="true"/.test(r.attrs));
+    const current = rows.filter((r) => /aria-selected="true"/.test(r.attrs));
     assert.deepEqual(current.map((r) => r.label), ['Characters']);
   });
 
@@ -310,6 +309,86 @@ describe('inspector', () => {
   });
 });
 
+// ------------------------------------------------------------------------------------------------ entry detail tabs
+
+describe('entry detail tabs', () => {
+  const renderTabs = (entry, extra = {}) =>
+    renderToStaticMarkup(h(inspector.EntryInspector, { bookId: data.so.bookId, entry, chapters: data.so.chapters, types: data.so.types, research: [], ...extra }));
+  const tabsOf = (html) =>
+    [...html.matchAll(/<button\b([^>]*role="tab"[^>]*)>([\s\S]*?)<\/button>/g)].map((m) => ({
+      attrs: m[1],
+      label: textOf(m[2].replace(/<span class="entry-tab-count">[\s\S]*?<\/span>/, '')),
+      id: /\bid="([^"]*)"/.exec(m[1])?.[1],
+      controls: /aria-controls="([^"]*)"/.exec(m[1])?.[1],
+      selected: /aria-selected="true"/.test(m[1]),
+      tabindex: /tabindex="(-?\d+)"/.exec(m[1])?.[1],
+    }));
+  const panelsOf = (html) => [...html.matchAll(/<div\b([^>]*role="tabpanel"[^>]*)>/g)].map((m) => ({ id: /\bid="([^"]*)"/.exec(m[1])?.[1], labelledby: /aria-labelledby="([^"]*)"/.exec(m[1])?.[1], hidden: /\bhidden=""/.test(m[1]) }));
+  const maren = () => bySlug(data.so, 'maren-hollis');
+
+  test('a tablist "Entry sections" lists the tabs that apply to the entry', () => {
+    const html = renderTabs(maren());
+    assert.match(html, /role="tablist"[^>]*aria-label="Entry sections"|aria-label="Entry sections"[^>]*role="tablist"/);
+    const expected = ['Details', 'Mentions', 'Research', 'Relations', ...((maren().problems ?? []).length > 0 ? ['Needs review'] : [])];
+    assert.deepEqual(tabsOf(html).map((t) => t.label), expected);
+  });
+
+  test('Needs review carries a count when the entry has problems', () => {
+    const entry = { ...maren(), problems: [{ code: 'W1', severity: 'warning', message: 'm', location: 'a' }, { code: 'W2', severity: 'warning', message: 'n', location: 'b' }] };
+    const html = renderTabs(entry);
+    assert.match(html, /Needs review<span class="entry-tab-count">2<\/span>/);
+    assert.equal(tabsOf(html).at(-1).label, 'Needs review');
+  });
+
+  test('Details is selected by default: one aria-selected tab with tabindex 0, the others -1', () => {
+    const tabs = tabsOf(renderTabs(maren()));
+    assert.equal(tabs.filter((t) => t.selected).length, 1);
+    assert.equal(tabs.find((t) => t.selected).label, 'Details');
+    for (const t of tabs) assert.equal(t.tabindex, t.selected ? '0' : '-1', t.label);
+  });
+
+  test('every tab controls a panel that points back at it; only the selected panel is visible', () => {
+    const html = renderTabs(maren());
+    const tabs = tabsOf(html);
+    const panels = panelsOf(html);
+    assert.equal(panels.length, tabs.length);
+    for (const t of tabs) {
+      const p = panels.find((x) => x.id === t.controls);
+      assert.ok(p, `panel for ${t.label}`);
+      assert.equal(p.labelledby, t.id);
+      assert.equal(p.hidden, !t.selected, t.label);
+    }
+    assert.ok(textOf(html).includes('Presence by chapter'), 'hidden panels stay in the markup');
+  });
+
+  test('initialTab selects another tab and hides Details', () => {
+    const html = renderTabs(maren(), { initialTab: 'relations' });
+    const tabs = tabsOf(html);
+    assert.equal(tabs.find((t) => t.selected).label, 'Relations');
+    const panels = panelsOf(html);
+    assert.equal(panels.find((p) => p.id === 'entry-panel-details').hidden, true);
+    assert.equal(panels.find((p) => p.id === 'entry-panel-relations').hidden, false);
+  });
+
+  test('an archived entry has no Mentions or Research tab', () => {
+    const labels = tabsOf(renderTabs({ ...maren(), archived: true })).map((t) => t.label);
+    assert.ok(!labels.includes('Mentions') && !labels.includes('Research'), labels.join(','));
+    assert.ok(labels.includes('Details') && labels.includes('Relations'));
+  });
+
+  test('an initialTab the entry does not have falls back to Details', () => {
+    const tabs = tabsOf(renderTabs({ ...maren(), archived: true }, { initialTab: 'mentions' }));
+    assert.equal(tabs.find((t) => t.selected).label, 'Details');
+    assert.equal(tabs.filter((t) => t.selected).length, 1);
+  });
+
+  test('the action bar sits above the tabs', () => {
+    const html = renderTabs(maren(), { onEdit() {} });
+    assert.ok(html.indexOf('codex-detail-bar') > -1 && html.indexOf('codex-detail-bar') < html.indexOf('entry-tabs'));
+    assert.ok(html.indexOf('Edit fields') < html.indexOf('entry-tabs'));
+  });
+});
+
 // ------------------------------------------------------------------------------------------------ no controls that do nothing
 
 describe('controls', () => {
@@ -510,5 +589,74 @@ describe('page url', () => {
     assert.deepEqual(model.parseCodexSearch('?entry='), { type: null, entry: null });
     assert.equal(model.codexHref('book_1', { entry: 'entry_X' }), '/books/book_1/codex?entry=entry_X');
     assert.equal(model.codexHref('book_1'), '/books/book_1/codex');
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ tabs: ARIA and keyboard
+
+describe('section tabs: ARIA and keyboard', () => {
+  const tabsOf = (html) => {
+    const tablist = /<div[^>]*role="tablist"[\s\S]*?<\/div>/.exec(html)?.[0] ?? '';
+    return [...tablist.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map((m) => ({
+      attrs: m[1],
+      text: textOf(m[2]),
+      id: /\bid="([^"]*)"/.exec(m[1])?.[1],
+      tabindex: /tabindex="(-?\d+)"/.exec(m[1])?.[1],
+    }));
+  };
+
+  test('one tablist; every tab has role, aria-controls and a unique id', () => {
+    const html = renderPage(data.so, { typeKey: 'character' });
+    assert.equal((html.match(/role="tablist"(?! aria-label="Entry sections")/g) ?? []).length, 1, 'one section tablist; the entry tabs are a second, separately labelled one');
+    const tabs = tabsOf(html);
+    assert.equal(tabs.length, 7);
+    for (const t of tabs) {
+      assert.match(t.attrs, /role="tab"/);
+      assert.match(t.attrs, /aria-controls="codex-tabpanel"/);
+      assert.ok(t.id);
+    }
+    assert.equal(new Set(tabs.map((t) => t.id)).size, tabs.length);
+  });
+
+  test('exactly one tab is selected (the typeKey) and only it is in the tab order', () => {
+    const tabs = tabsOf(renderPage(data.so, { typeKey: 'character' }));
+    const on = tabs.filter((t) => /aria-selected="true"/.test(t.attrs));
+    assert.equal(on.length, 1);
+    assert.ok(on[0].text.startsWith('Characters'));
+    assert.deepEqual(tabs.filter((t) => t.tabindex === '0'), on);
+    assert.ok(tabs.filter((t) => t !== on[0]).every((t) => t.tabindex === '-1' && /aria-selected="false"/.test(t.attrs)));
+  });
+
+  test('the tabpanel is labelled by the selected tab and holds the cards and the Entry details', () => {
+    const html = renderPage(data.so, { typeKey: 'character' });
+    const panel = /<div\b[^>]*role="tabpanel"[^>]*>/.exec(html)[0];
+    assert.match(panel, /id="codex-tabpanel"/);
+    const selected = tabsOf(html).find((t) => /aria-selected="true"/.test(t.attrs));
+    assert.ok(panel.includes(`aria-labelledby="${selected.id}"`));
+    const body = html.slice(html.indexOf(panel));
+    assert.ok(body.includes('data-entry-id='));
+    assert.ok(body.includes('aria-label="Entry details"'));
+    assert.ok(html.indexOf('role="tablist"') < html.indexOf(panel));
+  });
+
+  test('a custom type has its own tab and selecting it marks it selected', () => {
+    const html = renderPage(data.cg, { typeKey: 'ship' });
+    const tabs = tabsOf(html);
+    const ships = tabs.find((t) => t.text.startsWith('Ships'));
+    assert.ok(ships);
+    assert.deepEqual(tabs.filter((t) => /aria-selected="true"/.test(t.attrs)), [ships]);
+    assert.equal(ships.tabindex, '0');
+  });
+
+  test('nextTabIndex: arrows wrap, Home and End jump, other keys leave the tab alone', () => {
+    const n = model.nextTabIndex;
+    assert.equal(n(0, 'ArrowRight', 5), 1);
+    assert.equal(n(4, 'ArrowRight', 5), 0);
+    assert.equal(n(2, 'ArrowLeft', 5), 1);
+    assert.equal(n(0, 'ArrowLeft', 5), 4);
+    assert.equal(n(3, 'Home', 5), 0);
+    assert.equal(n(1, 'End', 5), 4);
+    assert.equal(n(2, 'a', 5), 2);
+    assert.equal(n(2, 'ArrowDown', 5), 2);
   });
 });

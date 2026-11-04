@@ -43,6 +43,7 @@ export const WIDGET_KEYS = [
   { file: 'structure/RowMenu.jsx', keys: 'Arrow Up, Arrow Down, Escape, Tab', what: 'the row menu of a scene or chapter' },
   { file: 'editor/LinkPicker.jsx', keys: 'Enter', what: 'choose the first match in the link picker' },
   { file: 'codex/CodexPage.jsx', keys: 'Arrow keys', what: 'move between Codex cards' },
+  { file: 'codex/EntryInspector.jsx', keys: 'Arrow Left, Arrow Right, Home, End', what: 'move between the tabs of an entry' },
   { file: 'continuity/ContinuityPage.jsx', keys: 'Arrow Up, Arrow Down, Home, End', what: 'move between continuity findings' },
   { file: 'planning/MatrixView.jsx', keys: 'Arrow Up, Arrow Down, Escape', what: 'move inside the thread matrix menu' },
   { file: 'planning/OutlineView.jsx', keys: 'Enter, Escape', what: 'save or cancel the one-line summary you are editing in the Outline view' },

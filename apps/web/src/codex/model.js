@@ -195,6 +195,23 @@ export function sidebarRows(types, entries) {
   ];
 }
 
+/** The id of a section tab: `codex-tab-` + the row key, any character outside A-Z a-z 0-9 _ - replaced by '-'. @param {string} key */
+export const tabId = (key) => `codex-tab-${key.replace(/[^A-Za-z0-9_-]/g, '-')}`;
+
+/**
+ * The tab a key press moves to (WAI-ARIA tabs, automatic activation): ArrowRight and ArrowLeft wrap around, Home is the first, End the last.
+ * Any other key returns `at`.
+ * @param {number} at the focused tab @param {string} key @param {number} count the number of tabs
+ */
+export function nextTabIndex(at, key, count) {
+  if (count <= 0) return at;
+  if (key === 'ArrowRight') return (at + 1) % count;
+  if (key === 'ArrowLeft') return (at - 1 + count) % count;
+  if (key === 'Home') return 0;
+  if (key === 'End') return count - 1;
+  return at;
+}
+
 /** The heading of the page for the selected sidebar row. @param {string} typeKey @param {{ type: string, plural: string }[]} types */
 export function typeTitle(typeKey, types) {
   if (typeKey === 'all') return 'All entries';
