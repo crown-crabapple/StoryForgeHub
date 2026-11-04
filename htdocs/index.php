@@ -72,6 +72,8 @@ function book_gate($a) {
             return $mk('edit', book_of_step($P['id'] ?? 0));
         case 'thread_status':
             return $mk('edit', book_of('threads', $P['id'] ?? 0));
+        case 'scene_meta_save':                      // UI plan Phase 2: Grid card popover (JSON)
+            return $mk('edit', book_of('scenes', $P['id'] ?? 0), true);
         case 'chapter_status': case 'chapter_archive': case 'chapter_restore': case 'chapter_delete':
             return $mk('edit', book_of('chapters', $P['id'] ?? 0));
         case 'source_delete':
@@ -301,6 +303,14 @@ if ($method === 'POST') {
         $c = get_chapter($_POST['id']);
         if ($c && $c['book_id'] === $book) { delete_chapter($_POST['id']); flash('Chapter deleted.'); }
         redirect(['p'=>'manuscript','book'=>$book]);
+    }
+    if ($a === 'scene_meta_save') {   // UI plan Phase 2: summary / POV / label / subtitle (JSON; prose untouched)
+        header('Content-Type: application/json; charset=utf-8');
+        $sid = (int)($_POST['id'] ?? 0);
+        $f = [];
+        foreach (['summary','label','pov_slug','subtitle'] as $k) if (array_key_exists($k, $_POST)) $f[$k] = (string)$_POST[$k];
+        $r = save_scene_meta($sid, (string)book_of('scenes', $sid), $f);   // the gate already resolved + checked this book
+        echo json_encode($r, JSON_UNESCAPED_UNICODE); exit;
     }
     if ($a === 'scene_label') {
         set_scene_label((int)($_POST['id'] ?? 0), $book, $_POST['label'] ?? '');
@@ -1175,11 +1185,23 @@ case 'manuscript':
             });
         }
         unset($list);
+        // UI plan Phase 2: live per-scene chips + previews, POV choices, edit rights
+        $canEdit = user_can($book['id'], 'edit');
+        $gTargets = function_exists('build_mention_targets') ? build_mention_targets($book['id']) : [];
+        $gBodies = [];
+        foreach (all("SELECT id,body FROM chapters WHERE book_id=? AND status<>'archived'", [$book['id']]) as $r) $gBodies[(int)$r['id']] = (string)$r['body'];
+        $gEnt = [];
+        foreach (all("SELECT slug,name,db_key FROM entries WHERE book_id=? ORDER BY name", [$book['id']]) as $r) $gEnt[$r['slug']] = $r;
+        $gDb = dbmeta_for($book['profile'] ?? 'fiction');
+        $gHasPov = isset($gDb['characters']);
+        $gPov = [];
+        if ($gHasPov) foreach ($gEnt as $sl => $r) if ($r['db_key'] === 'characters') $gPov[] = ['slug'=>$sl, 'name'=>$r['name']];
         $bands = [];
         foreach ($acts as $a) if (!empty($byAct[(int)$a['id']])) $bands[] = [$a, $byAct[(int)$a['id']]];
         if (!empty($byAct[0])) $bands[] = [null, $byAct[0]];
         // ---- Acts manager: create / rename / reorder / delete ----
         $bh = '<input type="hidden" name="book" value="'.e($book['id']).'">';
+        if ($canEdit) {
         echo '<div class="acts-mgr"><div class="acts-mgr-h">'.e($actP).'</div>';
         $nacts = count($acts);
         foreach ($acts as $i => $a) {
@@ -1195,8 +1217,18 @@ case 'manuscript':
         }
         echo '<form method="post" class="act-add"><input type="hidden" name="action" value="act_add">'.$bh.'<input name="title" placeholder="New '.e(strtolower($actS)).' title" required><button class="btn sm primary">+ Add '.e(strtolower($actS)).'</button></form>';
         echo '</div>';
-        echo '<p class="grid-hint">Drag a chapter\'s ⠿ handle to reorder it or move it between '.e(strtolower($actP)).'. Drag a scene\'s ⠿ handle to reorder scenes within a chapter — <strong>planning only</strong>; your prose isn\'t changed.</p>';
-        echo '<div class="mgrid">';
+        echo '<p class="grid-hint">Drag a chapter\'s ⠿ handle to reorder it or move it between '.e(strtolower($actP)).'. Drag a scene\'s ⠿ handle to reorder scenes within a chapter — <strong>planning only</strong>; your prose isn\'t changed. ✎ edits a scene\'s summary, POV, label and subtitle.</p>';
+        }
+        // UI plan Phase 2: View options (stored per browser) + scene filter
+        echo '<div class="grid-tools"><input type="search" id="gridFilter" placeholder="Filter scenes — title, summary, Codex names" autocomplete="off">'
+           . '<span class="grid-count muted" id="gridCount"></span>'
+           . '<div class="gview"><button type="button" class="btn sm" id="gviewBtn" aria-expanded="false">View ▾</button>'
+           . '<div class="gview-pop" id="gviewPop" hidden>'
+           . '<div class="gv-row"><span>Card width</span><span class="gv-seg" data-k="w"><button type="button" data-v="s">S</button><button type="button" data-v="m">M</button><button type="button" data-v="l">L</button></span></div>'
+           . '<div class="gv-row"><span>Card height</span><span class="gv-seg" data-k="h"><button type="button" data-v="s">S</button><button type="button" data-v="m">M</button><button type="button" data-v="full">Full</button></span></div>'
+           . '<label class="gv-row"><span>Codex chips</span><input type="checkbox" id="gvChips" checked></label>'
+           . '</div></div></div>';
+        echo '<div class="mgrid gw-m gh-m">';
         foreach ($bands as $bd) {
             list($a, $cols) = $bd;
             $bandHead = $a ? e($a['title']).($a['subtitle'] !== '' ? ' <span class="mband-sub">'.e($a['subtitle']).'</span>' : '') : ($acts ? 'Unassigned' : 'Chapters');
@@ -1206,12 +1238,13 @@ case 'manuscript':
                 $scenes = get_scenes($c['id']);
                 $counted = 0;
                 foreach ($scenes as $s2) if (!scene_label_excluded($s2['label'])) $counted += (int)$s2['word_count'];
+                $gData = scene_grid_data($gBodies[(int)$c['id']] ?? '', $gTargets);
                 echo '<div class="mcol" data-cid="'.(int)$c['id'].'">'
-                   . '<span class="mcol-handle" draggable="true" title="Drag to reorder / move between '.e(strtolower($actP)).'">⠿</span>'
+                   . ($canEdit ? '<span class="mcol-handle" draggable="true" title="Drag to reorder / move between '.e(strtolower($actP)).'">⠿</span>' : '')
                    . '<a class="mcol-h" href="'.url(['p'=>'chapter','book'=>$book['id'],'id'=>$c['id']]).'">'
                    . '<span class="mcol-t"><span class="mono">'.e($c['num']).'</span> '.e($c['title']).'</span>'
                    . '<span class="mcol-wc">'.number_format($counted).' words</span></a>';
-                if ($acts) {
+                if ($acts && $canEdit) {
                     echo '<form method="post" class="mcol-act"><input type="hidden" name="action" value="chapter_act">'.$bh.'<input type="hidden" name="cid" value="'.(int)$c['id'].'">'
                        . '<select name="act_id" onchange="this.form.submit()"><option value="">— no '.e(strtolower($actS)).' —</option>';
                     foreach ($acts as $aopt)
@@ -1224,18 +1257,44 @@ case 'manuscript':
                     $excl = scene_label_excluded($sc['label']);
                     $st = $sc['title'] !== '' ? e($sc['title']) : 'Scene '.(int)$sc['ordinal'];
                     $wc = number_format((int)$sc['word_count']).' words';
-                    echo '<div class="scard'.($excl ? ' excluded' : '').'" data-sid="'.(int)$sc['id'].'">';
-                    echo '<span class="scard-handle" draggable="true" title="Drag to reorder scenes (planning only — your prose is not changed)">⠿</span>';
+                    $gd = $gData[(int)$sc['ordinal']] ?? ['chips'=>[], 'preview'=>''];
+                    $summary = trim((string)$sc['summary']);
+                    $pov = (string)($sc['pov_slug'] ?? ''); $povName = $pov !== '' && isset($gEnt[$pov]) ? $gEnt[$pov]['name'] : '';
+                    $chipNames = [];
+                    foreach ($gd['chips'] as $slug => $n) if (isset($gEnt[$slug])) $chipNames[] = $gEnt[$slug]['name'];
+                    $q = mb_strtolower(implode(' ', array_merge([$sc['title'], (string)($sc['subtitle'] ?? ''), $summary !== '' ? $summary : $gd['preview'], $povName], $chipNames)));   // what the card shows
+                    $metaJs = json_encode(['summary'=>$summary, 'label'=>(string)$sc['label'], 'pov_slug'=>$pov, 'subtitle'=>(string)($sc['subtitle'] ?? '')], JSON_UNESCAPED_UNICODE);
+                    echo '<div class="scard'.($excl ? ' excluded' : '').'" data-sid="'.(int)$sc['id'].'" data-q="'.e($q).'" data-meta="'.e($metaJs).'">';
+                    if ($canEdit) echo '<span class="scard-handle" draggable="true" title="Drag to reorder scenes (planning only — your prose is not changed)">⠿</span>'
+                                     . '<button type="button" class="scard-edit" title="Edit summary, POV, label, subtitle">✎</button>';
                     echo '<div class="scard-t">'.$st.'</div>';
-                    echo '<div class="scard-m">'.($excl ? '<s>'.$wc.'</s> · not counted' : $wc).'</div>';
-                    // editable label (auto-submits)
-                    echo '<form method="post" class="scard-lbl"><input type="hidden" name="action" value="scene_label">'
-                       . '<input type="hidden" name="book" value="'.e($book['id']).'">'
-                       . '<input type="hidden" name="id" value="'.(int)$sc['id'].'">'
-                       . '<select name="label" onchange="this.form.submit()"><option value="">— label —</option>';
-                    foreach (SCENE_LABELS as $lbl)
-                        echo '<option value="'.e($lbl).'"'.($sc['label'] === $lbl ? ' selected' : '').'>'.e($lbl).'</option>';
-                    echo '</select></form>';
+                    echo '<div class="scard-sub"'.((string)($sc['subtitle'] ?? '') === '' ? ' hidden' : '').'>'.e((string)($sc['subtitle'] ?? '')).'</div>';
+                    echo '<div class="scard-m">'.($excl ? '<s>'.$wc.'</s> · not counted' : $wc)
+                       . '<span class="scard-pov"'.($povName === '' ? ' hidden' : '').' title="Point of view">POV · <span class="scard-pov-n">'.e($povName).'</span></span></div>';
+                    if ($summary !== '') echo '<div class="scard-sum">'.nl2br(e($summary)).'</div>';
+                    else echo '<div class="scard-sum preview" title="No summary yet — the scene\'s opening lines">'.e($gd['preview']).'</div>';
+                    if ($gd['chips']) {
+                        echo '<div class="scard-chips">';
+                        foreach ($gd['chips'] as $slug => $n) {
+                            if (!isset($gEnt[$slug])) continue;
+                            $col = $gDb[$gEnt[$slug]['db_key']]['hue'] ?? '#888';
+                            echo '<a class="scard-chip" href="'.url(['p'=>'entry','book'=>$book['id'],'db'=>$gEnt[$slug]['db_key'],'slug'=>$slug]).'" title="'.e($gEnt[$slug]['name']).' — '.(int)$n.' in this scene">'
+                               . '<i style="background:'.e($col).'"></i>'.e($gEnt[$slug]['name']).($n > 1 ? ' <b>'.(int)$n.'</b>' : '').'</a>';
+                        }
+                        echo '</div>';
+                    }
+                    if ($canEdit) {
+                        // editable label (auto-submits)
+                        echo '<form method="post" class="scard-lbl"><input type="hidden" name="action" value="scene_label">'
+                           . '<input type="hidden" name="book" value="'.e($book['id']).'">'
+                           . '<input type="hidden" name="id" value="'.(int)$sc['id'].'">'
+                           . '<select name="label" onchange="this.form.submit()"><option value="">— label —</option>';
+                        foreach (SCENE_LABELS as $lbl)
+                            echo '<option value="'.e($lbl).'"'.($sc['label'] === $lbl ? ' selected' : '').'>'.e($lbl).'</option>';
+                        echo '</select></form>';
+                    } elseif ($sc['label'] !== '') {
+                        echo '<div class="scard-lbl-ro"><span class="pill">'.e($sc['label']).'</span></div>';
+                    }
                     if (!empty($sc['note'])) echo '<div class="scard-note" title="Author note (from a comment in the prose)">'.nl2br(e($sc['note'])).'</div>';
                     echo '</div>';
                 }
@@ -1245,6 +1304,105 @@ case 'manuscript':
             echo '</div></div>';
         }
         echo '</div>';
+        // UI plan Phase 2: scene popover (editors) + View options + filter
+        if ($canEdit) {
+            echo '<div class="scene-pop" id="scenePop" role="dialog" aria-label="Edit scene" hidden><form id="scenePopForm">'
+               . '<label class="f">Summary</label><textarea name="summary" rows="4" maxlength="4000" placeholder="What happens in this scene?"></textarea>'
+               . ($gHasPov ? '<label class="f">POV</label><select name="pov_slug"><option value="">— none —</option>'
+                    . implode('', array_map(function($o){ return '<option value="'.e($o['slug']).'">'.e($o['name']).'</option>'; }, $gPov)).'</select>' : '')
+               . '<label class="f">Label</label><select name="label"><option value="">— none —</option>'
+                    . implode('', array_map(function($l){ return '<option value="'.e($l).'">'.e($l).'</option>'; }, SCENE_LABELS)).'</select>'
+               . '<label class="f">Subtitle</label><input type="text" name="subtitle" maxlength="255">'
+               . '<div class="scene-pop-err" hidden></div>'
+               . '<div class="toolbar"><button class="btn primary sm" type="submit">Save</button><button class="btn sm" type="button" data-close>Cancel</button></div>'
+               . '</form></div>';
+        }
+        echo '<script>window.__grid='.json_encode(['book'=>$book['id'], 'excluded'=>SCENE_LABELS_EXCLUDED],
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP).';</script>';
+        echo <<<'JS'
+<script>
+(function(){
+  var grid=document.querySelector('.mgrid'); if(!grid) return;
+  var G=window.__grid||{};
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m];}); }
+
+  /* ---- View options: card width / height / chips (per browser) ---- */
+  var KEY='codexGridView', V={w:'m',h:'m',chips:true};
+  try{ var saved=JSON.parse(localStorage.getItem(KEY)||'null'); if(saved&&typeof saved==='object'){ V.w=saved.w||V.w; V.h=saved.h||V.h; V.chips=saved.chips!==false; } }catch(_){}
+  var btn=document.getElementById('gviewBtn'), pop=document.getElementById('gviewPop'), chipsBox=document.getElementById('gvChips');
+  function applyView(){
+    grid.classList.remove('gw-s','gw-m','gw-l','gh-s','gh-m','gh-full');
+    grid.classList.add('gw-'+V.w,'gh-'+V.h); grid.classList.toggle('no-chips',!V.chips);
+    [].forEach.call(document.querySelectorAll('.gv-seg'),function(seg){
+      [].forEach.call(seg.querySelectorAll('button'),function(b){ b.classList.toggle('on', b.dataset.v===V[seg.dataset.k]); });
+    });
+    if(chipsBox) chipsBox.checked=V.chips;
+    try{ localStorage.setItem(KEY, JSON.stringify(V)); }catch(_){}
+  }
+  if(btn&&pop){
+    btn.addEventListener('click',function(){ pop.hidden=!pop.hidden; btn.setAttribute('aria-expanded',String(!pop.hidden)); });
+    pop.addEventListener('click',function(e){ var b=e.target.closest('.gv-seg button'); if(!b) return; V[b.parentNode.dataset.k]=b.dataset.v; applyView(); });
+    if(chipsBox) chipsBox.addEventListener('change',function(){ V.chips=chipsBox.checked; applyView(); });
+    document.addEventListener('mousedown',function(e){ if(!pop.hidden&&!pop.contains(e.target)&&e.target!==btn){ pop.hidden=true; btn.setAttribute('aria-expanded','false'); } });
+  }
+  applyView();
+
+  /* ---- filter: title / subtitle / summary / POV / chip names ---- */
+  var filt=document.getElementById('gridFilter'), count=document.getElementById('gridCount');
+  function runFilter(){
+    var q=(filt&&filt.value||'').trim().toLowerCase(), cards=grid.querySelectorAll('.scard[data-sid]'), shown=0;
+    [].forEach.call(cards,function(c){ var hit=!q||(c.dataset.q||'').indexOf(q)!==-1; c.classList.toggle('filtered-out',!hit); if(hit) shown++; });
+    if(count) count.textContent=q?(shown+' of '+cards.length+' scenes'):'';
+  }
+  if(filt) filt.addEventListener('input',runFilter);
+
+  /* ---- scene popover (editors only) ---- */
+  var sp=document.getElementById('scenePop'); if(!sp) return;
+  var form=document.getElementById('scenePopForm'), err=sp.querySelector('.scene-pop-err'), card=null;
+  function close(){ sp.hidden=true; card=null; }
+  function open(c){
+    card=c; var m={}; try{ m=JSON.parse(c.dataset.meta||'{}'); }catch(_){}
+    ['summary','label','pov_slug','subtitle'].forEach(function(k){ if(form.elements[k]) form.elements[k].value=m[k]||''; });
+    err.hidden=true; sp.hidden=false;
+    var r=c.getBoundingClientRect(), w=sp.offsetWidth, vw=document.documentElement.clientWidth;
+    var left=r.right+8; if(left+w>vw-8) left=Math.max(8,r.left-w-8);
+    sp.style.top=(window.scrollY+r.top)+'px'; sp.style.left=(window.scrollX+left)+'px';
+    form.elements.summary.focus();
+  }
+  grid.addEventListener('click',function(e){ var b=e.target.closest('.scard-edit'); if(b) open(b.closest('.scard')); });
+  sp.addEventListener('click',function(e){ if(e.target.closest('[data-close]')) close(); });
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&!sp.hidden) close(); });
+  document.addEventListener('mousedown',function(e){ if(!sp.hidden&&!sp.contains(e.target)&&!e.target.closest('.scard-edit')) close(); });
+  form.addEventListener('submit',function(e){
+    e.preventDefault(); if(!card) return;
+    var c=card, before={}; try{ before=JSON.parse(c.dataset.meta||'{}'); }catch(_){}
+    var body=new URLSearchParams(); body.append('action','scene_meta_save'); body.append('book',G.book); body.append('id',c.dataset.sid);
+    ['summary','label','pov_slug','subtitle'].forEach(function(k){ if(form.elements[k]) body.append(k,form.elements[k].value); });
+    fetch(window.location.href,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body.toString(),credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(!j||!j.ok){ err.textContent=(j&&j.error)||'Could not save.'; err.hidden=false; return; }
+        var s=j.scene;
+        var wasEx=G.excluded.indexOf(before.label||'')!==-1, isEx=G.excluded.indexOf(s.label||'')!==-1;
+        if(wasEx!==isEx){ window.location.reload(); return; }       // word totals change: re-render
+        c.dataset.meta=JSON.stringify({summary:s.summary,label:s.label,pov_slug:s.pov_slug,subtitle:s.subtitle});
+        var sum=c.querySelector('.scard-sum');
+        if(s.summary){ sum.classList.remove('preview'); sum.removeAttribute('title'); sum.innerHTML=esc(s.summary).replace(/\n/g,'<br>'); }
+        else if(!sum.classList.contains('preview')){ window.location.reload(); return; }   // preview text lives server-side
+        var sub=c.querySelector('.scard-sub'); sub.textContent=s.subtitle; sub.hidden=!s.subtitle;
+        var pov=c.querySelector('.scard-pov'), opt=form.elements.pov_slug?form.elements.pov_slug.querySelector('option[value="'+(s.pov_slug||'').replace(/"/g,'')+'"]'):null;
+        pov.querySelector('.scard-pov-n').textContent=s.pov_slug&&opt?opt.textContent:''; pov.hidden=!s.pov_slug;
+        var ls=c.querySelector('.scard-lbl select'); if(ls) ls.value=s.label;
+        var name=c.querySelector('.scard-t').textContent;
+        var chips=[].map.call(c.querySelectorAll('.scard-chip'),function(a){return a.textContent;});
+        c.dataset.q=[name,s.subtitle,s.summary,s.pov_slug&&opt?opt.textContent:''].concat(chips).join(' ').toLowerCase();
+        runFilter(); close();
+      })
+      .catch(function(){ err.textContent='Could not save (offline?).'; err.hidden=false; });
+  });
+})();
+</script>
+JS;
         $bid = json_encode($book['id']);
         echo <<<JS
 <script>
