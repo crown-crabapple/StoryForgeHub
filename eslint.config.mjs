@@ -12,7 +12,7 @@ const fsPaths = FS_MODULES.map((name) => ({
 // M05-J04 / M08-J02: outbound network I/O exists in TWO places, packages/ai/src/transport.mjs (the AI provider) and packages/integrations/src/webhook-transport.mjs (webhooks). Everywhere else in packages/** and apps/server/** these are errors:
 // the globals fetch / WebSocket (also as globalThis.x), node:https, node:net, node:tls, node:dgram, node:http2, undici, and node:http except
 // http.createServer in apps/server/src/server.mjs. Tests are exempt (they start mock servers and call the API under test).
-const NET_MESSAGE = 'Outbound network I/O is only allowed in packages/ai/src/transport.mjs (use postJson from @storyforge/ai) , packages/integrations/src/webhook-transport.mjs (use the webhook dispatcher from @storyforge/integrations) and packages/mcp/src/bridge-transport.mjs (the stdio MCP bridge, 127.0.0.1 only).';
+const NET_MESSAGE = 'Outbound network I/O is only allowed in packages/ai/src/transport.mjs (use postJson from @storyforge/ai), packages/integrations/src/webhook-transport.mjs (use the webhook dispatcher from @storyforge/integrations) and packages/mcp/src/bridge-transport.mjs (the stdio MCP bridge, 127.0.0.1 only).';
 const NET_MODULE_RE = '^((node:)?(https|http2|net|tls|dgram)|undici)$';
 const HTTP_MODULE_RE = '^(node:)?http$';
 const moduleSelectors = (re, message) => [
