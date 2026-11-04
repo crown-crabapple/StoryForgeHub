@@ -147,7 +147,7 @@ export function buildSteps({ install, skipAudit }) {
     },
   });
   steps.push({ name: 'security: secret scan', run: secretScan });
-  steps.push({ name: 'security: network boundary', run: async () => ({ status: 'ok', note: 'enforced by the lint step above (no outbound network code outside the two transport files)' }) });
+  steps.push({ name: 'security: network boundary', run: async () => ({ status: 'ok', note: 'enforced by the lint step above (no outbound network code outside the three transport files)' }) });
   steps.push({
     name: 'release build',
     run: async () => {

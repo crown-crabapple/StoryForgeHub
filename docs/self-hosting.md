@@ -154,6 +154,8 @@ account.
 
 If the setup link ran out (30 minutes) before it was used, see "Re-issuing a setup link" below.
 
+To let Claude Code or Claude Desktop use the shared server, create a plugin token and connect to `https://<your domain>/mcp`: see [mcp.md](mcp.md).
+
 ## Upgrade
 
 1. Take a backup first (below).

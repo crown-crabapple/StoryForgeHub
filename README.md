@@ -59,6 +59,7 @@ Workspaces: `apps/web` (React + Vite UI), `apps/server` (the local server, the c
 - [Moving from the old StoryForgeHub](docs/migration.md)
 - [Privacy and the optional AI workshop](docs/privacy-ai.md)
 - [API v1 and webhooks](docs/api.md) and [writing a plugin](docs/plugins.md)
+- [Connecting Claude (MCP)](docs/mcp.md)
 - [Customization](docs/customization.md)
 - [Accessibility](docs/accessibility.md) and [performance](docs/performance.md)
 - [Troubleshooting](docs/troubleshooting.md)

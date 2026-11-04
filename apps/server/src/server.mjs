@@ -6,6 +6,7 @@ import { userConfigDir } from '@storyforge/store';
 import { handlePluginRequest } from './api-v1.mjs';
 import { createAiService } from './ai-routes.mjs';
 import { bearerOf } from './plugin-policy.mjs';
+import { handleMcpRequest } from './mcp-route.mjs';
 import { createPluginService } from './plugin-service.mjs';
 import { createPresence } from './presence.mjs';
 import { checkModule, moduleOn, receiptsGate } from './preferences.mjs';
@@ -157,6 +158,42 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
       // M08-J02: a request with an Authorization header is a plugin request. It is decided by its own policy BEFORE the shared-mode gate and the member routes
       // (a bearer request carries no cookies, so the Origin and write-header checks do not apply and cookies are never read), and /api/v1 is reached only this way.
       const bearer = bearerOf(req);
+      // MCP over Streamable HTTP (mcp-route.mjs): the same bearer token and the same /api/v1 policy, one JSON-RPC message per POST. MCP clients are not
+      // web pages, so a request that carries an Origin header is refused (no browser page can drive the tools with a token it was given).
+      if (pathname === '/mcp') {
+        if (gate && !gate.hostOk(req, port)) return sendJson(res, 403, { error: 'forbidden' });
+        if (req.method !== 'POST' || req.headers.origin !== undefined) {
+          req.resume();
+          return req.method !== 'POST' ? sendJson(res, 405, { error: 'method_not_allowed', message: 'MCP here is POST only (no SSE stream, no session)' }) : sendJson(res, 403, { error: 'forbidden', code: 'ORIGIN' });
+        }
+        if (!bearer) {
+          req.resume();
+          return sendJson(res, 401, { error: 'unauthorized', code: 'TOKEN', message: 'MCP needs an Authorization: Bearer plugin token (a session cookie is never accepted here)' });
+        }
+        const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+        if (type !== 'application/json') {
+          req.resume();
+          return sendJson(res, 415, { error: 'unsupported_media_type', message: 'send content-type: application/json' });
+        }
+        const read = await readBody(req);
+        if (read.tooLarge) return sendJson(res, 413, { error: 'too_large' });
+        let message;
+        try {
+          message = JSON.parse(read.buffer.toString('utf8'));
+        } catch {
+          return sendJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
+        }
+        const r = await handleMcpRequest({
+          bearer, message, repository: current(), state, service: state.integrations,
+          audit: gate && shared?.audit ? shared.audit : null, ip: req.socket?.remoteAddress,
+          afterProposal: (book, proposal, by) => void hookEvents.afterProposal(current(), book, proposal, by).catch(() => {}),
+        });
+        if (r.status === 202) {
+          res.writeHead(202, { 'cache-control': 'no-store', 'content-length': 0 });
+          return res.end();
+        }
+        return sendJson(res, r.status, r.body);
+      }
       if (bearer !== null || pathname === '/api/v1' || pathname.startsWith('/api/v1/')) {
         if (gate && !gate.hostOk(req, port)) return sendJson(res, 403, { error: 'forbidden' }); // personal mode already passed its loopback and Host check above
         if (bearer === null) {

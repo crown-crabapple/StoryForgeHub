@@ -12,7 +12,7 @@ const fsPaths = FS_MODULES.map((name) => ({
 // M05-J04 / M08-J02: outbound network I/O exists in TWO places, packages/ai/src/transport.mjs (the AI provider) and packages/integrations/src/webhook-transport.mjs (webhooks). Everywhere else in packages/** and apps/server/** these are errors:
 // the globals fetch / WebSocket (also as globalThis.x), node:https, node:net, node:tls, node:dgram, node:http2, undici, and node:http except
 // http.createServer in apps/server/src/server.mjs. Tests are exempt (they start mock servers and call the API under test).
-const NET_MESSAGE = 'Outbound network I/O is only allowed in packages/ai/src/transport.mjs (use postJson from @storyforge/ai) and packages/integrations/src/webhook-transport.mjs (use the webhook dispatcher from @storyforge/integrations).';
+const NET_MESSAGE = 'Outbound network I/O is only allowed in packages/ai/src/transport.mjs (use postJson from @storyforge/ai) , packages/integrations/src/webhook-transport.mjs (use the webhook dispatcher from @storyforge/integrations) and packages/mcp/src/bridge-transport.mjs (the stdio MCP bridge, 127.0.0.1 only).';
 const NET_MODULE_RE = '^((node:)?(https|http2|net|tls|dgram)|undici)$';
 const HTTP_MODULE_RE = '^(node:)?http$';
 const moduleSelectors = (re, message) => [
@@ -39,7 +39,8 @@ const NET_PROPERTIES = ['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource'].f
 );
 const FS_WRITE_FNS = '^(write[A-Za-z]*|append[A-Za-z]*|mkdir[A-Za-z]*|rm|rmSync|rmdir|rmdirSync|unlink|unlinkSync|rename|renameSync|copyFile|copyFileSync|cp|cpSync|createWriteStream|open|openSync|truncate|truncateSync|symlink|symlinkSync|link|linkSync|chmod|chmodSync|utimes|utimesSync)$';
 const NET_SCOPE =['packages/**/*.mjs', 'apps/server/**/*.mjs'];
-const NET_IGNORES = ['**/test/**', 'packages/ai/src/transport.mjs', 'packages/integrations/src/webhook-transport.mjs', 'apps/server/src/server.mjs'];
+// packages/mcp/src/bridge-transport.mjs (the `storyforge mcp` stdio bridge) is the third: it posts only to 127.0.0.1:<port>/mcp, and the block below keeps it to node:http.
+const NET_IGNORES = ['**/test/**', 'packages/ai/src/transport.mjs', 'packages/integrations/src/webhook-transport.mjs', 'packages/mcp/src/bridge-transport.mjs', 'apps/server/src/server.mjs'];
 const networkPaths = ['node:http', 'node:https', 'node:http2', 'node:net', 'node:tls', 'node:dgram', 'node:dns', 'http', 'https', 'net', 'tls', 'dns'].map((name) => ({
   name,
   message: 'The Claude-Book adapter is local only: no network.',
@@ -227,6 +228,19 @@ export default [
       'no-restricted-globals': ['error', ...NET_GLOBALS],
       'no-restricted-properties': ['error', ...NET_PROPERTIES],
       'no-restricted-syntax': ['error', ...SQLITE_SELECTORS, ...NET_SELECTORS, ...HTTP_CLIENT_SELECTORS],
+    },
+  },
+  // packages/mcp: no filesystem access anywhere; the bridge transport may use node:http (to 127.0.0.1 only) and nothing else that touches the network
+  {
+    files: ['packages/mcp/src/**/*.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
+  },
+  {
+    files: ['packages/mcp/src/bridge-transport.mjs'],
+    rules: {
+      'no-restricted-globals': ['error', ...NET_GLOBALS],
+      'no-restricted-properties': ['error', ...NET_PROPERTIES],
+      'no-restricted-syntax': ['error', ...SQLITE_SELECTORS, ...NET_SELECTORS],
     },
   },
 

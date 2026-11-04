@@ -1,6 +1,6 @@
 // The text of `node apps/server/src/main.mjs --help`: every command and flag the CLI knows (M06-J03). Kept in one place so a test can check it lists them all.
 
-export const HELP_COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'export', 'backup', 'restore', 'receipts verify', 'shared init', 'shared reset-owner', 'audit verify', 'import-legacy'];
+export const HELP_COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'export', 'backup', 'restore', 'receipts verify', 'mcp', 'shared init', 'shared reset-owner', 'audit verify', 'import-legacy'];
 
 export const HELP = `StoryForge - a Markdown-first novel studio that runs on this computer.
 
@@ -15,6 +15,8 @@ Commands
   export                      Write one book as markdown, docx, epub or pdf.
   backup                      Write one book as a Markdown backup (.zip).
   restore                     Restore a backup into a new or empty folder.
+  mcp                         Stdio MCP bridge for Claude Code / Claude Desktop to the StoryForge already running here (needs STORYFORGE_TOKEN,
+                              a plugin token from Settings, Plugins, Grant access; --port, else the running server's port). See docs/mcp.md.
   receipts verify             Check the provenance receipts of one book (read-only; exit 1 on integrity problems).
   shared init                 Create the owner account for shared mode and print the one-time setup link (--owner <username>).
   shared reset-owner          Lost owner password: clear it and every session of that owner, print a new setup link (--owner <username>; stop the server first).

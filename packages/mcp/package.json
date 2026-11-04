@@ -1,0 +1,15 @@
+{
+  "name": "@storyforge/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge MCP service: the JSON-RPC handler and tool table behind POST /mcp and `storyforge mcp` (stdio). Every tool runs through /api/v1, so plugin-policy.mjs decides every call.",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "scripts": {
+    "test": "node --import ../../scripts/test-isolate-config.mjs --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

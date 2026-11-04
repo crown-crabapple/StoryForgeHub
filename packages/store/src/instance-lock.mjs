@@ -148,3 +148,13 @@ export function releaseLockSync(absPath, info = {}) {
     return { ok: true, released: false };
   }
 }
+
+/**
+ * Who holds the lock at `absPath` (read-only; used by `storyforge mcp` to find the running server's port). Never takes, changes or removes the lock.
+ * @param {string} absPath absolute path of the lock file
+ * @returns {Promise<{ pid?: number, hostname?: string, started_at?: string, port?: number | null } | null>} null when there is no lock or it is unreadable
+ */
+export async function lockHolder(absPath) {
+  const held = await readLock(absPath);
+  return held && held.info ? held.info : null;
+}

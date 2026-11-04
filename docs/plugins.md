@@ -73,6 +73,8 @@ and use `http://127.0.0.1:8787/` as the address. The receiver checks `x-storyfor
 match, and appends each good event as one line. The event is `{ event, at, book_id, target_id, path, sha256 }`: ids and a hash, never your text. If you need the text, read it
 with the API (`GET …/scenes/:id`) when the event arrives, so the author decides what a plugin may read; the author can also turn on "Include the scene text" for a webhook they trust.
 
+To connect Claude Code or Claude Desktop with a token, see [mcp.md](mcp.md).
+
 ## What a plugin cannot do
 
 - Write any file of the book: scenes, entries, planning files, receipts. Proposals are the only way to suggest one, and only the author applies it.

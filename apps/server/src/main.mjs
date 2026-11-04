@@ -15,6 +15,7 @@
 //   node apps/server/src/main.mjs import-legacy --dump <dir> [--book <legacy slug>]... --into <new library folder> [--report <file.md>] [--json <file.json>]   import into a NEW folder, validate, reconcile against the dump (M06-J02)
 //   node apps/server/src/main.mjs import-legacy --dump <dir> --reconcile <library folder> [--report <file.md>] [--json <file.json>]   check an imported library against the dump (read-only)
 //   node apps/server/src/main.mjs import-legacy --compare <library A> <library B>   are two imports byte-identical? (read-only)
+//   STORYFORGE_TOKEN=<plugin token> node apps/server/src/main.mjs mcp [--library <path>] [--port <n>]   stdio MCP bridge to the running server's POST /mcp
 //   node apps/server/src/main.mjs receipts verify --library <path> --book <slug> [--json]   check the provenance receipts (read-only; exit 1 on integrity problems)
 // Exit codes: 0 ok, 1 failed / needs hand repair / continuity errors found, 2 usage or cannot open the library, 3 another instance holds the library.
 import path from 'node:path';
@@ -24,6 +25,7 @@ import { FILE_COMMANDS, runFileCommand } from './export-cli.mjs';
 import { HELP } from './help.mjs';
 import { openBrowser } from './open-browser.mjs';
 import { LEGACY_COMMANDS, runLegacyCommand } from './legacy-cli.mjs';
+import { runMcpCommand } from './mcp-cli.mjs';
 import { profileNameFrom } from './preferences.mjs';
 import { runReceiptsCommand } from './receipts-cli.mjs';
 import { createServer } from './server.mjs';
@@ -33,7 +35,7 @@ import { SharedDataError, createAudit, openSettings, openSharedData } from '@sto
 
 const webRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const argv = process.argv.slice(2);
-const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'receipts', ...SHARED_COMMANDS, ...LEGACY_COMMANDS, ...FILE_COMMANDS];
+const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'receipts', 'mcp', ...SHARED_COMMANDS, ...LEGACY_COMMANDS, ...FILE_COMMANDS];
 const command = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'serve';
 const apply = argv.includes('--apply');
 
@@ -47,10 +49,17 @@ if (argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') {
   process.stdout.write(HELP);
   process.exit(0);
 }
-if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, shared, audit, import-legacy, export, backup or restore; --help lists them all)`, 2);
+if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, mcp, shared, audit, import-legacy, export, backup or restore; --help lists them all)`, 2);
 
 // import-legacy reads a legacy dump (and writes only a NEW folder with --into): no library config, no lock, no server
 if (command === 'import-legacy') process.exit(await runLegacyCommand(argv.slice(1)));
+
+// mcp is the stdio bridge to the server already running (mcp-cli.mjs): no library lock, no server
+if (command === 'mcp') {
+  process.exitCode = await runMcpCommand(argv.slice(1));
+  await new Promise((resolve) => process.stdout.write('', resolve)); // let the last reply reach the client before exiting
+  process.exit();
+}
 
 // receipts verify is read-only too: no lock, no server
 if (command === 'receipts') process.exit(await runReceiptsCommand(argv.slice(1)));
