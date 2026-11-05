@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useApi } from '../api.js';
 import { Link } from '../router.jsx';
+import { Dialog } from '../shell/Dialog.jsx';
 import { SuggestionReview } from '../suggestions/SuggestionReview.jsx';
 import { SuggestionsGroup } from '../suggestions/SuggestionsGroup.jsx';
 import { ShowBoth, SourceLink } from './ShowBoth.jsx';
@@ -125,7 +126,7 @@ export function FindingDetail({ bookId, finding, version = '', handlers = {} }) 
   );
 }
 
-/** A list of findings, one row each; ↑/↓ (Home/End) move between rows, Enter opens the row. @param {{ rows: any[], selectedFp: string | null, onSelect: (fp: string) => void }} props */
+/** The findings as a board of cards, one card each; ↑/↓ (Home/End) move between rows, Enter opens the row. @param {{ rows: any[], selectedFp: string | null, onSelect: (fp: string) => void }} props */
 export function FindingList({ rows, selectedFp, onSelect }) {
   const listRef = useRef(null);
   const selectedAt = rows.findIndex((r) => r.fingerprint === selectedFp);
@@ -133,7 +134,7 @@ export function FindingList({ rows, selectedFp, onSelect }) {
   const tabAt = focusAt !== null ? Math.min(focusAt, rows.length - 1) : Math.max(0, selectedAt);
   return (
     <ul
-      className="nt-list cf-list"
+      className="nt-board cf-list"
       aria-label="Findings"
       ref={listRef}
       onKeyDown={(e) => {
@@ -148,15 +149,17 @@ export function FindingList({ rows, selectedFp, onSelect }) {
     >
       {rows.map((f, i) => (
         <li key={f.fingerprint}>
-          <button type="button" className="nt-row cf-row" tabIndex={i === tabAt ? 0 : -1} aria-current={f.fingerprint === selectedFp ? 'true' : undefined} onClick={() => onSelect(f.fingerprint)} onFocus={() => setFocusAt(i)}>
-            <span className="nt-row-title">
-              <Severity severity={f.severity} /> {f.title}
-            </span>
-            <span className="nt-row-meta">
+          <button type="button" className="nt-card cf-row" tabIndex={i === tabAt ? 0 : -1} aria-current={f.fingerprint === selectedFp ? 'true' : undefined} onClick={() => onSelect(f.fingerprint)} onFocus={() => setFocusAt(i)}>
+            <span className="cf-card-top">
+              <Severity severity={f.severity} />
               <span className="tag">{ruleName(f.rule)}</span>
-              <span className="muted">{subjectLabel(f.subject)}</span>
             </span>
-            <span className="nt-row-excerpt muted">{f.sources[0] ? sourceLabel(f.sources[0]) : ''}</span>
+            <span className="nt-card-title">{f.title}</span>
+            {f.message && <span className="nt-card-excerpt muted">{f.message}</span>}
+            <span className="nt-card-meta">
+              <span className="muted">{subjectLabel(f.subject)}</span>
+              {f.sources[0] && <span className="muted cf-card-source">{sourceLabel(f.sources[0])}</span>}
+            </span>
           </button>
         </li>
       ))}
@@ -170,11 +173,11 @@ export function StaleExceptions({ bookId, items, onRemove }) {
   return (
     <section className="cf-stale" aria-label="Exceptions that no longer match">
       <h2 className="tl-when">No longer matches a finding</h2>
-      <ul className="nt-list">
+      <ul className="nt-board">
         {items.map((x) => (
-          <li key={x.file} className="nt-row cf-stale-row">
-            <span className="nt-row-title">{x.slug}</span>
-            <span className="nt-row-meta muted">
+          <li key={x.file} className="nt-card cf-stale-row">
+            <span className="nt-card-title">{x.slug}</span>
+            <span className="nt-card-meta muted cf-card-source">
               <Link to={`/books/${encodeURIComponent(bookId)}?file=${encodeURIComponent(x.file)}`}>{x.file}</Link>
               <code>{x.fingerprint}</code>
             </span>
@@ -193,18 +196,28 @@ export function StaleExceptions({ bookId, items, onRemove }) {
   );
 }
 
+/** The × in the corner of the finding / suggestion dialog. @param {{ label: string, onClose: () => void }} props */
+function CloseButton({ label, onClose }) {
+  return (
+    <button type="button" className="btn nt-note-close" aria-label={label} onClick={onClose}>
+      ×
+    </button>
+  );
+}
+
 /**
- * The Continuity review (/books/:id/continuity): filters on the left, the findings in the middle, one finding in full on the right. Presentational: everything arrives by props.
+ * The Continuity review (/books/:id/continuity): filters on the left, the findings as a board of cards, and the open finding (or suggestion) in a dialog. Presentational: everything arrives by props.
  * @param {{ bookId: string, result: any, filter?: { status: string, rule: string | null, subject: string | null }, selectedFp?: string | null, version?: string,
- *   handlers?: { onFilter?: (patch: Record<string, any>) => void, onSelect?: (fp: string) => void, onAcknowledge?: (f: any) => void, onRestore?: (slug: string) => void, onRemove?: (slug: string) => void },
+ *   handlers?: { onFilter?: (patch: Record<string, any>) => void, onSelect?: (fp: string) => void, onClose?: () => void, onAcknowledge?: (f: any) => void, onRestore?: (slug: string) => void, onRemove?: (slug: string) => void },
  *   suggestions?: any[] | null, selectedSuggestion?: any | null, selectedSuggestionId?: string | null,
  *   suggestionHandlers?: { busy?: boolean, error?: string | null, onSelect?: (id: string) => void, onAccept?: (hunkId: string) => void, onDecline?: (hunkId: string) => void, onAcceptAll?: () => void, onDeclineAll?: () => void } }} props
- *   `suggestions` (GET /suggestions) adds the "Suggestions" group to the sidebar (M05-J06); the selected one (GET /suggestions/:id) is reviewed in the right-hand panel instead of a finding.
+ *   `suggestions` (GET /suggestions) adds the "Suggestions" group to the sidebar (M05-J06); the selected one (GET /suggestions/:id) is reviewed in the dialog instead of a finding.
  */
 export function ContinuityPage({ bookId, result, filter = { status: 'all', rule: null, subject: null }, selectedFp = null, version = '', handlers = {}, suggestions = null, selectedSuggestion = null, selectedSuggestionId = null, suggestionHandlers = {} }) {
   const model = queueModel(result, filter);
   const selected = findByFingerprint(result, selectedFp);
   const set = (patch) => handlers.onFilter?.(patch);
+  const close = handlers.onClose ?? (() => {});
   return (
     <div className="nt cf">
       <aside aria-label="Continuity filters" className="codex-sidebar">
@@ -259,13 +272,17 @@ export function ContinuityPage({ bookId, result, filter = { status: 'all', rule:
       </main>
 
       {selectedSuggestion ? (
-        <aside aria-label="Suggestion" className="nt-view">
+        <Dialog label="Suggestion" onClose={close} className="dialog-wide nt-note-dialog">
+          <CloseButton label="Close suggestion" onClose={close} />
           <SuggestionReview key={selectedSuggestion.id} suggestion={selectedSuggestion} busy={suggestionHandlers.busy} error={suggestionHandlers.error} handlers={suggestionHandlers} />
-        </aside>
+        </Dialog>
       ) : (
-        <aside aria-label="Finding" className="nt-view">
-          <FindingDetail key={selected?.fingerprint ?? 'none'} bookId={bookId} finding={selected} version={version} handlers={handlers} />
-        </aside>
+        selected && (
+          <Dialog label={selected.title ?? 'Finding'} onClose={close} className="dialog-wide nt-note-dialog">
+            <CloseButton label="Close finding" onClose={close} />
+            <FindingDetail key={selected.fingerprint} bookId={bookId} finding={selected} version={version} handlers={handlers} />
+          </Dialog>
+        )
       )}
     </div>
   );

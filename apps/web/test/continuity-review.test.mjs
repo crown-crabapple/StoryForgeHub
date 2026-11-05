@@ -277,6 +277,17 @@ describe('acceptance 5: the review queue', () => {
   test('the page says findings are advice', () => {
     assert.match(textOf(renderPage(sets.so)), /advice/i);
   });
+
+  test('findings are a board of cards; the selected one opens in a dialog with a close button, and nothing selected means no dialog', () => {
+    const f = sets.cases.result.findings[0];
+    const closed = renderPage(sets.cases);
+    assert.match(closed, /<ul[^>]*class="nt-board cf-list"/);
+    assert.ok(!/role="dialog"/.test(closed));
+    const open = renderPage(sets.cases, { selectedFp: f.fingerprint });
+    assert.match(open, /role="dialog"[^>]*aria-modal="true"/);
+    assert.match(open, /<button[^>]*aria-label="Close finding"/);
+    assert.ok(textOf(/role="dialog"[\s\S]*$/.exec(open)[0]).includes(f.title));
+  });
 });
 
 describe('acceptance 5: detail with both sources', () => {

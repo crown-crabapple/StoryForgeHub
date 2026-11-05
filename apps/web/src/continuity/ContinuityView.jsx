@@ -64,6 +64,7 @@ export function ContinuityView({ bookId, search = '' }) {
         handlers={{
           onFilter: (patch) => setFilter((f) => ({ ...f, ...patch })),
           onSelect: (fp) => navigate(continuityHref(bookId, { finding: fp })),
+          onClose: () => navigate(continuityHref(bookId)),
           onAcknowledge: actions.acknowledge,
           onRestore: actions.restore,
           onRemove: actions.remove,
