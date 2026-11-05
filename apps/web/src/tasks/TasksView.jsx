@@ -85,6 +85,7 @@ export function TasksView({ bookId, search = '' }) {
         handlers={{
           onFilter: (patch) => setFilter((f) => ({ ...f, ...patch })),
           onSelect: (id) => navigate(tasksPageHref(bookId, id)),
+          onClose: () => navigate(tasksPageHref(bookId, null)),
           onStatus: setStatus,
           onNew: () => setDialog({ error: null }),
         }}

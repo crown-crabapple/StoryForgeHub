@@ -117,10 +117,10 @@ export function TaskDetail({ bookId, opened, busy = false, onStatus }) {
 }
 
 /**
- * The Tasks page (/books/:id/tasks): filters (status with counts, source, label) on the left, the tasks in the middle (one row in the tab order; ↑ ↓ Home End move, Enter opens),
- * one opened task on the right. Presentational: everything arrives by props.
+ * The Tasks page (/books/:id/tasks): filters (status with counts, source, label) on the left, the tasks as a board of cards (one card in the tab order; ↑ ↓ Home End move, Enter opens),
+ * and the opened task in a dialog. Presentational: everything arrives by props.
  * @param {{ bookId: string, data: { tasks: any[], counts: Record<string, number>, labels: string[] }, filter?: { status: string, source: string, label: string }, selectedId?: string | null, opened?: any | null,
- *   busy?: boolean, notice?: string | null, handlers?: { onFilter?: (patch: Record<string, string>) => void, onSelect?: (id: string) => void, onStatus?: (to: string) => void, onNew?: () => void } }} props
+ *   busy?: boolean, notice?: string | null, handlers?: { onFilter?: (patch: Record<string, string>) => void, onSelect?: (id: string) => void, onClose?: () => void, onStatus?: (to: string) => void, onNew?: () => void } }} props
  */
 export function TasksPage({ bookId, data, filter = { status: '', source: '', label: '' }, selectedId = null, opened = null, busy = false, notice = null, handlers = {} }) {
   const rows = filterTasks(data.tasks, filter);
@@ -129,6 +129,7 @@ export function TasksPage({ bookId, data, filter = { status: '', source: '', lab
   const [focusAt, setFocusAt] = useState(/** @type {number | null} */ (null));
   const tabAt = focusAt !== null ? Math.min(focusAt, rows.length - 1) : Math.max(0, selectedAt);
   const set = (patch) => handlers.onFilter?.(patch);
+  const close = handlers.onClose ?? (() => {});
   return (
     <div className="nt cf">
       <aside aria-label="Task filters" className="codex-sidebar">
@@ -190,7 +191,7 @@ export function TasksPage({ bookId, data, filter = { status: '', source: '', lab
           </div>
         ) : (
           <ul
-            className="nt-list cf-list"
+            className="nt-board cf-list"
             aria-label="Tasks"
             ref={listRef}
             onKeyDown={(e) => {
@@ -205,11 +206,13 @@ export function TasksPage({ bookId, data, filter = { status: '', source: '', lab
           >
             {rows.map((t, i) => (
               <li key={t.id}>
-                <button type="button" className="nt-row cf-row" tabIndex={i === tabAt ? 0 : -1} aria-current={t.id === selectedId ? 'true' : undefined} onClick={() => handlers.onSelect?.(t.id)} onFocus={() => setFocusAt(i)}>
-                  <span className="nt-row-title">{t.title}</span>
-                  <span className="nt-row-meta">
+                <button type="button" className="nt-card cf-row" tabIndex={i === tabAt ? 0 : -1} aria-current={t.id === selectedId ? 'true' : undefined} onClick={() => handlers.onSelect?.(t.id)} onFocus={() => setFocusAt(i)}>
+                  <span className="cf-card-top">
                     <span className="tag">{statusLabel(t.status)}</span>
                     <span className="muted">{sourceLabel(t.source.kind)}</span>
+                  </span>
+                  <span className="nt-card-title">{t.title}</span>
+                  <span className="nt-card-meta">
                     {t.labels.map((l) => (
                       <span key={l} className="tag">
                         {l}
@@ -223,9 +226,14 @@ export function TasksPage({ bookId, data, filter = { status: '', source: '', lab
         )}
       </main>
 
-      <aside aria-label="Task" className="nt-view">
-        <TaskDetail key={opened?.task.id ?? 'none'} bookId={bookId} opened={opened} busy={busy} onStatus={(to) => handlers.onStatus?.(to)} />
-      </aside>
+      {opened && (
+        <Dialog label={opened.task.title ?? 'Task'} onClose={close} className="dialog-wide nt-note-dialog">
+          <button type="button" className="btn nt-note-close" aria-label="Close task" onClick={close}>
+            ×
+          </button>
+          <TaskDetail key={opened.task.id} bookId={bookId} opened={opened} busy={busy} onStatus={(to) => handlers.onStatus?.(to)} />
+        </Dialog>
+      )}
     </div>
   );
 }

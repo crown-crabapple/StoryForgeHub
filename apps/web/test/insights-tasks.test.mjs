@@ -242,6 +242,15 @@ describe('Tasks page', () => {
     assert.equal(openTargetHref(BOOK, { id: 'x', kind: null, found: false, selection: null }), null, 'a target that is gone has no Open');
   });
 
+  test('tasks are a board of cards; the opened task is in a dialog with a close button, and nothing opened means no dialog', () => {
+    const closed = tasksPage({});
+    assert.match(closed, /<ul[^>]*class="nt-board cf-list"/);
+    assert.ok(!/role="dialog"/.test(closed));
+    const open = tasksPage({ selectedId: d.made.id, opened: d.opened });
+    assert.match(open, /role="dialog"[^>]*aria-modal="true"/);
+    assert.match(open, /<button[^>]*aria-label="Close task"/);
+  });
+
   test('a target whose quote cannot be found opens the scene with a notice, and says so on the page', () => {
     const { openTargetHref, noticeText } = mod('/src/tasks/model.js');
     const opened = clone(d.opened);
