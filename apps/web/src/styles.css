@@ -356,6 +356,17 @@ mark {
   padding: var(--s5) var(--s4);
   border-right: 1px solid var(--divider);
 }
+/* the outline stays on screen and scrolls on its own, apart from the page (below 900px it is a drawer instead) */
+@media (min-width: 900px) {
+  .rail {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
 .workspace-main {
   grid-area: main;
   min-width: 0;
