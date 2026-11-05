@@ -130,6 +130,7 @@ export function NotesView({ bookId, search = '' }) {
     onEdit: (n) => setDialog({ kind: 'edit', note: n }),
     onArchive: (n) => startPreview(`Archive ${n.title}`, [noteArchiveRequest(bookId, n)], { select: undefined }),
     onRestore: (n) => startPreview(`Restore ${n.title}`, [noteRestoreRequest(bookId, n)], { select: n.id }),
+    onCloseNote: () => navigate(notesHref(bookId, { section: url.section, tag: url.tag })),
   };
   const editor = editing && notes.find((n) => n.id === editing.id && !n.archived);
 

@@ -2,6 +2,7 @@ import { Link } from '../router.jsx';
 import { codexHref } from '../codex/model.js';
 import { viewHref } from '../planning/model.js';
 import { timelineHref } from '../timeline/model.js';
+import { Dialog } from '../shell/Dialog.jsx';
 import { NoteProse } from './NoteProse.jsx';
 import { KIND_LABEL, NOTE_SECTIONS, citationOf, filterNotes, groupSceneNotes, notesHref, sceneLineHref, sectionTitle, sidebarCounts, updatedLabel } from './model.js';
 
@@ -223,11 +224,11 @@ export function SceneNotesList({ bookId, data }) {
 }
 
 /**
- * The Notes page (/books/:id/notes): the sidebar (All, Research, Planning docs, Sources, Scene notes, and the tags with counts), the list with search, and the note view.
+ * The Notes page (/books/:id/notes): the sidebar (All, Research, Planning docs, Sources, Scene notes, and the tags with counts), the note board with search, and the open note in a dialog.
  * Presentational: everything arrives by props, so tests can render it with fixture JSON.
  * @param {{ bookId: string, data: { notes: any[], tags: { tag: string, count: number }[] }, sceneNotes?: { scenes?: any[] } | null, section?: string, tag?: string | null,
  *   query?: string, textIds?: Set<string> | null, selectedId?: string | null, note?: any | null, handlers?: Record<string, any>, editor?: import('react').ReactNode }} props
- *   handlers: onQuery(q), onNew(kind), onEditText(note), onEdit(note), onArchive(note), onRestore(note)
+ *   handlers: onQuery(q), onNew(kind), onEditText(note), onEdit(note), onArchive(note), onRestore(note), onCloseNote()
  */
 export function NotesPage({ bookId, data, sceneNotes = null, section = 'all', tag = null, query = '', textIds = null, selectedId = null, note = null, handlers = {}, editor = null }) {
   const notes = data?.notes ?? [];
@@ -236,6 +237,7 @@ export function NotesPage({ bookId, data, sceneNotes = null, section = 'all', ta
   const shown = filterNotes(notes, { section, tag, query, textIds });
   const sources = new Map(notes.filter((n) => n.kind === 'source' && n.cite_key).map((n) => [n.cite_key, citationOf(n)]));
   const selected = shown.find((n) => n.id === selectedId) ?? null;
+  const openNote = note ?? (selected ? { ...selected } : null);
   return (
     <div className="nt">
       <aside aria-label="Notes sections" className="codex-sidebar">
@@ -295,13 +297,14 @@ export function NotesPage({ bookId, data, sceneNotes = null, section = 'all', ta
                     <p>{query.trim() !== '' || tag ? 'Clear the search or the tag to see more.' : 'Research, planning documents and sources you add are listed here.'}</p>
                   </div>
                 ) : (
-                  <ul className="nt-list" aria-label="Notes">
+                  <ul className="nt-board" aria-label="Notes">
                     {shown.map((n) => (
                       <li key={n.id}>
-                        <Link className="nt-row" to={notesHref(bookId, { section: n.archived ? 'archived' : section, tag, note: n.id })} aria-current={n.id === selectedId ? 'true' : undefined}>
-                          <span className="nt-row-title">{n.title}</span>
-                          <span className="nt-row-meta">
-                            <span className="tag">{KIND_LABEL[n.kind]}</span>
+                        <Link className="nt-card" to={notesHref(bookId, { section: n.archived ? 'archived' : section, tag, note: n.id })} aria-current={n.id === selectedId ? 'true' : undefined}>
+                          <span className="tag nt-card-kind">{KIND_LABEL[n.kind]}</span>
+                          <span className="nt-card-title">{n.title}</span>
+                          {n.excerpt && <span className="nt-card-excerpt muted">{n.excerpt}</span>}
+                          <span className="nt-card-meta">
                             {n.tags.map((t) => (
                               <span key={t} className="tag">
                                 {t}
@@ -310,7 +313,6 @@ export function NotesPage({ bookId, data, sceneNotes = null, section = 'all', ta
                             {n.links.length > 0 && <span className="muted">{n.links.map((l) => l.name ?? l.ref).join(', ')}</span>}
                             {updatedLabel(n.updated_at) && <span className="muted">{updatedLabel(n.updated_at)}</span>}
                           </span>
-                          {n.excerpt && <span className="nt-row-excerpt muted">{n.excerpt}</span>}
                         </Link>
                       </li>
                     ))}
@@ -322,9 +324,14 @@ export function NotesPage({ bookId, data, sceneNotes = null, section = 'all', ta
         )}
       </main>
 
-      <aside aria-label="Note" className="nt-view">
-        {section === 'scene-notes' ? <p className="muted">Choose a note to jump to its line in the manuscript.</p> : <NoteView bookId={bookId} note={note ?? (selected ? { ...selected } : null)} sources={sources} handlers={handlers} />}
-      </aside>
+      {section !== 'scene-notes' && !editor && openNote && (
+        <Dialog label={openNote.title ?? 'Note'} onClose={handlers.onCloseNote ?? (() => {})} className="dialog-wide nt-note-dialog">
+          <button type="button" className="btn nt-note-close" aria-label="Close note" onClick={handlers.onCloseNote}>
+            ×
+          </button>
+          <NoteView bookId={bookId} note={openNote} sources={sources} handlers={handlers} />
+        </Dialog>
+      )}
     </div>
   );
 }

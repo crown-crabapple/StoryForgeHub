@@ -786,23 +786,23 @@ describe('acceptance 7: Notes page', () => {
     const html = renderNotes(sets.so);
     assert.match(html, /<h1>All<\/h1>/);
     assert.ok(textOf(html).includes('3 notes'));
-    const rows = [...html.matchAll(/<a\b[^>]*class="nt-row"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => textOf(m[1]));
+    const rows = [...html.matchAll(/<a\b[^>]*class="nt-card"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => textOf(m[1]));
     assert.equal(rows.length, 3);
-    assert.ok(rows[0].startsWith('Book plan') && rows[0].includes('Planning doc'));
-    assert.ok(rows[1].startsWith('Tidal ranges on the coast') && rows[1].includes('Research') && rows[1].includes('tides') && rows[1].includes('setting') && rows[1].includes('Salt Orchard') && rows[1].includes('Spring tides here reach four metres.'), rows[1]);
-    assert.ok(rows[2].startsWith('Tide Tables for the North Shore') && rows[2].includes('Source'));
-    assert.deepEqual(anchors(html).filter((a) => /nt-row/.test(a.attrs)).map((a) => a.href), [PLAN, TIDES, TABLES].map((id) => `/books/${SO}/notes?note=${id}`));
+    assert.ok(rows[0].includes('Book plan') && rows[0].includes('Planning doc'));
+    assert.ok(rows[1].includes('Tidal ranges on the coast') && rows[1].includes('Research') && rows[1].includes('tides') && rows[1].includes('setting') && rows[1].includes('Salt Orchard') && rows[1].includes('Spring tides here reach four metres.'), rows[1]);
+    assert.ok(rows[2].includes('Tide Tables for the North Shore') && rows[2].includes('Source'));
+    assert.deepEqual(anchors(html).filter((a) => /nt-card/.test(a.attrs)).map((a) => a.href), [PLAN, TIDES, TABLES].map((id) => `/books/${SO}/notes?note=${id}`));
   });
 
   test('section, tag and search narrow the list; the title says which; an empty result explains', () => {
     const research = renderNotes(sets.so, { section: 'research' });
     assert.match(research, /<h1>Research<\/h1>/);
-    assert.equal(count(research, /class="nt-row"/g), 1);
+    assert.equal(count(research, /class="nt-card"/g), 1);
     const tag = renderNotes(sets.so, { section: 'research', tag: 'tides' });
     assert.match(tag, /<h1>Tag: tides<\/h1>/);
-    assert.equal(count(tag, /class="nt-row"/g), 1);
+    assert.equal(count(tag, /class="nt-card"/g), 1);
     const search = renderNotes(sets.so, { query: 'harbour' });
-    assert.equal(count(search, /class="nt-row"/g), 1);
+    assert.equal(count(search, /class="nt-card"/g), 1);
     assert.ok(/value="harbour"/.test(search));
     const none = renderNotes(sets.so, { query: 'zzzz' });
     assert.ok(textOf(none).includes('No notes match.'));
@@ -819,7 +819,7 @@ describe('acceptance 7: Notes page', () => {
   test('note view (research): tags, canon flag with its explanation, link chips to the Codex, source citations, the text, file and buttons', () => {
     const note = sets.so.full.find((n) => n.id === TIDES);
     const html = renderNotes(sets.so, { section: 'research', note, selectedId: TIDES, handlers: { onEditText: noop, onEdit: noop, onArchive: noop } });
-    const view = /<aside aria-label="Note"[\s\S]*?<\/aside>/.exec(html)[0];
+    const view = /role="dialog"[\s\S]*$/.exec(html)[0];
     const t = textOf(view);
     assert.ok(t.includes('Tidal ranges on the coast') && t.includes('Tags') && t.includes('tides') && t.includes('setting'));
     assert.ok(t.includes('Not canon') && /not treat it as fact unless you mark it canon/.test(t), 'canon flag explained');
@@ -869,24 +869,27 @@ describe('acceptance 7: Notes page', () => {
   test('note view (source): cite-as, author, year, type, URL as an external link; (doc): locked state; archived and stale banners; Restore instead of Archive', () => {
     const src = sets.so.full.find((n) => n.id === TABLES);
     const html = renderNotes(sets.so, { section: 'sources', note: { ...src, source: { ...src.source, url: 'https://example.com/tables' } }, selectedId: TABLES });
-    const t = textOf(/<aside aria-label="Note"[\s\S]*?<\/aside>/.exec(html)[0]);
+    const t = textOf(/role="dialog"[\s\S]*$/.exec(html)[0]);
     assert.ok(t.includes('Cite as [@admiralty-tables]') && t.includes('Aldine Harbour Office') && t.includes('1998') && t.includes('report'), t);
     assert.ok(t.includes('Nothing written yet.'), 'a source with no text');
     assert.match(html, /href="https:\/\/example\.com\/tables"[^>]*target="_blank"[^>]*rel="noopener noreferrer"|rel="noopener noreferrer"[^>]*href="https:\/\/example\.com\/tables"/);
-    const doc = textOf(/<aside aria-label="Note"[\s\S]*?<\/aside>/.exec(renderNotes(sets.so, { note: sets.so.full.find((n) => n.id === PLAN) }))[0]);
+    const doc = textOf(/role="dialog"[\s\S]*$/.exec(renderNotes(sets.so, { note: sets.so.full.find((n) => n.id === PLAN) }))[0]);
     assert.ok(doc.includes('Planning doc') && /Locked\s*No/.test(doc));
-    const locked = textOf(/<aside aria-label="Note"[\s\S]*?<\/aside>/.exec(renderNotes(sets.so, { note: { ...sets.so.full.find((n) => n.id === PLAN), locked: true } }))[0]);
+    const locked = textOf(/role="dialog"[\s\S]*$/.exec(renderNotes(sets.so, { note: { ...sets.so.full.find((n) => n.id === PLAN), locked: true } }))[0]);
     assert.ok(/Locked\s*Yes/.test(locked));
-    const arch = textOf(/<aside aria-label="Note"[\s\S]*?<\/aside>/.exec(renderNotes(sets.so, { note: { ...src, archived: true }, handlers: { onRestore: noop, onArchive: noop, onEdit: noop, onEditText: noop } }))[0]);
+    const arch = textOf(/role="dialog"[\s\S]*$/.exec(renderNotes(sets.so, { note: { ...src, archived: true }, handlers: { onRestore: noop, onArchive: noop, onEdit: noop, onEditText: noop } }))[0]);
     assert.ok(arch.includes('Archived.') && arch.includes('Restore') && !arch.includes('Archive…') && !arch.includes('Edit fields'));
-    const stale = textOf(/<aside aria-label="Note"[\s\S]*?<\/aside>/.exec(renderNotes(sets.so, { note: { ...src, stale: true }, handlers: { onEdit: noop } }))[0]);
+    const stale = textOf(/role="dialog"[\s\S]*$/.exec(renderNotes(sets.so, { note: { ...src, stale: true }, handlers: { onEdit: noop } }))[0]);
     assert.ok(stale.includes('cannot be read right now') && !stale.includes('Edit fields'));
-    assert.ok(textOf(renderNotes(sets.so)).includes('Select a note to read it.'));
+    assert.ok(!/role="dialog"/.test(renderNotes(sets.so)), 'no dialog when no note is selected');
+    const open = renderNotes(sets.so, { section: 'research', note: sets.so.full.find((n) => n.id === TIDES), selectedId: TIDES });
+    assert.match(open, /role="dialog"[^>]*aria-label="Tidal ranges on the coast"|aria-label="Tidal ranges on the coast"[^>]*role="dialog"/);
+    assert.match(open, /<button[^>]*aria-label="Close note"/);
   });
 
   test('a link that resolves to nothing is marked "not found", not hidden; an archived target is tagged', () => {
     const note = { ...sets.so.full.find((n) => n.id === TIDES), links: [{ ref: 'nobody', id: null, kind: null, slug: null, name: null, state: 'broken' }, { ref: 'pell', id: 'entry_01S5000000000000000000000K', kind: 'entry', slug: 'pell', name: 'Pell', state: 'archived' }], sources: [{ cite_key: 'gone', id: null, title: null, state: 'broken' }] };
-    const t = textOf(/<aside aria-label="Note"[\s\S]*?<\/aside>/.exec(renderNotes(sets.so, { note }))[0]);
+    const t = textOf(/role="dialog"[\s\S]*$/.exec(renderNotes(sets.so, { note }))[0]);
     assert.ok(t.includes('nobody (not found)') && t.includes('[@gone] (not found)') && /Pell\s*archived/.test(t), t);
   });
 
@@ -897,7 +900,7 @@ describe('acceptance 7: Notes page', () => {
     assert.deepEqual(links.map((a) => a.href), [`/books/${SO}?scene=${KEY}&line=${sets.so.sceneNotes.scenes[0].notes[0].line}`]);
     assert.ok(links[0].text.includes('check the tide times against chapter 3') && /Line \d+/.test(links[0].text));
     assert.ok(textOf(html).includes('The Key'));
-    assert.ok(!/nt-row/.test(html), 'no note list in this section');
+    assert.ok(!/nt-card/.test(html), 'no note list in this section');
     const none = renderNotes({ ...sets.so, sceneNotes: { scenes: [] } }, { section: 'scene-notes' });
     assert.ok(textOf(none).includes('No scene notes.') && /note: like this/.test(decode(none)));
   });
