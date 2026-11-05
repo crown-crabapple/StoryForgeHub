@@ -2,7 +2,7 @@
 // no session. Authentication is the plugin bearer token (M08-J02) and nothing else: an unknown or revoked token is refused here, before any MCP method runs.
 // Every tool call becomes an in-process /api/v1 request through handlePluginRequest, so plugin-policy.mjs decides each one (permission, granted books, the
 // integrations module), the token is resolved again on every call (a revocation takes effect at once), and shared mode audits each call as plugin.<route>.
-// Nothing here writes a file: the propose tools create a suggestion through POST /api/v1/books/:b/proposals.
+// The propose tools create a suggestion through POST /api/v1/books/:b/proposals and write nothing; the canvas tools (token permission 'canvas') change only canvases.
 import { createMcpServer } from '@storyforge/mcp';
 import pkg from '../package.json' with { type: 'json' };
 import { handlePluginRequest } from './api-v1.mjs';
@@ -29,7 +29,7 @@ export async function handleMcpRequest({ bearer, message, repository, state, ser
 
   /** One /api/v1 request, decided and answered exactly as if the plugin had sent it over HTTP. */
   const call = async (/** @type {{ method: string, path: string, query?: Record<string, string>, body?: unknown }} */ { method, path, query, body }) => {
-    if ((method !== 'GET' && method !== 'POST') || typeof path !== 'string' || !(path === '/api/v1' || path.startsWith('/api/v1/'))) {
+    if (!['GET', 'POST', 'PUT'].includes(method) || typeof path !== 'string' || !(path === '/api/v1' || path.startsWith('/api/v1/'))) {
       throw new Error('an MCP tool may reach /api/v1 only');
     }
     const r = await handlePluginRequest({

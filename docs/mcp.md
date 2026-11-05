@@ -1,15 +1,16 @@
 # Connecting Claude (MCP)
 
-StoryForge speaks the Model Context Protocol (MCP), so Claude Code and Claude Desktop can read your books and suggest changes. MCP is a front for the [plugin API](api.md): it uses the same access tokens, the same permissions and the same book grants. Nothing Claude does changes a file; a write is a suggestion you accept or decline in StoryForge.
+StoryForge speaks the Model Context Protocol (MCP), so Claude Code and Claude Desktop can read your books and suggest changes. MCP is a front for the [plugin API](api.md): it uses the same access tokens, the same permissions and the same book grants. Nothing Claude does changes a file, with one exception: with the `canvas` permission it can create and edit canvases (planning boards, never your prose). Every other write is a suggestion you accept or decline in StoryForge.
 
 ## 1. Get a token
 
-Open Settings, then **Connect Claude**. Give the connection a name, pick the books, and choose whether Claude may suggest changes. The token is shown once, with the address and ready-to-copy setup for Claude Code (and, on your own computer, Claude Desktop). The card lists your Claude connections; Revoke cuts one off at once. In shared mode only the owner sees it.
+Open Settings, then **Connect Claude**. Give the connection a name, pick the books, and choose whether Claude may suggest changes and whether it may edit canvases (off by default). The token is shown once, with the address and ready-to-copy setup for Claude Code (and, on your own computer, Claude Desktop). The card lists your Claude connections; Revoke cuts one off at once. In shared mode only the owner sees it.
 
 You can also make a token by hand: Settings, then Plugins, then **Grant access to another plugin** (see [plugins.md](plugins.md)).
 
-- `read` allows the 11 read tools.
+- `read` allows the 13 read tools.
 - `propose` allows the 3 propose tools.
+- `canvas` allows the 5 canvas write tools. It changes only canvas files (`planning/canvases/*.canvas`), never prose.
 
 The **Integrations** module must be on for the book. If it is off, every call is refused.
 
@@ -96,11 +97,20 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 | `codex_get_diagnostics` | The problems StoryForge found in a book. | read |
 | `codex_list_threads` | The plot threads of a book. | read |
 | `codex_get_timeline` | The timeline events of a book. | read |
+| `codex_list_canvases` | The canvases of a book (and the archived ones): slug, title, counts, sha256. | read |
+| `codex_get_canvas` | One canvas (`canvas` is its slug): the JSON Canvas, sha256, `refs` and `targets` (what a story card can link to). | read |
 | `codex_save_chapter` | Propose the whole new body of one scene (`scene`, `markdown`). | propose |
 | `codex_save_entry` | Propose the whole new body of one codex entry (`entry`, `markdown`). | propose |
 | `codex_propose_edit` | Propose a change to a scene, entry, thread or event, as `text` or as `hunks`, not both. | propose |
+| `codex_create_canvas` | Create an empty canvas (`title`, optional `slug`). | canvas |
+| `codex_save_canvas` | Replace a whole canvas (`canvas`, `content`, `base_sha256` required). A stale `base_sha256` is a conflict: read it again. | canvas |
+| `codex_edit_canvas` | Change a canvas by operations: `add_nodes`, `update_nodes`, `remove_nodes` (edges touching them go too), `add_edges`, `remove_edges`; optional `base_sha256`. | canvas |
+| `codex_archive_canvas` | Move a canvas to the archive. | canvas |
+| `codex_restore_canvas` | Move an archived canvas back. | canvas |
 
 The propose tools also take `rationale` (shown in the review) and `base_sha256`. Pass the sha256 you read: if the file changed since, the suggestion is marked stale instead of landing on the wrong text. A propose tool answers with the suggestion and a note that nothing was changed. The suggestion appears in the normal review with `source: plugin`.
+
+The canvas tools change the canvas file directly (there is no review step) and answer with a note saying so. Story cards are nodes of type `file` with `storyforge.ref` set to a scene, entry, thread or event id from `targets`. The **Board** module must be on for the book.
 
 ### Not offered
 

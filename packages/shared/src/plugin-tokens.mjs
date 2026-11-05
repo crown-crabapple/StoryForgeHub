@@ -5,7 +5,7 @@ import { readSharedJson, writeSharedJson } from '@storyforge/store';
 import { SharedDataError } from './shared-data.mjs';
 import { hashToken, isTokenShape, newId, newToken } from './tokens.mjs';
 
-export const PLUGIN_PERMISSIONS = Object.freeze(['read', 'propose', 'events']);
+export const PLUGIN_PERMISSIONS = Object.freeze(['read', 'propose', 'events', 'canvas']);
 const FILE = 'plugin-tokens.json';
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const TOK_RE = /^tok_[0-9A-HJKMNP-TV-Z]{26}$/;

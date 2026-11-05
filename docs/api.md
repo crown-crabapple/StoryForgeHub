@@ -3,7 +3,7 @@
 A small, versioned HTTP API for programs you run yourself: a plugin that reads a book, a script that proposes edits, a receiver that listens for webhooks. It is
 served by the same StoryForge process as the app, under `/api/v1`.
 
-The principle: **StoryForge never runs plugin code, and no token can write a canonical file.** A plugin reads what you let it read, and it can *propose* a change.
+The principle: **StoryForge never runs plugin code, and no token can write a canonical file.** A plugin reads what you let it read, and it can *propose* a change. The one exception is canvases (planning boards, `planning/canvases/*.canvas`): a token with the `canvas` permission can change those directly, and nothing else.
 A proposal is a suggestion; nothing in your book changes until you accept it in the normal review (and accepting writes receipts, as for any suggestion).
 
 The other `/api/*` routes are the app's own and are not part of this API. A token cannot reach them.
@@ -26,6 +26,7 @@ Permissions (a token has one or more):
 |---|---|
 | `read` | The read routes below, for the granted books only. |
 | `propose` | `POST /api/v1/books/:book/proposals`. |
+| `canvas` | Create, save, archive and restore canvases (`/api/v1/books/:book/canvases`, below). Reading canvases needs only `read`. |
 | `events` | Its own webhook subscriptions (`/api/v1/webhooks`). |
 
 Rules:
@@ -50,8 +51,8 @@ Every error is JSON: `{ "error": "<kind>", "code": "<CODE>", "message": "<words>
 | `400` | The request is malformed (`BAD_ARGS`). |
 | `401` | No valid token: missing, malformed, unknown or revoked (`TOKEN`). |
 | `403` | `PLUGIN_SCOPE` (not this route, permission or book), or `MODULE_OFF`. |
-| `404` | No such scene, entry or webhook. |
-| `409` | The proposal changes nothing (`NO_CHANGE`) or the file moved on. |
+| `404` | No such scene, entry, canvas or webhook. |
+| `409` | The proposal changes nothing (`NO_CHANGE`) or the file moved on (`CONFLICT` for a canvas, `REFUSED_PATH_TAKEN` for a taken canvas name). |
 | `413` / `415` | The body is too large (5 MB) / is not `application/json`. |
 | `503` | The token file cannot be read (it is never replaced; fix or move it). |
 
@@ -99,6 +100,21 @@ Content-Type: application/json
 The suggestion is an ordinary one (`source: plugin`, FORMAT §9.3). The author sees it in the review rail, accepts or declines each hunk, and an accepted hunk writes a
 receipt that names the plugin. The target file is not touched by the proposal. `by.name` is the plugin's name from its manifest (else its slug). A proposal that equals
 the current text is `409 NO_CHANGE`. The `suggestions` module must be on for the book.
+
+## Canvases (permissions `read` and `canvas`)
+
+A canvas is a JSON Canvas file, `planning/canvases/<slug>.canvas`. A canvas slug is lower-case letters, digits and hyphens (up to 60); anything else is `403 PLUGIN_SCOPE`, not a route. The **Board** module must be on for the book (else `403 MODULE_OFF`, `module: "board"`). Writes go through the same store and sha check as the app and are never dry runs.
+
+| Route | Permission | Answer |
+|---|---|---|
+| `GET /api/v1/books/:b/canvases` | `read` | `{ canvases: [{ slug, title, path, nodes, edges, sha256, updated_at, problem }], archived: [...] }` |
+| `GET /api/v1/books/:b/canvases/:slug` | `read` | `{ slug, title, path, sha256, canvas, problem, refs, targets }`; `targets` are the scenes, entries, threads and events a story card can link to |
+| `POST /api/v1/books/:b/canvases` | `canvas` | body `{ title (1 to 200 characters), slug? }`; `201 { slug, path, sha256 }` |
+| `PUT /api/v1/books/:b/canvases/:slug` | `canvas` | body `{ canvas: { nodes, edges, storyforge? }, base_sha256 }`; `200 { slug, path, sha256 }` |
+| `POST /api/v1/books/:b/canvases/:slug/archive` | `canvas` | optional body `{ base_sha256 }`; `200 { ok: true, slug, path }` |
+| `POST /api/v1/books/:b/canvases/:slug/restore` | `canvas` | optional body `{ base_sha256 }`; `200 { ok: true, slug, path }` |
+
+`base_sha256` (64 hex characters) is required to save: it is the `sha256` you read. Status codes: `409 { error: "conflict", code: "CONFLICT", current: { sha256, canvas } }` when the file changed since (read `current`, merge, save again); `409 REFUSED_PATH_TAKEN` when a create or restore would overwrite another canvas; `400 REFUSED_BAD_CANVAS` with a `message` when the canvas breaks the format rules (the file is not touched); `400 BAD_ARGS` for a malformed body; `404` for no such canvas; `403 PLUGIN_SCOPE` for a token without `canvas`.
 
 ## Webhooks
 

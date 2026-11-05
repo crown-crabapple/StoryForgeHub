@@ -1,5 +1,6 @@
 // API v1 (contract M08-J02 section 3): the versioned read and proposal API a plugin reaches with `Authorization: Bearer <token>`. Nothing here runs plugin code
-// and nothing here writes a canonical file: a proposal becomes a suggestion (source: plugin) that changes nothing until the author accepts a hunk in the normal
+// and plugins write nothing EXCEPT canvases (planning/canvases/*.canvas), and only with the `canvas` permission, through the repository's canvas methods (same sha
+// check as the app, never a dry run): a proposal becomes a suggestion (source: plugin) that changes nothing until the author accepts a hunk in the normal
 // review. Reads are projections with stable field names (within API major 1 fields are only added). Who may call what is decided by plugin-policy.mjs first.
 import { checkWebhookUrl } from '@storyforge/integrations';
 import { loadPlugins } from '@storyforge/format';
@@ -37,6 +38,12 @@ export function v1RouteOf(method, pathname) {
   if (c === 'entries') return d === undefined ? 'entries' : 'entry';
   if (['threads', 'events', 'search', 'graph', 'diagnostics'].includes(c)) return c;
   if (c === 'proposals') return 'proposals';
+  if (c === 'canvases') {
+    if (d === undefined) return method === 'GET' ? 'canvases' : method === 'POST' ? 'canvas-create' : 'other';
+    if (parts[6] === undefined) return method === 'GET' ? 'canvas' : method === 'PUT' ? 'canvas-save' : 'other';
+    if (method === 'POST' && parts[6] === 'archive') return 'canvas-archive';
+    if (method === 'POST' && parts[6] === 'restore') return 'canvas-restore';
+  }
   return 'other';
 }
 
@@ -152,6 +159,11 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       const list = await repository.getDiagnostics(bk.id);
       return done({ status: 200, body: { diagnostics: list.map((/** @type {any} */ x) => ({ code: x.code, severity: x.severity, file: x.file, location: x.location, message: x.message })) } });
     }
+    if (c === 'canvases') {
+      if (!(await moduleOn(repository, state, 'board', { bookId: bk.id }))) return done(moduleOff('board'));
+      const r = await canvasRoute(bk, d2, parts[6] ?? undefined);
+      return done(r.res, r.target ?? target);
+    }
     if (c === 'proposals') {
       const r = await propose(bk);
       return done(r.res, r.target ? `${target}/${r.target}` : target, r.res.status === 201 ? { by: r.by, proposal: r.proposal } : {});
@@ -159,6 +171,76 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     return out(404, NOT_FOUND.body, grant, target);
   } catch {
     return out(500, { error: 'internal' }, grant, target);
+  }
+
+  /**
+   * Canvases: GET list, GET one, POST create, PUT save, POST archive | restore. Only repository canvas methods write, never with dryRun.
+   * @param {any} bk @param {string | undefined} slug @param {string | undefined} action
+   */
+  async function canvasRoute(/** @type {any} */ bk, /** @type {string | undefined} */ slug, /** @type {string | undefined} */ action) {
+    const sub = slug === undefined ? undefined : `${bk.slug}/${slug}`;
+    /** @param {{ status: number, body: unknown }} res @param {string | undefined} [t] */
+    const reply = (res, t = sub) => ({ res, target: t });
+    /** @param {any} r a failed repository result */
+    const refused = (r) => {
+      if (r.code === 'NOT_FOUND') return reply(NOT_FOUND);
+      if (r.code === 'CONFLICT') {
+        let current = null;
+        if (r.current) {
+          let canvas = null;
+          if (r.current.canvas !== undefined) canvas = r.current.canvas ?? null;
+          else if (typeof r.current.text === 'string') {
+            try {
+              canvas = JSON.parse(r.current.text);
+            } catch {
+              canvas = null;
+            }
+          }
+          current = { sha256: r.current.sha256, canvas };
+        }
+        return reply({ status: 409, body: { error: 'conflict', code: 'CONFLICT', current } });
+      }
+      if (['REFUSED_PATH_TAKEN', 'EXISTS', 'ROLLED_BACK', 'SLUG_TAKEN'].includes(r.code)) return reply({ status: 409, body: { error: 'conflict', code: r.code, ...(r.message ? { message: r.message } : {}) } });
+      return reply(badRequest(r.message ?? 'the canvas was refused', r.code ?? 'BAD_ARGS'));
+    };
+    if (method === 'GET' && slug === undefined) {
+      const list = await repository.listCanvases(bk.id);
+      return list ? reply({ status: 200, body: { canvases: list.canvases, archived: list.archived } }) : reply(NOT_FOUND);
+    }
+    if (method === 'GET') {
+      const got = await repository.getCanvas(bk.id, slug);
+      if (!got) return reply(NOT_FOUND);
+      return reply({ status: 200, body: { slug: got.slug, title: got.title, path: got.path, sha256: got.sha256, canvas: got.canvas, problem: got.problem, refs: got.refs, targets: got.targets } });
+    }
+    const optional = action !== undefined;
+    let b = /** @type {Record<string, any>} */ ({});
+    const read = await readJson();
+    if (!read.ok) {
+      if (!optional) return reply({ status: read.status, body: read.body });
+    } else if (isObject(read.value)) b = /** @type {Record<string, any>} */ (read.value);
+    else if (!optional || read.value !== undefined) return reply(badRequest('body must be a JSON object'));
+    if (method === 'POST' && slug === undefined) {
+      if (typeof b.title !== 'string' || b.title.trim() === '' || b.title.length > 200) return reply(badRequest('title must be text of 1 to 200 characters'));
+      if (b.slug !== undefined && typeof b.slug !== 'string') return reply(badRequest('slug must be a string'));
+      const r = await repository.createCanvas(bk.id, { title: b.title, ...(b.slug !== undefined ? { slug: b.slug } : {}) });
+      if (!r.ok) return refused(r);
+      const made = await repository.getCanvas(bk.id, r.slug);
+      return reply({ status: 201, body: { slug: r.slug, path: r.path, sha256: made ? made.sha256 : null } }, `${bk.slug}/${r.slug}`);
+    }
+    if (method === 'PUT') {
+      if (!isObject(b.canvas) || typeof b.base_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(b.base_sha256)) return reply(badRequest('expected { canvas: object, base_sha256: the 64-character sha256 you read }'));
+      const r = await repository.saveCanvas(bk.id, slug, { canvas: b.canvas, baseSha256: b.base_sha256 });
+      if (!r.ok) return refused(r);
+      return reply({ status: 200, body: { slug, path: r.path, sha256: r.sha256 } });
+    }
+    if (method === 'POST' && (action === 'archive' || action === 'restore')) {
+      if (b.base_sha256 !== undefined && (typeof b.base_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(b.base_sha256))) return reply(badRequest('base_sha256 must be the 64-character sha256 you read'));
+      const call = action === 'archive' ? repository.archiveCanvas : repository.restoreCanvas;
+      const r = await call.call(repository, bk.id, slug, { ...(b.base_sha256 !== undefined ? { baseSha256: b.base_sha256 } : {}) });
+      if (!r.ok) return refused(r);
+      return reply({ status: 200, body: { ok: true, slug, path: r.path ?? r.to ?? null } });
+    }
+    return reply(NOT_FOUND);
   }
 
   /** POST /api/v1/books/:b/proposals { target, text | hunks, rationale } -> 201 { suggestion } */

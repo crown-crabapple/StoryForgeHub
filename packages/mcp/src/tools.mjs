@@ -1,6 +1,7 @@
-// The MCP tool table (M08 MCP service). Each tool is a name, a JSON Schema for its arguments, the permission it needs ('read' or 'propose') and a run() that talks to the
-// plugin API /api/v1 only, through the `api` helper the protocol layer builds over the server's `call`. Nothing here touches a file or the network, and no tool can change a
-// canonical file: the propose tools create a suggestion the author accepts or rejects in StoryForge. plugin-policy.mjs still decides every underlying request.
+// The MCP tool table (M08 MCP service). Each tool is a name, a JSON Schema for its arguments, the permission it needs ('read', 'propose' or 'canvas') and a run() that talks to the
+// plugin API /api/v1 only, through the `api` helper the protocol layer builds over the server's `call`. Nothing here touches a file or the network, and no tool can change
+// prose or a canonical file: the propose tools create a suggestion the author accepts or rejects in StoryForge. The one exception is the canvas tools (permission 'canvas'),
+// which change only planning/canvases/*.canvas files. plugin-policy.mjs still decides every underlying request.
 
 /** A failure whose message is safe to show the model (becomes an isError tool result). */
 export class ToolError extends Error {
@@ -12,14 +13,15 @@ export class ToolError extends Error {
 }
 
 /**
- * @typedef {{ get: (path: string, query?: Record<string, string>) => Promise<any>, post: (path: string, body?: unknown) => Promise<any> }} Api
+ * @typedef {{ get: (path: string, query?: Record<string, string>) => Promise<any>, post: (path: string, body?: unknown) => Promise<any>, put: (path: string, body?: unknown) => Promise<any> }} Api
  * @typedef {{ content: { type: 'text', text: string }[], structuredContent: Record<string, unknown> }} ToolResult
- * @typedef {{ name: string, title: string, description: string, need: 'read' | 'propose', inputSchema: Record<string, any>,
+ * @typedef {{ name: string, title: string, description: string, need: 'read' | 'propose' | 'canvas', inputSchema: Record<string, any>,
  *   annotations: { readOnlyHint: boolean, destructiveHint: false, idempotentHint: boolean, openWorldHint: false },
  *   run: (args: Record<string, any>, api: Api) => Promise<ToolResult> }} Tool
  */
 
 const BOOK_DOC = 'The book is its slug or its id (see codex_list_books).';
+const CANVAS_NOTE = 'This changed the canvas file directly; it is planning material, not prose.';
 const NOTE = 'Nothing was changed. The author reviews this suggestion in StoryForge and accepts or rejects it.';
 const seg = (/** @type {string} */ s) => encodeURIComponent(s);
 const bookPath = (/** @type {string} */ book) => `/api/v1/books/${seg(book)}`;
@@ -37,6 +39,7 @@ const shaArg = { type: 'string', minLength: 64, maxLength: 64, description: 'The
 /** @param {Record<string, any>} properties @param {string[]} required */
 const schema = (properties, required) => ({ type: 'object', properties, required, additionalProperties: false });
 const READ = { readOnlyHint: true, destructiveHint: /** @type {const} */ (false), idempotentHint: true, openWorldHint: /** @type {const} */ (false) };
+const CANVAS = { readOnlyHint: false, destructiveHint: /** @type {const} */ (false), idempotentHint: false, openWorldHint: /** @type {const} */ (false) };
 const PROPOSE = { readOnlyHint: false, destructiveHint: /** @type {const} */ (false), idempotentHint: false, openWorldHint: /** @type {const} */ (false) };
 
 /** @param {Record<string, any>} args the optional proposal fields */
@@ -48,6 +51,45 @@ function proposalExtras(args) {
 async function propose(api, book, payload) {
   const res = await api.post(`${bookPath(book)}/proposals`, payload);
   return result({ suggestion: res.suggestion, note: NOTE });
+}
+
+const canvasArg = { type: 'string', minLength: 1, maxLength: 60, description: 'The canvas slug (see codex_list_canvases).' };
+const canvasSha = { type: 'string', minLength: 64, maxLength: 64, description: 'The sha256 of the canvas as codex_get_canvas returned it.' };
+const canvasPathOf = (/** @type {string} */ book, /** @type {string} */ slug) => `${bookPath(book)}/canvases/${seg(slug)}`;
+
+/** Apply the edit operations of codex_edit_canvas to a canvas; throws ToolError on a bad id. @param {any} canvas @param {Record<string, any>} args */
+function applyCanvasEdit(canvas, args) {
+  let nodes = [...(canvas.nodes ?? [])];
+  let edges = [...(canvas.edges ?? [])];
+  const has = (/** @type {any[]} */ list, /** @type {string} */ id) => list.some((x) => x.id === id);
+  for (const n of args.add_nodes ?? []) {
+    if (typeof n?.id !== 'string' || n.id === '') throw new ToolError('every added node needs an id');
+    if (has(nodes, n.id)) throw new ToolError(`a node with id "${n.id}" already exists`);
+    nodes.push(n);
+  }
+  for (const u of args.update_nodes ?? []) {
+    if (typeof u?.id !== 'string' || !has(nodes, u.id)) throw new ToolError(`update_nodes: no node with id "${u?.id}"; use codex_get_canvas to see the ids`);
+    nodes = nodes.map((n) => (n.id === u.id ? { ...n, ...u } : n));
+  }
+  const gone = new Set();
+  for (const id of args.remove_nodes ?? []) {
+    if (!has(nodes, id)) throw new ToolError(`remove_nodes: no node with id "${id}"`);
+    gone.add(id);
+  }
+  if (gone.size > 0) {
+    nodes = nodes.filter((n) => !gone.has(n.id));
+    edges = edges.filter((e) => !gone.has(e.fromNode) && !gone.has(e.toNode));
+  }
+  for (const e of args.add_edges ?? []) {
+    if (typeof e?.id !== 'string' || e.id === '') throw new ToolError('every added edge needs an id');
+    if (has(edges, e.id)) throw new ToolError(`an edge with id "${e.id}" already exists`);
+    edges.push(e);
+  }
+  for (const id of args.remove_edges ?? []) {
+    if (!has(edges, id)) throw new ToolError(`remove_edges: no edge with id "${id}"`);
+    edges = edges.filter((e) => e.id !== id);
+  }
+  return { ...canvas, nodes, edges };
 }
 
 /** @param {any} book @returns {any[]} every chapter with its act */
@@ -260,6 +302,104 @@ export const TOOLS = [
       if ((args.text === undefined) === (args.hunks === undefined)) throw new ToolError('give exactly one of "text" and "hunks"');
       const change = args.text !== undefined ? { text: args.text } : { hunks: args.hunks };
       return propose(api, args.book, { target: args.target, ...change, ...proposalExtras(args) });
+    },
+  },
+  {
+    name: 'codex_list_canvases',
+    title: 'List canvases',
+    description: `Lists the canvases (visual planning boards) of a book: slug, title, node and edge counts, sha256, and the archived ones. ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg }, ['book']),
+    annotations: READ,
+    async run(args, api) {
+      const { canvases, archived } = await api.get(`${bookPath(args.book)}/canvases`);
+      return result({ canvases, archived });
+    },
+  },
+  {
+    name: 'codex_get_canvas',
+    title: 'Read a canvas',
+    description: `Reads one canvas: the JSON Canvas (nodes and edges), its sha256 (pass it back as base_sha256 when saving), refs (what each story card points at) and targets (the scenes, entries, threads and events a story card can link to). ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg, canvas: canvasArg }, ['book', 'canvas']),
+    annotations: READ,
+    async run(args, api) {
+      const c = await api.get(canvasPathOf(args.book, args.canvas));
+      return result({ slug: c.slug, title: c.title, path: c.path, sha256: c.sha256, canvas: c.canvas, problem: c.problem, refs: c.refs, targets: c.targets });
+    },
+  },
+  {
+    name: 'codex_create_canvas',
+    title: 'Create a canvas',
+    description: `Creates a new, empty canvas (a planning board) in a book. The slug comes from the title unless you give one. ${CANVAS_NOTE} ${BOOK_DOC}`,
+    need: 'canvas',
+    inputSchema: schema({ book: bookArg, title: { type: 'string', minLength: 1, maxLength: 200, description: 'The canvas title.' }, slug: { type: 'string', minLength: 1, maxLength: 60, description: 'Optional file name: lower-case letters, digits and hyphens.' } }, ['book', 'title']),
+    annotations: CANVAS,
+    async run(args, api) {
+      const r = await api.post(`${bookPath(args.book)}/canvases`, { title: args.title, ...(args.slug !== undefined ? { slug: args.slug } : {}) });
+      return result({ ...r, note: CANVAS_NOTE });
+    },
+  },
+  {
+    name: 'codex_save_canvas',
+    title: 'Save a whole canvas',
+    description: `Replaces the whole canvas with content, a JSON Canvas object { nodes, edges, storyforge? }. Nodes have id, type (text | file | link | group), x, y, width, height and an optional color ("1" to "6" or a #hex); text nodes have text, file nodes file, link nodes url, group nodes label. A story card is a node of type file with storyforge.ref set to a scene, entry, thread or event id from the targets codex_get_canvas returns. Edges have id, fromNode, toNode and optional label. base_sha256 is required: pass the sha256 from codex_get_canvas; if the canvas changed since, you get a conflict, so read it again and redo your change. For small changes prefer codex_edit_canvas. ${CANVAS_NOTE} ${BOOK_DOC}`,
+    need: 'canvas',
+    inputSchema: schema({ book: bookArg, canvas: canvasArg, content: { type: 'object', description: 'The whole JSON Canvas: { "nodes": [...], "edges": [...], "storyforge": {...} }.' }, base_sha256: canvasSha }, ['book', 'canvas', 'content', 'base_sha256']),
+    annotations: CANVAS,
+    async run(args, api) {
+      const r = await api.put(canvasPathOf(args.book, args.canvas), { canvas: args.content, base_sha256: args.base_sha256 });
+      return result({ ...r, note: CANVAS_NOTE });
+    },
+  },
+  {
+    name: 'codex_edit_canvas',
+    title: 'Edit a canvas',
+    description: `Changes a canvas by operations instead of resending all of it: add_nodes, update_nodes (each an object with id plus the fields to change), remove_nodes (ids; edges touching them are removed too), add_edges, remove_edges (ids). Give at least one. Node and edge shapes are as in codex_save_canvas. Pass base_sha256 (from codex_get_canvas) to refuse the edit if the canvas changed since you read it. ${CANVAS_NOTE} ${BOOK_DOC}`,
+    need: 'canvas',
+    inputSchema: schema({
+      book: bookArg,
+      canvas: canvasArg,
+      base_sha256: canvasSha,
+      add_nodes: { type: 'array', items: { type: 'object' }, description: 'Nodes to add; each needs a new id.' },
+      update_nodes: { type: 'array', items: { type: 'object' }, description: 'Each { id, ...fields to merge } for an existing node.' },
+      remove_nodes: { type: 'array', items: { type: 'string' }, description: 'Ids of nodes to remove (their edges go too).' },
+      add_edges: { type: 'array', items: { type: 'object' }, description: 'Edges to add; each needs a new id, fromNode and toNode.' },
+      remove_edges: { type: 'array', items: { type: 'string' }, description: 'Ids of edges to remove.' },
+    }, ['book', 'canvas']),
+    annotations: CANVAS,
+    async run(args, api) {
+      if (!['add_nodes', 'update_nodes', 'remove_nodes', 'add_edges', 'remove_edges'].some((k) => args[k] !== undefined && args[k].length > 0)) throw new ToolError('give at least one of add_nodes, update_nodes, remove_nodes, add_edges, remove_edges');
+      const path = canvasPathOf(args.book, args.canvas);
+      const cur = await api.get(path);
+      if (args.base_sha256 !== undefined && args.base_sha256 !== cur.sha256) throw new ToolError('the canvas changed since you read it; read it again with codex_get_canvas and redo the edit');
+      const next = applyCanvasEdit(cur.canvas, args);
+      const r = await api.put(path, { canvas: next, base_sha256: cur.sha256 });
+      return result({ ...r, nodes: next.nodes.length, edges: next.edges.length, note: CANVAS_NOTE });
+    },
+  },
+  {
+    name: 'codex_archive_canvas',
+    title: 'Archive a canvas',
+    description: `Moves a canvas to the archive (codex_restore_canvas brings it back). ${CANVAS_NOTE} ${BOOK_DOC}`,
+    need: 'canvas',
+    inputSchema: schema({ book: bookArg, canvas: canvasArg }, ['book', 'canvas']),
+    annotations: CANVAS,
+    async run(args, api) {
+      const r = await api.post(`${canvasPathOf(args.book, args.canvas)}/archive`, {});
+      return result({ ...r, note: CANVAS_NOTE });
+    },
+  },
+  {
+    name: 'codex_restore_canvas',
+    title: 'Restore a canvas',
+    description: `Moves an archived canvas back to the live canvases. ${CANVAS_NOTE} ${BOOK_DOC}`,
+    need: 'canvas',
+    inputSchema: schema({ book: bookArg, canvas: canvasArg }, ['book', 'canvas']),
+    annotations: CANVAS,
+    async run(args, api) {
+      const r = await api.post(`${canvasPathOf(args.book, args.canvas)}/restore`, {});
+      return result({ ...r, note: CANVAS_NOTE });
     },
   },
 ];

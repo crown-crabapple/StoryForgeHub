@@ -30,9 +30,12 @@ describe('Settings -> Connect Claude', () => {
     for (const bad of ['', '   ', 'my laptop', 'a--b', '-a', 'a-', 'under_score', 'é']) assert.equal(c.connectionSlug(bad).ok, false, bad);
   });
 
-  test('connectionPermissions: read always, propose when ticked, never events', () => {
+  test('connectionPermissions: read always, propose and canvas when ticked, never events', () => {
     assert.deepEqual(c.connectionPermissions(true), ['read', 'propose']);
     assert.deepEqual(c.connectionPermissions(false), ['read']);
+    assert.deepEqual(c.connectionPermissions(true, true), ['read', 'propose', 'canvas']);
+    assert.deepEqual(c.connectionPermissions(false, true), ['read', 'canvas']);
+    assert.deepEqual(c.connectionPermissions(false, false), ['read']);
   });
 
   test('connectSnippets fills in the token and origin; Claude Desktop only outside shared mode', () => {
@@ -51,6 +54,8 @@ describe('Settings -> Connect Claude', () => {
     const t = text(out);
     assert.match(t, /laptop/);
     assert.match(t, /read your books, suggest changes/);
+    assert.match(t, /Claude may edit canvases \(planning boards only, never your prose\)/);
+    assert.match(html(h(c.ClaudeView, { data: { grants: [GRANT({ permissions: ['read', 'canvas'] })], books: BOOKS }, origin: 'http://h', mode: 'personal' })), /read your books, edit canvases/);
     assert.doesNotMatch(t, /word-frequency|old/);
     assert.match(out, /aria-label="Revoke the connection laptop"/);
     assert.doesNotMatch(out, /Access token for/);

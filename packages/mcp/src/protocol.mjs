@@ -5,7 +5,7 @@ import { NOT_OFFERED, TOOLS, ToolError } from './tools.mjs';
 
 export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
-const INSTRUCTIONS = 'This server reads a StoryForge library: books, chapters, scenes and codex entries. The save and propose tools never change files; they create a suggestion that the author accepts or rejects in StoryForge. A book is given as its slug or its id.';
+const INSTRUCTIONS = 'This server reads a StoryForge library: books, chapters, scenes and codex entries. The save and propose tools never change a scene or entry; they create a suggestion that the author accepts or rejects in StoryForge. The canvas tools (only with the canvas permission) change canvas files, which are planning boards, never prose. A book is given as its slug or its id.';
 
 const isObject = (/** @type {unknown} */ v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const rpcError = (/** @type {unknown} */ id, /** @type {number} */ code, /** @type {string} */ message) => ({ jsonrpc: '2.0', id, error: { code, message } });
@@ -80,12 +80,13 @@ function makeApi(call) {
   return {
     get: async (/** @type {string} */ path, /** @type {Record<string, string> | undefined} */ query) => unwrap(await call({ method: 'GET', path, ...(query ? { query } : {}) })),
     post: async (/** @type {string} */ path, /** @type {unknown} */ body) => unwrap(await call({ method: 'POST', path, body })),
+    put: async (/** @type {string} */ path, /** @type {unknown} */ body) => unwrap(await call({ method: 'PUT', path, body })),
   };
 }
 
 /**
  * Create the MCP handler for one token.
- * @param {{ call: (req: { method: 'GET' | 'POST', path: string, query?: Record<string, string>, body?: unknown }) => Promise<{ status: number, body: any }>,
+ * @param {{ call: (req: { method: 'GET' | 'POST' | 'PUT', path: string, query?: Record<string, string>, body?: unknown }) => Promise<{ status: number, body: any }>,
  *   permissions: string[], serverInfo: { name: string, version: string } }} options
  * @returns {{ handle: (message: unknown) => Promise<Record<string, unknown> | null> }}
  */

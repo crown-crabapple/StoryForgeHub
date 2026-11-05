@@ -36,10 +36,10 @@ export function connectSnippets({ token, origin, mode }) {
   return { address, claudeCode, claudeDesktop };
 }
 
-/** The permissions a connection gets: read always, propose when ticked, events never. @param {boolean} propose */
-export const connectionPermissions = (propose) => (propose ? ['read', 'propose'] : ['read']);
+/** The permissions a connection gets: read always, propose and canvas when ticked, events never. @param {boolean} propose @param {boolean} [canvas] */
+export const connectionPermissions = (propose, canvas = false) => ['read', ...(propose ? ['propose'] : []), ...(canvas ? ['canvas'] : [])];
 
-const permissionWords = (/** @type {string[]} */ perms) => perms.map((p) => (p === 'read' ? 'read your books' : p === 'propose' ? 'suggest changes' : p)).join(', ');
+const permissionWords = (/** @type {string[]} */ perms) => perms.map((p) => (p === 'read' ? 'read your books' : p === 'propose' ? 'suggest changes' : p === 'canvas' ? 'edit canvases' : p)).join(', ');
 const booksText = (/** @type {'all' | string[]} */ books) => (books === 'all' ? 'All books' : books.join(', '));
 const day = (/** @type {number | undefined} */ ms) => (typeof ms === 'number' ? new Date(ms).toISOString().slice(0, 10) : null);
 
@@ -68,6 +68,7 @@ function ConnectForm({ books, busy, error, onCreate }) {
   const id = useId();
   const [name, setName] = useState('');
   const [propose, setPropose] = useState(true);
+  const [canvas, setCanvas] = useState(false);
   const [scope, setScope] = useState('all');
   const [picked, setPicked] = useState(/** @type {Set<string>} */ (new Set()));
   const slug = connectionSlug(name);
@@ -84,7 +85,7 @@ function ConnectForm({ books, busy, error, onCreate }) {
       aria-labelledby={`${id}-h`}
       onSubmit={(e) => {
         e.preventDefault();
-        if (slug.ok && ready && !busy) onCreate({ plugin: slug.slug, permissions: connectionPermissions(propose), books: scope === 'all' ? 'all' : books.map((b) => b.slug).filter((s) => picked.has(s)) });
+        if (slug.ok && ready && !busy) onCreate({ plugin: slug.slug, permissions: connectionPermissions(propose, canvas), books: scope === 'all' ? 'all' : books.map((b) => b.slug).filter((s) => picked.has(s)) });
       }}
     >
       <h3 id={`${id}-h`}>New connection</h3>
@@ -117,6 +118,10 @@ function ConnectForm({ books, busy, error, onCreate }) {
         <input type="checkbox" checked={propose} onChange={() => setPropose(!propose)} />
         <span>Claude may suggest changes (nothing changes until you accept)</span>
       </label>
+      <label className="choice">
+        <input type="checkbox" checked={canvas} onChange={() => setCanvas(!canvas)} />
+        <span>Claude may edit canvases (planning boards only, never your prose)</span>
+      </label>
       {error && (
         <p role="alert" className="field-error">
           {error}
@@ -144,7 +149,7 @@ export function ClaudeView({ data, loadError = null, moduleOff = false, mode = n
     <section aria-labelledby="claude-heading" className="pref-section">
       <h2 id="claude-heading">Connect Claude</h2>
       <p className="muted">
-        Let Claude Code or Claude Desktop read your books. Claude gets its own access token, which you can revoke at any time. Claude can never change a file: a suggestion changes nothing until you accept it.
+        Let Claude Code or Claude Desktop read your books. Claude gets its own access token, which you can revoke at any time. Claude never changes your prose: a suggestion changes nothing until you accept it. Only if you tick it below may Claude edit your canvases.
       </p>
       {moduleOff && <p className="field-warning">The Integrations module is off, so Claude cannot reach your books. Turn it on under Modules above.</p>}
       {loadError && (

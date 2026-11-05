@@ -6,6 +6,7 @@ All notable changes to StoryForge are listed here. The format follows [Keep a Ch
 
 ### Added
 
+- **Canvases for plugins and Claude:** a new token permission `canvas` lets API v1 and MCP list, read, create, edit, archive and restore canvases (`/api/v1/books/:b/canvases`, 7 new `codex_*_canvas` tools); writes use the same sha check as the app, and Connect Claude has a new "may edit canvases" option (off by default). See [docs/mcp.md](docs/mcp.md) and [docs/api.md](docs/api.md).
 - **MCP service:** `POST /mcp` (Streamable HTTP, bearer plugin token, JSON replies, no SSE or session) and `storyforge mcp`, a stdio bridge to the running server, for Claude Code and Claude Desktop. 14 tools named like the legacy `codex_*` tools (11 read, 3 propose); writes are proposals the author accepts or rejects. See [docs/mcp.md](docs/mcp.md).
 - **Connect Claude** in Settings: create an MCP token for Claude (name, books, may suggest), shown once with ready-to-copy setup; list and revoke connections.
 - **Canvas** (`/books/:id/canvas`): infinite visual boards for mood images, colour swatches, Markdown notes, to-do lists, web links, columns, groups and labelled arrows, plus live story cards for scenes, Codex entries, threads, events and notes that follow the book. Each canvas is a JSON Canvas file (`planning/canvases/<slug>.canvas`, Obsidian-compatible) saved through the store; the scroll wheel zooms; keys are in the shortcut registry. Contract: [docs/contracts/M09-J01-canvas.md](docs/contracts/M09-J01-canvas.md).

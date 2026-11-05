@@ -7,7 +7,7 @@ import { parseText } from './frontmatter.mjs';
 
 export const PLUGIN_SCHEMA = 'storyforge.plugin/v1';
 /** What a plugin may ask for (the permissions of an access token). */
-export const PLUGIN_PERMISSIONS = Object.freeze(['read', 'propose', 'events']);
+export const PLUGIN_PERMISSIONS = Object.freeze(['read', 'propose', 'events', 'canvas']);
 /** The API major version this StoryForge serves under /api/v1. A manifest that targets a larger one gets W315. */
 export const PLUGIN_API_MAJOR = 1;
 const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;

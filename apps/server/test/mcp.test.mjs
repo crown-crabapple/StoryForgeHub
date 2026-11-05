@@ -1,6 +1,8 @@
 // The MCP service over HTTP (POST /mcp), personal mode: protocol, tools against the fixture library, the permission rules and the proposal-only write policy.
 // A real server in this process over a copy of the fixture library; tokens are granted through the same Settings route the plugin tests use.
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { after, test } from 'node:test';
 import { BOOK, SCENE, SLUG, bootPersonal, closeAll, raw, sceneBytes } from './plugin-helpers.mjs';
 
@@ -18,7 +20,8 @@ async function call(t, token, name, args = {}) {
 }
 const textOf = (result) => result.content.map((c) => c.text).join('\n');
 
-const READ_TOOLS = ['codex_status', 'codex_list_books', 'codex_list_chapters', 'codex_get_chapter', 'codex_get_scene', 'codex_list_entries', 'codex_get_entry', 'codex_search', 'codex_get_diagnostics', 'codex_list_threads', 'codex_get_timeline'];
+const READ_TOOLS = ['codex_status', 'codex_list_books', 'codex_list_chapters', 'codex_get_chapter', 'codex_get_scene', 'codex_list_entries', 'codex_get_entry', 'codex_search', 'codex_get_diagnostics', 'codex_list_threads', 'codex_get_timeline', 'codex_list_canvases', 'codex_get_canvas'];
+const CANVAS_TOOLS = ['codex_create_canvas', 'codex_save_canvas', 'codex_edit_canvas', 'codex_archive_canvas', 'codex_restore_canvas'];
 const PROPOSE_TOOLS = ['codex_save_chapter', 'codex_save_entry', 'codex_propose_edit'];
 
 /** Search is indexed in the background: retry a bounded number of times until the query has hits. */
@@ -49,15 +52,15 @@ test('initialize names the server "storyforge" and answers with a supported prot
   assert.notEqual(other.json.result.protocolVersion, '1999-01-01');
 });
 
-test('tools/list: a read+propose token sees all 14 tools, a read-only token the 11 read tools and no codex_save_*', async () => {
+test('tools/list: a read+propose token sees 16 tools, read+propose+canvas all 21, a read-only token the 13 read tools and no codex_save_*', async () => {
   const t = await bootPersonal();
   const both = (await t.grant({ plugin: 'both', permissions: ['read', 'propose'] })).token;
   const ro = (await t.grant({ plugin: 'ro', permissions: ['read'] })).token;
   const all = (await rpc(t, both, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(all.length, 14);
+  assert.equal(all.length, 16);
   assert.deepEqual([...all].sort(), [...READ_TOOLS, ...PROPOSE_TOOLS].sort());
   const some = (await rpc(t, ro, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(some.length, 11);
+  assert.equal(some.length, 13);
   assert.deepEqual([...some].sort(), [...READ_TOOLS].sort());
   assert.equal(some.some((n) => n.startsWith('codex_save_')), false);
 });
@@ -242,6 +245,74 @@ test('a legacy Codex tool name is a tool error saying it is not available', asyn
   const r = await call(t, token, 'codex_get_tasks', {});
   assert.equal(r.isError, true);
   assert.match(textOf(r), /not available/);
+});
+
+// ---------------------------------------------------------------- canvases
+
+const canvasFile = (root, slug) => fs.readFile(path.join(root, 'planning', 'canvases', `${slug}.canvas`));
+
+test('tools/list: the canvas write tools are listed only with the canvas permission', async () => {
+  const t = await bootPersonal();
+  const withCanvas = (await t.grant({ plugin: 'cv', permissions: ['read', 'canvas'] })).token;
+  const readOnly = (await t.grant({ plugin: 'ro', permissions: ['read'] })).token;
+  const listed = (await rpc(t, withCanvas, 'tools/list')).json.result.tools.map((x) => x.name);
+  assert.deepEqual([...listed].sort(), [...READ_TOOLS, ...CANVAS_TOOLS].sort());
+  const some = (await rpc(t, readOnly, 'tools/list')).json.result.tools.map((x) => x.name);
+  for (const n of CANVAS_TOOLS) assert.equal(some.includes(n), false, n);
+  assert.ok(some.includes('codex_list_canvases') && some.includes('codex_get_canvas'));
+});
+
+test('codex_edit_canvas adds a node, then removes a node with its edges, end to end on disk', async () => {
+  const t = await bootPersonal();
+  const { token } = await t.grant({ permissions: ['read', 'canvas'] });
+  const made = await call(t, token, 'codex_create_canvas', { book: SLUG, title: 'Plot Board' });
+  assert.notEqual(made.isError, true, textOf(made));
+  assert.equal(made.structuredContent.slug, 'plot-board');
+  assert.match(made.structuredContent.note, /planning material, not prose/);
+
+  const text = (id, x) => ({ id, type: 'text', text: id, x, y: 0, width: 100, height: 60 });
+  const added = await call(t, token, 'codex_edit_canvas', { book: SLUG, canvas: 'plot-board', add_nodes: [text('a', 0), text('b', 200)], add_edges: [{ id: 'e1', fromNode: 'a', toNode: 'b' }] });
+  assert.notEqual(added.isError, true, textOf(added));
+  let doc = JSON.parse((await canvasFile(t.root, 'plot-board')).toString('utf8'));
+  assert.deepEqual(doc.nodes.map((n) => n.id), ['a', 'b']);
+  assert.deepEqual(doc.edges.map((e) => e.id), ['e1']);
+
+  const got = (await call(t, token, 'codex_get_canvas', { book: SLUG, canvas: 'plot-board' })).structuredContent;
+  assert.match(got.sha256, /^[0-9a-f]{64}$/);
+  assert.ok(Array.isArray(got.targets));
+
+  assert.equal((await call(t, token, 'codex_edit_canvas', { book: SLUG, canvas: 'plot-board', add_nodes: [text('a', 0)] })).isError, true, 'duplicate id');
+  assert.equal((await call(t, token, 'codex_edit_canvas', { book: SLUG, canvas: 'plot-board', remove_nodes: ['nope'] })).isError, true, 'unknown id');
+  assert.equal((await call(t, token, 'codex_edit_canvas', { book: SLUG, canvas: 'plot-board' })).isError, true, 'no operation');
+  const stale = await call(t, token, 'codex_edit_canvas', { book: SLUG, canvas: 'plot-board', base_sha256: '0'.repeat(64), remove_nodes: ['a'] });
+  assert.equal(stale.isError, true);
+  assert.match(textOf(stale), /read it again/);
+
+  const removed = await call(t, token, 'codex_edit_canvas', { book: SLUG, canvas: 'plot-board', base_sha256: got.sha256, remove_nodes: ['a'], update_nodes: [{ id: 'b', text: 'renamed' }] });
+  assert.notEqual(removed.isError, true, textOf(removed));
+  doc = JSON.parse((await canvasFile(t.root, 'plot-board')).toString('utf8'));
+  assert.deepEqual(doc.nodes.map((n) => [n.id, n.text]), [['b', 'renamed']]);
+  assert.deepEqual(doc.edges, [], 'the edge touching the removed node is gone');
+
+  const saved = await call(t, token, 'codex_save_canvas', { book: SLUG, canvas: 'plot-board', content: { nodes: [], edges: [] }, base_sha256: '0'.repeat(64) });
+  assert.equal(saved.isError, true);
+  assert.match(textOf(saved), /409/);
+
+  assert.notEqual((await call(t, token, 'codex_archive_canvas', { book: SLUG, canvas: 'plot-board' })).isError, true);
+  assert.equal((await call(t, token, 'codex_list_canvases', { book: SLUG })).structuredContent.archived.length, 1);
+  assert.notEqual((await call(t, token, 'codex_restore_canvas', { book: SLUG, canvas: 'plot-board' })).isError, true);
+  assert.equal((await call(t, token, 'codex_list_canvases', { book: SLUG })).structuredContent.canvases.length, 1);
+});
+
+test('a read-only token calling the canvas write tools gets a tool error naming canvas and writes nothing', async () => {
+  const t = await bootPersonal();
+  const { token } = await t.grant({ permissions: ['read'] });
+  for (const [name, args] of [['codex_create_canvas', { book: SLUG, title: 'X' }], ['codex_save_canvas', { book: SLUG, canvas: 'x', content: { nodes: [], edges: [] }, base_sha256: '0'.repeat(64) }], ['codex_edit_canvas', { book: SLUG, canvas: 'x', remove_nodes: ['a'] }], ['codex_archive_canvas', { book: SLUG, canvas: 'x' }]]) {
+    const r = await call(t, token, name, args);
+    assert.equal(r.isError, true, name);
+    assert.match(textOf(r), /canvas/, name);
+  }
+  assert.deepEqual((await t.member('GET', `/api/books/${BOOK}/canvases`)).json.canvases, []);
 });
 
 // ---------------------------------------------------------------- transport rules

@@ -49,7 +49,7 @@ test('postLoopback: tools/list works against the running server', async () => {
   assert.equal(r.ok, true);
   assert.equal(r.status, 200);
   assert.equal(r.body.id, 7);
-  assert.equal(r.body.result.tools.length, 11);
+  assert.equal(r.body.result.tools.length, 13);
   const note = await postLoopback({ port: t.port, token, message: { jsonrpc: '2.0', method: 'notifications/initialized' } });
   assert.deepEqual({ ok: note.ok, status: note.status, body: note.body }, { ok: true, status: 202, body: null });
 });
@@ -119,7 +119,7 @@ test('stdio round trip: initialize, tools/list and a codex_get_scene call each g
   assert.deepEqual(replies.map((x) => x.id), [1, 2, 'three']);
   assert.ok(replies.every((x) => x.jsonrpc === '2.0' && x.error === undefined));
   assert.equal(replies[0].result.serverInfo.name, 'storyforge');
-  assert.equal(replies[1].result.tools.length, 11);
+  assert.equal(replies[1].result.tools.length, 13);
   assert.notEqual(replies[2].result.isError, true);
   assert.match(replies[2].result.content.map((c) => c.text).join('\n'), /The ferry nudged the jetty/);
   assert.equal(r.stdout.includes(token), false);
