@@ -2,7 +2,7 @@
 // Pure: no filesystem. Customization never changes what a book means; these values only say how the app looks and which features are on.
 
 /** Feature modules (contract section 5). `insights` and `tasks` belong to J02; they are gated by id here. */
-export const MODULE_IDS = ['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'integrations'];
+export const MODULE_IDS = ['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'planner', 'integrations'];
 
 /** Keys where the project outranks the person: built-in < profile < library < book. */
 export const PROJECT_KEYS = ['modules', 'labels', 'export'];
@@ -219,6 +219,7 @@ export function moduleOfRoute(route) {
   if (route.startsWith('thread-')) return 'threads';
   if (route.startsWith('note-') || route === 'attachment-upload') return 'research';
   if (route.startsWith('canvas-')) return 'board'; // M09-J01: canvases are visual planning, with the corkboard
+  if (route.startsWith('planner-')) return 'planner'; // Story Planner M1 (ADR 0003): causal links and scene plans
   return null;
 }
 

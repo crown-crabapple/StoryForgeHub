@@ -123,7 +123,7 @@ Default commands: `editor.bold` Ctrl+B, `editor.italic` Ctrl+I, `editor.link` Ct
 
 ## Features (modules)
 
-Settings > Features turns features on and off: `ai`, `continuity`, `receipts`, `suggestions`, `timeline`, `board`, `threads`, `insights`, `tasks`, `research`.
+Settings > Features turns features on and off: `ai`, `continuity`, `receipts`, `suggestions`, `timeline`, `board`, `threads`, `insights`, `tasks`, `research`, `planner` (Story Planner: causal links and scene plans), `integrations`.
 
 A feature that is **off**:
 

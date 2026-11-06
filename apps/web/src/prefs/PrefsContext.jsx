@@ -20,6 +20,7 @@ export const MODULES = [
   { id: 'insights', label: 'Insights', note: 'The Insights page.' },
   { id: 'tasks', label: 'Tasks', note: 'The Tasks page.' },
   { id: 'research', label: 'Research', note: 'The Notes page and the research section of the right rail.' },
+  { id: 'planner', label: 'Story Planner', note: 'Causal links between scenes and per-scene planning fields. Off: they cannot be changed; the files stay in the book.' },
   { id: 'integrations', label: 'Integrations', note: 'Plugin access over the API and webhooks. Off: every API call is refused and nothing is sent.' },
 ];
 

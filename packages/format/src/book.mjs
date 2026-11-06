@@ -12,6 +12,7 @@ import { checkPlacement } from './placement.mjs';
 import { checkFields } from './schema.mjs';
 import { checkCodex } from './codex.mjs';
 import { checkExceptions } from './exceptions.mjs';
+import { checkPlanner } from './planner.mjs';
 import { checkComments, checkSuggestions } from './suggestions.mjs';
 import { checkActivity } from './activity.mjs';
 import { checkLabelRefs, checkShadows, checkTypedValues, labelNames, typeNames } from './world.mjs';
@@ -59,6 +60,7 @@ export async function loadBook({ rootDir, bookPath, series, add }) {
   checkExceptions(typed, add);
   checkSuggestions(typed, add);
   checkComments(typed, add);
+  checkPlanner(typed, add);
   checkActivity(typed, add);
   const bookDoc = typed.find((d) => d.kind === 'book' && d.rel === 'book.md');
   checkShadows(typed, shared, add);

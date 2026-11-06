@@ -6,6 +6,7 @@ import {
   archiveChapter,
   archiveEntry,
   archiveEvent,
+  archiveLink,
   archiveNote,
   changeEntrySlug,
   createAct,
@@ -13,6 +14,7 @@ import {
   createCodexType,
   createEntry,
   createEvent,
+  createLink,
   createNote,
   createThread,
   editFrontMatterLine,
@@ -22,6 +24,7 @@ import {
   renumberChapters,
   restoreEntry,
   restoreEvent,
+  restoreLink,
   restoreNote,
   restoreOp,
   setActFields,
@@ -30,10 +33,12 @@ import {
   setEventFields,
   setNoteFields,
   setSceneFields,
+  saveScenePlan,
   setThreadFields,
   slugify,
   splitScene,
   ulid,
+  updateLink,
   uploadAttachment,
 } from '@storyforge/manuscript';
 import { countWords } from '@storyforge/index';
@@ -176,18 +181,19 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     return { ...r, path: toLibRel(found.book, r.path) };
   }
 
+  const PLANNER_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_ENTRY'];
   const NOT_FOUND_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_CHAPTER', 'REFUSED_UNKNOWN_ACT', 'REFUSED_UNKNOWN_OP', 'REFUSED_UNKNOWN_ENTRY', 'REFUSED_UNKNOWN_THREAD', 'REFUSED_UNKNOWN_EVENT', 'REFUSED_UNKNOWN_NOTE'];
 
   /**
    * Run one @storyforge/manuscript structure command on a book. A real change reconciles the index before
-   * returning; unknown scene / chapter / act / op is NOT_FOUND. Change paths stay relative to the book root.
-   * @param {string} bookId @param {(bookRoot: string) => Promise<any>} run
+   * returning; unknown scene / chapter / act / op is NOT_FOUND (unless the code is in `keepCodes`). Change paths stay relative to the book root.
+   * @param {string} bookId @param {(bookRoot: string) => Promise<any>} run @param {string[]} [keepCodes]
    */
-  async function structure(bookId, run) {
+  async function structure(bookId, run, keepCodes = []) {
     const found = await findBook(bookId);
     if (!found) return fail('NOT_FOUND');
     const r = await run(bookRootOf(found.book));
-    if (!r.ok) return NOT_FOUND_CODES.includes(r.code) ? fail('NOT_FOUND') : r;
+    if (!r.ok) return NOT_FOUND_CODES.includes(r.code) && !keepCodes.includes(r.code) ? fail('NOT_FOUND') : r;
     if (!r.dryRun && r.changes.length > 0) {
       await receipts.noteOwnWrites(found.book, r.changes.map((c) => c.to).filter((p) => typeof p === 'string'));
       if (reconcile) await reconcile(found.book.path);
@@ -519,6 +525,13 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     // ---- M04-J03: plot threads (canonical files only; dryRun previews with diffs)
     createThread: (bookId, args = {}) => structure(bookId, (b) => createThread(b, args ?? {})),
     setThreadFields: (bookId, ref, args = {}) => structure(bookId, (b) => setThreadFields(b, ref, args ?? {})),
+
+    // ---- Story Planner M1: causal links and scene plans (planning/links, planning/scene-plans). REFUSED_UNKNOWN_SCENE / REFUSED_UNKNOWN_ENTRY are kept (not turned into NOT_FOUND).
+    createLink: (bookId, args = {}) => structure(bookId, (b) => createLink(b, args ?? {}), PLANNER_CODES),
+    updateLink: (bookId, slug, args = {}) => structure(bookId, (b) => updateLink(b, slug, args ?? {}), PLANNER_CODES),
+    archiveLink: (bookId, slug, args = {}) => structure(bookId, (b) => archiveLink(b, slug, args ?? {}), PLANNER_CODES),
+    restoreLink: (bookId, slug, args = {}) => structure(bookId, (b) => restoreLink(b, slug, args ?? {}), PLANNER_CODES),
+    saveScenePlan: (bookId, sceneId, args = {}) => structure(bookId, (b) => saveScenePlan(b, sceneId, args ?? {}), PLANNER_CODES),
 
     // ---- M04-J04: timeline events, research notes / planning docs / sources, attachments (canonical files only; dryRun previews with diffs)
     createEvent: (bookId, args = {}) => structure(bookId, (b) => createEvent(b, args ?? {})),

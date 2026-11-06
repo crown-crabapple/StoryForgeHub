@@ -575,7 +575,7 @@ export function mergeScenes(bookRoot, firstId, secondId, args = {}) {
 // ------------------------------------------------------------------ undo
 
 /** Operations whose created files restoreOp may remove again. */
-const CREATION_UNDOABLE = new Set(['createContinuityException', 'decideSuggestion']);
+const CREATION_UNDOABLE = new Set(['createContinuityException', 'decideSuggestion', 'createLink', 'saveScenePlan']); // Story Planner M1: a new link or scene plan is planning data only, so undo may remove it again (to the trash)
 
 /**
  * Undo one earlier operation from its trash copies, but only if every file it wrote still has the hash the

@@ -225,6 +225,15 @@
  *   saveCanvas(bookId: string, slug: string, args: { canvas: unknown, baseSha256: string }): Promise<WriteResult & { sha256?: string, current?: { sha256: string, canvas: any } }>,
  *   archiveCanvas(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
  *   restoreCanvas(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
+ *   listLinks(bookId: string): Promise<{ links: Link[], archived: Link[] } | null>,  (Story Planner M1: planning/links/*.md; Link = { id, slug, path, from, to, relation, rationale, created, sha256, from_title, to_title, problems: { code, message }[] }, titles null when the scene is not live)
+ *   getLink(bookId: string, slug: string): Promise<(Link & { archived: boolean }) | null>,  (live first, then archive)
+ *   getScenePlan(bookId: string, sceneId: string): Promise<{ scene_id: string, path: string | null, sha256: string | null, fields: Record<string, string | null>, characters: string[], body: string } | null>,  (null for an unknown book or live scene; no sidecar: path and sha256 null, all fields null)
+ *   flowGraph(bookId: string): Promise<{ nodes: { id: string, kind: 'scene', title: string | null, summary: string | null, status: string | null, pov: string | null, act: number, chapter: number, sequence: number, plan: boolean }[], edges: { id: string | null, slug: string, from: string | null, to: string | null, relation: string | null, rationale: string, sha256: string | null, broken: boolean }[] } | null>,  (nodes: live scenes in reading order; edges: live links, broken when an end is not a live scene)
+ *   createLink(bookId: string, args: { from: string, to: string, relation: string, rationale?: string, dryRun?: boolean }): Promise<StructureResult>,  (codes: REFUSED_BAD_ARGS, REFUSED_UNKNOWN_SCENE, REFUSED_SELF_LINK, REFUSED_DUPLICATE_LINK, REFUSED_PATH_TAKEN)
+ *   updateLink(bookId: string, slug: string, args: { relation?: string, from?: string, to?: string, rationale?: string, baseSha256: string, dryRun?: boolean }): Promise<StructureResult>,  (also CONFLICT, NOT_FOUND)
+ *   archiveLink(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
+ *   restoreLink(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,  (also REFUSED_PATH_TAKEN, REFUSED_DUPLICATE_LINK)
+ *   saveScenePlan(bookId: string, sceneId: string, args: { fields?: Record<string, string | null>, characters?: string[], baseSha256?: string | null, dryRun?: boolean }): Promise<StructureResult>,  (no sidecar: created, baseSha256 absent; else baseSha256 required; also REFUSED_UNKNOWN_ENTRY, CONFLICT)
  *   close(): Promise<void>,
  * }} FileRepository
  *   While a book is `invalid` (a file broke outside the app) getBook serves the last valid structure plus `index_state`,
