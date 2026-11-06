@@ -277,3 +277,82 @@ milestones:
 `);
   assert.deepEqual(keys(await validate(dest)).filter((k) => !before.includes(k)), []);
 });
+
+// ---- M5: relationships
+const PELL = 'entry_01S5000000000000000000000K';
+const REL = 'planning/relationships/maren-hollis-and-pell.md';
+const rel = ({ id = 'note_01S50000000000000000000R01', a = MAREN, b = PELL, slug = 'maren-hollis-and-pell', extra = '', developments = `developments:\n  - scene: ${KEY}\n    change: Pell lends Maren the key.\n    a_view: Maren trusts Pell.\n    b_view: Pell fears Maren.\n  - scene: ${FERRY}\n    change: Maren pays for passage.\n` } = {}) => `---
+schema: storyforge.relationship/v1
+id: ${id}
+slug: ${slug}
+a: ${a}
+b: ${b}
+baseline: Wary of each other.
+end_state: Allies.
+${developments}${extra}---
+
+Notes.
+`;
+const devs = (body) => ({ developments: `developments:\n${body}` });
+
+test('a well-formed relationship adds no diagnostics, with or without developments', async () => {
+  assert.deepEqual(await added((root) => put(root, REL, rel())), []);
+  assert.deepEqual(await added((root) => put(root, REL, rel({ developments: '' }))), []);
+  assert.deepEqual(await added((root) => put(root, REL, rel({ developments: 'developments: []\n' }))), []);
+});
+
+test('relationship: unknown entry is E301, a scene id is E302, a stray key is I401', async () => {
+  assert.deepEqual(await added((root) => put(root, REL, rel({ a: 'entry_01S5000000000000000000ZZZZ' }))), [`E301 | ${REL} | a`]);
+  assert.deepEqual(await added((root) => put(root, REL, rel({ b: KEY }))), [`E302 | ${REL} | b`]);
+  assert.deepEqual(await added((root) => put(root, REL, rel({ extra: 'mood: tense\n' }))), [`I401 | ${REL} | mood`]);
+});
+
+test('E212: a relationship whose a and b are the same entry', async () => {
+  assert.deepEqual(await added((root) => put(root, REL, rel({ b: MAREN }))), [`E212 | ${REL} | b`]);
+});
+
+test('relationship developments: E102 at the item or its key, I401 for an unknown key', async () => {
+  assert.deepEqual(await added((root) => put(root, REL, rel(devs('  - just text\n')))), [`E102 | ${REL} | developments[0]`]);
+  assert.deepEqual(await added((root) => put(root, REL, rel(devs('  - change: no scene\n')))), [`E102 | ${REL} | developments[0].scene`]);
+  assert.deepEqual(await added((root) => put(root, REL, rel(devs(`  - scene: ${KEY}\n`)))), [`E102 | ${REL} | developments[0].change`]);
+  assert.deepEqual(await added((root) => put(root, REL, rel(devs(`  - scene: ${KEY}\n    change: [a, b]\n`)))), [`E102 | ${REL} | developments[0].change`]);
+  assert.deepEqual(await added((root) => put(root, REL, rel(devs(`  - scene: ${KEY}\n    change: x\n    a_view: [a]\n`)))), [`E102 | ${REL} | developments[0].a_view`]);
+  assert.deepEqual(await added((root) => put(root, REL, rel(devs(`  - scene: ${KEY}\n    change: x\n    mood: tense\n`)))), [`I401 | ${REL} | developments[0].mood`]);
+});
+
+test('E301: a development whose scene is not in the book; W303 for an archived scene', async () => {
+  const ghost = 'scene_01S5000000000000000000ZZZZ';
+  assert.deepEqual(await added((root) => put(root, REL, rel(devs(`  - scene: ${ghost}\n    change: x\n`)))), [`E301 | ${REL} | developments[0].scene`]);
+  const old = 'scene_01S50000000000000000000ARC';
+  const got = await added((root) => {
+    put(root, REL, rel(devs(`  - scene: ${old}\n    change: x\n`)));
+    put(root, 'archive/manuscript/act-01-one/ch-001-one/0090-old.md', `---\nschema: storyforge.scene/v1\nid: ${old}\ntitle: Old\nact: 1\nchapter: 1\nsequence: 90\nstatus: drafting\n---\nOld.\n`);
+  });
+  assert.deepEqual(only(got, REL), [`W303 | ${REL} | developments[0].scene`]);
+});
+
+test('W320: two live relationships for one pair in either order, on the later file; an archived twin is ignored', async () => {
+  const two = 'planning/relationships/pell-and-maren-hollis.md';
+  const second = rel({ id: 'note_01S50000000000000000000R02', a: PELL, b: MAREN, slug: 'pell-and-maren-hollis' });
+  assert.deepEqual(await added((root) => { put(root, REL, rel()); put(root, two, second); }), [`W320 | ${two} | b`]);
+  assert.deepEqual(await added((root) => { put(root, REL, rel()); put(root, `archive/${two}`, second); }), []);
+});
+
+// ---- M5: links to beats
+const LINK_BEAT = 'planning/links/key-enables-inciting-event.md';
+test('a link may end at a beat of a live structure, from or to, mixed with scenes', async () => {
+  assert.deepEqual(await added((root) => { put(root, STRUCT, structure()); put(root, LINK_BEAT, link({ slug: 'key-enables-inciting-event', to: B2, relation: 'enables' })); }), []);
+  assert.deepEqual(await added((root) => { put(root, STRUCT, structure()); put(root, LINK_BEAT, link({ slug: 'key-enables-inciting-event', from: B1, to: B2 })); }), []);
+  assert.deepEqual(await added((root) => { put(root, STRUCT, structure()); put(root, LINK_BEAT, link({ slug: 'key-enables-inciting-event', from: B2, to: KEY })); }), []);
+});
+
+test('a link to a beat of an archived structure is W303; an unknown beat id is E301; a beat from == to is E211', async () => {
+  assert.deepEqual(await added((root) => { put(root, `archive/${STRUCT}`, structure()); put(root, LINK_BEAT, link({ slug: 'key-enables-inciting-event', to: B2 })); }), [`W303 | ${LINK_BEAT} | to`]);
+  assert.deepEqual(await added((root) => { put(root, STRUCT, structure()); put(root, LINK_BEAT, link({ slug: 'key-enables-inciting-event', to: 'note_01S5000000000000000000ZZZZ' })); }), [`E301 | ${LINK_BEAT} | to`]);
+  assert.deepEqual(await added((root) => { put(root, STRUCT, structure()); put(root, LINK_BEAT, link({ slug: 'key-enables-inciting-event', from: B2, to: B2 })); }), [`E211 | ${LINK_BEAT} | to`]);
+});
+
+test('beat ids resolve only in links: a scene-plan or arc pointing at a beat id is still E301/E302', async () => {
+  const got = await added((root) => { put(root, STRUCT, structure()); put(root, PLAN, plan({ scene: B2 })); });
+  assert.deepEqual(only(got, PLAN), [`E301 | ${PLAN} | scene`]);
+});

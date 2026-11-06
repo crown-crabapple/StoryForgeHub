@@ -54,6 +54,9 @@ export const threadCharactersRequest = (bookId, thread, characters) => ({
 /** GET <this> is the thread with its `body` and `sha256`; PUT <this>/body saves the text. @param {string} bookId @param {string} threadId */
 export const threadUrl = (bookId, threadId) => `${base(bookId)}/threads/${enc(threadId)}`;
 
+/** GET <this> is the Story Planner's read-only projection behind the Board, Outline and Matrix badges (it may 403, or be missing on an old server). @param {string} bookId */
+export const planBadgesUrl = (bookId) => `${base(bookId)}/plan-badges`;
+
 /** The refusal of a thread write, in words the author can act on. @param {number} status @param {any} json */
 export function explainPlanningFailure(status, json) {
   switch (json?.code) {

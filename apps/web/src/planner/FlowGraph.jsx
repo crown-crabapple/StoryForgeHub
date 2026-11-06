@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { clampZoom, edgeGeometry } from '../canvas/model.js';
-import { PAD, describeLink, fitScale, layoutGraph, relationStroke, sceneName, strokeLegend } from './model.js';
+import { PAD, beatLabel, describeLink, fitScale, layoutGraph, relationStroke, sceneName, strokeLegend } from './model.js';
 import { relationLabel } from './requests.js';
 
 const ZOOM_STEP = 1.25;
@@ -8,12 +8,12 @@ const ZOOM_STEP = 1.25;
 /**
  * The Flow graph: one column per chapter, scenes stacked by sequence, links as arrows. A second view of the same links as the list: every scene is a button, and every
  * line has a text label that is a button too, so the graph can be walked by keyboard. Lines are drawn dashed, dotted and so on by relation, and always named in words.
- * The links to a scene that is not in the book are not drawn (they stay in the list). Positions come only from the manuscript order (see layoutGraph); nothing moves.
+ * Beat nodes of a live link (M5) sit in their own top row labelled "Beats"; a beat is a button too, and opens its structure. The links to a scene that is not in the book are not drawn (they stay in the list). Positions come only from the manuscript order (see layoutGraph); nothing moves.
  * @param {{ nodes: any[], edges: any[], nodeById?: Map<string, any>, selectedNode?: string | null, selectedLink?: string | null, scale?: number,
- *   onSelectNode?: (id: string) => void, onSelectEdge?: (slug: string) => void }} props
+ *   onSelectNode?: (id: string) => void, onSelectEdge?: (slug: string) => void, onOpenBeat?: (node: any) => void }} props
  *   `nodes` are the scenes to draw (GET /flow nodes, filtered), `edges` the live links (GET /flow edges); an edge is drawn when both ends are among `nodes`.
  */
-export function FlowGraph({ nodes, edges, nodeById, selectedNode = null, selectedLink = null, scale: initialScale = 1, onSelectNode, onSelectEdge }) {
+export function FlowGraph({ nodes, edges, nodeById, selectedNode = null, selectedLink = null, scale: initialScale = 1, onSelectNode, onSelectEdge, onOpenBeat }) {
   const [scale, setScale] = useState(initialScale);
   const scroller = useRef(null);
   const layout = useMemo(() => layoutGraph(nodes), [nodes]);
@@ -66,13 +66,26 @@ export function FlowGraph({ nodes, edges, nodeById, selectedNode = null, selecte
                 />
               ))}
             </svg>
+            {layout.beatsRow && (
+              <div className="flow-col-head" style={{ left: layout.beatsRow.x, top: layout.beatsRow.y }}>
+                {layout.beatsRow.label}
+              </div>
+            )}
             {layout.columns.map((c) => (
-              <div key={c.key} className="flow-col-head" style={{ left: c.x, top: PAD }} aria-hidden="true">
+              <div key={c.key} className="flow-col-head" style={{ left: c.x, top: PAD + layout.top }} aria-hidden="true">
                 {c.label}
               </div>
             ))}
             {layout.nodes.map((b) => {
               const n = titles.get(b.id);
+              if (n?.kind === 'beat') {
+                return (
+                  <button key={b.id} type="button" className="flow-node ln-beat-node" style={{ left: b.x, top: b.y, width: b.width, height: b.height }} onClick={() => onOpenBeat?.(n)}>
+                    <span className="flow-node-title">{beatLabel(n)}</span>
+                    <span className="flow-node-status">Beat</span>
+                  </button>
+                );
+              }
               return (
                 <button
                   key={b.id}

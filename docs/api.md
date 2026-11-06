@@ -118,9 +118,9 @@ A canvas is a JSON Canvas file, `planning/canvases/<slug>.canvas`. A canvas slug
 
 ## Story Planner routes (the app's own, not API v1)
 
-These routes store causal links between scenes, per-scene planning fields, the book's story plan, character arcs and story structures with their beat sheets (see [format.md](format.md), "Story Planner files"). They sit under `/api/books/:b/`, are **not part of plugin API v1**, and a bearer token is refused (`403 PLUGIN_SCOPE`). They are for the StoryForge app itself.
+These routes store causal links between scenes, per-scene planning fields, the book's story plan, character arcs, story structures with their beat sheets, and relationships between Codex entries (see [format.md](format.md), "Story Planner files"). They sit under `/api/books/:b/`, are **not part of plugin API v1**, and a bearer token is refused (`403 PLUGIN_SCOPE`). They are for the StoryForge app itself.
 
-A link, an arc or a structure is named by its `slug`. A scene plan is named by its scene's id. The story plan is one file per book and has no name in the route. Reads are not gated by a module.
+A link, an arc, a structure or a relationship is named by its `slug`. A scene plan is named by its scene's id. The story plan is one file per book and has no name in the route. Reads are not gated by a module.
 
 ### Reads
 
@@ -137,16 +137,19 @@ A link, an arc or a structure is named by its `slug`. A scene plan is named by i
 | `GET /api/books/:b/structure-templates` | `{ templates: [Template] }` |
 | `GET /api/books/:b/structures` | `{ structures: [Structure], archived: [{ slug, name }] }`; `404` for an unknown book |
 | `GET /api/books/:b/structures/:slug` | `Structure` plus `archived` (true when only the archived file exists); `404` if neither exists |
+| `GET /api/books/:b/relationships` | `{ relationships: [Relationship], archived: [{ slug, name }] }`; `404` for an unknown book |
+| `GET /api/books/:b/relationships/:slug` | `Relationship` plus `archived` (true when only the archived file exists); `404` if neither exists |
+| `GET /api/books/:b/plan-badges` | `{ scenes, arcs, structures }`, below; `404` for an unknown book |
 
-`Link` is `{ id, slug, path, from, to, relation, rationale, created, sha256, from_title, to_title, problems: [{ code, message }] }`. `rationale` is the body. `from_title` and `to_title` are `null` when the scene is not live. `problems` are the diagnostics on that file.
+`Link` is `{ id, slug, path, from, to, relation, rationale, created, sha256, from_title, to_title, from_kind, to_kind, problems: [{ code, message }] }`. `rationale` is the body. `from_title` and `to_title` are `null` when the end does not resolve; for a beat the title is `<structure name>: <beat name>`. `from_kind` and `to_kind` are `scene` or `beat` (an end that does not resolve is `scene`). `problems` are the diagnostics on that file.
 
 A scene plan's `fields` has all ten keys (`goal`, `opposition`, `conflict`, `turn`, `outcome`, `consequence`, `stakes`, `emotional_start`, `emotional_end`, `purpose`), each a string or `null`. A scene with no plan answers `path: null`, `sha256: null`, all fields `null`, `characters: []`, `body: ""`.
 
-`flow`: `nodes` are the live scenes in reading order, `{ id, kind: "scene", title, summary, status, pov, act, chapter, sequence, plan }` (`plan` is true when the scene has a plan). `edges` are the live links, `{ id, slug, from, to, relation, rationale, sha256, broken }`; `broken` is true when an end is not a live scene.
+`flow`: `nodes` are the live scenes in reading order, `{ id, kind: "scene", title, summary, status, pov, act, chapter, sequence, plan }` (`plan` is true when the scene has a plan). `edges` are the live links, `{ id, slug, from, to, relation, rationale, sha256, broken }`; `broken` is true when an end is neither a live scene nor a beat of a live structure. After the scenes, `nodes` also has one beat node, `{ id, kind: "beat", title, structure: { slug, name }, chapter: null, sequence: null }`, for each beat of a live structure that is an end of a live link. `title` is the beat's name.
 
 A story plan's `fields` has all eight keys (`premise`, `logline`, `theme_question`, `central_conflict`, `protagonist_goal`, `stakes`, `protagonist`, `primary_structure`), each a string or `null`. A book with no story plan answers `path: null`, `sha256: null`, all fields `null`, `body: ""`. Only a live file at `planning/story.md` counts.
 
-`plan-overview`: the answer is `{ story, counts, primary_structure, unlinked }`. `story` is the same object as `story-plan`. `counts` is `{ scenes, planned_scenes, links, linked_scenes, unlinked_scenes, broken_links, archived_links, threads, arcs, structures }`: `scenes` is the number of flow nodes, `planned_scenes` those with a plan, `links` the live links, `linked_scenes` the scenes at an end of a live link, `unlinked_scenes` the rest, `broken_links` the live links with an end that is not a live scene, `archived_links` the archived links, `threads` the live plot threads, `arcs` the live arcs, `structures` the live structures. `primary_structure` is `{ id, slug, name }` of the live structure the story plan names, or `null`. `unlinked` is `[{ id, title }]`: the scenes at no end of a live link, in reading order, at most 50.
+`plan-overview`: the answer is `{ story, counts, primary_structure, unlinked }`. `story` is the same object as `story-plan`. `counts` is `{ scenes, planned_scenes, links, linked_scenes, unlinked_scenes, broken_links, archived_links, threads, arcs, structures, relationships }`: `scenes` is the number of flow nodes, `planned_scenes` those with a plan, `links` the live links, `linked_scenes` the scenes at an end of a live link, `unlinked_scenes` the rest, `broken_links` the live links with an end that is neither a live scene nor a beat of a live structure, `archived_links` the archived links, `threads` the live plot threads, `arcs` the live arcs, `structures` the live structures, `relationships` the live relationships. `primary_structure` is `{ id, slug, name }` of the live structure the story plan names, or `null`. `unlinked` is `[{ id, title }]`: the scenes at no end of a live link, in reading order, at most 50.
 
 `Arc` is `{ id, slug, path, sha256, character, character_id, arc_type, fields, milestones, body, problems: [{ code, message }] }`. `character` is `{ id, slug, name, shared }` (`shared` is true for an entry of the series' shared world), or `null` when the id names no entry; `character_id` is the id as written in the file. `arc_type` is a string or `null`. `fields` has all seven keys (`want`, `need`, `false_belief`, `fear`, `wound`, `start_state`, `end_state`), each a string or `null`. `milestones` is `[{ index, scene, scene_title, chapter, sequence, pressure, choice, belief_before, belief_after, cost }]` in file order; `scene_title`, `chapter` and `sequence` are `null` when the scene is not live, and an empty text is `null`. `body` is the free notes. `arcs` is sorted by character name (arcs whose character is unresolved last), then slug.
 
@@ -154,13 +157,20 @@ A story plan's `fields` has all eight keys (`premise`, `logline`, `theme_questio
 
 `Structure` is `{ id, slug, name, template, template_version, primary, sha256, body, beats, counts }`. `primary` is true when the story plan's `primary_structure` is this structure's id. `beats` is `[{ id, name, purpose, question, position, state, scenes: [{ id, title, chapter, sequence }] }]` in file order; `state` is `open`, `done` or `omitted` (a beat with no state is `open`); an empty text is `null`; `title`, `chapter` and `sequence` are `null` when the scene is not live. `counts` is `{ beats, assigned, omitted }`: all beats, beats with at least one scene, and beats that are omitted. `structures` is sorted with the primary one first, then by name, then slug.
 
+`Relationship` is `{ id, slug, path, name, a, b, baseline, end_state, sha256, body, developments, problems: [{ code, message }] }`. `a` and `b` are `{ id, slug, name, type }`, one per entry; an entry can be of any type, in the book or its series. When the id names no entry, `slug`, `name` and `type` are `null` and the `id` stays. `name` is `<A name> & <B name>`. `baseline` and `end_state` are a string or `null`. `body` is the free notes. `developments` is `[{ scene, scene_title, chapter, sequence, change, a_view, b_view }]` in file order; `scene_title`, `chapter` and `sequence` are `null` when the scene is not live, and an empty text is `null`. `relationships` is sorted by name, then slug.
+
+`plan-badges`: the planner data of every live scene in one read, for the Board, Outline and Matrix. The answer is `{ scenes, arcs, structures }`.
+- `scenes` is an object keyed by scene id, with one entry for every live scene: `{ plan, goal, purpose, links_in, links_out, beats, milestones, relationships }`. `plan` is true when the scene has a live plan. `goal` and `purpose` come from that plan and are `null` when there is none. `links_in` and `links_out` count the live links that end or start at the scene and whose other end also resolves (a live scene or a beat of a live structure). `beats` is `[{ structure_slug, structure_name, primary, beat_id, beat_name }]`, one per beat of a live structure that holds the scene. `milestones` is `[{ arc_slug, name }]`, one per arc milestone set in the scene (`name` is the character's name, else the arc's slug). `relationships` is `[{ slug, name, change }]`, one per development set in the scene.
+- `arcs` is `[{ slug, name }]`: the live arcs, sorted as in `GET /arcs`.
+- `structures` is `[{ slug, name, primary, beats: [{ id, name, state, scenes: [sceneId] }] }]`: the live structures, primary first. `scenes` lists the beat's live scenes.
+
 ### Writes
 
 All are `POST` with a JSON body. The module is `planner`: with it off, every write is `403 MODULE_OFF` (`module: "planner"`) and nothing is written. Every write accepts `"dryRun": true` and then returns `{ ok: true, dryRun: true, changes, … }` without writing. A real write answers with `opId` and `undo`. `base_sha256` is the `sha256` you read; if the file has changed, the answer is `409 { error: "conflict", current: { sha256, text } }` (the file as it is now) and nothing is written.
 
 | Route | Body | Answer |
 |---|---|---|
-| `POST /api/books/:b/links` | `{ from, to, relation, rationale? }` (scene ids; `relation` as in [format.md](format.md)) | `201`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/links` | `{ from, to, relation, rationale? }` (scene ids or beat ids; `relation` as in [format.md](format.md)) | `201`, with `id`, `slug`, `path` |
 | `POST /api/books/:b/links/:slug` | `{ base_sha256, relation?, from?, to?, rationale? }`, at least one of the four | `200`, with `id`, `slug`, `path` |
 | `POST /api/books/:b/links/:slug/archive` | optional `{ base_sha256 }` | `200`, with `slug`, `path` (now under `archive/`) |
 | `POST /api/books/:b/links/:slug/restore` | optional `{ base_sha256 }` | `200`, with `slug`, `path` |
@@ -176,6 +186,11 @@ All are `POST` with a JSON body. The module is `planner`: with it off, every wri
 | `POST /api/books/:b/structures/:slug/beats` | `{ base_sha256, beats }` | `200`, with `id`, `slug`, `path` |
 | `POST /api/books/:b/structures/:slug/archive` | optional `{ base_sha256 }` | `200`, with `slug`, `path` (now under `archive/`) |
 | `POST /api/books/:b/structures/:slug/restore` | optional `{ base_sha256 }` | `200`, with `slug`, `path` |
+| `POST /api/books/:b/relationships` | `{ a, b, fields? }` (`a` and `b` are entry ids) | `201`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/relationships/:slug` | `{ base_sha256, fields?, body? }`, at least one of the two | `200`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/relationships/:slug/developments` | `{ base_sha256, developments }` | `200`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/relationships/:slug/archive` | optional `{ base_sha256 }` | `200`, with `slug`, `path` (now under `archive/`) |
+| `POST /api/books/:b/relationships/:slug/restore` | optional `{ base_sha256 }` | `200`, with `slug`, `path` |
 
 - A dry run answers `200` where a real write would answer `201`.
 - `rationale` is up to 20,000 characters. The file name and slug of a link never change on update. The body is replaced only when `rationale` is sent.
@@ -191,9 +206,15 @@ All are `POST` with a JSON body. The module is `planner`: with it off, every wri
 - Structures: `template` must be one of the eight template ids (else `REFUSED_BAD_ARGS`, `field: "template"`). `name` is one line of 1 to 200 characters. The file `planning/structures/<name-slug>.md` is created (`-2`, `-3` … when a live or archived file has the name), with the template's beats copied in, each with a new id, no scenes and no state. Any number of structures can use the same template. The template is never changed.
 - Structure update: `name` replaces the name; `body` (up to 20,000 characters) replaces the notes only when sent. Update never changes the template, `template_version`, beats, file name or slug.
 - Structure beats: `beats` is the whole ordered list, up to 200 items, each `{ id?, name, purpose?, question?, position?, state?, scenes? }`. `name` is required, one line, 1 to 200 characters. `purpose`, `question` and `position` are one line, up to 2,000 characters (an empty text is left out). `state` is `open`, `done` or `omitted`; `open` is written as no key. `scenes` is a list of up to 50 scene ids; repeats are dropped and the order is kept. Every value in an item must be a string or `null` (`scenes` a list of strings), else `400 BAD_ARGS`. A key other than those seven is `REFUSED_BAD_ARGS`. An `id` must be a `note_` id and not repeated in the list; a beat without an `id` gets a new one, so send the ids you read to keep a beat. Each scene must be a live scene (`REFUSED_UNKNOWN_SCENE`, `field: "beats[i].scenes[j]"`). Errors on an item carry its `index`. `[]` removes the `beats` block. If the block in the file has a comment, anchor or alias, the write is `400 REFUSED_UNSIMPLE_FIELD` (`field: "beats"`) and nothing is written.
+- Link ends: `from` and `to` of a create or update are the id of a live scene or of a beat inside a live structure; anything else is `REFUSED_UNKNOWN_SCENE` (`field` is `from` or `to`). A beat id is the `id` of a beat in `GET /structures/:slug`.
+- Structure beats: a save that removes a beat which is the `from` or `to` of a link is refused with `400 REFUSED_BEAT_LINKED` and nothing is written. The answer carries `message`, `links: [slug]` (live links) and `archived_links: [slug]` (archived links). Archived links count, because an archived link to a beat that is gone would be `E301`. Re-point the links first; an archived link has to be restored before it can be changed.
+- Relationships: `a` and `b` must be the ids of live entries of any type, in the book or its series (an unknown id is `REFUSED_UNKNOWN_ENTRY`, `field` is `a` or `b`). The same entry twice is `REFUSED_BAD_ARGS`. A book has one live relationship per pair of entries, in either order. The file `planning/relationships/<a-slug>-and-<b-slug>.md` is created (`-2`, `-3` … when a live or archived file has the name). A new file has no developments. The Codex entries are never written.
+- Relationships: `fields` holds `baseline` and `end_state`: a string sets, `null` or `""` removes on update, one line, up to 2,000 characters; any other key is `REFUSED_BAD_ARGS`. On update, `body` (up to 20,000 characters) replaces the notes only when sent. Update never changes `a`, `b`, the developments, the file name or the slug.
+- Relationship developments: `developments` is the whole ordered list, up to 200 items, each `{ scene, change, a_view?, b_view? }`. `change` is required. The three texts are one line, up to 2,000 characters (an empty `a_view` or `b_view` is left out). `scene` must be a live scene (`REFUSED_UNKNOWN_SCENE`, `field: "developments[i].scene"`). A key other than those four is `REFUSED_BAD_ARGS`. Every value in an item must be a string or `null`, else `400 BAD_ARGS`. Errors on an item carry its `index`. `[]` removes the `developments` block. If the block in the file has a comment, anchor or alias, the write is `400 REFUSED_UNSIMPLE_FIELD` (`field: "developments"`) and nothing is written.
+- Restoring a relationship: `REFUSED_PATH_TAKEN` if a live file has that name, `REFUSED_DUPLICATE_RELATIONSHIP` if a live relationship already has the same pair.
 - Restoring a structure: `REFUSED_PATH_TAKEN` if a live file has that name. Archiving or restoring never changes a scene or the story plan; a story plan that names an archived structure shows `W303`.
 - Scene files, `book.md` and the story text are never read for writing or changed.
-- Undo: `POST /api/books/:b/ops/:opId/restore`. Undo may remove a link, scene plan, story plan, arc or structure that the write created.
+- Undo: `POST /api/books/:b/ops/:opId/restore`. Undo may remove a link, scene plan, story plan, arc, structure or relationship that the write created.
 
 Errors:
 
@@ -201,14 +222,16 @@ Errors:
 |---|---|---|
 | `400` | `BAD_ARGS` | The body is malformed (wrong type, a `body` that is not a string, missing `from` / `to` / `relation`, missing `base_sha256` on an update). |
 | `400` | `REFUSED_BAD_ARGS` | A value is out of range (unknown `relation`, unknown planning key, over-long text or body, nothing to change, `base_sha256` where none is allowed or missing where required). |
-| `400` | `REFUSED_UNKNOWN_SCENE` | `from`, `to`, a milestone's scene, a beat's scene or the scene is not a live scene (`field` says which). |
-| `400` | `REFUSED_UNKNOWN_ENTRY` | A `characters` slug, the story plan's `protagonist`, or an arc's `character` is not an entry (`entry` names it). |
-| `400` | `REFUSED_UNSIMPLE_FIELD` | An arc's or structure's front matter cannot be read as plain YAML, or its `milestones` or `beats` block has a comment, anchor or alias (`field` names the key). |
-| `400` | `REFUSED_SELF_LINK` | `from` and `to` are the same scene. |
-| `404` | | No such book, link, arc, structure, or live scene. |
+| `400` | `REFUSED_UNKNOWN_SCENE` | A link's `from` or `to` is neither a live scene nor a beat of a live structure, or a milestone's, beat's or development's scene is not a live scene (`field` says which). |
+| `400` | `REFUSED_UNKNOWN_ENTRY` | A `characters` slug, the story plan's `protagonist`, an arc's `character`, or a relationship's `a` or `b` is not an entry (`entry` names it). |
+| `400` | `REFUSED_UNSIMPLE_FIELD` | An arc's, structure's or relationship's front matter cannot be read as plain YAML, or its `milestones`, `beats` or `developments` block has a comment, anchor or alias (`field` names the key). |
+| `400` | `REFUSED_SELF_LINK` | `from` and `to` are the same scene or beat. |
+| `400` | `REFUSED_BEAT_LINKED` | A beats save removes a beat that is the `from` or `to` of a link. The answer carries `links` and `archived_links` (slugs). |
+| `404` | | No such book, link, arc, structure, relationship, or live scene. |
 | `409` | `REFUSED_DUPLICATE_LINK` | A live link already has the same `from`, `to` and `relation` (also on restore). The answer carries `existing: { slug }`. |
 | `409` | `REFUSED_DUPLICATE_ARC` | A live arc already names the same `character` (also on restore). The answer carries `existing: { slug }`. |
-| `409` | `REFUSED_PATH_TAKEN` | A restore would overwrite a live link, arc or structure file, or `planning/story.md` exists but is not a story plan. |
+| `409` | `REFUSED_DUPLICATE_RELATIONSHIP` | A live relationship already names the same pair of entries, in either order (also on restore). The answer carries `existing: { slug }`. |
+| `409` | `REFUSED_PATH_TAKEN` | A restore would overwrite a live link, arc, structure or relationship file, or `planning/story.md` exists but is not a story plan. |
 | `409` | `CONFLICT` | The file changed since `base_sha256`. |
 | `403` | `MODULE_OFF` | The `planner` module is off. |
 

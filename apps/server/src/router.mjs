@@ -308,6 +308,19 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const structure = await repository.getStructure(b, d);
       return structure ? { status: 200, body: structure } : NOT_FOUND;
     }
+    // Story Planner M5: relationship developments (planning/relationships/<slug>.md) and the planner badges for Board, Outline and Matrix
+    if (c === 'relationships' && d === undefined) {
+      const list = await repository.listRelationships(b);
+      return list ? { status: 200, body: list } : NOT_FOUND;
+    }
+    if (c === 'relationships' && d !== undefined && e === undefined) {
+      const rel = await repository.getRelationship(b, d);
+      return rel ? { status: 200, body: rel } : NOT_FOUND;
+    }
+    if (c === 'plan-badges' && d === undefined) {
+      const badges = await repository.planBadges(b);
+      return badges ? { status: 200, body: badges } : NOT_FOUND;
+    }
     // M05-J04 status; M08-J03: the cover generator's state, a draft picture, and a streamed reply in progress
     if (c === 'ai' && ['status', 'cover', 'cover-draft', 'stream'].includes(d) && e === undefined) return handleAiRead(repository, state, d, b, params);
     if (c === 'graph' && d === undefined) {
@@ -670,6 +683,11 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'structures' && d !== undefined && e === 'beats') return { route: 'planner-structure-beats', bookId: b, slug: d };
   if (method === 'POST' && c === 'structures' && d !== undefined && e === 'archive') return { route: 'planner-structure-archive', bookId: b, slug: d };
   if (method === 'POST' && c === 'structures' && d !== undefined && e === 'restore') return { route: 'planner-structure-restore', bookId: b, slug: d };
+  if (method === 'POST' && c === 'relationships' && d === undefined) return { route: 'planner-relationship-create', bookId: b };
+  if (method === 'POST' && c === 'relationships' && d !== undefined && e === undefined) return { route: 'planner-relationship-update', bookId: b, slug: d };
+  if (method === 'POST' && c === 'relationships' && d !== undefined && e === 'developments') return { route: 'planner-relationship-developments', bookId: b, slug: d };
+  if (method === 'POST' && c === 'relationships' && d !== undefined && e === 'archive') return { route: 'planner-relationship-archive', bookId: b, slug: d };
+  if (method === 'POST' && c === 'relationships' && d !== undefined && e === 'restore') return { route: 'planner-relationship-restore', bookId: b, slug: d };
   return null;
 }
 
@@ -694,11 +712,13 @@ function plannerFields(v) {
 }
 
 /**
- * Like respond(), for the Story Planner writes: a duplicate link or arc is 409 with the existing one's slug, and the reference refusals are 400 with their codes.
+ * Like respond(), for the Story Planner writes: a duplicate link, arc or relationship is 409 with the existing one's slug, and the reference refusals are 400 with their codes.
  * @param {any} r @param {number} okStatus
  */
 function respondPlanner(r, okStatus) {
-  if (!r.ok && (r.code === 'REFUSED_DUPLICATE_LINK' || r.code === 'REFUSED_DUPLICATE_ARC')) return { status: 409, body: { error: 'conflict', code: r.code, message: r.message, existing: r.existing ?? null } };
+  if (!r.ok && (r.code === 'REFUSED_DUPLICATE_LINK' || r.code === 'REFUSED_DUPLICATE_ARC' || r.code === 'REFUSED_DUPLICATE_RELATIONSHIP')) return { status: 409, body: { error: 'conflict', code: r.code, message: r.message, existing: r.existing ?? null } };
+  // M5: a beat that is still the end of a live link cannot be removed; the links are named so the author can archive or re-point them
+  if (!r.ok && r.code === 'REFUSED_BEAT_LINKED') return { status: 400, body: { error: 'refused', code: r.code, message: r.message, links: Array.isArray(r.links) ? r.links : [], archived_links: Array.isArray(r.archived_links) ? r.archived_links : [] } };
   return respond(r, okStatus, structureBody);
 }
 
@@ -1289,6 +1309,35 @@ async function handleStructure(repository, match, body) {
     case 'planner-structure-restore': {
       if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
       const call = match.route === 'planner-structure-archive' ? repository.archiveStructure : repository.restoreStructure;
+      const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
+      return respondPlanner(r, 200);
+    }
+    // ---- Story Planner M5: the only files these routes write are planning/relationships/<slug>.md (archive/ when archived); never a Codex entry or a scene
+    case 'planner-relationship-create': {
+      if (typeof body.a !== 'string' || typeof body.b !== 'string') return badRequest('expected { a: entryId, b: entryId, fields?: object }');
+      const fields = plannerFields(body.fields);
+      if (typeof fields === 'string') return badRequest(fields);
+      const r = await repository.createRelationship(bookId, { a: body.a, b: body.b, fields, dryRun });
+      return respondPlanner(r, created);
+    }
+    case 'planner-relationship-update': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string');
+      const fields = plannerFields(body.fields);
+      if (typeof fields === 'string') return badRequest(fields);
+      const r = await repository.updateRelationship(bookId, /** @type {string} */ (match.slug), { fields, body: body.body, baseSha256: body.base_sha256, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-relationship-developments': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      if (!Array.isArray(body.developments) || !body.developments.every((m) => isObject(m) && Object.values(m).every((v) => v === null || typeof v === 'string'))) return badRequest('developments must be a list of objects with string values');
+      const r = await repository.setRelationshipDevelopments(bookId, /** @type {string} */ (match.slug), { developments: body.developments, baseSha256: body.base_sha256, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-relationship-archive':
+    case 'planner-relationship-restore': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const call = match.route === 'planner-relationship-archive' ? repository.archiveRelationship : repository.restoreRelationship;
       const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
       return respondPlanner(r, 200);
     }

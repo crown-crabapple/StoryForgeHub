@@ -2,7 +2,7 @@ import { Link } from '../router.jsx';
 import { sceneHref } from '../planning/model.js';
 import { FlowGraph } from './FlowGraph.jsx';
 import { LinkPanel } from './LinkPanel.jsx';
-import { describeLink, filterNodes, planUrl, sceneName, unlinkedNodes } from './model.js';
+import { beatLabel, describeLink, filterNodes, planUrl, sceneName, unlinkedNodes } from './model.js';
 import { linksForScene, relationLabel } from './requests.js';
 
 /**
@@ -44,7 +44,8 @@ function LinkRows({ links, nodeById, selected, archived = false, handlers }) {
 /** The side panel: help, the selected scene (with its Plan section in `scenePlan`), or the selected link. */
 function FlowSide({ bookId, url, nodeById, links, linkState, scenePlan, handlers }) {
   const live = links?.links ?? [];
-  const node = url.node ? nodeById.get(url.node) : null;
+  const found = url.node ? nodeById.get(url.node) : null;
+  const node = found && found.kind !== 'beat' ? found : null;
   const link = url.link ? live.find((l) => l.slug === url.link) : null;
   const archivedLink = url.link && !link ? (links?.archived ?? []).find((l) => l.slug === url.link) : null;
   if (url.link && links === null) return <p className="muted">Loading…</p>;
@@ -130,13 +131,15 @@ function FlowSide({ bookId, url, nodeById, links, linkState, scenePlan, handlers
  * @param {{ bookId: string, flow: { nodes: any[], edges: any[] } | null, links: { links: any[], archived: any[] } | null, url: ReturnType<typeof import('./model.js').parsePlanSearch>,
  *   wide?: boolean, query?: string, scenePlan?: import('react').ReactNode, linkState?: { busy?: boolean, message?: string | null, error?: string | null },
  *   handlers?: { onQuery?: (q: string) => void, onMode?: (mode: 'list' | 'graph') => void, onConnect?: (from?: string | null) => void, onSelectNode?: (id: string) => void,
- *     onSelectLink?: (slug: string) => void, onSave?: Function, onReverse?: Function, onArchive?: Function, onRestore?: Function, onClearFilter?: () => void } }} props
+ *     onSelectLink?: (slug: string) => void, onOpenBeat?: (node: any) => void, onSave?: Function, onReverse?: Function, onArchive?: Function, onRestore?: Function, onClearFilter?: () => void } }} props
  *   `wide` is true from 768 px up: below that only the list is shown. Without `url.mode` the graph is the default on wide screens.
  */
 export function FlowView({ bookId, flow, links, url, wide = true, query = '', scenePlan = null, linkState = {}, handlers = {} }) {
-  const nodes = flow?.nodes ?? [];
+  const allNodes = flow?.nodes ?? [];
+  const nodes = allNodes.filter((n) => n.kind !== 'beat');
+  const beats = allNodes.filter((n) => n.kind === 'beat');
   const edges = flow?.edges ?? [];
-  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const nodeById = new Map(allNodes.map((n) => [n.id, n]));
   const live = links?.links ?? [];
   const mode = wide ? (url.mode ?? 'graph') : 'list';
   const unlinkedOnly = url.filter === 'unlinked';
@@ -144,7 +147,8 @@ export function FlowView({ bookId, flow, links, url, wide = true, query = '', sc
   const unlinkedIds = new Set(unlinked.map((n) => n.id));
   const shown = filterNodes(unlinkedOnly ? nodes.filter((n) => unlinkedIds.has(n.id)) : nodes, query);
   const searching = query.trim() !== '';
-  const shownIds = new Set(shown.map((n) => n.id));
+  const shownBeats = unlinkedOnly ? [] : beats.filter((n) => !searching || beatLabel(n).toLowerCase().includes(query.trim().toLowerCase()));
+  const shownIds = new Set([...shown, ...shownBeats].map((n) => n.id));
   const matchesLink = (l) => {
     if (!searching) return true;
     const d = describeLink(l, nodeById);
@@ -193,13 +197,14 @@ export function FlowView({ bookId, flow, links, url, wide = true, query = '', sc
             </p>
           ) : mode === 'graph' ? (
             <FlowGraph
-              nodes={shown}
+              nodes={[...shownBeats, ...shown]}
               edges={edges.filter((e) => e.broken || (shownIds.has(e.from) && shownIds.has(e.to)))}
               nodeById={nodeById}
               selectedNode={url.node}
               selectedLink={url.link}
               onSelectNode={handlers.onSelectNode}
               onSelectEdge={handlers.onSelectLink}
+              onOpenBeat={handlers.onOpenBeat}
             />
           ) : (
             <>
@@ -211,6 +216,20 @@ export function FlowView({ bookId, flow, links, url, wide = true, query = '', sc
                   ) : (
                     <LinkRows links={rows} nodeById={nodeById} selected={url.link} handlers={handlers} />
                   )}
+                </section>
+              )}
+              {!unlinkedOnly && shownBeats.length > 0 && (
+                <section aria-labelledby="flow-beats-h" className="plan-block">
+                  <h2 id="flow-beats-h">Beats</h2>
+                  <ul className="flow-unlinked ln-beat-list">
+                    {shownBeats.map((n) => (
+                      <li key={n.id}>
+                        <button type="button" className="flow-scene-button" onClick={() => handlers.onOpenBeat?.(n)}>
+                          {beatLabel(n)}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </section>
               )}
               <section aria-labelledby="flow-unlinked-h" className="plan-block">

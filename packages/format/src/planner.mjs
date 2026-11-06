@@ -2,6 +2,8 @@
 // (E211, a link from a scene to itself, is a field check in schema.mjs.) Archived files are left out of both.
 // W318: a live story plan (schema storyforge.story-plan/v1) that is not planning/story.md; every such file is flagged, so at most one live plan is clean.
 // Arcs (M3): every arc's `milestones` list is checked (E102 shape, I401 unknown key, E301 unknown scene, W303 archived scene); W319 when two live arcs name the same character.
+// Relationships (M5): every relationship's `developments` list is checked (E102 shape, I401 unknown key, E301 unknown scene, W303 archived scene); W320 when two live relationships name the same pair of entries, in either order.
+// (E212, a relationship whose a and b are the same entry, is a field check in schema.mjs.)
 
 const STORY_PLAN_PATH = 'planning/story.md';
 const MILESTONE_TEXT_KEYS = ['pressure', 'choice', 'belief_before', 'belief_after', 'cost'];
@@ -11,6 +13,8 @@ const BEAT_KEYS = ['id', 'name', ...BEAT_TEXT_KEYS, 'state', 'scenes'];
 const BEAT_STATES = ['open', 'done', 'omitted'];
 const BEAT_ID_RE = /^note_[0-9A-HJKMNP-TV-Z]{26}$/;
 const MAX_BEAT_SCENES = 50;
+const DEVELOPMENT_VIEW_KEYS = ['a_view', 'b_view'];
+const DEVELOPMENT_KEYS = ['scene', 'change', ...DEVELOPMENT_VIEW_KEYS];
 const oneLine = (v) => typeof v === 'string' && !/[\x00-\x1f\x7f\x85\u2028\u2029]/.test(v);
 const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -34,6 +38,31 @@ function checkMilestones(d, scenes, add) {
     }
     for (const k of Object.keys(m)) {
       if (k !== 'scene' && !MILESTONE_TEXT_KEYS.includes(k)) add('I401', d.file, at(k), 'unknown field');
+    }
+  });
+}
+
+/** Development items of one relationship: E102 / I401 on the shape, E301 / W303 on the scene. */
+function checkDevelopments(d, scenes, add) {
+  if (!Array.isArray(d.fm.developments)) return; // a non-list is reported by the field table
+  d.fm.developments.forEach((m, i) => {
+    const at = (k) => `developments[${i}].${k}`;
+    if (!isMap(m)) {
+      add('E102', d.file, `developments[${i}]`, 'development must be a mapping with a scene, a change and optional a_view and b_view');
+      return;
+    }
+    if (typeof m.scene !== 'string' || m.scene === '') add('E102', d.file, at('scene'), 'development scene must be a scene id');
+    else {
+      const hit = scenes.get(m.scene);
+      if (!hit) add('E301', d.file, at('scene'), `cannot resolve ${m.scene}`);
+      else if (hit.archived) add('W303', d.file, at('scene'), `${m.scene} points into archive/`);
+    }
+    if (!oneLine(m.change) || m.change === '') add('E102', d.file, at('change'), 'development change must be a single line of text');
+    for (const k of DEVELOPMENT_VIEW_KEYS) {
+      if (Object.hasOwn(m, k) && !oneLine(m[k])) add('E102', d.file, at(k), `${k} must be a single line of text`);
+    }
+    for (const k of Object.keys(m)) {
+      if (!DEVELOPMENT_KEYS.includes(k)) add('I401', d.file, at(k), 'unknown field');
     }
   });
 }
@@ -90,6 +119,8 @@ export function checkPlanner(docs, add) {
   const plans = new Map();
   /** @type {Map<string, import('./load.mjs').Doc[]>} */
   const arcs = new Map();
+  /** @type {Map<string, import('./load.mjs').Doc[]>} */
+  const relationships = new Map();
   const push = (map, key, d) => {
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(d);
@@ -98,6 +129,7 @@ export function checkPlanner(docs, add) {
   const scenes = new Map();
   for (const d of docs) if (d.kind === 'scene' && typeof d.fm.id === 'string' && (!scenes.has(d.fm.id) || scenes.get(d.fm.id).archived)) scenes.set(d.fm.id, d);
   for (const d of docs) if (d.kind === 'arc') checkMilestones(d, scenes, add);
+  for (const d of docs) if (d.kind === 'relationship') checkDevelopments(d, scenes, add);
   const seenBeats = new Set();
   const stemOf = (d) => d.file.replace(/[.]md$/, '');
   // live structures first, by name, so a duplicate beat id is reported on the later file
@@ -110,6 +142,7 @@ export function checkPlanner(docs, add) {
     if (d.kind === 'link' && typeof fm.from === 'string' && typeof fm.to === 'string' && typeof fm.relation === 'string') push(links, JSON.stringify([fm.from, fm.to, fm.relation]), d);
     else if (d.kind === 'scene-plan' && typeof fm.scene === 'string') push(plans, fm.scene, d);
     else if (d.kind === 'arc' && typeof fm.character === 'string') push(arcs, fm.character, d);
+    else if (d.kind === 'relationship' && typeof fm.a === 'string' && typeof fm.b === 'string' && fm.a !== fm.b) push(relationships, JSON.stringify([fm.a, fm.b].sort()), d);
   }
   // by name without .md, so key-x.md comes before key-x-2.md
   const stem = (d) => d.file.replace(/[.]md$/, '');
@@ -128,5 +161,10 @@ export function checkPlanner(docs, add) {
     if (list.length < 2) continue;
     list.sort(byFile);
     for (const d of list.slice(1)) add('W319', d.file, 'character', `${list[0].file} is already the arc of this character`);
+  }
+  for (const list of relationships.values()) {
+    if (list.length < 2) continue;
+    list.sort(byFile);
+    for (const d of list.slice(1)) add('W320', d.file, 'b', `${list[0].file} is already the relationship of this pair`);
   }
 }

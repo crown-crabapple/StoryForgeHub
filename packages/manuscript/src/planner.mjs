@@ -53,6 +53,16 @@ async function freeName(store, base, pathOf) {
 const liveScenes = (lb) => new Map(lb.book.order.map((s) => [s.id, s]));
 const linkDocs = (docs, archived) => docs.filter((d) => d.kind === 'link' && d.archived === archived);
 const sameTriple = (d, from, to, relation) => d.fm.from === from && d.fm.to === to && d.fm.relation === relation;
+/** Beats of the live structures, by id: Map(id -> { name, structure: slug }). A beat id is a valid link end only while its structure is live (M5). */
+function liveBeats(docs) {
+  /** @type {Map<string, { name: string, structure: string }>} */
+  const out = new Map();
+  for (const d of docs) {
+    if (d.kind !== 'structure' || d.archived || !Array.isArray(d.fm.beats)) continue;
+    for (const b of d.fm.beats) if (isMap(b) && typeof b.id === 'string' && !out.has(b.id)) out.set(b.id, { name: typeof b.name === 'string' ? b.name : '', structure: typeof d.fm.slug === 'string' ? d.fm.slug : stem(d.rel).split('/').pop() });
+  }
+  return out;
+}
 const slugOfDoc = (d) => (typeof d.fm.slug === 'string' ? d.fm.slug : stem(d.rel).split('/').pop());
 
 /** Body text after the front matter: empty, or a blank line and the rationale ending in one line break. */
@@ -74,7 +84,7 @@ function badLinkArgs({ from, to, relation, rationale }, { partial }) {
 // ------------------------------------------------------------------ createLink
 
 /**
- * New link file planning/links/<slug>.md: schema, id, slug, from, to, relation, created; the rationale is the body. `from` and `to` must be live scenes
+ * New link file planning/links/<slug>.md: schema, id, slug, from, to, relation, created; the rationale is the body. `from` and `to` must be live scenes or beat ids inside a live structure
  * (REFUSED_UNKNOWN_SCENE, with `field`), not the same scene (REFUSED_SELF_LINK), and no live link may already have the same from, to and relation
  * (REFUSED_DUPLICATE_LINK, with `existing: { slug }`).
  * @param {string} bookRoot @param {{ from: string, to: string, relation: string, rationale?: string, dryRun?: boolean }} args
@@ -88,14 +98,15 @@ export function createLink(bookRoot, args = {}) {
     if (prep.result) return prep.result;
     const { lb, store, docs } = prep;
     const scenes = liveScenes(lb);
+    const beats = liveBeats(docs);
     for (const [field, id] of [['from', from], ['to', to]]) {
-      if (!scenes.has(id)) return fail('REFUSED_UNKNOWN_SCENE', `${field} ${id} is not a scene of this book`, { field });
+      if (!scenes.has(id) && !beats.has(id)) return fail('REFUSED_UNKNOWN_SCENE', `${field} ${id} is not a scene or beat of this book`, { field });
     }
     if (from === to) return fail('REFUSED_SELF_LINK', 'a link cannot point from a scene to itself', { field: 'to' });
     const twin = linkDocs(docs, false).find((d) => sameTriple(d, from, to, relation));
     if (twin) return fail('REFUSED_DUPLICATE_LINK', `${twin.rel} already links these scenes with ${relation}`, { existing: { slug: slugOfDoc(twin) } });
 
-    const name = (id) => slugify(sceneSlugOf(scenes.get(id).path)) || slugify(scenes.get(id).title ?? '') || 'scene';
+    const name = (id) => (scenes.has(id) ? slugify(sceneSlugOf(scenes.get(id).path)) || slugify(scenes.get(id).title ?? '') || 'scene' : slugify(beats.get(id).name) || 'beat');
     const slug = await freeName(store, `${name(from)}-${relation.replace(/_/g, '-')}-${name(to)}`, linkPath);
     const id = `note_${ulid()}`;
     const rel = linkPath(slug);
@@ -111,7 +122,7 @@ export function createLink(bookRoot, args = {}) {
 /**
  * Change a link's relation, ends or rationale. `baseSha256` (the file the author last saw) is required; another version on disk is CONFLICT and nothing is
  * written. The file name and slug never change. The body is replaced only when `rationale` is given; the front matter bytes are otherwise kept.
- * `from` / `to` are checked as live scenes only when they change; the self-link and duplicate checks run when from, to or relation change.
+ * `from` / `to` are checked as live scenes or beats of a live structure only when they change; the self-link and duplicate checks run when from, to or relation change.
  * @param {string} bookRoot @param {string} slug
  * @param {{ relation?: string, from?: string, to?: string, rationale?: string, baseSha256: string, dryRun?: boolean }} args
  */
@@ -135,8 +146,9 @@ export function updateLink(bookRoot, slug, args = {}) {
 
     const next = { from: from ?? doc.fm.from, to: to ?? doc.fm.to, relation: relation ?? doc.fm.relation };
     const scenes = liveScenes(lb);
+    const beats = liveBeats(docs);
     for (const [field, id] of [['from', from], ['to', to]]) {
-      if (id !== undefined && !scenes.has(id)) return fail('REFUSED_UNKNOWN_SCENE', `${field} ${id} is not a scene of this book`, { field });
+      if (id !== undefined && !scenes.has(id) && !beats.has(id)) return fail('REFUSED_UNKNOWN_SCENE', `${field} ${id} is not a scene or beat of this book`, { field });
     }
     const endsChanged = next.from !== doc.fm.from || next.to !== doc.fm.to || next.relation !== doc.fm.relation;
     if (endsChanged) {
@@ -695,6 +707,7 @@ export function updateStructure(bookRoot, slug, args = {}) {
  * of scene ids, de-duplicated keeping the order, each a live scene of the book (REFUSED_UNKNOWN_SCENE with the beat `index`). An `id` must be a note_ id and unique in the list
  * (REFUSED_BAD_ARGS); a beat without one gets a new id. Written as a block of mappings through replaceFrontMatterBlock (after template_version when absent, removed when the list
  * is empty); a hand-edited block with a comment, anchor or alias is REFUSED_UNSIMPLE_FIELD. `baseSha256` is required; a different file on disk is CONFLICT with `current`.
+ * A beat that this save removes and that is the `from` or `to` of a link is REFUSED_BEAT_LINKED with `links: [slug]` (live) and `archived_links: [slug]` (M5); nothing is cut silently.
  * @param {string} bookRoot @param {string} slug
  * @param {{ beats: { id?: string, name: string, purpose?: string, question?: string, position?: string, state?: string, scenes?: string[] }[], baseSha256: string, dryRun?: boolean }} args
  */
@@ -743,6 +756,18 @@ export function setStructureBeats(bookRoot, slug, args = {}) {
     const { doc, rel, before } = got;
     const changed = stale(before, baseSha256, rel);
     if (changed) return changed;
+    const keptIds = new Set(clean.map((b) => b.id));
+    const removed = new Set((Array.isArray(doc.fm.beats) ? doc.fm.beats : []).filter((b) => isMap(b) && typeof b.id === 'string' && !keptIds.has(b.id)).map((b) => b.id));
+    if (removed.size > 0) {
+      // archived links count too: an archived link to a beat that no longer exists would be E301 and roll the save back with no clear reason
+      const uses = (d) => removed.has(d.fm.from) || removed.has(d.fm.to);
+      const linked = linkDocs(docs, false).filter(uses).map(slugOfDoc);
+      const archivedLinked = linkDocs(docs, true).filter(uses).map(slugOfDoc);
+      if (linked.length + archivedLinked.length > 0) {
+        const named = [...linked, ...archivedLinked.map((x) => `${x} (archived)`)].join(', ');
+        return fail('REFUSED_BEAT_LINKED', `a beat that is removed is still linked by ${named}; re-point the links first (restore an archived link to change it)`, { links: linked, archived_links: archivedLinked });
+      }
+    }
     const scenes = liveScenes(lb);
     for (const [i, b] of clean.entries()) {
       for (const [j, s] of b.scenes.entries()) {
@@ -791,5 +816,222 @@ function moveStructure(bookRoot, slug, args, restoring) {
     if (changed) return changed;
     if (restoring && (await store.exists(live))) return fail('REFUSED_PATH_TAKEN', `a structure file ${live} already exists`, { path: live });
     return finish({ bookRoot, store, lb, op: restoring ? 'restoreStructure' : 'archiveStructure', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
+  });
+}
+
+// ------------------------------------------------------------------ relationships (ADR 0003 M5)
+
+export const RELATIONSHIP_DIR = 'planning/relationships';
+/** The single-line text keys of a relationship, in the order they are written (after b). */
+export const RELATIONSHIP_TEXT_FIELDS = ['baseline', 'end_state'];
+/** The text keys of a development besides `scene`, in the order they are written. */
+export const DEVELOPMENT_FIELDS = ['change', 'a_view', 'b_view'];
+const MAX_DEVELOPMENTS = 200;
+
+/** Book-relative path of a live relationship. @param {string} slug */
+export const relationshipPath = (slug) => `${RELATIONSHIP_DIR}/${slug}.md`;
+const relationshipDocs = (docs, archived) => docs.filter((d) => d.kind === 'relationship' && d.archived === archived);
+const relationshipSlugOf = (d) => (typeof d.fm.slug === 'string' ? d.fm.slug : stem(d.rel).split('/').pop());
+const pairKey = (a, b) => JSON.stringify([a, b].sort());
+const samePair = (d, a, b) => typeof d.fm.a === 'string' && typeof d.fm.b === 'string' && pairKey(d.fm.a, d.fm.b) === pairKey(a, b);
+/** Anchors for inserting a relationship key: the keys before it, nearest first, then `b`, `a`. */
+const relationshipAnchors = (key) => [...RELATIONSHIP_TEXT_FIELDS.slice(0, RELATIONSHIP_TEXT_FIELDS.indexOf(key)).reverse(), 'b', 'a', 'slug', 'id'];
+const liveEntry = (docs, lb, id) => [...docs, ...(lb.shared?.docs ?? [])].find((d) => d.kind === 'entry' && !d.archived && d.fm.id === id);
+
+/**
+ * New relationship file planning/relationships/<a-slug>-and-<b-slug>.md: schema, id, slug, a, b, then baseline and end_state when given (single line, max 2000).
+ * `a` and `b` must be ids of live entries (any type) in the book or its series (REFUSED_UNKNOWN_ENTRY, with `field`); the same entry twice is REFUSED_BAD_ARGS.
+ * A live relationship for the pair, in either order: REFUSED_DUPLICATE_RELATIONSHIP with `existing: { slug }`. -2, -3 on a clash with a live or archived file name.
+ * No developments key. The Codex entries are never written.
+ * @param {string} bookRoot
+ * @param {{ a: string, b: string, fields?: { baseline?: string | null, end_state?: string | null }, dryRun?: boolean }} args
+ */
+export function createRelationship(bookRoot, args = {}) {
+  return guarded(async () => {
+    const { a, b, fields = {}, dryRun = false } = args ?? {};
+    for (const [field, id] of [['a', a], ['b', b]]) {
+      if (typeof id !== 'string' || id === '' || id.length > 100) return fail('REFUSED_BAD_ARGS', `${field} must be an entry id`, { field });
+    }
+    if (a === b) return fail('REFUSED_BAD_ARGS', 'a relationship needs two different entries', { field: 'b' });
+    if (!isMap(fields)) return fail('REFUSED_BAD_ARGS', 'fields must be an object');
+    for (const [key, value] of Object.entries(fields)) {
+      if (!RELATIONSHIP_TEXT_FIELDS.includes(key)) return fail('REFUSED_BAD_ARGS', `unknown relationship field ${key}; the fields are ${RELATIONSHIP_TEXT_FIELDS.join(', ')}`, { field: key });
+      if (value !== null && value !== undefined && !lineText(value)) return fail('REFUSED_BAD_ARGS', `${key} must be a single line of text without control characters (max 2000)`, { field: key });
+    }
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const entries = {};
+    for (const [field, id] of [['a', a], ['b', b]]) {
+      entries[field] = liveEntry(docs, lb, id);
+      if (!entries[field]) return fail('REFUSED_UNKNOWN_ENTRY', `no entry ${id}`, { field, entry: id });
+    }
+    const twin = relationshipDocs(docs, false).find((d) => samePair(d, a, b));
+    if (twin) return fail('REFUSED_DUPLICATE_RELATIONSHIP', `${twin.rel} is already the relationship of this pair`, { existing: { slug: relationshipSlugOf(twin) } });
+
+    const name = (e) => slugify(typeof e.fm.slug === 'string' ? e.fm.slug : '') || 'entry';
+    const slug = await freeName(store, `${name(entries.a)}-and-${name(entries.b)}`, relationshipPath);
+    const id = `note_${ulid()}`;
+    const rel = relationshipPath(slug);
+    const lines = ['---', 'schema: storyforge.relationship/v1', `id: ${id}`, `slug: ${slug}`, `a: ${a}`, `b: ${b}`];
+    for (const key of RELATIONSHIP_TEXT_FIELDS) {
+      const v = fields[key];
+      if (typeof v === 'string' && v !== '') lines.push(`${key}: ${formatYamlText(v)}`);
+    }
+    lines.push('---', '');
+    const changes = [{ from: null, to: rel, content: Buffer.from(lines.join('\n'), 'utf8'), before: null }];
+    return finish({ bookRoot, store, lb, op: 'createRelationship', args: { a, b, fields: Object.keys(fields), file: rel }, changes, dryRun, withDiff: true, extra: { id, slug, path: rel } });
+  });
+}
+
+/** The live relationship `slug` of a prepared book, read for writing: { doc, rel, before } or { result }. */
+async function liveRelationship(store, docs, slug) {
+  const rel = relationshipPath(slug);
+  const doc = relationshipDocs(docs, false).find((d) => d.rel === rel);
+  if (!doc) return { result: fail('NOT_FOUND', `no relationship ${slug}`) };
+  return { doc, rel, before: await readBytes(store, rel) };
+}
+
+/**
+ * Change a relationship's baseline, end state or notes. `baseSha256` is required; a different file on disk is CONFLICT with `current`. Each field: a string sets it,
+ * `null` or '' removes the key. `body` (optional, max 20000) replaces the body. `a`, `b`, the developments, the file name and the slug never change here.
+ * @param {string} bookRoot @param {string} slug
+ * @param {{ fields?: { baseline?: string | null, end_state?: string | null }, body?: string, baseSha256: string, dryRun?: boolean }} args
+ */
+export function updateRelationship(bookRoot, slug, args = {}) {
+  return guarded(async () => {
+    const { fields = {}, body, baseSha256, dryRun = false } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no relationship ${slug}`);
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
+    if (!isMap(fields)) return fail('REFUSED_BAD_ARGS', 'fields must be an object');
+    for (const [key, value] of Object.entries(fields)) {
+      if (!RELATIONSHIP_TEXT_FIELDS.includes(key)) return fail('REFUSED_BAD_ARGS', `unknown relationship field ${key}; the fields are ${RELATIONSHIP_TEXT_FIELDS.join(', ')}`, { field: key });
+      if (value !== null && !lineText(value)) return fail('REFUSED_BAD_ARGS', `${key} must be a single line of text without control characters (max 2000), or null to remove it`, { field: key });
+    }
+    if (body !== undefined && (typeof body !== 'string' || body.length > 20000 || BODY_BAD_RE.test(body))) return fail('REFUSED_BAD_ARGS', 'body must be text without control characters (max 20000 characters)', { field: 'body' });
+    if (Object.keys(fields).length === 0 && body === undefined) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const got = await liveRelationship(store, docs, slug);
+    if (got.result) return got.result;
+    const { doc, rel, before } = got;
+    const changed = stale(before, baseSha256, rel);
+    if (changed) return changed;
+
+    let buf = before;
+    const has = (key) => new RegExp(`^${key}:`, 'm').test(buf.toString('latin1'));
+    for (const key of RELATIONSHIP_TEXT_FIELDS) {
+      if (!Object.hasOwn(fields, key)) continue;
+      const v = fields[key];
+      const r = v === null || v === '' ? (has(key) ? replaceFrontMatterBlock(buf, key, []) : { ok: true, buf }) : editFrontMatterLine(buf, key, v, { anchors: relationshipAnchors(key), plain: true });
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: key });
+      buf = r.buf;
+    }
+    if (body !== undefined) {
+      const parts = splitDocument(buf);
+      if (!parts) return fail('REFUSED_UNSIMPLE_FIELD', `${rel}: the file has no closed front matter`, { file: rel, field: 'body' });
+      const head = buf.subarray(0, parts.bodyStart);
+      buf = Buffer.concat([head, Buffer.from(bodyText(body, head.includes('\r\n') ? '\r\n' : '\n'), 'utf8')]);
+    }
+    const out = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'updateRelationship', args: { slug, fields: Object.keys(fields), body: body === undefined ? undefined : `<${body.length} chars>` }, changes: out, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+  });
+}
+
+/**
+ * Replace the whole `developments:` block of a relationship. `developments` is an array (max 200) of { scene, change, a_view?, b_view? }; `scene` must be a live scene of
+ * the book (REFUSED_UNKNOWN_SCENE with the item `index`); `change` is required, a single line (max 2000); `a_view` and `b_view` are optional single lines (an empty one is left out).
+ * Written as a block of mappings through replaceFrontMatterBlock (inserted after the last relationship field when absent, removed when the list is empty); a hand-edited
+ * block with a comment, anchor or alias is REFUSED_UNSIMPLE_FIELD. `baseSha256` is required; a different file on disk is CONFLICT with `current`.
+ * @param {string} bookRoot @param {string} slug
+ * @param {{ developments: { scene: string, change: string, a_view?: string, b_view?: string }[], baseSha256: string, dryRun?: boolean }} args
+ */
+export function setRelationshipDevelopments(bookRoot, slug, args = {}) {
+  return guarded(async () => {
+    const { developments, baseSha256, dryRun = false } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no relationship ${slug}`);
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
+    if (!Array.isArray(developments) || developments.length > MAX_DEVELOPMENTS) return fail('REFUSED_BAD_ARGS', `developments must be a list of up to ${MAX_DEVELOPMENTS} items`, { field: 'developments' });
+    for (const [i, m] of developments.entries()) {
+      const at = (k) => `developments[${i}].${k}`;
+      if (!isMap(m)) return fail('REFUSED_BAD_ARGS', `developments[${i}] must be an object with a scene and a change`, { field: `developments[${i}]`, index: i });
+      if (typeof m.scene !== 'string' || m.scene === '' || m.scene.length > 100) return fail('REFUSED_BAD_ARGS', `${at('scene')} must be a scene id`, { field: at('scene'), index: i });
+      for (const [key, value] of Object.entries(m)) {
+        if (key === 'scene') continue;
+        if (!DEVELOPMENT_FIELDS.includes(key)) return fail('REFUSED_BAD_ARGS', `unknown development field ${key}; the fields are scene, ${DEVELOPMENT_FIELDS.join(', ')}`, { field: at(key), index: i });
+        if (key !== 'change' && (value === null || value === undefined)) continue;
+        if (!lineText(value)) return fail('REFUSED_BAD_ARGS', `${at(key)} must be a single line of text without control characters (max 2000)`, { field: at(key), index: i });
+      }
+      if (typeof m.change !== 'string' || m.change.trim() === '') return fail('REFUSED_BAD_ARGS', `${at('change')} is required`, { field: at('change'), index: i });
+    }
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const got = await liveRelationship(store, docs, slug);
+    if (got.result) return got.result;
+    const { doc, rel, before } = got;
+    const changed = stale(before, baseSha256, rel);
+    if (changed) return changed;
+    const scenes = liveScenes(lb);
+    for (const [i, m] of developments.entries()) {
+      if (!scenes.has(m.scene)) return fail('REFUSED_UNKNOWN_SCENE', `no scene ${m.scene} in the book`, { field: `developments[${i}].scene`, index: i });
+    }
+
+    const lines = developments.length === 0 ? [] : ['developments:'];
+    for (const m of developments) {
+      lines.push(`  - scene: ${m.scene}`);
+      for (const key of DEVELOPMENT_FIELDS) {
+        const v = m[key];
+        if (typeof v === 'string' && v !== '') lines.push(`    ${key}: ${formatYamlText(v)}`);
+      }
+    }
+    let buf = before;
+    if (lines.length > 0 || /^developments:/m.test(buf.toString('latin1'))) {
+      const r = replaceFrontMatterBlock(buf, 'developments', lines, { after: [...RELATIONSHIP_TEXT_FIELDS].reverse().concat('b', 'a') });
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: 'developments' });
+      buf = r.buf;
+    }
+    const out = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'setRelationshipDevelopments', args: { slug, developments: developments.length }, changes: out, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+  });
+}
+
+/** Move a relationship to archive/planning/relationships/. @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args */
+export function archiveRelationship(bookRoot, slug, args = {}) {
+  return moveRelationship(bookRoot, slug, args, false);
+}
+
+/**
+ * Move an archived relationship back. A live file with that name: REFUSED_PATH_TAKEN; a live relationship for the same pair: REFUSED_DUPLICATE_RELATIONSHIP with `existing: { slug }`.
+ * @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args
+ */
+export function restoreRelationship(bookRoot, slug, args = {}) {
+  return moveRelationship(bookRoot, slug, args, true);
+}
+
+function moveRelationship(bookRoot, slug, args, restoring) {
+  return guarded(async () => {
+    const { dryRun = false, baseSha256 } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no relationship ${slug}`);
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const live = relationshipPath(slug);
+    const from = restoring ? `archive/${live}` : live;
+    const to = restoring ? live : `archive/${live}`;
+    if (!(await store.exists(from))) return fail('NOT_FOUND', `no ${restoring ? 'archived ' : ''}relationship ${slug}`);
+    const before = await readBytes(store, from);
+    const changed = stale(before, baseSha256, from);
+    if (changed) return changed;
+    if (restoring) {
+      if (await store.exists(live)) return fail('REFUSED_PATH_TAKEN', `a relationship file ${live} already exists`, { path: live });
+      const doc = relationshipDocs(docs, true).find((d) => d.rel === from);
+      const twin = doc && typeof doc.fm.a === 'string' && typeof doc.fm.b === 'string' ? relationshipDocs(docs, false).find((d) => samePair(d, doc.fm.a, doc.fm.b)) : null;
+      if (twin) return fail('REFUSED_DUPLICATE_RELATIONSHIP', `${twin.rel} is already the relationship of this pair`, { existing: { slug: relationshipSlugOf(twin) } });
+    }
+    return finish({ bookRoot, store, lb, op: restoring ? 'restoreRelationship' : 'archiveRelationship', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
   });
 }

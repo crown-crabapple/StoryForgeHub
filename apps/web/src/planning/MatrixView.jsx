@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from '../router.jsx';
 import { StateChip } from './ThreadsView.jsx';
+import { matrixExtraColumns } from './badges.js';
 import { ROLES, matrixCell, sceneHref } from './model.js';
+import './plan-badges.css';
 
 /** The menu of one cell: "Mark as setup / development / payoff" for an empty cell, "Remove" for a filled one. Escape closes it. */
 function CellMenu({ thread, card, cell, onMark, onClose }) {
@@ -68,9 +70,10 @@ function CellMenu({ thread, card, cell, onMark, onClose }) {
 /**
  * The phone form of the matrix (M08-J04): the 2D table does not fit 360 px, so each thread is a heading with the scenes that use it in book order and the role in each
  * (setup, development, payoff). Read only; the table is the place to mark. Shown below 768 px; the table is shown from 768 px up (responsive.css).
- * @param {{ bookId: string, model: ReturnType<typeof import('./model.js').buildModel> }} props
+ * `extra` (from matrixExtraColumns) adds a section per arc / beat column listing the scenes that hold it.
+ * @param {{ bookId: string, model: ReturnType<typeof import('./model.js').buildModel>, extra?: ReturnType<typeof matrixExtraColumns> }} props
  */
-export function MatrixList({ bookId, model }) {
+export function MatrixList({ bookId, model, extra = [] }) {
   return (
     <div className="matrix-list" data-testid="matrix-list">
       {model.threads.map((t) => {
@@ -95,6 +98,29 @@ export function MatrixList({ bookId, model }) {
           </section>
         );
       })}
+      {extra.map((col) => {
+        const used = model.scenes.filter((card) => col.has(card.id));
+        const what = col.kind === 'arc' ? 'Arc milestones' : 'Beat';
+        return (
+          <section key={col.key} className="matrix-thread" aria-label={`${what}: ${col.name}`}>
+            <h2 className="matrix-thread-title">
+              {what}: {col.name}
+            </h2>
+            {used.length === 0 ? (
+              <p className="muted">{col.kind === 'arc' ? 'No scene holds a milestone of this arc.' : 'No scenes yet'}</p>
+            ) : (
+              <ul>
+                {used.map((card) => (
+                  <li key={card.id}>
+                    <Link to={sceneHref(bookId, card.id)}>{card.title || <span className="muted">Untitled scene</span>}</Link>
+                    <span className="muted"> {col.kind === 'arc' ? 'milestone' : 'in this beat'}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
@@ -103,10 +129,15 @@ export function MatrixList({ bookId, model }) {
  * The scene-by-thread matrix: scenes down in book order (grouped by chapter), threads across, each header with its state chip. A cell shows S / D / P from the
  * thread's lists, or a dot when only the scene's own `plot_threads` names the thread. Pressing a cell opens its menu.
  * `onMark(thread, list, sceneId, present)` edits the thread file (present = add).
- * @param {{ bookId: string, model: ReturnType<typeof import('./model.js').buildModel>, onMark?: (thread: any, list: string, sceneId: string, present: boolean) => void }} props
+ * With `badges` (the Story Planner projection) two toggles, both off, add column groups after the threads: one per arc ("M" = the scene holds a milestone of it)
+ * and one per beat of the primary structure ("B" = the scene is in the beat).
+ * @param {{ bookId: string, model: ReturnType<typeof import('./model.js').buildModel>, onMark?: (thread: any, list: string, sceneId: string, present: boolean) => void, badges?: any }} props
  */
-export function MatrixView({ bookId, model, onMark }) {
+export function MatrixView({ bookId, model, onMark, badges = null }) {
   const [open, setOpen] = useState(null); // `${threadId}|${sceneId}`
+  const [showArcs, setShowArcs] = useState(false);
+  const [showBeats, setShowBeats] = useState(false);
+  const extra = matrixExtraColumns(badges, { arcs: showArcs, beats: showBeats });
   const triggers = useRef(new Map());
   const close = (refocus) => {
     const key = open;
@@ -117,7 +148,17 @@ export function MatrixView({ bookId, model, onMark }) {
   const columns = model.threads;
   return (
     <>
-      <MatrixList bookId={bookId} model={model} />
+      {badges && (
+        <div className="pb-toggles">
+          <label>
+            <input type="checkbox" checked={showArcs} onChange={(e) => setShowArcs(e.target.checked)} /> Show arc milestones
+          </label>
+          <label>
+            <input type="checkbox" checked={showBeats} onChange={(e) => setShowBeats(e.target.checked)} /> Show beats (primary structure)
+          </label>
+        </div>
+      )}
+      <MatrixList bookId={bookId} model={model} extra={extra} />
       <div className="matrix-wrap">
       <table className="matrix" aria-label="Scenes by plot thread">
         <thead>
@@ -131,12 +172,17 @@ export function MatrixView({ bookId, model, onMark }) {
                 <StateChip state={t.status} />
               </th>
             ))}
+            {extra.map((c) => (
+              <th key={c.key} scope="col" className="matrix-col" data-plan-column={c.kind}>
+                <span className="matrix-col-title">{c.kind === 'arc' ? `Arc: ${c.name}` : `Beat: ${c.name}`}</span>
+              </th>
+            ))}
           </tr>
         </thead>
         {model.chapters.map((ch) => (
           <tbody key={ch.chapter} data-chapter={ch.chapter}>
             <tr className="matrix-chapter">
-              <th scope="rowgroup" colSpan={columns.length + 1}>
+              <th scope="rowgroup" colSpan={columns.length + extra.length + 1}>
                 {ch.name}
               </th>
             </tr>
@@ -178,6 +224,18 @@ export function MatrixView({ bookId, model, onMark }) {
                       ) : (
                         <span aria-label={label}>{text}</span>
                       )}
+                    </td>
+                  );
+                })}
+                {extra.map((c) => {
+                  const has = c.has(card.id);
+                  const name = card.title || 'Untitled scene';
+                  const label = c.kind === 'arc' ? `${name}: ${has ? 'holds a milestone of' : 'no milestone of'} the arc ${c.name}` : `${name}: ${has ? 'is in' : 'is not in'} the beat ${c.name}`;
+                  return (
+                    <td key={c.key} className="matrix-cell pb-mark" data-plan-column={c.kind} data-has={has ? 'true' : undefined}>
+                      <span aria-label={label} role="img">
+                        {has ? c.mark : ''}
+                      </span>
                     </td>
                   );
                 })}

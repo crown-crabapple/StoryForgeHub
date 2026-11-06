@@ -35,6 +35,13 @@ async function newStructure(port, body = { template: 'three-act', name: 'Second 
 const setBeats = (port, slug, beats, sha) => post(port, u('structures', slug, 'beats'), { beats, base_sha256: sha });
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined && v !== null));
 /** A beat as GET returned it, in the write shape. */
+// Since M5 the planner fixture links a scene to a beat of main-three-act; a beat that is a link end cannot be removed (REFUSED_BEAT_LINKED), so the tests that
+// remove beats first re-point that link to a scene, as an author would.
+async function unlinkBeats(port) {
+  const link = (await get(port, u('links', 'key-enables-inciting-event'))).json;
+  const r = await post(port, u('links', 'key-enables-inciting-event'), { to: WALL, base_sha256: link.sha256 });
+  assert.equal(r.status, 200, r.text);
+}
 const writeShape = (b) => clean({ id: b.id, name: b.name, purpose: b.purpose, question: b.question, position: b.position, state: b.state, scenes: b.scenes.map((s) => s.id) });
 
 test('templates: all eight ids are listed with versions, names and beats; custom has none', async () => {
@@ -165,6 +172,7 @@ test('one scene in beats of two different structures shows in both', async () =>
 
 test('beats save: round trip, reorder, rename, omit, add without id, remove, clear', async () => {
   const { port } = await planner();
+  await unlinkBeats(port);
   const s0 = await structOf(port, 'main-three-act');
   const [b0, b1, b2] = s0.beats;
 
@@ -199,6 +207,7 @@ test('beats save: round trip, reorder, rename, omit, add without id, remove, cle
 
 test('Undo of a beats save restores the exact previous bytes', async () => {
   const { root, port } = await planner();
+  await unlinkBeats(port);
   const file = 'planning/structures/main-three-act.md';
   const before = (await readAll(root)).get(file);
   const s = await structOf(port, 'main-three-act');
@@ -243,7 +252,7 @@ test('refusals: stale base is 409 conflict with current; unknown scene is 400 RE
   assert.equal(stale.json.error, 'conflict');
   assert.ok(stale.json.current, `409 carries current: ${stale.text}`);
 
-  const unk = await setBeats(port, 'main-three-act', [{ ...beats[0], scenes: [KEY, UNKNOWN_SCENE] }], s.sha256);
+  const unk = await setBeats(port, 'main-three-act', beats.map((b, i) => (i === 0 ? { ...b, scenes: [KEY, UNKNOWN_SCENE] } : b)), s.sha256); // all beats kept, so only the scene is wrong
   assert.equal(unk.status, 400, unk.text);
   assert.equal(unk.json.code, 'REFUSED_UNKNOWN_SCENE');
 

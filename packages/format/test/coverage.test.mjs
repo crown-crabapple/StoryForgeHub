@@ -19,6 +19,8 @@ const SPEC_CODES = [
   'W318',
   // Story Planner M3 (additive within v1)
   'W319',
+  // Story Planner M5 (additive within v1)
+  'E212', 'W320',
 ];
 
 const covered = new Map(); // code -> case names

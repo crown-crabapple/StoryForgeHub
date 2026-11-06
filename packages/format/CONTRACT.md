@@ -112,7 +112,7 @@ A byte copy of `storyforge-v2-production-plan/spec/examples/salt-orchard-mini/`.
 
 ### `fixtures/valid/planner/`
 
-A copy of salt-orchard plus one causal link (`planning/links/`), one scene plan (`planning/scene-plans/`), the story plan (`planning/story.md`) and one character arc with two milestones (`planning/arcs/`) and one structure with three beats (`planning/structures/main-three-act.md`, one beat holds two scenes, one scene sits in two beats, the story plan names it as `primary_structure`), from ADR 0003 (Story Planner M1, M2, M3, M4). Same diagnostics as salt-orchard.
+A copy of salt-orchard plus one causal link (`planning/links/`), one scene plan (`planning/scene-plans/`), the story plan (`planning/story.md`) and one character arc with two milestones (`planning/arcs/`) and one structure with three beats (`planning/structures/main-three-act.md`, one beat holds two scenes, one scene sits in two beats, the story plan names it as `primary_structure`), one relationship with two developments (`planning/relationships/maren-hollis-and-pell.md`) and one link whose `to` is a beat id of that structure, from ADR 0003 (Story Planner M1, M2, M3, M4, M5). Same diagnostics as salt-orchard.
 
 ### `fixtures/invalid/<code>-<short-name>/`
 
@@ -170,6 +170,8 @@ The validator output (code, file, location) must equal this list exactly, as a s
 | `W318-story-plan-path` | a live `storyforge.story-plan/v1` file that is not `planning/story.md`; the rule flags every live story plan at any other path (a second plan can only be elsewhere), archived ones are ignored (Story Planner M2) |
 | `E102-duplicate-beat-id` | two beats with the same `id` in the live `planning/structures/` files, reported at `beats[i].id` of the later beat (Story Planner M4) |
 | `W319-duplicate-arc` | two live `planning/arcs/` files naming the same `character` (Story Planner M3); reported on the later file by name |
+| `E212-relationship-self` | a `planning/relationships/` file whose `a` and `b` are the same entry, reported at `b` (Story Planner M5) |
+| `W320-duplicate-relationship` | two live `planning/relationships/` files for the same pair of entries, in either order; reported on the later file by name, at `b` (Story Planner M5) |
 | `W302-paid-no-payoff` | thread `status: paid`, `payoff: []` |
 | `W303-archived-target` | link to an entry under `archive/` |
 | `I401-unknown-field` | scene with `mood: cold` |

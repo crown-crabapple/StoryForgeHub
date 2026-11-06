@@ -89,7 +89,7 @@ test('ARC_TYPES carry their words; the field and milestone labels are the agreed
 
 test('model: the Arcs view round-trips through the URL', () => {
   assert.equal(m.model.parsePlanSearch('?view=arcs&arc=maren&mode=list').view, 'arcs');
-  const state = { view: 'arcs', node: null, link: null, arc: 'maren', structure: null, mode: 'list', filter: null };
+  const state = { view: 'arcs', node: null, link: null, arc: 'maren', relationship: null, structure: null, mode: 'list', filter: null };
   const href = m.model.planUrl('b1', state);
   assert.equal(href, '/books/b1/plan?view=arcs&mode=list&arc=maren');
   assert.deepEqual(m.model.parsePlanSearch(href.slice(href.indexOf('?'))), state);
@@ -224,9 +224,9 @@ test('scene Plan section: lists the arc milestones set in the scene and links th
   assert.doesNotMatch(view(null), /Arc milestones in this scene/);
 });
 
-test('Plan subnav has Arcs, and the Overview counts character arcs with a link to it', () => {
+test('Plan subnav has Lanes, and the Overview counts character arcs with a link to it', () => {
   const html = render(h(m.page.PlanPage, { bookId: 'b1', view: 'arcs' }, h('p', null, 'body')));
-  assert.match(html, /<a href="\/books\/b1\/plan\?view=arcs" class="view-tab" aria-current="page">Arcs<\/a>/);
+  assert.match(html, /<a href="\/books\/b1\/plan\?view=arcs" class="view-tab" aria-current="page">Lanes<\/a>/);
   assert.match(html, /<a href="\/books\/b1\/plan" class="view-tab">Overview<\/a>/);
   const overview = {
     story: { path: null, sha256: null, fields: Object.fromEntries(m.req.STORY_FIELDS.map((f) => [f.key, null])), body: '' },

@@ -9,11 +9,12 @@ const sceneOption = (n) => `${typeof n.chapter === 'number' ? `${chapterShort(n.
 /**
  * "Connect scenes…": From, Relation, To (with a filter) and an optional Rationale. Preview asks `onPreview(values)` (the container shows the dry-run diff, and Apply there writes);
  * it returns `{ error }` to keep this dialog open with a message. A self link and a link that already exists are caught here, in words, before anything is asked of the server.
- * @param {{ scenes: any[], links?: any[], initialFrom?: string | null, initialTo?: string | null, onPreview: (v: { from: string, to: string, relation: string, rationale: string }) => Promise<{ error?: string } | void>,
+ * A link may also start or end at a beat of a live structure (M5): both pickers have a "Beats" group of `beats`, each "<structure>: <beat>" (see beatOptions in requests.js).
+ * @param {{ scenes: any[], beats?: { id: string, label: string }[], links?: any[], initialFrom?: string | null, initialTo?: string | null, onPreview: (v: { from: string, to: string, relation: string, rationale: string }) => Promise<{ error?: string } | void>,
  *   onOpenExisting?: (slug: string) => void, onClose: () => void }} props
  *   `scenes` are the live scenes in reading order (GET /flow nodes), `links` the live links (GET /links `links`).
  */
-export function ConnectDialog({ scenes, links = [], initialFrom = null, initialTo = null, onPreview, onOpenExisting, onClose }) {
+export function ConnectDialog({ scenes, beats = [], links = [], initialFrom = null, initialTo = null, onPreview, onOpenExisting, onClose }) {
   const [from, setFrom] = useState(initialFrom ?? '');
   const [to, setTo] = useState(initialTo ?? '');
   const [relation, setRelation] = useState('therefore');
@@ -22,6 +23,9 @@ export function ConnectDialog({ scenes, links = [], initialFrom = null, initialT
   const [problem, setProblem] = useState(/** @type {{ message: string, existing?: string } | null} */ (null));
   const [busy, setBusy] = useState(false);
   const targets = filterNodes(scenes, filter);
+  const what = beats.length > 0 ? 'scene or beat' : 'scene';
+  const needle = filter.trim().toLowerCase();
+  const targetBeats = beats.filter((b) => b.id === to || needle === '' || b.label.toLowerCase().includes(needle));
   const targetOptions = to !== '' && !targets.some((n) => n.id === to) ? [...scenes.filter((n) => n.id === to), ...targets] : targets;
 
   async function submit(e) {
@@ -51,14 +55,23 @@ export function ConnectDialog({ scenes, links = [], initialFrom = null, initialT
       <h2>Connect scenes</h2>
       <form onSubmit={submit}>
         <div className="form-row">
-          <label htmlFor="connect-from">From scene</label>
+          <label htmlFor="connect-from">From {what}</label>
           <select id="connect-from" value={from} onChange={(e) => setFrom(e.target.value)} required>
-            <option value="">Choose a scene</option>
+            <option value="">Choose a {what}</option>
             {scenes.map((n) => (
               <option key={n.id} value={n.id}>
                 {sceneOption(n)}
               </option>
             ))}
+            {beats.length > 0 && (
+              <optgroup label="Beats">
+                {beats.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
         <div className="form-row">
@@ -72,20 +85,29 @@ export function ConnectDialog({ scenes, links = [], initialFrom = null, initialT
           </select>
         </div>
         <div className="form-row">
-          <label htmlFor="connect-to-filter">Find the To scene</label>
+          <label htmlFor="connect-to-filter">Find the To {what}</label>
           <input id="connect-to-filter" type="search" value={filter} onChange={(e) => setFilter(e.target.value)} autoComplete="off" placeholder="Part of a title" />
         </div>
         <div className="form-row">
-          <label htmlFor="connect-to">To scene</label>
+          <label htmlFor="connect-to">To {what}</label>
           <select id="connect-to" value={to} onChange={(e) => setTo(e.target.value)} required>
-            <option value="">Choose a scene</option>
+            <option value="">Choose a {what}</option>
             {targetOptions.map((n) => (
               <option key={n.id} value={n.id}>
                 {sceneOption(n)}
               </option>
             ))}
+            {targetBeats.length > 0 && (
+              <optgroup label="Beats">
+                {targetBeats.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
-          {filter.trim() !== '' && targets.length === 0 && <p className="muted form-hint">No scene has that in its title.</p>}
+          {filter.trim() !== '' && targets.length === 0 && targetBeats.length === 0 && <p className="muted form-hint">No scene has that in its title.</p>}
         </div>
         <div className="form-row">
           <label htmlFor="connect-rationale">Rationale (optional)</label>

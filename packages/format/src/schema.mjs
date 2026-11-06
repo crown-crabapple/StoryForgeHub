@@ -175,6 +175,12 @@ export const KINDS = {
     required: ['slug', 'name'],
     fields: { slug: 'slug', name: 'str', template: 'str', template_version: 'int', beats: 'list' },
   },
+  // Added 2026-11-06, Story Planner M5 (ADR 0003, additive within v1): how two Codex entries relate, with scene-by-scene developments, under planning/relationships/. `a` and `b` are entry ids. Never story text or canon.
+  relationship: {
+    prefix: 'note',
+    required: ['slug', 'a', 'b'],
+    fields: { slug: 'slug', a: 'str', b: 'str', baseline: 'str', end_state: 'str', developments: 'list' },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],
@@ -574,7 +580,8 @@ export function checkFields(doc, ctx, add) {
     if (typeof doc.body === 'string' && doc.body.trim() === '') add('E102', file, 'body', 'the exception needs a written rationale');
   }
 
-  if (doc.kind === 'link' && typeof fm.from === 'string' && fm.from === fm.to) add('E211', file, 'to', 'a link cannot point from a scene to itself');
+  if (doc.kind === 'link' && typeof fm.from === 'string' && fm.from === fm.to) add('E211', file, 'to', 'a link cannot point from a scene or beat to itself');
+  if (doc.kind === 'relationship' && typeof fm.a === 'string' && fm.a === fm.b) add('E212', file, 'b', 'a relationship needs two different entries');
 
   if (doc.kind === 'suggestion') checkSuggestion(doc, add);
   if (doc.kind === 'comment') checkComment(doc, add);

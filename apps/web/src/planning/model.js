@@ -226,10 +226,10 @@ export function visibleThreads(threads, { state = 'all' } = {}) {
  * while a filter is on. `filters`: { status, pov, thread, label } ('' or 'all' = no filter).
  * @param {ReturnType<typeof buildModel>} model @param {{ status?: string, pov?: string, thread?: string }} [filters]
  */
-export function outlineRows(model, { status = '', pov = '', thread = '', label = '' } = {}) {
+export function outlineRows(model, { status = '', pov = '', thread = '', label = '', arc = '', beat = '', badges = null } = {}) {
   const on = (v) => v !== '' && v !== 'all' && v != null;
-  const filtering = on(status) || on(pov) || on(thread) || on(label);
-  const keep = (s) => (!on(status) || s.status === status) && (!on(pov) || s.pov === pov) && (!on(thread) || s.tags.some((t) => t.thread_id === thread)) && (!on(label) || s.labels.some((l) => l.toLowerCase() === label.toLowerCase()));
+  const filtering = on(status) || on(pov) || on(thread) || on(label) || (badges != null && (on(arc) || on(beat)));
+  const keep = sceneKeep({ status, pov, thread, label, arc, beat, badges });
   return model.acts
     .map((a) => ({
       act: a,
@@ -241,6 +241,24 @@ export function outlineRows(model, { status = '', pov = '', thread = '', label =
         .filter((c) => !filtering || c.scenes.length > 0),
     }))
     .filter((a) => !filtering || a.chapters.length > 0);
+}
+
+/**
+ * The scene predicate of the filters (the Board and the Outline share it). `arc` = the scene holds a milestone of that arc slug; `beat` = the scene is in
+ * that beat id of the primary structure; both need `badges` (GET plan-badges) and are ignored without it.
+ * @param {{ status?: string, pov?: string, thread?: string, label?: string, arc?: string, beat?: string, badges?: any }} [filters]
+ * @returns {(s: Card) => boolean}
+ */
+export function sceneKeep({ status = '', pov = '', thread = '', label = '', arc = '', beat = '', badges = null } = {}) {
+  const on = (v) => v !== '' && v !== 'all' && v != null;
+  const entry = (s) => badges?.scenes?.[s.id];
+  return (s) =>
+    (!on(status) || s.status === status) &&
+    (!on(pov) || s.pov === pov) &&
+    (!on(thread) || s.tags.some((t) => t.thread_id === thread)) &&
+    (!on(label) || s.labels.some((l) => l.toLowerCase() === label.toLowerCase())) &&
+    (badges == null || !on(arc) || (entry(s)?.milestones ?? []).some((m) => m.arc_slug === arc)) &&
+    (badges == null || !on(beat) || (entry(s)?.beats ?? []).some((b) => b.primary && b.beat_id === beat));
 }
 
 // ---------------------------------------------------------------- board keyboard

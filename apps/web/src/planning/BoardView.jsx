@@ -6,7 +6,10 @@ import { Link } from '../router.jsx';
 import { RowMenu } from '../structure/RowMenu.jsx';
 import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
 import { dropTarget, halfOf, keyboardTarget } from '../structure/move-target.js';
-import { ROLES, chapterShiftTarget, sceneHref } from './model.js';
+import { STATUSES } from '../structure/helpers.js';
+import { CARD_FACE_OPTIONS, badgeChips, cardFaceDefaults, readCardFace, writeCardFace } from './badges.js';
+import { ROLES, chapterShiftTarget, sceneHref, sceneKeep } from './model.js';
+import './plan-badges.css';
 
 const DRAG_TYPE = 'application/x-storyforge-card';
 
@@ -29,13 +32,43 @@ export function ThreadTags({ tags }) {
   );
 }
 
+/** The plan chips of a card or row: text chips with a spoken form. @param {{ chips: { key: string, text: string, label: string }[] }} props */
+export function BadgeChips({ chips }) {
+  if (chips.length === 0) return null;
+  return (
+    <ul className="pb-chips" aria-label="Plan">
+      {chips.map((c) => (
+        <li key={c.key} className="pb-chip" data-key={c.key.split(':')[0]} aria-label={c.label}>
+          <span aria-hidden="true">{c.text}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The Card face menu: which plan badges the Board cards show. @param {{ face: ReturnType<typeof cardFaceDefaults>, onChange: (face: any) => void }} props */
+export function CardFaceMenu({ face, onChange }) {
+  return (
+    <details className="pb-face">
+      <summary>Card face</summary>
+      <div className="pb-face-menu" role="group" aria-label="Card face">
+        {CARD_FACE_OPTIONS.map((o) => (
+          <label key={o.key}>
+            <input type="checkbox" checked={face[o.key]} onChange={(e) => onChange({ ...face, [o.key]: e.target.checked })} /> {o.label}
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 /**
  * One card: title (a link to the scene in the Write view), summary or "No summary yet", status dot and label, POV initial, word count, thread tags.
  * @param {{ bookId: string, card: import('./model.js').Card, dropMark?: 'before' | 'after' | null, dragging?: boolean,
- *   onDragStart?: (e: any, card: any) => void, onEdit?: (card: any) => void, onMoveDialog?: (card: any) => void, labelDefs?: any[] | null }} props
+ *   onDragStart?: (e: any, card: any) => void, onEdit?: (card: any) => void, onMoveDialog?: (card: any) => void, labelDefs?: any[] | null, badges?: any, face?: ReturnType<typeof cardFaceDefaults> }} props
  *   A scene's labels show as chips under its summary.
  */
-export function BoardCard({ bookId, card, dropMark = null, dragging = false, onDragStart, onEdit, onMoveDialog, labelDefs = null }) {
+export function BoardCard({ bookId, card, dropMark = null, dragging = false, onDragStart, onEdit, onMoveDialog, labelDefs = null, badges = null, face = cardFaceDefaults() }) {
   const name = card.title || 'Untitled scene';
   const items = [
     ...(onEdit ? [{ label: 'Edit card...', run: () => onEdit(card) }] : []),
@@ -61,6 +94,7 @@ export function BoardCard({ bookId, card, dropMark = null, dragging = false, onD
       </div>
       <LabelChips labels={card.labels} defs={labelDefs} label={`Labels of ${name}`} />
       <ThreadTags tags={card.tags} />
+      {badges && <BadgeChips chips={badgeChips(badges, card, face)} />}
     </li>
   );
 }
@@ -71,14 +105,17 @@ export function BoardCard({ bookId, card, dropMark = null, dragging = false, onD
  * card to the end of the previous / next chapter, Alt+Up / Alt+Down one slot, and "Move..." in the card menu does it without dragging.
  * Presentational: the page gives `onMove(card, target)` (target = { chapter, act, after, text }), `onNewCard(chapter)`, `onEdit(card)`, `onMoveDialog(card)`.
  * @param {{ bookId: string, model: ReturnType<typeof import('./model.js').buildModel>,
- *   onMove?: (card: any, target: any) => void, onNewCard?: (chapter: any) => void, onEdit?: (card: any) => void, onMoveDialog?: (card: any) => void }} props
+ *   onMove?: (card: any, target: any) => void, onNewCard?: (chapter: any) => void, onEdit?: (card: any) => void, onMoveDialog?: (card: any) => void, badges?: any }} props
+ * Filters (status, POV, thread, arc) only hide cards: a drop still uses the whole book's order, so its meaning does not change.
  */
-export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDialog }) {
+export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDialog, badges = null }) {
   const shortcuts = useShortcuts(); // the card-moving keys come from the shortcut registry (M07-J04)
   const [dragId, setDragId] = useState(null);
   const [drop, setDrop] = useState(null);
   const [live, setLive] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
+  const [filters, setFilters] = useState({ status: '', pov: '', thread: '', arc: '' });
+  const [face, setFace] = useState(() => readCardFace());
   const dragRef = useRef(null);
   const root = useRef(null);
   const book = model.book;
@@ -154,6 +191,13 @@ export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDial
     onMove?.(card, target);
   }
 
+  const setFilter = (key, value) => setFilters((f) => ({ ...f, [key]: value }));
+  const changeFace = (next) => {
+    setFace(next);
+    writeCardFace(next);
+  };
+  const filtering = Boolean(filters.status || filters.pov || filters.thread || (badges && filters.arc));
+  const keep = sceneKeep({ ...filters, badges });
   const endTarget = drop && !drop.noop && drop.indicator.kind === 'end' ? drop.chapter : null;
 
   return (
@@ -171,6 +215,60 @@ export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDial
           )}
         </form>
       )}
+      <form className="filter-bar" onSubmit={(e) => e.preventDefault()} aria-label="Board card filters">
+        <label>
+          <span className="form-label">Status</span>
+          <select name="status" value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
+            <option value="">All statuses</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="form-label">POV</span>
+          <select name="pov" value={filters.pov} onChange={(e) => setFilter('pov', e.target.value)}>
+            <option value="">All POVs</option>
+            {model.povs.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="form-label">Thread</span>
+          <select name="thread" value={filters.thread} onChange={(e) => setFilter('thread', e.target.value)}>
+            <option value="">All threads</option>
+            {model.threads.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        {badges && (
+          <label>
+            <span className="form-label">Arc</span>
+            <select name="arc" value={filters.arc} onChange={(e) => setFilter('arc', e.target.value)}>
+              <option value="">All arcs</option>
+              {(badges.arcs ?? []).map((a) => (
+                <option key={a.slug} value={a.slug}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {filtering && (
+          <button type="button" className="btn" onClick={() => setFilters({ status: '', pov: '', thread: '', arc: '' })}>
+            Clear filters
+          </button>
+        )}
+        {badges && <CardFaceMenu face={face} onChange={changeFace} />}
+      </form>
       {model.acts.length === 0 && <p className="muted">This book has no chapters yet.</p>}
       {model.acts.map((act) => (
         <section key={act.act} className="board-act" aria-label={act.name}>
@@ -190,7 +288,7 @@ export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDial
                   </span>
                 </header>
                 <ul className="board-cards">
-                  {ch.scenes.filter((card) => hasLabel(card, labelFilter)).map((card) => (
+                  {ch.scenes.filter((card) => hasLabel(card, labelFilter) && keep(card)).map((card) => (
                     <BoardCard
                       key={card.id}
                       bookId={bookId}
@@ -201,6 +299,8 @@ export function BoardView({ bookId, model, onMove, onNewCard, onEdit, onMoveDial
                       onEdit={onEdit}
                       onMoveDialog={onMoveDialog}
                       labelDefs={model.labelDefs}
+                      badges={badges}
+                      face={face}
                     />
                   ))}
                 </ul>

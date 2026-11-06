@@ -1,0 +1,12 @@
+/* Story Planner badges on the Board, Outline and Matrix. */
+.pb-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0.25rem 0 0; padding: 0; list-style: none; }
+.pb-chip { display: inline-block; padding: 0 0.4rem; border: 1px solid currentColor; border-radius: 999px; font-size: 0.75rem; line-height: 1.4; opacity: 0.85; }
+.pb-chip[data-key="no-summary"], .pb-chip[data-key="no-goal"] { border-style: dashed; }
+.pb-face { display: inline-block; position: relative; }
+.pb-face > summary { cursor: pointer; }
+.pb-face-menu { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.5rem; margin-top: 0.25rem; border: 1px solid currentColor; border-radius: 4px; }
+.pb-note { margin: 0.25rem 0; }
+.pb-group-empty { font-style: italic; }
+.pb-plan-cell .pb-chips { margin-top: 0; }
+.pb-toggles { display: flex; flex-wrap: wrap; gap: 1rem; margin: 0.5rem 0; }
+.pb-mark { font-weight: 600; text-align: center; }

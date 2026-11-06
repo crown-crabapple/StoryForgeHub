@@ -17,7 +17,7 @@ my-library/                  any folder; holds one or more books
           0010-arrival.md    one scene per file
           0020-the-key.md
     codex/                   characters, locations, factions, objects, lore (one file each)
-    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/, arcs/ and structures/ hold Story Planner files, and story.md is the story plan
+    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/, arcs/, structures/ and relationships/ hold Story Planner files, and story.md is the story plan
     research/                research notes and sources
     assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
     activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
@@ -51,7 +51,7 @@ Scenes marked as an alternate version of another scene (`variant_of`) are kept b
 | --- | --- |
 | Scenes in `manuscript/` | `research/` notes (canon only if a note says `canon: true`) |
 | `codex/` entries | `suggestions/` until you accept them |
-| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/`, `planning/structures/` and `planning/story.md` |
+| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/`, `planning/structures/`, `planning/relationships/` and `planning/story.md` |
 | `book.md`, `act.md`, `chapter.md` | `archive/` (left out of order, counts and export) |
 | `assets/` the book uses | `legacy/` (see below) |
 
@@ -59,7 +59,7 @@ Notes in a scene written as `<!-- note: ... -->` stay in the file, show in the n
 
 ## Story Planner files
 
-Five kinds of file hold planning data. None is story text or canon, and none changes a scene file.
+Six kinds of file hold planning data. None is story text or canon, and none changes a scene file.
 
 ### A causal link: `planning/links/key-therefore-ferry.md`
 
@@ -79,8 +79,8 @@ The key failing forces Maren onto the ferry.
 - One link per file. The body is the rationale.
 - Required: `slug`, `from`, `to`, `relation`. `created` is optional.
 - `relation` is one of `therefore`, `but`, `enables`, `reveals`, `motivates`, `prevents`, `foreshadows`, `pays_off`, `parallel`, `other`.
-- `from` and `to` are scene ids. A missing target is `E301`. A target that is archived is `W303`.
-- A link from a scene to itself is `E211` (at `to`).
+- `from` and `to` are scene ids, or (Story Planner M5) the id of a beat inside a structure. A missing target is `E301`. A target that is archived, or a beat of an archived structure, is `W303`. Beat ids resolve here and nowhere else.
+- A link from a scene (or beat) to itself is `E211` (at `to`).
 - Two live links with the same `from`, `to` and `relation` give `W316` on the second (at `relation`). Archived links are not counted.
 - StoryForge names the file after the two scene slugs and the relation (up to 60 characters; `-2`, `-3` … when the name is taken).
 - Archive moves the file to `archive/planning/links/`. Restore moves it back.
@@ -215,17 +215,50 @@ Free structure notes.
 - StoryForge names the file after the structure's name (`-2`, `-3` … when the name is taken by a live or archived file).
 - Archive moves the file to `archive/planning/structures/`. Restore moves it back. No scene is changed.
 
+### A relationship: `planning/relationships/maren-hollis-and-pell.md`
+
+```yaml
+---
+schema: storyforge.relationship/v1
+id: note_01S5000000000000000000001B
+slug: maren-hollis-and-pell
+a: entry_01S5000000000000000000000G
+b: entry_01S5000000000000000000000K
+baseline: Apprentice and ferryman, wary of each other.
+end_state: Allies who owe each other.
+developments:
+  - scene: scene_01S50000000000000000000003
+    change: Pell lends Maren the key.
+    a_view: Maren trusts Pell a little.
+    b_view: Pell fears what Maren will find.
+  - scene: scene_01S50000000000000000000005
+    change: Maren pays Pell for passage.
+---
+Free relationship notes.
+```
+
+- One file per pair of Codex entries (any entry type), in this book. The Codex `related:` field is never changed.
+- Required: `slug`, `a`, `b` (entry ids). Optional: one-line `baseline` and `end_state`, and `developments`.
+- `developments` is an ordered list of mappings: a `scene` (a scene id) and a one-line `change`, plus optional one-line `a_view` (how A sees B) and `b_view` (how B sees A) at that point.
+- `a` equal to `b` is `E212` (at `b`). Two live relationships for the same pair, in either order, give `W320` on the later file (by file name, at `b`). Archived files are not counted.
+- StoryForge names the file `<a-slug>-and-<b-slug>` (`-2`, `-3` … when the name is taken) and writes `developments` as one block of plain mappings, like arc milestones.
+- Archive moves the file to `archive/planning/relationships/`. Restore moves it back.
+
 ### Diagnostics
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
 | `E211` | error | A link's `from` and `to` are the same scene |
+| `E212` | error | A relationship's `a` and `b` are the same entry |
 | `W316` | warning | Two live links have the same `from`, `to` and `relation` |
 | `W317` | warning | Two live scene plans name the same scene |
 | `W318` | warning | A live story plan is not at `planning/story.md` |
 | `W319` | warning | Two live arcs name the same character |
+| `W320` | warning | Two live relationships name the same pair of entries, in either order |
 
 Arc milestones also use the general codes `E102` (malformed milestone), `I401` (unknown milestone key), `E301` (unknown scene) and `W303` (archived scene).
+
+Relationship developments use the same codes: `E102` (malformed development, or a missing or multi-line `change`), `I401` (unknown development key), `E301` (unknown scene) and `W303` (archived scene). A relationship's `a` and `b` use `E301`, `E302` and `W303` like other entry references.
 
 Structure beats use the same codes: `E102` (malformed beat, or a beat id used twice), `I401` (unknown beat key), `E301` (unknown scene) and `W303` (archived scene). A story plan's `primary_structure` uses `E301` and `W303`.
 

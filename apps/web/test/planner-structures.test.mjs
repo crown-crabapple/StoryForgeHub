@@ -58,7 +58,7 @@ const THREE = STRUCT(
 );
 const MYSTERY = STRUCT('mystery', 'Mystery', [BEAT('m1', 'The body', { scenes: [{ id: 'S3', title: 'Ferry', chapter: 2, sequence: 1 }] })]);
 const DATA = { structures: [THREE, MYSTERY], archived: [{ slug: 'old', name: 'Old one' }] };
-const URLSTATE = (patch = {}) => ({ view: 'structure', node: null, link: null, arc: null, structure: null, mode: null, filter: null, ...patch });
+const URLSTATE = (patch = {}) => ({ view: 'structure', node: null, link: null, arc: null, relationship: null, structure: null, mode: null, filter: null, ...patch });
 
 test('requests: URLs', () => {
   assert.equal(m.req.structureTemplatesUrl('b1'), '/api/books/b1/structure-templates');
@@ -108,13 +108,13 @@ test('model: the Structure view round-trips through the URL and old params keep 
   const href = m.model.planUrl('b1', state);
   assert.equal(href, '/books/b1/plan?view=structure&structure=mystery');
   assert.deepEqual(m.model.parsePlanSearch(href.slice(href.indexOf('?'))), state);
-  assert.deepEqual(m.model.PLAN_VIEWS.map((v) => v.label), ['Overview', 'Flow', 'Structure', 'Arcs']);
+  assert.deepEqual(m.model.PLAN_VIEWS.map((v) => v.label), ['Overview', 'Flow', 'Structure', 'Lanes']);
 });
 
 test('Plan subnav has Structure between Flow and Arcs', () => {
   const html = render(h(m.page.PlanPage, { bookId: 'b1', view: 'structure' }, h('p', null, 'body')));
   assert.match(html, /<a href="\/books\/b1\/plan\?view=structure" class="view-tab" aria-current="page">Structure<\/a>/);
-  assert.ok(html.indexOf('>Flow<') < html.indexOf('>Structure<') && html.indexOf('>Structure<') < html.indexOf('>Arcs<'));
+  assert.ok(html.indexOf('>Flow<') < html.indexOf('>Structure<') && html.indexOf('>Structure<') < html.indexOf('>Lanes<'));
 });
 
 test('StructureView: empty state offers New structure and says structures are optional', () => {
