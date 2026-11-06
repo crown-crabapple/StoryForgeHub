@@ -628,6 +628,28 @@ bookCase('W319-duplicate-arc', (b, ids) => {
   return [D('W319', p2, 'character')];
 });
 
+// Story Planner M5: E212 and W320
+const relationshipDoc = (ids, slug, a, b, o = {}) => ({
+  fm: { schema: 'storyforge.relationship/v1', id: ids('note'), slug, a, b, baseline: 'Wary of each other.', ...o },
+  body: 'Free relationship notes.\n',
+});
+bookCase('E212-relationship-self', (b, ids) => {
+  const entry = b.files.get(b.ENTRY).fm.id;
+  const p = 'planning/relationships/maren-hollis-and-maren-hollis.md';
+  b.files.set(p, relationshipDoc(ids, 'maren-hollis-and-maren-hollis', entry, entry));
+  return [D('E212', p, 'b')];
+});
+bookCase('W320-duplicate-relationship', (b, ids) => {
+  const a = b.files.get(b.ENTRY).fm.id;
+  const ilse = ids('entry');
+  b.files.set('codex/characters/ilse-hollis.md', { fm: { schema: 'storyforge.entry/v1', id: ilse, slug: 'ilse-hollis', type: 'character', name: 'Ilse Hollis', status: 'canon' }, body: '## Overview\nAn aunt.\n' });
+  const other = ilse;
+  b.files.set('planning/relationships/maren-hollis-and-ilse-hollis.md', relationshipDoc(ids, 'maren-hollis-and-ilse-hollis', a, other));
+  const p2 = 'planning/relationships/maren-hollis-and-ilse-hollis-2.md';
+  b.files.set(p2, relationshipDoc(ids, 'maren-hollis-and-ilse-hollis-2', other, a));
+  return [D('W320', p2, 'b')];
+});
+
 // Story Planner M4: E102 for a beat id used twice
 bookCase('E102-duplicate-beat-id', (b, ids) => {
   const p = 'planning/structures/main-three-act.md';
@@ -1355,24 +1377,25 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
   });
   // Story Planner M4: one structure, three beats; the key scene sits in two beats and one beat holds two scenes
   const structureId = ids('note');
+  const beatIds = [ids('note'), ids('note'), ids('note')];
   files.set('planning/structures/main-three-act.md', {
     fm: {
       schema: 'storyforge.structure/v1', id: structureId, slug: 'main-three-act', name: 'Main structure',
       template: 'three-act', template_version: 1,
       beats: {
         block: [
-          `  - id: ${ids('note')}`,
+          `  - id: ${beatIds[0]}`,
           '    name: Opening image',
           '    purpose: Show the world before it changes.',
           '    question: What does normal look like?',
           '    position: about 1%',
           '    state: done',
           `    scenes: [${KEY}, ${FERRY}]`,
-          `  - id: ${ids('note')}`,
+          `  - id: ${beatIds[1]}`,
           '    name: Inciting event',
           '    purpose: Something knocks the hero off the usual path.',
           `    scenes: [${KEY}]`,
-          `  - id: ${ids('note')}`,
+          `  - id: ${beatIds[2]}`,
           '    name: Final choice',
           '    state: omitted',
         ],
@@ -1381,6 +1404,31 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
     body: 'Free structure notes.\n',
   });
   files.get('planning/story.md').fm.primary_structure = structureId;
+  // Story Planner M5: one relationship with two developments, and one link that ends at a beat of the structure
+  const MAREN = files.get('codex/characters/maren-hollis.md').fm.id;
+  const PELL = files.get('codex/characters/pell.md').fm.id;
+  files.set('planning/relationships/maren-hollis-and-pell.md', {
+    fm: {
+      schema: 'storyforge.relationship/v1', id: ids('note'), slug: 'maren-hollis-and-pell', a: MAREN, b: PELL,
+      baseline: 'Apprentice and ferryman, wary of each other.',
+      end_state: 'Allies who owe each other.',
+      developments: {
+        block: [
+          `  - scene: ${KEY}`,
+          '    change: Pell lends Maren the key.',
+          '    a_view: Maren trusts Pell a little.',
+          '    b_view: Pell fears what Maren will find.',
+          `  - scene: ${FERRY}`,
+          '    change: Maren pays Pell for passage.',
+        ],
+      },
+    },
+    body: 'Free relationship notes.\n',
+  });
+  files.set('planning/links/key-enables-inciting-event.md', {
+    fm: { schema: 'storyforge.link/v1', id: ids('note'), slug: 'key-enables-inciting-event', from: KEY, to: beatIds[1], relation: 'enables', created: '2026-11-06' },
+    body: 'The key scene is where the inciting event lands.\n',
+  });
   checkIds(files);
   const dir = path.join(FIXTURES, 'valid', 'planner');
   writeTree(dir, files);

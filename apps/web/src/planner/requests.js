@@ -44,10 +44,10 @@ export const relationLabel = (relation) => String(relation ?? '').replace(/_/g, 
 /**
  * Where the Plan tab shows something: `/books/:id/plan?view=flow&link=<slug>`. Only the given parts are put in the query (`mode` is `list` or `graph`, `filter` is `unlinked`).
  * @param {string} bookId
- * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null, structure?: string | null }} [target]
+ * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null, structure?: string | null, relationship?: string | null }} [target]
  */
-export function planHref(bookId, { view, link, node, mode, filter, arc, structure } = {}) {
-  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc], ['structure', structure]]
+export function planHref(bookId, { view, link, node, mode, filter, arc, structure, relationship } = {}) {
+  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc], ['structure', structure], ['relationship', relationship]]
     .filter(([, v]) => typeof v === 'string' && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
   return `/books/${encodeURIComponent(bookId)}/plan${q.length ? `?${q.join('&')}` : ''}`;
@@ -270,6 +270,12 @@ export function beatsBody(structure, beats, { dryRun } = {}) {
 /** A sentence for the refusals of a structure write that need their own words; null for the others (they go to explainFailure). */
 export function explainStructureFailure(status, json) {
   if (json?.code === 'REFUSED_UNKNOWN_SCENE') return `A beat points at a scene that is not in the book${typeof json.index === 'number' ? ` (beat ${json.index + 1})` : ''}.`;
+  if (json?.code === 'REFUSED_BEAT_LINKED') {
+    const live = Array.isArray(json.links) ? json.links.length : 0;
+    const archived = Array.isArray(json.archived_links) ? json.archived_links.length : 0;
+    const n = live + archived;
+    return `This beat is linked in Flow (${n} ${n === 1 ? 'link' : 'links'}). Re-point those links first${archived > 0 ? '; an archived link must be restored to change it' : ''}.`;
+  }
   if (isStaleWrite(status, json)) return 'This structure changed elsewhere; reloaded.';
   return null;
 }
@@ -282,4 +288,76 @@ export function beatsForScene(data, sceneId) {
   return (data?.structures ?? []).flatMap((structure) =>
     (structure.beats ?? []).flatMap((beat, index) => ((beat.scenes ?? []).some((s) => (typeof s === 'string' ? s : s?.id) === sceneId) ? [{ structure, beat, index }] : [])),
   );
+}
+
+// ---------------------------------------------------------------- relationships, plot threads and beats in links (M5)
+
+/** GET /api/books/:b/threads (read-only in the Plan tab) */
+export const threadsUrl = (bookId) => bookUrl(bookId, '/threads');
+/** GET and POST /api/books/:b/relationships */
+export const relationshipsUrl = (bookId) => bookUrl(bookId, '/relationships');
+/** GET and POST /api/books/:b/relationships/:slug, and with the tails /developments, /archive and /restore. */
+export const relationshipUrl = (bookId, slug, tail = '') => bookUrl(bookId, `/relationships/${encodeURIComponent(slug)}${tail}`);
+
+/** The two single-line fields of a relationship, in the order the editor shows them. */
+export const RELATIONSHIP_FIELDS = [
+  { key: 'baseline', label: 'Baseline' },
+  { key: 'end_state', label: 'Ends as' },
+];
+
+/** The request that starts a relationship between two Codex entries (by id); empty fields are left out. @param {string} bookId @param {{ a: string, b: string, fields?: Record<string, string | null>, dryRun?: boolean }} v */
+export function createRelationshipRequest(bookId, { a, b, fields, dryRun }) {
+  const kept = Object.fromEntries(Object.entries(fields ?? {}).filter(([, v]) => typeof v === 'string' && v.trim() !== '').map(([k, v]) => [k, v.trim()]));
+  return { url: relationshipsUrl(bookId), body: { a, b, ...(Object.keys(kept).length > 0 ? { fields: kept } : {}), ...(dryRun ? { dryRun: true } : {}) } };
+}
+
+/** The body that changes a relationship's fields and/or notes, plus the sha256 last read. @param {{ sha256: string }} rel @param {{ fields?: Record<string, string | null>, body?: string, dryRun?: boolean }} patch */
+export function updateRelationshipBody(rel, { fields, body, dryRun } = {}) {
+  return {
+    ...(fields !== undefined ? { fields } : {}),
+    ...(body !== undefined ? { body } : {}),
+    base_sha256: rel.sha256,
+    ...(dryRun ? { dryRun: true } : {}),
+  };
+}
+
+/**
+ * The body that writes the whole ordered development list: `scene` and `change` are always sent (trimmed), `a_view` and `b_view` only when written.
+ * @param {{ sha256: string }} rel @param {{ scene: string, change: string, a_view?: string, b_view?: string }[]} developments @param {{ dryRun?: boolean }} [opts]
+ */
+export function developmentsBody(rel, developments, { dryRun } = {}) {
+  const list = developments.map((d) => {
+    const out = { scene: String(d.scene), change: String(d.change ?? '').trim() };
+    for (const key of ['a_view', 'b_view']) {
+      const v = String(d[key] ?? '').trim();
+      if (v !== '') out[key] = v;
+    }
+    return out;
+  });
+  return { developments: list, base_sha256: rel.sha256, ...(dryRun ? { dryRun: true } : {}) };
+}
+
+/** A sentence for the refusals of a relationship write that need their own words; null for the others (they go to explainFailure). */
+export function explainRelationshipFailure(status, json) {
+  if (json?.code === 'REFUSED_DUPLICATE_RELATIONSHIP') return 'These two entries already have a relationship in this book.';
+  if (json?.code === 'REFUSED_UNKNOWN_ENTRY') return 'That is not a Codex entry.';
+  if (json?.code === 'REFUSED_UNKNOWN_SCENE') return `A development points at a scene that is not in the book${typeof json.index === 'number' ? ` (development ${json.index + 1})` : ''}.`;
+  if (isStaleWrite(status, json)) return 'This relationship changed elsewhere; reloaded.';
+  return null;
+}
+
+/**
+ * The relationship developments set in a scene, from GET /relationships: one `{ relationship, development }` per development whose `scene` is the scene id, relationships in the order given.
+ * @param {{ relationships?: any[] } | null | undefined} data
+ */
+export function relationshipChangesForScene(data, sceneId) {
+  return (data?.relationships ?? []).flatMap((relationship) => (relationship.developments ?? []).filter((d) => d.scene === sceneId).map((development) => ({ relationship, development })));
+}
+
+/**
+ * Every beat of the live structures as a Connect-dialog option `{ id, label: "<structure>: <beat>" }`, in the order given (GET /structures `structures`).
+ * @param {{ structures?: any[] } | null | undefined} data
+ */
+export function beatOptions(data) {
+  return (data?.structures ?? []).flatMap((s) => (s.beats ?? []).filter((b) => typeof b.id === 'string' && b.id !== '').map((b) => ({ id: b.id, label: `${s.name}: ${b.name}` })));
 }

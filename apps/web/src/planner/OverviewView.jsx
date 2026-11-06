@@ -146,6 +146,11 @@ export function OverviewView({ bookId, overview, characters = [], message = null
                 <Link to={planHref(bookId, { view: 'arcs' })}>{plural(counts.arcs, 'character arc', 'character arcs')}</Link>
               </li>
             )}
+            {typeof counts.relationships === 'number' && (
+              <li>
+                <Link to={planHref(bookId, { view: 'arcs' })}>{plural(counts.relationships, 'relationship', 'relationships')}</Link>
+              </li>
+            )}
             {typeof counts.structures === 'number' && (
               <li>
                 <Link to={planHref(bookId, { view: 'structure' })}>{plural(counts.structures, 'structure', 'structures')}</Link>

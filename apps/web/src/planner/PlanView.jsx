@@ -9,6 +9,7 @@ import { ArcEditor } from './ArcEditor.jsx';
 import { ArcsView, NewArcDialog } from './ArcsView.jsx';
 import { ConnectDialog } from './ConnectDialog.jsx';
 import { NewStructureDialog } from './NewStructureDialog.jsx';
+import { NewRelationshipDialog, RelationshipEditor } from './RelationshipEditor.jsx';
 import { StructureView } from './StructureView.jsx';
 import { useStructureWrites } from './useStructureWrites.js';
 import { FlowView } from './FlowView.jsx';
@@ -16,10 +17,12 @@ import { OverviewView } from './OverviewView.jsx';
 import { PlanPage } from './PlanPage.jsx';
 import { ScenePlanSection } from './ScenePlanSection.jsx';
 import { useArcWrites } from './useArcWrites.js';
-import { parsePlanSearch, planUrl, sceneName } from './model.js';
+import { useRelationshipWrites } from './useRelationshipWrites.js';
+import { beatLabel, parsePlanSearch, planUrl, sceneName } from './model.js';
 import {
   arcUrl,
   arcsUrl,
+  beatOptions,
   createLinkRequest,
   entriesUrl,
   explainLinkFailure,
@@ -29,12 +32,15 @@ import {
   linksUrl,
   planHref,
   planOverviewUrl,
+  relationshipUrl,
+  relationshipsUrl,
   structureTemplatesUrl,
   structureUrl,
   structuresUrl,
   reverseLinkBody,
   storyPlanBody,
   storyPlanUrl,
+  threadsUrl,
   updateLinkBody,
 } from './requests.js';
 
@@ -69,6 +75,8 @@ export function PlanView({ bookId, search = '' }) {
   const overview = useApi(url.view === 'overview' || url.view === 'structure' ? planOverviewUrl(bookId) : null, version);
   const entries = useApi(url.view === 'overview' || url.view === 'arcs' ? entriesUrl(bookId) : null, version);
   const arcs = useApi(url.view === 'arcs' ? arcsUrl(bookId) : null, version);
+  const relationships = useApi(url.view === 'arcs' ? relationshipsUrl(bookId) : null, version);
+  const threads = useApi(url.view === 'arcs' ? threadsUrl(bookId) : null, version);
   const structures = useApi(url.view === 'structure' ? structuresUrl(bookId) : null, version);
   const flow = useApi(flowUrl(bookId), version);
   const links = useApi(linksUrl(bookId), version);
@@ -77,17 +85,28 @@ export function PlanView({ bookId, search = '' }) {
   const [connect, setConnect] = useState(/** @type {{ from: string | null } | null} */ (null));
   const [storyState, setStoryState] = useState({ message: null, error: null });
   const [newArc, setNewArc] = useState(false);
+  const [newRelationship, setNewRelationship] = useState(false);
+  const connectStructures = useApi(connect ? structuresUrl(bookId) : null, 0);
+  const [development, setDevelopment] = useState(/** @type {{ slug: string, index: number } | null} */ (null));
+  const [threadSel, setThreadSel] = useState(/** @type {{ slug: string, role: string, scene: string } | null} */ (null));
   const [newStructure, setNewStructure] = useState(false);
   const templates = useApi(newStructure ? structureTemplatesUrl(bookId) : null, 0);
   const [milestone, setMilestone] = useState(/** @type {{ slug: string, index: number } | null} */ (null));
   const [linkState, setLinkState] = useState({ slug: null, busy: false, message: null, error: null });
 
   const arcWrites = useArcWrites({ bookId, structure, refresh });
+  const relationshipWrites = useRelationshipWrites({ bookId, structure, refresh });
   const structureWrites = useStructureWrites({ bookId, structure, refresh });
   const go = (patch) => navigate(planUrl(bookId, url, patch));
   const toLink = (slug) => planHref(bookId, { view: 'flow', link: slug, mode: url.mode });
   const characters = (entries.data ?? []).filter((o) => o.kind === 'entry' && o.type === 'character' && typeof o.slug === 'string').map((o) => ({ id: o.id, slug: o.slug, title: o.title }));
-  const nodeName = (id) => sceneName(flow.data?.nodes?.find((n) => n.id === id)?.title);
+  const allEntries = (entries.data ?? []).filter((o) => o.kind === 'entry' && typeof o.slug === 'string').map((o) => ({ id: o.id, slug: o.slug, title: o.title, type: o.type }));
+  const beats = beatOptions(connectStructures.data);
+  const nodeName = (id) => {
+    const node = flow.data?.nodes?.find((n) => n.id === id);
+    if (node?.kind === 'beat') return beatLabel(node);
+    return beats.find((b) => b.id === id)?.label ?? sceneName(node?.title);
+  };
 
   // ---------------------------------------------------------------- the story plan
   async function writeStory(body, done) {
@@ -164,8 +183,9 @@ export function PlanView({ bookId, search = '' }) {
     onQuery: setQuery,
     onMode: (mode) => go({ mode }),
     onConnect: (from) => setConnect({ from: from ?? null }),
-    onSelectNode: (id) => go({ view: 'flow', node: id, link: null, arc: null }),
-    onSelectLink: (slug) => go({ view: 'flow', link: slug, node: null, arc: null }),
+    onSelectNode: (id) => go({ view: 'flow', node: id, link: null, arc: null, relationship: null }),
+    onSelectLink: (slug) => go({ view: 'flow', link: slug, node: null, arc: null, relationship: null }),
+    onOpenBeat: (node) => navigate(planHref(bookId, { view: 'structure', structure: node?.structure?.slug ?? null })),
     onSave: (link, patch) => changeLink(link, updateLinkBody(link, patch), 'Link saved.'),
     onReverse: (link) => changeLink(link, reverseLinkBody(link), 'Link reversed.'),
     onArchive: archiveLink,
@@ -230,14 +250,19 @@ export function PlanView({ bookId, search = '' }) {
     else if (!arcs.loading && !arcs.data) body = <NotFound />;
     else {
       const arc = url.arc ? arcs.data?.arcs?.find((a) => a.slug === url.arc) : null;
+      const relationship = !arc && url.relationship ? relationships.data?.relationships?.find((r) => r.slug === url.relationship) : null;
       body = (
         <ArcsView
           bookId={bookId}
           arcs={arcs.data}
+          relationships={relationships.error ? { relationships: [], archived: [] } : relationships.data}
+          threads={threads.error ? { threads: [] } : threads.data}
           flow={flow.data}
           url={url}
           wide={wide}
           selectedMilestone={milestone}
+          selectedDevelopment={development}
+          selectedThread={threadSel}
           panel={
             arc ? (
               <ArcEditor
@@ -250,20 +275,55 @@ export function PlanView({ bookId, search = '' }) {
               />
             ) : null
           }
+          relationshipPanel={
+            relationship ? (
+              <RelationshipEditor
+                key={relationship.slug}
+                bookId={bookId}
+                relationship={relationship}
+                scenes={(flow.data?.nodes ?? []).filter((n) => n.kind !== 'beat')}
+                state={relationshipWrites.state.slug === relationship.slug ? relationshipWrites.state : {}}
+                handlers={relationshipWrites.handlersFor(relationship, { onArchived: () => go({ view: 'arcs', relationship: null }) })}
+              />
+            ) : null
+          }
           handlers={{
             onMode: (mode) => go({ mode }),
             onNewArc: () => setNewArc(true),
+            onNewRelationship: () => setNewRelationship(true),
+            onRestoreRelationship: async (archivedRelationship) => {
+              const r = await structure.apply({ url: relationshipUrl(bookId, archivedRelationship.slug, '/restore'), body: {}, done: 'Relationship restored.', undoable: true, after: () => go({ view: 'arcs', arc: null, relationship: archivedRelationship.slug }) });
+              if (!r.ok) structure.showToast({ message: `Not restored: ${r.message}` });
+            },
+            onSelectRelationship: (slug) => {
+              setDevelopment(null);
+              setThreadSel(null);
+              go({ view: 'arcs', arc: null, relationship: slug });
+            },
+            onSelectDevelopment: (slug, index) => {
+              setDevelopment({ slug, index });
+              setThreadSel(null);
+              go({ view: 'arcs', arc: null, relationship: slug });
+            },
+            onSelectThread: (sel) => {
+              setThreadSel(sel);
+              setMilestone(null);
+              setDevelopment(null);
+              go({ view: 'arcs', arc: null, relationship: null });
+            },
             onRestoreArc: async (archivedArc) => {
-              const r = await structure.apply({ url: arcUrl(bookId, archivedArc.slug, '/restore'), body: {}, done: 'Arc restored.', undoable: true, after: () => go({ view: 'arcs', arc: archivedArc.slug }) });
+              const r = await structure.apply({ url: arcUrl(bookId, archivedArc.slug, '/restore'), body: {}, done: 'Arc restored.', undoable: true, after: () => go({ view: 'arcs', arc: archivedArc.slug, relationship: null }) });
               if (!r.ok) structure.showToast({ message: `Not restored: ${r.message}` });
             },
             onSelectArc: (slug) => {
               setMilestone(null);
-              go({ view: 'arcs', arc: slug });
+              setThreadSel(null);
+              go({ view: 'arcs', arc: slug, relationship: null });
             },
             onSelectMilestone: (slug, index) => {
               setMilestone({ slug, index });
-              go({ view: 'arcs', arc: slug });
+              setThreadSel(null);
+              go({ view: 'arcs', arc: slug, relationship: null });
             },
           }}
         />
@@ -272,7 +332,7 @@ export function PlanView({ bookId, search = '' }) {
   } else if (flow.error || links.error) body = <p className="error">{flow.error ?? links.error}</p>;
   else if (!flow.loading && !flow.data) body = <NotFound />;
   else {
-    const selected = url.node && flow.data?.nodes?.some((n) => n.id === url.node) ? url.node : null;
+    const selected = url.node && flow.data?.nodes?.some((n) => n.id === url.node && n.kind !== 'beat') ? url.node : null;
     body = (
       <FlowView
         bookId={bookId}
@@ -295,7 +355,8 @@ export function PlanView({ bookId, search = '' }) {
       </PlanPage>
       {connect && (
         <ConnectDialog
-          scenes={flow.data?.nodes ?? []}
+          scenes={(flow.data?.nodes ?? []).filter((n) => n.kind !== 'beat')}
+          beats={beats}
           links={links.data?.links ?? []}
           initialFrom={connect.from}
           onPreview={previewConnect}
@@ -324,6 +385,25 @@ export function PlanView({ bookId, search = '' }) {
             go({ view: 'arcs', arc: slug });
           }}
           onClose={() => setNewArc(false)}
+        />
+      )}
+      {newRelationship && (
+        <NewRelationshipDialog
+          entries={allEntries}
+          onCreate={async (a, b) => {
+            const r = await relationshipWrites.create({ a, b });
+            if (r.ok) {
+              setNewRelationship(false);
+              setDevelopment(null);
+              if (r.slug) go({ view: 'arcs', arc: null, relationship: r.slug });
+            }
+            return r;
+          }}
+          onOpenExisting={(slug) => {
+            setNewRelationship(false);
+            go({ view: 'arcs', arc: null, relationship: slug });
+          }}
+          onClose={() => setNewRelationship(false)}
         />
       )}
       {newStructure && (

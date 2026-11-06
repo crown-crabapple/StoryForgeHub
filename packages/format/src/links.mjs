@@ -50,6 +50,10 @@ export const REFERENCES = {
     { field: 'primary_structure', kinds: ['structure'], list: false },
   ],
   arc: [{ field: 'character', kinds: ENTRY, list: false }],
+  relationship: [
+    { field: 'a', kinds: ENTRY, list: false },
+    { field: 'b', kinds: ENTRY, list: false },
+  ],
 };
 
 /** Event `state` links (spec 6.2): which entry `type` each slug / value must have, per `event` word. */
@@ -183,6 +187,17 @@ export async function resolveLinks(docs, bookDir, add, context = {}) {
   const byCite = new Map();
   /** @type {Map<string, Doc>} */
   const byRel = new Map();
+  // Story Planner M5: a beat id inside a structure's `beats` list, for link from / to only; a live structure beats an archived one
+  /** @type {Map<string, Doc>} */
+  const beatDoc = new Map();
+  for (const d of docs) {
+    if (d.kind !== 'structure' || !Array.isArray(d.fm.beats)) continue;
+    for (const b of d.fm.beats) {
+      if (!b || typeof b !== 'object' || typeof b.id !== 'string') continue;
+      const have = beatDoc.get(b.id);
+      if (!have || (have.archived && !d.archived)) beatDoc.set(b.id, d);
+    }
+  }
   /** @type {LinkRecord[]} */
   const links = [];
   const record = (src, location, raw, targetId, targetKind, resolution) =>
@@ -267,9 +282,10 @@ export async function resolveLinks(docs, bookDir, add, context = {}) {
    * @param {Doc} src @param {string} location @param {string} raw
    * @param {string[]|null} kinds allowed target kinds
    * @param {boolean} [allowCross] true for body links and entry `fields` values
+   * @param {boolean} [allowBeat] true for link `from` / `to`: a beat id inside a structure also resolves (to the structure)
    * @returns {Doc|null} resolved target, if any
    */
-  function resolveTarget(src, location, raw, kinds, allowCross = false) {
+  function resolveTarget(src, location, raw, kinds, allowCross = false, allowBeat = false) {
     const target = raw.trim();
     if (target === '') return null;
     if (target.includes(':')) {
@@ -279,6 +295,12 @@ export async function resolveLinks(docs, bookDir, add, context = {}) {
       return null;
     }
     const hit = lookup(target);
+    const beat = !hit && allowBeat ? beatDoc.get(target) : undefined;
+    if (beat) {
+      if (beat.archived) add('W303', src.file, location, `${target} points into archive/`);
+      record(src, location, target, target, 'beat', beat.archived ? 'archived' : 'ok');
+      return beat;
+    }
     if (!hit) {
       add('E301', src.file, location, `cannot resolve ${target}`);
       record(src, location, target, null, null, 'broken');
@@ -316,7 +338,7 @@ export async function resolveLinks(docs, bookDir, add, context = {}) {
       items.forEach((item, i) => {
         if (typeof item !== 'string') return;
         const location = ref.list ? `${ref.field}[${i}]` : ref.field;
-        const target = resolveTarget(d, location, item, ref.kinds);
+        const target = resolveTarget(d, location, item, ref.kinds, false, d.kind === 'link');
         if (!target) return;
         if (d.kind === 'scene' && ref.field === 'events' && target.kind === 'event') link(target, d);
         if (d.kind === 'event' && ref.field === 'scenes' && target.kind === 'scene') link(d, target);

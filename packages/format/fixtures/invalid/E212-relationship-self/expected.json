@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E212",
+      "file": "planning/relationships/maren-hollis-and-maren-hollis.md",
+      "location": "b"
+    }
+  ]
+}

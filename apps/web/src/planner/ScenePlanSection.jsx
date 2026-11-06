@@ -5,8 +5,23 @@ import { InspectorSection } from '../shell/InspectorSection.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { explainFailure, send } from '../structure/helpers.js';
 import { useStructure } from '../structure/useStructure.jsx';
-import { arcName, milestoneSummary } from './model.js';
-import { arcMilestonesForScene, arcsUrl, beatsForScene, structuresUrl, PLAN_FIELDS, fieldValue, linksForScene, linksUrl, planHref, relationLabel, scenePlanBody, scenePlanUrl } from './requests.js';
+import { arcName, milestoneSummary, relationshipName } from './model.js';
+import {
+  arcMilestonesForScene,
+  arcsUrl,
+  beatsForScene,
+  structuresUrl,
+  PLAN_FIELDS,
+  fieldValue,
+  linksForScene,
+  linksUrl,
+  planHref,
+  relationLabel,
+  relationshipChangesForScene,
+  relationshipsUrl,
+  scenePlanBody,
+  scenePlanUrl,
+} from './requests.js';
 
 /** One plan field: a labelled single-line input. Enter or leaving it saves a change; Escape puts the saved text back. */
 function PlanField({ id, label, saved, onSave }) {
@@ -50,15 +65,16 @@ const sceneTitle = (t) => t || 'Untitled scene';
 
 /**
  * The presentational part of the "Plan" section.
- * @param {{ bookId: string, sceneId: string, plan: any | null, links: { links?: any[] } | null, arcs?: { arcs?: any[] } | null, structures?: { structures?: any[] } | null, message?: string | null, error?: string | null,
+ * @param {{ bookId: string, sceneId: string, plan: any | null, links: { links?: any[] } | null, arcs?: { arcs?: any[] } | null, relationships?: { relationships?: any[] } | null, structures?: { structures?: any[] } | null, message?: string | null, error?: string | null,
  *   onSave?: (key: string, value: string | null) => void }} props
- *   `plan` is GET /scene-plans/:sceneId (null while it loads), `links` is GET /links (null while it loads), `arcs` is GET /arcs (null while it loads or not given), `structures` is GET /structures (likewise), `message` a short notice, `error` a refusal shown inline,
+ *   `plan` is GET /scene-plans/:sceneId (null while it loads), `links` is GET /links (null while it loads), `arcs` is GET /arcs (null while it loads or not given), `relationships` is GET /relationships (likewise), `structures` is GET /structures (likewise), `message` a short notice, `error` a refusal shown inline,
  *   `onSave(key, value)` is called for one changed field (value null when emptied).
  */
-export function ScenePlanView({ bookId, sceneId, plan, links, arcs = null, structures = null, message = null, error = null, onSave }) {
+export function ScenePlanView({ bookId, sceneId, plan, links, arcs = null, relationships = null, structures = null, message = null, error = null, onSave }) {
   const { outgoing, incoming } = linksForScene(links, sceneId);
   const none = outgoing.length === 0 && incoming.length === 0;
   const milestones = arcMilestonesForScene(arcs, sceneId);
+  const changes = relationshipChangesForScene(relationships, sceneId);
   const beats = beatsForScene(structures, sceneId);
   return (
     <InspectorSection title="Plan">
@@ -128,6 +144,24 @@ export function ScenePlanView({ bookId, sceneId, plan, links, arcs = null, struc
           )}
         </>
       )}
+      {relationships !== null && (
+        <>
+          <h3 className="plan-links-heading">Relationship changes in this scene</h3>
+          {changes.length === 0 ? (
+            <p className="muted">No relationship changes here.</p>
+          ) : (
+            <ul className="rail-links plan-links" aria-label="Relationship changes in this scene">
+              {changes.map(({ relationship, development }, i) => (
+                <li key={`${relationship.slug}:${i}`}>
+                  <Link to={planHref(bookId, { view: 'arcs', relationship: relationship.slug })}>
+                    {relationshipName(relationship)}: {development.change}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
       {structures !== null && (
         <>
           <h3 className="plan-links-heading">Beats in this scene</h3>
@@ -166,6 +200,7 @@ export function ScenePlanSection({ book, sceneId, onChanged }) {
   const plan = useApi(scenePlanUrl(book.id, sceneId), version);
   const links = useApi(linksUrl(book.id), version);
   const arcs = useApi(arcsUrl(book.id), version);
+  const relationships = useApi(relationshipsUrl(book.id), version);
   const structures = useApi(structuresUrl(book.id), version);
 
   async function save(key, value) {
@@ -193,6 +228,7 @@ export function ScenePlanSection({ book, sceneId, onChanged }) {
         plan={plan.data}
         links={links.error ? { links: [] } : links.data}
         arcs={arcs.error ? { arcs: [] } : arcs.data}
+        relationships={relationships.error ? { relationships: [] } : relationships.data}
         structures={structures.error ? { structures: [] } : structures.data}
         message={message}
         error={error ?? (plan.error ? 'The plan could not be loaded.' : null)}

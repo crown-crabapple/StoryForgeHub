@@ -213,3 +213,30 @@ New diagnostic codes chosen in M1: `E211` (link from a scene to itself), `W316` 
   - **The beat sheet editor.** Edit, reorder, add, remove and mark beats as omitted. Assign scenes by search.
   - **Elsewhere.** The scene inspector's Plan section lists "Beats in this scene". The Overview shows the structure count and the primary structure.
   - Comparing structures side by side, and showing beats on the Board, Outline and Flow, come in M5.
+
+## M5 decisions (2026-11-06): lanes, relationships, beats in links, planner data on Board, Outline and Matrix
+
+- **Relationship developments** (deferred from M3).
+  - **Storage.** One file per pair: `planning/relationships/<slug>.md`, kind `relationship` (`storyforge.relationship/v1`). It has the fields `a` and `b`, which are Codex entry ids of any type, and optional single-line `baseline` and `end_state`. Notes go in the body.
+  - **Developments.** `developments` is an ordered list of mappings, written whole the same way as arc milestones. Each has `scene` (a scene id, required) and `change` (one line, required), plus optional `a_view` and `b_view`: how A sees B, and how B sees A, at that point. These two fields allow different views on each side, for example "A trusts B" while "B fears A".
+  - **Codex untouched.** The Codex `related:` field stays the baseline and is never written.
+  - **New codes.**
+    - `E212`: a relationship where `a` = `b`.
+    - `W320`: two live relationships for the same pair, in either order.
+    - An unknown entry or scene gives `E301`. A malformed development gives `E102`.
+  - **Routes.** `GET /relationships` and `GET /relationships/:slug`. `POST /relationships` (`planner-relationship-create`). `POST /relationships/:slug` (`planner-relationship-update`). `POST /relationships/:slug/developments` (`planner-relationship-developments`). Plus `/archive` and `/restore`.
+- **The Plan tab's Arcs view becomes Lanes.** The URL stays `?view=arcs`, so bookmarks keep working.
+  - **Lane kinds.** Rows are character arcs, relationships and plot threads. Thread markers show S/D/P from the existing thread lists, which are read-only here. Columns are the scenes in reading order.
+  - **Controls.** A show/hide toggle per kind, and a list equivalent.
+  - **Editing.** You edit a relationship in the side panel, as you do an arc. The scene inspector's Plan section lists the relationship changes in that scene.
+- **A link may point at a beat** (promised in M4).
+  - **Format.** Link `from`/`to` resolve to a scene or to a beat id inside a live structure. A beat inside an archived structure gives `W303`.
+  - **Flow.** It shows a beat as a node only when a live link uses it, in its own "Beats" row, named "<structure>: <beat>". The Connect dialog offers beats as well as scenes.
+  - **Removing a linked beat.** Removing such a beat from a structure is refused with `REFUSED_BEAT_LINKED`, which lists the links, archived ones included. An archived link pointing at a beat that is gone would be an `E301` error, so the author re-points the links first. Nothing is cut silently.
+- **Planner data on Board, Outline and Matrix**, through one read-only projection, so every view shows the same numbers.
+  - **The route.** `GET /api/books/:b/plan-badges` returns per scene: whether it has a plan, its goal and purpose, the number of links in and out, the beats it fills, the arc milestones and relationship changes set there, and the live arcs and structures.
+  - **Board.** Cards gain badges you can switch on or off: plan purpose, links in and out, beats, arc milestones, and "no summary" or "no goal". The choice is a per-viewer convenience stored in the browser. Board also gains status, POV, thread and arc filters.
+  - **Outline.** A new "Plan" column, arc and beat filters, and a **By beat** grouping that uses the primary structure. In that grouping, beats with no scenes still show. Scenes in no beat go under "Not in a beat".
+  - **Matrix.** Optional column groups for arc milestones and for the primary structure's beats. Each is a toggle; none is on by default.
+  - **What stays the same.** Drag order, keyboard moves, thread S/D/P editing and every existing filter behave exactly as before. When the planner module is off, the badges simply don't appear.
+- **Deferred.** The knowledge and reveal tracker (who learns what, when) goes to M8, with the mystery clue tracker the spec groups it with. Showing two structures side by side and image export also wait. M5 is already the widest milestone.

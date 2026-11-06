@@ -32,6 +32,8 @@ const CONTRACT_CASES = [
   'W318-story-plan-path',
   // Story Planner M3: character arcs
   'W319-duplicate-arc',
+  // Story Planner M5: relationships
+  'E212-relationship-self', 'W320-duplicate-relationship',
   // Story Planner M4: structures and beat sheets
   'E102-duplicate-beat-id',
 ];

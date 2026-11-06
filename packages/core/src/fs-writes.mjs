@@ -9,6 +9,7 @@ import {
   archiveEvent,
   archiveLink,
   archiveNote,
+  archiveRelationship,
   archiveStructure,
   changeEntrySlug,
   createAct,
@@ -19,6 +20,7 @@ import {
   createEvent,
   createLink,
   createNote,
+  createRelationship,
   createStructure,
   createThread,
   editFrontMatterLine,
@@ -31,6 +33,7 @@ import {
   restoreEvent,
   restoreLink,
   restoreNote,
+  restoreRelationship,
   restoreStructure,
   restoreOp,
   setActFields,
@@ -39,6 +42,7 @@ import {
   setEntryFields,
   setEventFields,
   setNoteFields,
+  setRelationshipDevelopments,
   setStructureBeats,
   setSceneFields,
   saveScenePlan,
@@ -49,6 +53,7 @@ import {
   ulid,
   updateArc,
   updateLink,
+  updateRelationship,
   updateStructure,
   uploadAttachment,
 } from '@storyforge/manuscript';
@@ -550,6 +555,13 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     setArcMilestones: (bookId, slug, args = {}) => structure(bookId, (b) => setArcMilestones(b, slug, args ?? {}), PLANNER_CODES),
     archiveArc: (bookId, slug, args = {}) => structure(bookId, (b) => archiveArc(b, slug, args ?? {}), PLANNER_CODES),
     restoreArc: (bookId, slug, args = {}) => structure(bookId, (b) => restoreArc(b, slug, args ?? {}), PLANNER_CODES),
+
+    // ---- Story Planner M5: relationships (planning/relationships). REFUSED_UNKNOWN_SCENE / REFUSED_UNKNOWN_ENTRY are kept; REFUSED_DUPLICATE_RELATIONSHIP carries `existing: { slug }`.
+    createRelationship: (bookId, args = {}) => structure(bookId, (b) => createRelationship(b, args ?? {}), PLANNER_CODES),
+    updateRelationship: (bookId, slug, args = {}) => structure(bookId, (b) => updateRelationship(b, slug, args ?? {}), PLANNER_CODES),
+    setRelationshipDevelopments: (bookId, slug, args = {}) => structure(bookId, (b) => setRelationshipDevelopments(b, slug, args ?? {}), PLANNER_CODES),
+    archiveRelationship: (bookId, slug, args = {}) => structure(bookId, (b) => archiveRelationship(b, slug, args ?? {}), PLANNER_CODES),
+    restoreRelationship: (bookId, slug, args = {}) => structure(bookId, (b) => restoreRelationship(b, slug, args ?? {}), PLANNER_CODES),
 
     // ---- Story Planner M4: structures and beat sheets (planning/structures). REFUSED_UNKNOWN_SCENE is kept (with the beat `index`).
     createStructure: (bookId, args = {}) => structure(bookId, (b) => createStructure(b, args ?? {}), PLANNER_CODES),

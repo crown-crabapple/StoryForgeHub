@@ -7,6 +7,7 @@ import { PreviewDialog } from '../structure/PreviewDialog.jsx';
 import { useStructure } from '../structure/useStructure.jsx';
 import { usePrefs } from '../prefs/PrefsContext.jsx';
 import { BoardView } from './BoardView.jsx';
+import { validBadges } from './badges.js';
 import { CardDialog, NewThreadDialog } from './dialogs.jsx';
 import { MatrixView } from './MatrixView.jsx';
 import { OutlineView } from './OutlineView.jsx';
@@ -14,7 +15,7 @@ import { ThreadBodyEditor } from './ThreadBodyEditor.jsx';
 import { ThreadInspector } from './ThreadInspector.jsx';
 import { ThreadsView } from './ThreadsView.jsx';
 import { VIEWS, buildModel, stateLabel, viewHref, visibleThreads } from './model.js';
-import { explainPlanningFailure, newCardRequest, newThreadRequest, sceneFieldsRequest, threadCharactersRequest, threadListRequest, threadStateRequest, threadUrl } from './requests.js';
+import { explainPlanningFailure, newCardRequest, newThreadRequest, planBadgesUrl, sceneFieldsRequest, threadCharactersRequest, threadListRequest, threadStateRequest, threadUrl } from './requests.js';
 
 /**
  * Write · Board · Outline · Threads: the view switch of the Manuscript tab, as real links (`?view=`). On Threads, a List / Matrix choice sits under it.
@@ -72,6 +73,9 @@ export function PlanningWorkspace({ book, planning, objects = null, view, mode =
 
   const selected = model.threadById.get(threadId) ?? model.threads.find((t) => t.slug === threadId) ?? visibleThreads(model.threads)[0] ?? null;
   const { data: threadDoc } = useApi(view === 'threads' && selected ? threadUrl(bookId, selected.id) : null, `${version}|${selected?.sha256 ?? ''}`);
+  // Story Planner badges: read-only, refreshed with the book; a 403 (module off) or an old server gives no data and the views show nothing extra
+  const { data: badgeData } = useApi(view === 'board' || view === 'outline' || (view === 'threads' && mode === 'matrix') ? planBadgesUrl(bookId) : null, version);
+  const badges = validBadges(badgeData);
   const characters = (objects ?? []).filter((o) => o.kind === 'entry' && o.type === 'character' && typeof o.slug === 'string').map((o) => ({ slug: o.slug, title: o.title }));
   const takenSlugs = new Set((objects ?? []).map((o) => o.slug).filter(Boolean));
   const cardName = (card) => card.title || 'Untitled scene';
@@ -136,14 +140,15 @@ export function PlanningWorkspace({ book, planning, objects = null, view, mode =
         onNewCard={onNewCard}
         onEdit={(card) => setDialog({ kind: 'edit-card', card })}
         onMoveDialog={(card) => structure.start({ type: 'move', scene: card })}
+        badges={badges}
       />
     );
   } else if (view === 'outline') {
-    body = <OutlineView key={outlineFilters.status ?? ''} bookId={bookId} model={model} initialFilters={outlineFilters} onSetFields={setCardFields} />;
+    body = <OutlineView key={outlineFilters.status ?? ''} bookId={bookId} model={model} initialFilters={outlineFilters} onSetFields={setCardFields} badges={badges} />;
   } else if (editing) {
     body = <ThreadBodyEditor key={editing.id} bookId={bookId} thread={editing} objects={objects} onDone={() => { setEditing(null); onChanged?.(); }} />;
   } else if (mode === 'matrix') {
-    body = <MatrixView bookId={bookId} model={model} onMark={markList} />;
+    body = <MatrixView bookId={bookId} model={model} onMark={markList} badges={badges} />;
   } else {
     body = (
       <ThreadsView
