@@ -30,6 +30,8 @@ const CONTRACT_CASES = [
   'E211-self-link', 'W316-duplicate-link', 'W317-duplicate-scene-plan',
   // Story Planner M2: the story plan
   'W318-story-plan-path',
+  // Story Planner M3: character arcs
+  'W319-duplicate-arc',
 ];
 
 test('invalid fixture set matches the contract case table', () => {

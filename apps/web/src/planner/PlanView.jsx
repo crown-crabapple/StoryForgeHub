@@ -5,13 +5,18 @@ import { useWrites } from '../shell/writes.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
 import { explainFailure, send } from '../structure/helpers.js';
 import { useStructure } from '../structure/useStructure.jsx';
+import { ArcEditor } from './ArcEditor.jsx';
+import { ArcsView, NewArcDialog } from './ArcsView.jsx';
 import { ConnectDialog } from './ConnectDialog.jsx';
 import { FlowView } from './FlowView.jsx';
 import { OverviewView } from './OverviewView.jsx';
 import { PlanPage } from './PlanPage.jsx';
 import { ScenePlanSection } from './ScenePlanSection.jsx';
+import { useArcWrites } from './useArcWrites.js';
 import { parsePlanSearch, planUrl, sceneName } from './model.js';
 import {
+  arcUrl,
+  arcsUrl,
   createLinkRequest,
   entriesUrl,
   explainLinkFailure,
@@ -56,17 +61,22 @@ export function PlanView({ bookId, search = '' }) {
   const structure = useStructure({ book, activeId: null, onChanged: refresh });
 
   const overview = useApi(url.view === 'overview' ? planOverviewUrl(bookId) : null, version);
-  const entries = useApi(url.view === 'overview' ? entriesUrl(bookId) : null, version);
+  const entries = useApi(url.view === 'overview' || url.view === 'arcs' ? entriesUrl(bookId) : null, version);
+  const arcs = useApi(url.view === 'arcs' ? arcsUrl(bookId) : null, version);
   const flow = useApi(flowUrl(bookId), version);
   const links = useApi(linksUrl(bookId), version);
 
   const [query, setQuery] = useState('');
   const [connect, setConnect] = useState(/** @type {{ from: string | null } | null} */ (null));
   const [storyState, setStoryState] = useState({ message: null, error: null });
+  const [newArc, setNewArc] = useState(false);
+  const [milestone, setMilestone] = useState(/** @type {{ slug: string, index: number } | null} */ (null));
   const [linkState, setLinkState] = useState({ slug: null, busy: false, message: null, error: null });
 
+  const arcWrites = useArcWrites({ bookId, structure, refresh });
   const go = (patch) => navigate(planUrl(bookId, url, patch));
   const toLink = (slug) => planHref(bookId, { view: 'flow', link: slug, mode: url.mode });
+  const characters = (entries.data ?? []).filter((o) => o.kind === 'entry' && o.type === 'character' && typeof o.slug === 'string').map((o) => ({ id: o.id, slug: o.slug, title: o.title }));
   const nodeName = (id) => sceneName(flow.data?.nodes?.find((n) => n.id === id)?.title);
 
   // ---------------------------------------------------------------- the story plan
@@ -144,8 +154,8 @@ export function PlanView({ bookId, search = '' }) {
     onQuery: setQuery,
     onMode: (mode) => go({ mode }),
     onConnect: (from) => setConnect({ from: from ?? null }),
-    onSelectNode: (id) => go({ view: 'flow', node: id, link: null }),
-    onSelectLink: (slug) => go({ view: 'flow', link: slug, node: null }),
+    onSelectNode: (id) => go({ view: 'flow', node: id, link: null, arc: null }),
+    onSelectLink: (slug) => go({ view: 'flow', link: slug, node: null, arc: null }),
     onSave: (link, patch) => changeLink(link, updateLinkBody(link, patch), 'Link saved.'),
     onReverse: (link) => changeLink(link, reverseLinkBody(link), 'Link reversed.'),
     onArchive: archiveLink,
@@ -158,7 +168,6 @@ export function PlanView({ bookId, search = '' }) {
     else if (overview.error) body = <p className="error">{overview.error}</p>;
     else if (!overview.data) body = <NotFound />;
     else {
-      const characters = (entries.data ?? []).filter((o) => o.kind === 'entry' && o.type === 'character' && typeof o.slug === 'string').map((o) => ({ slug: o.slug, title: o.title }));
       body = (
         <OverviewView
           bookId={bookId}
@@ -170,6 +179,50 @@ export function PlanView({ bookId, search = '' }) {
             onSaveField: (key, value) => writeStory({ fields: { [key]: value } }, 'Story plan saved.'),
             onSaveNotes: (text) => writeStory({ body: text }, 'Story notes saved.'),
             onConnect: handlers.onConnect,
+          }}
+        />
+      );
+    }
+  } else if (url.view === 'arcs') {
+    if (flow.error || arcs.error) body = <p className="error">{flow.error ?? arcs.error}</p>;
+    else if (!arcs.loading && !arcs.data) body = <NotFound />;
+    else {
+      const arc = url.arc ? arcs.data?.arcs?.find((a) => a.slug === url.arc) : null;
+      body = (
+        <ArcsView
+          bookId={bookId}
+          arcs={arcs.data}
+          flow={flow.data}
+          url={url}
+          wide={wide}
+          selectedMilestone={milestone}
+          panel={
+            arc ? (
+              <ArcEditor
+                key={arc.slug}
+                bookId={bookId}
+                arc={arc}
+                scenes={flow.data?.nodes ?? []}
+                state={arcWrites.state.slug === arc.slug ? arcWrites.state : {}}
+                handlers={arcWrites.handlersFor(arc, { onArchived: () => go({ view: 'arcs', arc: null }) })}
+              />
+            ) : null
+          }
+          handlers={{
+            onMode: (mode) => go({ mode }),
+            onNewArc: () => setNewArc(true),
+            onRestoreArc: async (archivedArc) => {
+              const r = await structure.apply({ url: arcUrl(bookId, archivedArc.slug, '/restore'), body: {}, done: 'Arc restored.', undoable: true, after: () => go({ view: 'arcs', arc: archivedArc.slug }) });
+              if (!r.ok) structure.showToast({ message: `Not restored: ${r.message}` });
+            },
+            onSelectArc: (slug) => {
+              setMilestone(null);
+              go({ view: 'arcs', arc: slug });
+            },
+            onSelectMilestone: (slug, index) => {
+              setMilestone({ slug, index });
+              go({ view: 'arcs', arc: slug });
+            },
           }}
         />
       );
@@ -209,6 +262,26 @@ export function PlanView({ bookId, search = '' }) {
             navigate(toLink(slug));
           }}
           onClose={() => setConnect(null)}
+        />
+      )}
+      {newArc && (
+        <NewArcDialog
+          characters={characters}
+          hasArc={new Set((arcs.data?.arcs ?? []).map((a) => a.character_id))}
+          onCreate={async (id) => {
+            const r = await arcWrites.create({ character: id });
+            if (r.ok) {
+              setNewArc(false);
+              setMilestone(null);
+              if (r.slug) go({ view: 'arcs', arc: r.slug });
+            }
+            return r;
+          }}
+          onOpenExisting={(slug) => {
+            setNewArc(false);
+            go({ view: 'arcs', arc: slug });
+          }}
+          onClose={() => setNewArc(false)}
         />
       )}
       {structure.ui}

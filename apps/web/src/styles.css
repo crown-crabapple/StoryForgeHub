@@ -5301,6 +5301,167 @@ kbd {
   font-size: var(--fs-12);
 }
 
+/* Character arcs (M3): the editor, the Arc panel on the Codex page, the lanes and the list. */
+.arc-editor,
+.arc-fields,
+.arc-milestone-list,
+.arc-milestone {
+  display: grid;
+  gap: var(--s3);
+  min-width: 0;
+}
+.arc-milestone-list,
+.arc-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.arc-field {
+  display: grid;
+  gap: var(--s1);
+}
+.arc-field label,
+.arc-notes label {
+  color: var(--text-3);
+  font-size: var(--fs-13);
+}
+.arc-field input,
+.arc-field select,
+.arc-notes textarea {
+  width: 100%;
+  max-width: 100%;
+  min-height: 36px;
+  padding: var(--s1) var(--s3);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-input);
+  font: inherit;
+}
+.arc-notes {
+  display: grid;
+  gap: var(--s2);
+}
+.arc-notes textarea {
+  resize: vertical;
+}
+.arc-type-words {
+  margin: 0;
+}
+.arc-milestone {
+  padding: var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+.arc-milestone h4 {
+  margin: 0;
+  font-size: var(--fs-13);
+}
+.arc-milestone-actions,
+.arc-milestone-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.arc-dirty {
+  font-weight: 600;
+}
+.arc-panel {
+  margin-top: var(--s4);
+}
+.arc-milestone-details {
+  margin: 0 0 var(--s4);
+}
+.arc-rows {
+  display: grid;
+  gap: var(--s2);
+}
+.arc-row {
+  padding: var(--s2) var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  overflow-wrap: anywhere;
+}
+.arc-row[aria-current='true'],
+.arc-list-arc[aria-current='true'] > h2 {
+  border: 2px solid var(--accent);
+  font-weight: 600;
+}
+.arc-row-belief {
+  display: block;
+}
+.arc-lanes-scroll {
+  max-width: 100%;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+.arc-lanes {
+  position: relative;
+}
+.arc-lane-chapter {
+  position: absolute;
+  color: var(--text-3);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.arc-lane-col {
+  position: absolute;
+  color: var(--text-3);
+  font-size: var(--fs-12);
+  text-align: center;
+  border-left: 1px solid var(--border);
+}
+.arc-lane {
+  position: absolute;
+  left: 0;
+}
+.arc-lane-name {
+  position: absolute;
+  left: var(--s2);
+  top: 50%;
+  transform: translateY(-50%);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.arc-lane-line {
+  position: absolute;
+  right: 0;
+  border-top: 2px solid var(--text-3);
+}
+.arc-marker {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: var(--surface);
+  color: var(--text);
+  border: 2px solid var(--text);
+  border-radius: 4px;
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  cursor: pointer;
+  transform: rotate(45deg);
+}
+.arc-marker > span {
+  transform: rotate(-45deg);
+}
+.arc-marker:hover {
+  background: var(--surface-2);
+}
+.arc-marker[aria-pressed='true'] {
+  border: 4px solid var(--accent);
+  background: var(--accent-soft);
+}
+
 @media (max-width: 1179px) {
   .flow-body {
     grid-template-columns: minmax(0, 1fr);
@@ -5310,7 +5471,8 @@ kbd {
   .plan-story-field {
     grid-template-columns: minmax(0, 1fr);
   }
-  .flow-graph {
+  .flow-graph,
+  .arc-lanes-scroll {
     display: none;
   }
 }

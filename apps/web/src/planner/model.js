@@ -7,21 +7,23 @@ import { planHref, relationLabel } from './requests.js';
 export const PLAN_VIEWS = [
   { key: 'overview', label: 'Overview' },
   { key: 'flow', label: 'Flow' },
+  { key: 'arcs', label: 'Arcs' },
 ];
 
 /**
- * What /books/:id/plan?… asks for: `view` (overview unless `view=flow`), `node` (a scene id), `link` (a link slug), `mode` ('list', 'graph', or null for "the default of the screen
- * width") and `filter` ('unlinked' or null).
+ * What /books/:id/plan?… asks for: `view` (overview unless `view=flow`), `node` (a scene id), `link` (a link slug), `arc` (an arc slug, with view=arcs), `mode` ('list', 'graph' (lanes in the Arcs view),
+ * or null for "the default of the screen width") and `filter` ('unlinked' or null).
  * @param {string} [search]
- * @returns {{ view: 'overview' | 'flow', node: string | null, link: string | null, mode: 'list' | 'graph' | null, filter: 'unlinked' | null }}
+ * @returns {{ view: 'overview' | 'flow' | 'arcs', node: string | null, link: string | null, arc: string | null, mode: 'list' | 'graph' | null, filter: 'unlinked' | null }}
  */
 export function parsePlanSearch(search = '') {
   const p = new URLSearchParams(search);
   const mode = p.get('mode');
   return {
-    view: p.get('view') === 'flow' ? 'flow' : 'overview',
+    view: p.get('view') === 'flow' ? 'flow' : p.get('view') === 'arcs' ? 'arcs' : 'overview',
     node: p.get('node') || null,
     link: p.get('link') || null,
+    arc: p.get('arc') || null,
     mode: mode === 'list' || mode === 'graph' ? mode : null,
     filter: p.get('filter') === 'unlinked' ? 'unlinked' : null,
   };
@@ -35,7 +37,7 @@ export function parsePlanSearch(search = '') {
  */
 export const planUrl = (bookId, state, patch = {}) => {
   const next = { ...state, ...patch };
-  return planHref(bookId, { view: next.view === 'flow' ? 'flow' : null, node: next.node, link: next.link, mode: next.mode, filter: next.filter });
+  return planHref(bookId, { view: next.view === 'flow' || next.view === 'arcs' ? next.view : null, node: next.node, link: next.link, mode: next.mode, filter: next.filter, arc: next.arc });
 };
 
 export const sceneName = (title) => title || 'Untitled scene';
@@ -153,4 +155,79 @@ export function layoutGraph(nodes) {
 export function fitScale(width, height, viewW, viewH, margin = 16, min = 0.25) {
   if (width <= 0 || height <= 0 || viewW <= 0 || viewH <= 0) return 1;
   return Math.max(min, Math.min(1, (viewW - margin) / width, (viewH - margin) / height));
+}
+
+// ---------------------------------------------------------------- arcs (M3)
+
+/** What a milestone is called in short: its choice, else its pressure, else empty. @param {{ choice?: string, pressure?: string }} m */
+export const milestoneSummary = (m) => m?.choice || m?.pressure || '';
+
+/** The name of an arc's character (the entry's name, else the arc's slug). @param {{ slug: string, character?: { name?: string } | null }} arc */
+export const arcName = (arc) => arc.character?.name || arc.slug;
+
+/** "Ch 2: The Key" for a scene of GET /flow (or "The Key" without a chapter). */
+export const sceneLabel = (n) => `${typeof n.chapter === 'number' ? `${chapterShort(n.chapter)}: ` : ''}${sceneName(n.title)}`;
+
+/** The accessible name of a lane marker: "Maren: Takes the key in The Ferry". */
+export const markerName = (arc, m, title) => `${arcName(arc)}: ${milestoneSummary(m) || `milestone ${m.index + 1}`} in ${sceneName(title)}`;
+
+export const LANE_LABEL_W = 168;
+export const LANE_COL_W = 52;
+export const LANE_ROW_H = 60;
+export const LANE_HEAD = 52;
+export const LANE_PAD = 12;
+export const LANE_MARK = 28;
+
+/**
+ * The lanes of the Arcs view: one row per arc, one narrow column per scene in reading order, a marker at the column of each milestone's scene. Pure: the same arcs and
+ * scenes always give the same boxes. A milestone whose scene is not among `nodes` has no marker (it is counted in `unplaced`; the list still shows it). Several milestones
+ * of one arc in one scene sit side by side, a few pixels apart.
+ * @param {any[]} arcs GET /arcs `arcs` @param {{ id: string, title?: string, act?: number | null, chapter?: number | null }[]} nodes scenes in reading order (GET /flow nodes)
+ * @returns {{ columns: { id: string, x: number, title: string }[], chapters: { key: string, label: string, x: number, width: number }[],
+ *   rows: { slug: string, name: string, y: number, markers: { key: string, slug: string, index: number, scene: string, x: number, y: number, text: string, name: string }[] }[],
+ *   width: number, height: number, unplaced: number }}
+ */
+export function layoutLanes(arcs, nodes) {
+  const colX = new Map();
+  const columns = nodes.map((n, i) => {
+    const x = LANE_LABEL_W + LANE_PAD + i * LANE_COL_W;
+    colX.set(n.id, { x, title: n.title });
+    return { id: n.id, x, title: sceneName(n.title) };
+  });
+  /** @type {{ key: string, label: string, x: number, width: number }[]} */
+  const chapters = [];
+  nodes.forEach((n, i) => {
+    const key = `${n.act ?? ''}:${n.chapter ?? ''}`;
+    const last = chapters[chapters.length - 1];
+    if (last && last.key === key) last.width += LANE_COL_W;
+    else chapters.push({ key, label: typeof n.chapter === 'number' ? chapterShort(n.chapter) : 'Chapter', x: columns[i].x, width: LANE_COL_W });
+  });
+  let unplaced = 0;
+  const rows = arcs.map((arc, r) => {
+    const y = LANE_HEAD + r * LANE_ROW_H;
+    const seen = new Map();
+    const markers = [];
+    for (const m of arc.milestones ?? []) {
+      const col = colX.get(m.scene);
+      if (!col) {
+        unplaced += 1;
+        continue;
+      }
+      const slot = seen.get(m.scene) ?? 0;
+      seen.set(m.scene, slot + 1);
+      markers.push({
+        key: `${arc.slug}:${m.index}`,
+        slug: arc.slug,
+        index: m.index,
+        scene: m.scene,
+        x: col.x + (LANE_COL_W - LANE_MARK) / 2 + slot * 10,
+        y: y + (LANE_ROW_H - LANE_MARK) / 2,
+        text: String(m.index + 1),
+        name: markerName(arc, m, col.title),
+      });
+    }
+    return { slug: arc.slug, name: arcName(arc), y, markers };
+  });
+  const width = nodes.length === 0 ? 0 : LANE_LABEL_W + LANE_PAD * 2 + nodes.length * LANE_COL_W;
+  return { columns, chapters, rows, width, height: arcs.length === 0 ? 0 : LANE_HEAD + arcs.length * LANE_ROW_H + LANE_PAD, unplaced };
 }

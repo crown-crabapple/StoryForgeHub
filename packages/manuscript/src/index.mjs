@@ -24,4 +24,4 @@ export { ulid, slugify, SLUG_RE } from './util.mjs';
 export { createEvent, setEventFields, archiveEvent, restoreEvent, orderText } from './timeline.mjs';
 export { createNote, setNoteFields, archiveNote, restoreNote, uploadAttachment, safeAttachmentName, attachmentMarkdown, ATTACHMENT_TYPES, ATTACHMENT_DIR, MAX_ATTACHMENT_BYTES, SOURCE_FIELDS } from './research.mjs';
 export { createCanvas, saveCanvas, archiveCanvas, restoreCanvas, canvasPath } from './canvas.mjs';
-export { createLink, updateLink, archiveLink, restoreLink, saveScenePlan, saveStoryPlan, linkPath, LINK_RELATIONS, PLAN_FIELDS, STORY_FIELDS, STORY_PATH } from './planner.mjs';
+export { createLink, updateLink, archiveLink, restoreLink, saveScenePlan, saveStoryPlan, linkPath, LINK_RELATIONS, PLAN_FIELDS, STORY_FIELDS, STORY_PATH, createArc, updateArc, setArcMilestones, archiveArc, restoreArc, arcPath, ARC_TYPES, ARC_TEXT_FIELDS, MILESTONE_FIELDS } from './planner.mjs';

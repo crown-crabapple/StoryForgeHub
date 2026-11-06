@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { extractDocs, validate } from '@storyforge/format';
 import {
+  archiveArc,
   archiveChapter,
   archiveEntry,
   archiveEvent,
@@ -10,6 +11,7 @@ import {
   archiveNote,
   changeEntrySlug,
   createAct,
+  createArc,
   createChapter,
   createCodexType,
   createEntry,
@@ -22,12 +24,14 @@ import {
   mergeScenes,
   moveScene,
   renumberChapters,
+  restoreArc,
   restoreEntry,
   restoreEvent,
   restoreLink,
   restoreNote,
   restoreOp,
   setActFields,
+  setArcMilestones,
   setChapterFields,
   setEntryFields,
   setEventFields,
@@ -39,6 +43,7 @@ import {
   slugify,
   splitScene,
   ulid,
+  updateArc,
   updateLink,
   uploadAttachment,
 } from '@storyforge/manuscript';
@@ -534,6 +539,12 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     restoreLink: (bookId, slug, args = {}) => structure(bookId, (b) => restoreLink(b, slug, args ?? {}), PLANNER_CODES),
     saveScenePlan: (bookId, sceneId, args = {}) => structure(bookId, (b) => saveScenePlan(b, sceneId, args ?? {}), PLANNER_CODES),
     saveStoryPlan: (bookId, args = {}) => structure(bookId, (b) => saveStoryPlan(b, args ?? {}), PLANNER_CODES), // Story Planner M2: planning/story.md
+    // ---- Story Planner M3: character arcs (planning/arcs). REFUSED_UNKNOWN_SCENE / REFUSED_UNKNOWN_ENTRY are kept; REFUSED_DUPLICATE_ARC carries `existing: { slug }`.
+    createArc: (bookId, args = {}) => structure(bookId, (b) => createArc(b, args ?? {}), PLANNER_CODES),
+    updateArc: (bookId, slug, args = {}) => structure(bookId, (b) => updateArc(b, slug, args ?? {}), PLANNER_CODES),
+    setArcMilestones: (bookId, slug, args = {}) => structure(bookId, (b) => setArcMilestones(b, slug, args ?? {}), PLANNER_CODES),
+    archiveArc: (bookId, slug, args = {}) => structure(bookId, (b) => archiveArc(b, slug, args ?? {}), PLANNER_CODES),
+    restoreArc: (bookId, slug, args = {}) => structure(bookId, (b) => restoreArc(b, slug, args ?? {}), PLANNER_CODES),
 
     // ---- M04-J04: timeline events, research notes / planning docs / sources, attachments (canonical files only; dryRun previews with diffs)
     createEvent: (bookId, args = {}) => structure(bookId, (b) => createEvent(b, args ?? {})),

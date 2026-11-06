@@ -615,6 +615,19 @@ bookCase('W318-story-plan-path', (b, ids) => {
   return [D('W318', p, 'schema')];
 });
 
+// Story Planner M3: W319
+const arcDoc = (ids, slug, character, o = {}) => ({
+  fm: { schema: 'storyforge.arc/v1', id: ids('note'), slug, character, arc_type: 'positive', ...o },
+  body: 'Free arc notes.\n',
+});
+bookCase('W319-duplicate-arc', (b, ids) => {
+  const character = b.files.get(b.ENTRY).fm.id;
+  b.files.set('planning/arcs/maren-hollis.md', arcDoc(ids, 'maren-hollis', character));
+  const p2 = 'planning/arcs/maren-hollis-2.md';
+  b.files.set(p2, arcDoc(ids, 'maren-hollis-2', character));
+  return [D('W319', p2, 'character')];
+});
+
 // ---- suggestion documents (M05-J06)
 const suggestionFor = (ids, targetId, targetPath, baseBytes, proposed) =>
   buildSuggestion({
@@ -1298,6 +1311,33 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
       protagonist: 'maren-hollis',
     },
     body: 'Free story notes.\n',
+  });
+  files.set('planning/arcs/maren-hollis.md', {
+    fm: {
+      schema: 'storyforge.arc/v1', id: ids('note'), slug: 'maren-hollis',
+      character: files.get('codex/characters/maren-hollis.md').fm.id,
+      arc_type: 'positive',
+      want: 'To learn what the harbour key opens.',
+      need: 'To trust the town that raised her.',
+      false_belief: 'Belonging means obeying the guild.',
+      fear: 'Being locked out for good.',
+      wound: 'Her mother left without a word.',
+      start_state: 'Obedient and certain.',
+      end_state: 'Free and uncertain.',
+      milestones: {
+        block: [
+          `  - scene: ${KEY}`,
+          '    pressure: The harbourmaster wants the key back.',
+          '    choice: She keeps the key.',
+          '    belief_before: The guild will protect her.',
+          '    belief_after: The guild will not.',
+          '    cost: Her apprenticeship.',
+          `  - scene: ${FERRY}`,
+          '    pressure: The ferryman asks for a price.',
+        ],
+      },
+    },
+    body: 'Free arc notes.\n',
   });
   checkIds(files);
   const dir = path.join(FIXTURES, 'valid', 'planner');

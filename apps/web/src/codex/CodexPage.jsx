@@ -32,6 +32,7 @@ import { SORTS, STATUS_FILTERS, filterEntries, headerCounts, nextCardIndex, next
  *   scope?: string, onScope?: (scope: string) => void,
  *   labelDefs?: any[] | null, label?: string, onLabel?: (name: string) => void, // the label chips and the label filter
  *   banner?: import('react').ReactNode,   // a message above the cards (for example the W309 of a copy)
+ *   arcPanel?: ((entry: any) => import('react').ReactNode) | null, // Story Planner: the Arc section under the inspector (the page gives it for a live entry; the callback decides which types)
  * }} props
  */
 export function CodexPage({
@@ -67,6 +68,7 @@ export function CodexPage({
   label = '',
   onLabel,
   banner = null,
+  arcPanel = null,
 }) {
   const gridRef = useRef(null);
   const tabsRef = useRef(null);
@@ -253,6 +255,7 @@ export function CodexPage({
             labelDefs={labelDefs}
             linkOf={linkOf}
           />
+          {selected && !selected.archived && arcPanel ? arcPanel(selected) : null}
         </aside>
       </div>
     </div>

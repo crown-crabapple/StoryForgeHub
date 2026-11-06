@@ -141,6 +141,11 @@ export function OverviewView({ bookId, overview, characters = [], message = null
                 <Link to={flow({ mode: 'list' })}>{plural(counts.archived_links, 'archived link', 'archived links')}</Link>
               </li>
             )}
+            {typeof counts.arcs === 'number' && (
+              <li>
+                <Link to={planHref(bookId, { view: 'arcs' })}>{plural(counts.arcs, 'character arc', 'character arcs')}</Link>
+              </li>
+            )}
             <li>
               <Link to={viewHref(bookId, 'threads')}>{plural(counts.threads, 'plot thread', 'plot threads')}</Link>
             </li>

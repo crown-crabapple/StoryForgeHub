@@ -160,6 +160,15 @@ export const KINDS = {
     required: [],
     fields: { premise: 'str', logline: 'str', theme_question: 'str', central_conflict: 'str', protagonist_goal: 'str', stakes: 'str', protagonist: 'str' },
   },
+  // Added 2026-11-06, Story Planner M3 (ADR 0003, additive within v1): the arc of one character in one book, under planning/arcs/. `character` is an entry id. Never story text or canon.
+  arc: {
+    prefix: 'note',
+    required: ['slug', 'character'],
+    fields: {
+      slug: 'slug', character: 'str', arc_type: ['positive', 'negative', 'flat', 'custom'],
+      want: 'str', need: 'str', false_belief: 'str', fear: 'str', wound: 'str', start_state: 'str', end_state: 'str', milestones: 'list',
+    },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],

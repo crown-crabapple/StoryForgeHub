@@ -112,7 +112,7 @@ A byte copy of `storyforge-v2-production-plan/spec/examples/salt-orchard-mini/`.
 
 ### `fixtures/valid/planner/`
 
-A copy of salt-orchard plus one causal link (`planning/links/`), one scene plan (`planning/scene-plans/`) and the story plan (`planning/story.md`), from ADR 0003 (Story Planner M1, M2). Same diagnostics as salt-orchard.
+A copy of salt-orchard plus one causal link (`planning/links/`), one scene plan (`planning/scene-plans/`), the story plan (`planning/story.md`) and one character arc with two milestones (`planning/arcs/`), from ADR 0003 (Story Planner M1, M2, M3). Same diagnostics as salt-orchard.
 
 ### `fixtures/invalid/<code>-<short-name>/`
 
@@ -168,6 +168,7 @@ The validator output (code, file, location) must equal this list exactly, as a s
 | `W316-duplicate-link` | two live links with the same `from`, `to` and `relation` (Story Planner M1) |
 | `W317-duplicate-scene-plan` | two live `planning/scene-plans/` files naming the same scene (Story Planner M1) |
 | `W318-story-plan-path` | a live `storyforge.story-plan/v1` file that is not `planning/story.md`; the rule flags every live story plan at any other path (a second plan can only be elsewhere), archived ones are ignored (Story Planner M2) |
+| `W319-duplicate-arc` | two live `planning/arcs/` files naming the same `character` (Story Planner M3); reported on the later file by name |
 | `W302-paid-no-payoff` | thread `status: paid`, `payoff: []` |
 | `W303-archived-target` | link to an entry under `archive/` |
 | `I401-unknown-field` | scene with `mood: cold` |

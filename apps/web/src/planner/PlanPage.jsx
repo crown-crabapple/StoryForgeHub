@@ -4,8 +4,8 @@ import { viewHref } from '../planning/model.js';
 import { PLAN_VIEWS, planUrl } from './model.js';
 
 /**
- * The page of the Plan tab: the heading, the Overview · Flow switch, plain links to the Board and Outline of the manuscript, and the view (`children`). Presentational.
- * @param {{ bookId: string, view: 'overview' | 'flow', children?: import('react').ReactNode }} props
+ * The page of the Plan tab: the heading, the Overview · Flow · Arcs switch, plain links to the Board and Outline of the manuscript, and the view (`children`). Presentational.
+ * @param {{ bookId: string, view: 'overview' | 'flow' | 'arcs', children?: import('react').ReactNode }} props
  */
 export function PlanPage({ bookId, view, children }) {
   const prefs = usePrefs(); // the Board follows its module
@@ -19,7 +19,7 @@ export function PlanPage({ bookId, view, children }) {
           <ul>
             {PLAN_VIEWS.map((v) => (
               <li key={v.key}>
-                <Link to={planUrl(bookId, { view: v.key, node: null, link: null, mode: null, filter: null })} className="view-tab" aria-current={v.key === view ? 'page' : undefined}>
+                <Link to={planUrl(bookId, { view: v.key, node: null, link: null, arc: null, mode: null, filter: null })} className="view-tab" aria-current={v.key === view ? 'page' : undefined}>
                   {v.label}
                 </Link>
               </li>

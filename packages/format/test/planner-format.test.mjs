@@ -130,3 +130,77 @@ test('W318: a story plan anywhere but planning/story.md; an archived one is igno
   assert.deepEqual(await added((root) => put(root, STORY, story())), []);
   assert.deepEqual(await added((root) => put(root, `archive/${STORY}`, story())), []);
 });
+
+// ---- M3: character arcs
+const MAREN = 'entry_01S5000000000000000000000G';
+const ARC = 'planning/arcs/maren-hollis.md';
+const arc = ({ id = 'note_01S50000000000000000000A01', character = MAREN, extra = '', milestones = `milestones:\n  - scene: ${KEY}\n    pressure: Time runs out.\n  - scene: ${FERRY}\n` } = {}) => `---
+schema: storyforge.arc/v1
+id: ${id}
+slug: maren-hollis
+character: ${character}
+arc_type: positive
+want: To learn what the key opens.
+${milestones}${extra}---
+
+Notes.
+`;
+const only = (list, file) => list.filter((k) => k.includes(`| ${file} |`));
+
+test('a well-formed arc adds no diagnostics, with or without milestones', async () => {
+  assert.deepEqual(await added((root) => put(root, ARC, arc())), []);
+  assert.deepEqual(await added((root) => put(root, ARC, arc({ milestones: '' }))), []);
+  assert.deepEqual(await added((root) => put(root, ARC, arc({ milestones: 'milestones: []\n' }))), []);
+});
+
+test('arc: unknown character is E301, a scene id is E302, a stray key is I401, a bad arc_type is E102', async () => {
+  assert.deepEqual(await added((root) => put(root, ARC, arc({ character: 'entry_01S5000000000000000000ZZZZ' }))), [`E301 | ${ARC} | character`]);
+  assert.deepEqual(await added((root) => put(root, ARC, arc({ character: KEY }))), [`E302 | ${ARC} | character`]);
+  assert.deepEqual(await added((root) => put(root, ARC, arc({ extra: 'mood: tense\n' }))), [`I401 | ${ARC} | mood`]);
+  assert.deepEqual(await added((root) => put(root, ARC, arc().replace('arc_type: positive', 'arc_type: sideways'))), [`E102 | ${ARC} | arc_type`]);
+});
+
+test('arc milestones: E102 at the item or its key, I401 for an unknown key', async () => {
+  const ms = (body) => ({ milestones: `milestones:\n${body}` });
+  assert.deepEqual(await added((root) => put(root, ARC, arc(ms('  - just text\n')))), [`E102 | ${ARC} | milestones[0]`]);
+  assert.deepEqual(await added((root) => put(root, ARC, arc(ms(`  - scene: ${KEY}\n  - pressure: no scene\n`)))), [`E102 | ${ARC} | milestones[1].scene`]);
+  assert.deepEqual(await added((root) => put(root, ARC, arc(ms(`  - scene: ${KEY}\n    cost: [a, b]\n`)))), [`E102 | ${ARC} | milestones[0].cost`]);
+  assert.deepEqual(await added((root) => put(root, ARC, arc(ms(`  - scene: ${KEY}\n    mood: tense\n`)))), [`I401 | ${ARC} | milestones[0].mood`]);
+});
+
+test('E301: a milestone whose scene is not in the book; W303 for an archived scene', async () => {
+  const ghost = 'scene_01S5000000000000000000ZZZZ';
+  assert.deepEqual(await added((root) => put(root, ARC, arc({ milestones: `milestones:\n  - scene: ${KEY}\n  - scene: ${ghost}\n` }))), [`E301 | ${ARC} | milestones[1].scene`]);
+  const old = 'scene_01S50000000000000000000ARC';
+  const got = await added((root) => {
+    put(root, ARC, arc({ milestones: `milestones:\n  - scene: ${old}\n` }));
+    put(root, 'archive/manuscript/act-01-one/ch-001-one/0090-old.md', `---\nschema: storyforge.scene/v1\nid: ${old}\ntitle: Old\nact: 1\nchapter: 1\nsequence: 90\nstatus: drafting\n---\nOld.\n`);
+  });
+  assert.deepEqual(only(got, ARC), [`W303 | ${ARC} | milestones[0].scene`]);
+});
+
+test('W319: a second live arc for one character, on the later file; an archived twin is ignored', async () => {
+  const two = 'planning/arcs/maren-hollis-2.md';
+  const second = arc({ id: 'note_01S50000000000000000000A02' }).replace('slug: maren-hollis', 'slug: maren-hollis-2');
+  assert.deepEqual(await added((root) => { put(root, ARC, arc()); put(root, two, second); }), [`W319 | ${two} | character`]);
+  assert.deepEqual(await added((root) => { put(root, ARC, arc()); put(root, `archive/${two}`, second); }), []);
+});
+
+test('arc: a series-shared character id resolves (tidewater, book low-tide), no E301', async () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-fmt-arc-'));
+  const dest = path.join(base, 'tidewater');
+  fs.cpSync(path.join(VALID, 'tidewater'), dest, { recursive: true });
+  const before = keys(await validate(dest));
+  put(dest, 'tidewater/low-tide/planning/arcs/ilse-hollis.md', `---
+schema: storyforge.arc/v1
+id: note_01W10000000000000000000A01
+slug: ilse-hollis
+character: entry_01W10000000000000000000003
+arc_type: flat
+milestones:
+  - scene: scene_01W1000000000000000000000B
+    choice: Opens the ledger.
+---
+`);
+  assert.deepEqual(keys(await validate(dest)).filter((k) => !before.includes(k)), []);
+});

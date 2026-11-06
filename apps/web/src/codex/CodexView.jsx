@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApi } from '../api.js';
 import { Link, useNavigate } from '../router.jsx';
+import { usePrefs } from '../prefs/PrefsContext.jsx';
+import { ArcPanel } from '../planner/ArcPanel.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
 import { send } from '../structure/helpers.js';
@@ -25,6 +27,7 @@ export function CodexView({ bookId, search = '', places = false }) {
   const { status } = useStatus();
   const navigate = useNavigate();
   const { track } = useWrites();
+  const prefs = usePrefs();
   const [bump, setBump] = useState(0);
   const version = `${bookVersion(status, bookId)}|${bump}`;
   const api = `/api/books/${enc(bookId)}`;
@@ -224,6 +227,7 @@ export function CodexView({ bookId, search = '', places = false }) {
         notes={notesData?.notes ?? null}
         lockedType={places ? 'location' : null}
         actions={actionsFor}
+        arcPanel={prefs.moduleOn('planner') ? (entry) => (entry.type === 'character' ? <ArcPanel key={entry.id} bookId={bookId} entry={entry} /> : null) : null}
         editor={
           editor ? (
             <EntryBodyEditor

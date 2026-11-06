@@ -1,10 +1,10 @@
-// FsRepository Story Planner reads (ADR 0003, M1): causal links (planning/links/<slug>.md), scene plan sidecars (planning/scene-plans/<scene>.md) and the
+// FsRepository Story Planner reads (ADR 0003, M1; character arcs M3): causal links (planning/links/<slug>.md), scene plan sidecars (planning/scene-plans/<scene>.md) and the
 // flow projection (scenes in reading order + live links), the book-level story plan (planning/story.md) and the plan overview. Reads come from the validated documents on every call (nothing is kept in the index), so a file edited
 // outside the app shows up on the next read. Writes are in fs-writes.mjs (through @storyforge/manuscript and the store).
 // No filesystem access here: file bytes (for sha256) come from the `readFileAt` function fs-repository.mjs passes in.
 import { createHash } from 'node:crypto';
-import { extractDocs, validate } from '@storyforge/format';
-import { PLAN_FIELDS, STORY_FIELDS, STORY_PATH } from '@storyforge/manuscript';
+import { extractDocs, extractShared, validate } from '@storyforge/format';
+import { ARC_TEXT_FIELDS, MILESTONE_FIELDS, PLAN_FIELDS, STORY_FIELDS, STORY_PATH } from '@storyforge/manuscript';
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const text = (v) => (typeof v === 'string' ? v : null);
@@ -25,6 +25,7 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
     const prefix = book.path ? `${book.path}/` : '';
     const docs = extractDocs(result, book.path);
     const scenes = new Map(book.order.map((/** @type {any} */ s) => [s.id, s]));
+    const shared = extractShared(result, book.path);
     /** @type {Map<string, any[]>} file -> diagnostics */
     const problems = new Map();
     for (const d of result.diagnostics) {
@@ -32,7 +33,7 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
       if (!problems.has(d.file)) problems.set(d.file, []);
       problems.get(d.file).push({ code: d.code, message: d.message });
     }
-    return { book, prefix, docs, scenes, problems };
+    return { book, prefix, docs, scenes, problems, shared };
   }
 
   /** sha256 of many book files at once (in small batches). @returns {Promise<Map<string, string|null>>} */
@@ -67,6 +68,47 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
 
   const linkDocs = (ctx, archived) => ctx.docs.filter((d) => d.kind === 'link' && d.archived === archived).sort(byRel);
   const planOf = (ctx, sceneId) => ctx.docs.filter((d) => d.kind === 'scene-plan' && !d.archived && d.fm.scene === sceneId).sort((a, b) => (stem(a.rel) < stem(b.rel) ? -1 : stem(a.rel) > stem(b.rel) ? 1 : 0))[0] ?? null;
+
+  const arcDocs = (ctx, archived) => ctx.docs.filter((d) => d.kind === 'arc' && d.archived === archived).sort(byRel);
+
+  /** The entry an arc's `character` id names: the book's own entries first, then the series' shared ones; live before archived. null when unresolved. */
+  function characterOf(ctx, id) {
+    if (typeof id !== 'string') return null;
+    const own = ctx.docs.filter((d) => d.kind === 'entry' && d.fm.id === id).map((d) => ({ d, shared: false }));
+    const series = (ctx.shared?.docs ?? []).filter((d) => d.kind === 'entry' && d.fm.id === id).map((d) => ({ d, shared: true }));
+    const hit = [...own, ...series].sort((a, b) => Number(a.d.archived) - Number(b.d.archived))[0];
+    return hit ? { id, slug: text(hit.d.fm.slug), name: text(hit.d.fm.name), shared: hit.shared } : null;
+  }
+
+  const arcOf = (ctx, d, sha256) => {
+    const character = characterOf(ctx, d.fm.character);
+    const milestones = (Array.isArray(d.fm.milestones) ? d.fm.milestones : []).map((m, index) => {
+      const item = m !== null && typeof m === 'object' && !Array.isArray(m) ? m : {};
+      const scene = text(item.scene);
+      const live = scene ? ctx.scenes.get(scene) : null;
+      return {
+        index,
+        scene,
+        scene_title: live ? (live.title ?? null) : null,
+        chapter: live && Number.isInteger(live.chapter) ? live.chapter : null,
+        sequence: live && Number.isInteger(live.sequence) ? live.sequence : null,
+        ...Object.fromEntries(MILESTONE_FIELDS.map((k) => [k, typeof item[k] === 'string' && item[k] !== '' ? item[k] : null])),
+      };
+    });
+    return {
+      id: text(d.fm.id),
+      slug: text(d.fm.slug) ?? stem(d.rel).split('/').pop(),
+      path: d.rel,
+      sha256,
+      character,
+      character_id: text(d.fm.character),
+      arc_type: text(d.fm.arc_type),
+      fields: Object.fromEntries(ARC_TEXT_FIELDS.map((k) => [k, typeof d.fm[k] === 'string' && d.fm[k] !== '' ? d.fm[k] : null])),
+      milestones,
+      body: tidy(d.body),
+      problems: ctx.problems.get(d.file) ?? [],
+    };
+  };
 
   /** Flow projection of a loaded book (see flowGraph). */
   async function flow(ctx) {
@@ -133,6 +175,39 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
     },
 
     /**
+     * GET /api/books/:b/arcs: { arcs, archived } (planning/arcs/*.md). Arc = { id, slug, path, sha256, character: { id, slug, name, shared } | null, character_id, arc_type,
+     * fields: { want, need, false_belief, fear, wound, start_state, end_state }, milestones: [{ index, scene, scene_title, chapter, sequence, pressure, choice, belief_before,
+     * belief_after, cost }], body, problems }. `character` is null when the id names no entry (the id stays in character_id); scene_title, chapter and sequence are null when the
+     * scene is not live. Live arcs are sorted by character name (unresolved last), then slug. Null when there is no such book.
+     */
+    async listArcs(bookId) {
+      const ctx = await load(bookId);
+      if (!ctx) return null;
+      const live = arcDocs(ctx, false);
+      const arch = arcDocs(ctx, true);
+      const sums = await hashes(ctx, [...live, ...arch].map((d) => d.rel));
+      const arcs = live.map((d) => arcOf(ctx, d, sums.get(d.rel) ?? null));
+      const key = (a) => (a.character?.name ?? '').toLowerCase();
+      arcs.sort((a, b) => Number(a.character === null) - Number(b.character === null) || (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+      return { arcs, archived: arch.map((d) => arcOf(ctx, d, sums.get(d.rel) ?? null)) };
+    },
+
+    /** GET /api/books/:b/arcs/:slug: the live arc, else the archived one, with `archived`. Null when there is no such book or arc. */
+    async getArc(bookId, slug) {
+      if (typeof slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
+      const ctx = await load(bookId);
+      if (!ctx) return null;
+      for (const archived of [false, true]) {
+        const rel = `${archived ? 'archive/' : ''}planning/arcs/${slug}.md`;
+        const d = arcDocs(ctx, archived).find((x) => x.rel === rel);
+        if (!d) continue;
+        const f = await readFileAt(`${ctx.prefix}${rel}`);
+        return { ...arcOf(ctx, d, f ? sha(f.bytes) : null), archived };
+      }
+      return null;
+    },
+
+    /**
      * GET /api/books/:b/flow: nodes are the live scenes in reading order, edges the live links. An edge with an end that is not a live scene is still returned, `broken: true`.
      * Null when there is no such book.
      */
@@ -171,6 +246,7 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
           broken_links: edges.filter((e) => e.broken).length,
           archived_links: linkDocs(ctx, true).length,
           threads: ctx.docs.filter((d) => d.kind === 'thread' && !d.archived).length,
+          arcs: arcDocs(ctx, false).length,
         },
         unlinked: unlinked.slice(0, 50).map((n) => ({ id: n.id, title: n.title })),
       };
