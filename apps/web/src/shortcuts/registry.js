@@ -65,6 +65,7 @@ export const WIDGET_KEYS = [
   { file: 'continuity/ContinuityPage.jsx', keys: 'Arrow Up, Arrow Down, Home, End', what: 'move between continuity findings' },
   { file: 'planning/MatrixView.jsx', keys: 'Arrow Up, Arrow Down, Escape', what: 'move inside the thread matrix menu' },
   { file: 'planning/OutlineView.jsx', keys: 'Enter, Escape', what: 'save or cancel the one-line summary you are editing in the Outline view' },
+  { file: 'planner/ScenePlanSection.jsx', keys: 'Enter, Escape', what: 'save or revert the plan field you are editing in the scene rail' },
   { file: 'timeline/TimelinePage.jsx', keys: 'Enter, Space', what: 'select an event card' },
   { file: 'prefs/PanelSeparator.jsx', keys: 'Arrow Left, Arrow Right, Home, End', what: 'resize a side panel (role=separator)' },
   { file: 'prefs/ShortcutSettings.jsx', keys: 'any chord', what: 'capture a key chord to rebind a command' },

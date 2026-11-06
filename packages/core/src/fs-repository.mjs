@@ -24,6 +24,7 @@ import { registerReceiptEngine } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
 import { createTimelineReads } from './fs-timeline.mjs';
 import { createCanvasMethods } from './fs-canvas.mjs';
+import { createPlannerMethods } from './fs-planner.mjs';
 import { countWords } from './word-count.mjs';
 
 /** @typedef {import('./repository.mjs').FileRepository} FileRepository */
@@ -1304,6 +1305,25 @@ export function createFsRepository(libraryRoot, options = {}) {
           return [];
         }
       },
+      async readFileAt(libRel) {
+        try {
+          const real = await realpath(abs(libRel));
+          const rel = path.relative(await realpath(root), real);
+          if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
+          const [bytes, st] = await Promise.all([readFile(real), stat(real)]);
+          return st.isFile() ? { bytes, mtimeMs: st.mtimeMs } : null;
+        } catch {
+          return null;
+        }
+      },
+    }),
+  );
+  // Story Planner M1: links, scene plans and the flow projection (planning/links, planning/scene-plans). Read from the validated documents on every call.
+  Object.assign(
+    repository,
+    createPlannerMethods({
+      root,
+      readValidate,
       async readFileAt(libRel) {
         try {
           const real = await realpath(abs(libRel));

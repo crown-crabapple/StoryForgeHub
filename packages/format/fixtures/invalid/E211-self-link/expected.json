@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E211",
+      "file": "planning/links/first-therefore-first.md",
+      "location": "to"
+    }
+  ]
+}

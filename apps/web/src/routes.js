@@ -3,6 +3,7 @@
 /** The project tabs, in order. `path` is appended to /books/:id. */
 export const PROJECT_TABS = [
   { key: 'manuscript', label: 'Manuscript', path: '' },
+  { key: 'plan', label: 'Plan', path: '/plan' },
   { key: 'codex', label: 'Codex', path: '/codex' },
   { key: 'timeline', label: 'Timeline', path: '/timeline' },
   { key: 'continuity', label: 'Continuity', path: '/continuity' },
@@ -18,7 +19,7 @@ export const MORE_TABS = [
 ];
 
 /** The module a project tab belongs to (M07-J04): with the module off the tab disappears. `insights` and `tasks` are J02's pages, gated by id so they follow once they exist. */
-const TAB_MODULES = { timeline: 'timeline', continuity: 'continuity', notes: 'research', canvas: 'board', insights: 'insights', tasks: 'tasks' };
+const TAB_MODULES = { plan: 'planner', timeline: 'timeline', continuity: 'continuity', notes: 'research', canvas: 'board', insights: 'insights', tasks: 'tasks' };
 /** @param {string} tab a PROJECT_TABS key @returns {string | null} */
 export const tabModule = (tab) => TAB_MODULES[tab] ?? null;
 

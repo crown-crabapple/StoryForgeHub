@@ -2,7 +2,7 @@
 // Pure: no filesystem. Customization never changes what a book means; these values only say how the app looks and which features are on.
 
 /** Feature modules (contract section 5). `insights` and `tasks` belong to J02; they are gated by id here. */
-export const MODULE_IDS = ['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'integrations'];
+export const MODULE_IDS = ['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'planner', 'integrations'];
 
 /** Keys where the project outranks the person: built-in < profile < library < book. */
 export const PROJECT_KEYS = ['modules', 'labels', 'export'];
@@ -12,7 +12,7 @@ export const APPEARANCE_KEYS = ['theme', 'typography', 'layout', 'shortcuts'];
 export const PREFERENCE_KEYS = [...PROJECT_KEYS, ...APPEARANCE_KEYS];
 
 /** The right-rail sections a layout can pin, in the default order. */
-export const INSPECTOR_SECTIONS = ['goal', 'scene', 'linked', 'notes', 'events', 'research', 'continuity', 'comments', 'suggestions', 'problems', 'revisions', 'receipts', 'book-problems'];
+export const INSPECTOR_SECTIONS = ['goal', 'scene', 'plan', 'linked', 'notes', 'events', 'research', 'continuity', 'comments', 'suggestions', 'problems', 'revisions', 'receipts', 'book-problems'];
 
 export const BUILTIN_THEMES = ['dark', 'light', 'high-contrast'];
 export const FONT_FAMILIES = ['serif', 'sans', 'mono', 'accessible'];
@@ -219,6 +219,7 @@ export function moduleOfRoute(route) {
   if (route.startsWith('thread-')) return 'threads';
   if (route.startsWith('note-') || route === 'attachment-upload') return 'research';
   if (route.startsWith('canvas-')) return 'board'; // M09-J01: canvases are visual planning, with the corkboard
+  if (route.startsWith('planner-')) return 'planner'; // Story Planner M1 (ADR 0003): causal links and scene plans
   return null;
 }
 

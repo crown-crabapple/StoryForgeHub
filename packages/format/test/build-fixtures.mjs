@@ -575,6 +575,46 @@ bookCase('W307-duplicate-exception', (b, ids) => {
   return [D('W307', p1, 'fingerprint'), D('W307', p2, 'fingerprint')];
 });
 
+// ---- Story Planner records (ADR 0003): E211, W316, W317
+const linkDoc = (ids, slug, from, to, relation = 'therefore') => ({
+  fm: { schema: 'storyforge.link/v1', id: ids('note'), slug, from, to, relation, created: '2026-11-05' },
+  body: 'Why this scene leads to the next.\n',
+});
+const planDoc = (ids, scene, o = {}) => ({
+  fm: { schema: 'storyforge.scene-plan/v1', id: ids('note'), scene, goal: 'Get the key.', characters: ['maren-hollis'], ...o },
+  body: 'Free planning notes.\n',
+});
+
+bookCase('E211-self-link', (b, ids) => {
+  const a = b.files.get(b.A).fm.id;
+  const p = 'planning/links/first-therefore-first.md';
+  b.files.set(p, linkDoc(ids, 'first-therefore-first', a, a));
+  return [D('E211', p, 'to')];
+});
+
+bookCase('W316-duplicate-link', (b, ids) => {
+  const from = b.files.get(b.A).fm.id;
+  const to = b.files.get(b.B).fm.id;
+  b.files.set('planning/links/first-therefore-second.md', linkDoc(ids, 'first-therefore-second', from, to));
+  const p2 = 'planning/links/first-therefore-second-2.md';
+  b.files.set(p2, linkDoc(ids, 'first-therefore-second-2', from, to));
+  return [D('W316', p2, 'relation')];
+});
+
+bookCase('W317-duplicate-scene-plan', (b, ids) => {
+  const scene = b.files.get(b.A).fm.id;
+  b.files.set('planning/scene-plans/first.md', planDoc(ids, scene));
+  const p2 = 'planning/scene-plans/first-2.md';
+  b.files.set(p2, planDoc(ids, scene));
+  return [D('W317', p2, 'scene')];
+});
+
+bookCase('W318-story-plan-path', (b, ids) => {
+  const p = 'planning/story-notes.md';
+  b.files.set(p, { fm: { schema: 'storyforge.story-plan/v1', id: ids('note'), premise: 'A harbour key opens the wrong door.' }, body: 'Free notes.\n' });
+  return [D('W318', p, 'schema')];
+});
+
 // ---- suggestion documents (M05-J06)
 const suggestionFor = (ids, targetId, targetPath, baseBytes, proposed) =>
   buildSuggestion({
@@ -1218,6 +1258,50 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
   put(receiptPath(at1, `rcpt_${ulid('RC', 2)}`), r1.text);
   put(objectPath(sha256Hex(v0)), v0);
   put(objectPath(sha256Hex(v1)), v1);
+  fs.writeFileSync(path.join(dir, 'expected.json'), json(expected));
+}
+{
+  // salt-orchard plus the two Story Planner kinds (ADR 0003): one link and one scene plan, the ADR examples; no new diagnostic
+  const { files, expected, ids } = buildSaltOrchard();
+  const KEY = 'scene_01S50000000000000000000003';
+  const FERRY = 'scene_01S50000000000000000000005';
+  files.set('planning/links/key-therefore-ferry.md', {
+    fm: { schema: 'storyforge.link/v1', id: ids('note'), slug: 'key-therefore-ferry', from: KEY, to: FERRY, relation: 'therefore', created: '2026-11-05' },
+    body: 'The key failing forces Maren onto the ferry.\n',
+  });
+  files.set('planning/scene-plans/the-key.md', {
+    fm: {
+      schema: 'storyforge.scene-plan/v1', id: ids('note'), scene: KEY,
+      goal: 'Prove the harbour key opens the sea gate.',
+      opposition: 'The harbourmaster wants the key returned before dusk.',
+      conflict: 'Maren must choose between the gate and her apprenticeship.',
+      turn: 'The key opens a different door.',
+      outcome: 'Maren is locked out of the guild.',
+      consequence: 'She has to ask the ferryman for passage.',
+      stakes: 'Her place in the town.',
+      emotional_start: 'hopeful',
+      emotional_end: 'cornered',
+      purpose: 'Close off the safe path.',
+      characters: ['maren-hollis', 'pell'],
+    },
+    body: 'Free planning notes for this scene.\n',
+  });
+  files.set('planning/story.md', {
+    fm: {
+      schema: 'storyforge.story-plan/v1', id: ids('note'),
+      premise: 'An apprentice finds that the harbour key opens the wrong door.',
+      logline: 'Maren must choose between the sea gate and her place in the guild.',
+      theme_question: 'What does belonging cost?',
+      central_conflict: 'The guild wants the key back; Maren wants to know what it opens.',
+      protagonist_goal: 'Learn what the key opens.',
+      stakes: 'Her place in the town.',
+      protagonist: 'maren-hollis',
+    },
+    body: 'Free story notes.\n',
+  });
+  checkIds(files);
+  const dir = path.join(FIXTURES, 'valid', 'planner');
+  writeTree(dir, files);
   fs.writeFileSync(path.join(dir, 'expected.json'), json(expected));
 }
 console.log('fixtures written');

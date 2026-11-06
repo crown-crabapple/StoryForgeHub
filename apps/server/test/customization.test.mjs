@@ -324,7 +324,7 @@ describe('modules', () => {
   test('every module id is answered, and the ones without write routes of their own (board, insights, tasks) are gated by id for their pages', async () => {
     const app = await start({ library: await freshBook(), home: await makeHome() });
     const p = (await app.get('/api/preferences')).json;
-    assert.deepEqual(Object.keys(p.modules).sort(), ['ai', 'board', 'continuity', 'insights', 'integrations', 'receipts', 'research', 'suggestions', 'tasks', 'threads', 'timeline']);
+    assert.deepEqual(Object.keys(p.modules).sort(), ['ai', 'board', 'continuity', 'insights', 'integrations', 'planner', 'receipts', 'research', 'suggestions', 'tasks', 'threads', 'timeline']);
     assert.deepEqual(p.moduleIds.slice().sort(), Object.keys(p.modules).sort());
     assert.equal((await app.put('/api/profile', { modules: { board: false, insights: false, tasks: false } })).status, 200);
     const off = (await app.get('/api/preferences')).json.modules;

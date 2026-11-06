@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W316",
+      "file": "planning/links/first-therefore-second-2.md",
+      "location": "relation"
+    }
+  ]
+}

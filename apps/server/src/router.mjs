@@ -263,6 +263,32 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const canvas = await repository.getCanvas(b, d);
       return canvas ? { status: 200, body: canvas } : NOT_FOUND;
     }
+    // Story Planner M1 (ADR 0003 D05): causal links, scene plans and the flow projection (reads are not module-gated, like every read)
+    if (c === 'links' && d === undefined) {
+      const list = await repository.listLinks(b);
+      return list ? { status: 200, body: list } : NOT_FOUND;
+    }
+    if (c === 'links' && d !== undefined && e === undefined) {
+      const link = await repository.getLink(b, d);
+      return link ? { status: 200, body: link } : NOT_FOUND;
+    }
+    if (c === 'scene-plans' && d !== undefined && e === undefined) {
+      const plan = await repository.getScenePlan(b, d);
+      return plan ? { status: 200, body: plan } : NOT_FOUND;
+    }
+    if (c === 'flow' && d === undefined) {
+      const flow = await repository.flowGraph(b);
+      return flow ? { status: 200, body: flow } : NOT_FOUND;
+    }
+    // Story Planner M2: the book's story plan (planning/story.md) and the Plan overview (story plan + counts)
+    if (c === 'story-plan' && d === undefined) {
+      const plan = await repository.getStoryPlan(b);
+      return plan ? { status: 200, body: plan } : NOT_FOUND;
+    }
+    if (c === 'plan-overview' && d === undefined) {
+      const overview = await repository.planOverview(b);
+      return overview ? { status: 200, body: overview } : NOT_FOUND;
+    }
     // M05-J04 status; M08-J03: the cover generator's state, a draft picture, and a streamed reply in progress
     if (c === 'ai' && ['status', 'cover', 'cover-draft', 'stream'].includes(d) && e === undefined) return handleAiRead(repository, state, d, b, params);
     if (c === 'graph' && d === undefined) {
@@ -608,6 +634,13 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'PUT' && c === 'canvases' && d !== undefined && e === undefined) return { route: 'canvas-save', bookId: b, slug: d };
   if (method === 'POST' && c === 'canvases' && d !== undefined && e === 'archive') return { route: 'canvas-archive', bookId: b, slug: d };
   if (method === 'POST' && c === 'canvases' && d !== undefined && e === 'restore') return { route: 'canvas-restore', bookId: b, slug: d };
+  // Story Planner M1 (ADR 0003 D05): causal links and scene plans, flat under the book
+  if (method === 'POST' && c === 'links' && d === undefined) return { route: 'planner-link-create', bookId: b };
+  if (method === 'POST' && c === 'links' && d !== undefined && e === undefined) return { route: 'planner-link-update', bookId: b, slug: d };
+  if (method === 'POST' && c === 'links' && d !== undefined && e === 'archive') return { route: 'planner-link-archive', bookId: b, slug: d };
+  if (method === 'POST' && c === 'links' && d !== undefined && e === 'restore') return { route: 'planner-link-restore', bookId: b, slug: d };
+  if (method === 'POST' && c === 'scene-plans' && d !== undefined && e === undefined) return { route: 'planner-scene-plan-save', bookId: b, sceneId: d };
+  if (method === 'POST' && c === 'story-plan' && d === undefined) return { route: 'planner-story-plan-save', bookId: b };
   return null;
 }
 
@@ -621,6 +654,15 @@ function respond(r, okStatus, okBody) {
   const detail = { code: r.code, ...(r.field ? { field: r.field } : {}), ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
   const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE', 'SLUG_TAKEN', 'TYPE_EXISTS', 'CITE_KEY_TAKEN', 'TEMPLATE_EXISTS'].includes(r.code);
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
+}
+
+/**
+ * Like respond(), for the Story Planner writes: a duplicate link is 409 with the existing link's slug, and the reference refusals are 400 with their codes.
+ * @param {any} r @param {number} okStatus
+ */
+function respondPlanner(r, okStatus) {
+  if (!r.ok && r.code === 'REFUSED_DUPLICATE_LINK') return { status: 409, body: { error: 'conflict', code: r.code, message: r.message, existing: r.existing ?? null } };
+  return respond(r, okStatus, structureBody);
 }
 
 /** Like respond(), with the continuity refusals named by their codes: 404 FINDING_NOT_FOUND, 409 ALREADY_EXCEPTED, 400 RATIONALE_REQUIRED. */
@@ -1100,6 +1142,42 @@ async function handleStructure(repository, match, body) {
       const call = match.route === 'canvas-archive' ? repository.archiveCanvas : repository.restoreCanvas;
       const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
+    }
+    // ---- Story Planner M1 (ADR 0003): the only files these routes write are planning/links/<slug>.md, planning/scene-plans/<slug>.md and planning/story.md (archive/ when archived)
+    case 'planner-link-create':
+    case 'planner-link-update': {
+      const creating = match.route === 'planner-link-create';
+      for (const k of ['from', 'to', 'relation', 'rationale']) if (body[k] !== undefined && typeof body[k] !== 'string') return badRequest(`${k} must be a string`);
+      if (creating && (typeof body.from !== 'string' || typeof body.to !== 'string' || typeof body.relation !== 'string')) return badRequest('expected { from: sceneId, to: sceneId, relation: string, rationale?: string }');
+      if (!creating && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      const args = { from: body.from, to: body.to, relation: body.relation, rationale: body.rationale, dryRun };
+      const r = creating
+        ? await repository.createLink(bookId, args)
+        : await repository.updateLink(bookId, /** @type {string} */ (match.slug), { ...args, baseSha256: body.base_sha256 });
+      return respondPlanner(r, creating ? created : 200);
+    }
+    case 'planner-link-archive':
+    case 'planner-link-restore': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const call = match.route === 'planner-link-archive' ? repository.archiveLink : repository.restoreLink;
+      const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-scene-plan-save': {
+      if (body.fields !== undefined && !isObject(body.fields)) return badRequest('fields must be an object');
+      for (const [k, v] of Object.entries(body.fields ?? {})) if (v !== null && typeof v !== 'string') return badRequest(`fields.${k} must be a string or null`);
+      if (body.characters !== undefined && !(Array.isArray(body.characters) && body.characters.every((s) => typeof s === 'string'))) return badRequest('characters must be a list of entry slugs');
+      if (body.base_sha256 !== undefined && body.base_sha256 !== null && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string or null');
+      const r = await repository.saveScenePlan(bookId, /** @type {string} */ (match.sceneId), { fields: body.fields ?? {}, characters: body.characters, baseSha256: body.base_sha256 ?? null, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-story-plan-save': {
+      if (body.fields !== undefined && !isObject(body.fields)) return badRequest('fields must be an object');
+      for (const [k, v] of Object.entries(body.fields ?? {})) if (v !== null && typeof v !== 'string') return badRequest(`fields.${k} must be a string or null`);
+      if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string');
+      if (body.base_sha256 !== undefined && body.base_sha256 !== null && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string or null');
+      const r = await repository.saveStoryPlan(bookId, { fields: body.fields ?? {}, body: body.body, baseSha256: body.base_sha256 ?? null, dryRun });
+      return respondPlanner(r, 200);
     }
     // ---- M05-J02 continuity exceptions: the only files these routes write are planning/continuity/<slug>.md (archive/ when removed)
     case 'continuity-exception-create': {

@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W318",
+      "file": "planning/story-notes.md",
+      "location": "schema"
+    }
+  ]
+}

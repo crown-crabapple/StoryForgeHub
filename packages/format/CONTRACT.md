@@ -110,6 +110,10 @@ Required by TEST-STRATEGY.md:
 
 A byte copy of `storyforge-v2-production-plan/spec/examples/salt-orchard-mini/`. Expected: exactly `I402`, `W201`, `W202`, `W301` as the blind reader found (see `evidence/M00-J02/blind-reader-output.txt`), and the same 7-scene order.
 
+### `fixtures/valid/planner/`
+
+A copy of salt-orchard plus one causal link (`planning/links/`), one scene plan (`planning/scene-plans/`) and the story plan (`planning/story.md`), from ADR 0003 (Story Planner M1, M2). Same diagnostics as salt-orchard.
+
 ### `fixtures/invalid/<code>-<short-name>/`
 
 Each is a **minimal valid book plus exactly one defect** and an `expected.json`:
@@ -160,6 +164,10 @@ The validator output (code, file, location) must equal this list exactly, as a s
 | `W315-plugin-api-newer` | a `_plugins/<id>/plugin.md` manifest whose `api` is greater than the API major this StoryForge serves (M08-J02) |
 | `E102-plugin-permission` | a plugin manifest with an unknown permission, at `permissions[i]` (M08-J02) |
 | `E102-suggestion-hunk` | a suggestion whose hunk `lines` disagrees with its diff block (M05-J06) |
+| `E211-self-link` | a `planning/links/` link whose `from` and `to` are the same scene (Story Planner M1) |
+| `W316-duplicate-link` | two live links with the same `from`, `to` and `relation` (Story Planner M1) |
+| `W317-duplicate-scene-plan` | two live `planning/scene-plans/` files naming the same scene (Story Planner M1) |
+| `W318-story-plan-path` | a live `storyforge.story-plan/v1` file that is not `planning/story.md`; the rule flags every live story plan at any other path (a second plan can only be elsewhere), archived ones are ignored (Story Planner M2) |
 | `W302-paid-no-payoff` | thread `status: paid`, `payoff: []` |
 | `W303-archived-target` | link to an entry under `archive/` |
 | `I401-unknown-field` | scene with `mood: cold` |

@@ -116,6 +116,72 @@ A canvas is a JSON Canvas file, `planning/canvases/<slug>.canvas`. A canvas slug
 
 `base_sha256` (64 hex characters) is required to save: it is the `sha256` you read. Status codes: `409 { error: "conflict", code: "CONFLICT", current: { sha256, canvas } }` when the file changed since (read `current`, merge, save again); `409 REFUSED_PATH_TAKEN` when a create or restore would overwrite another canvas; `400 REFUSED_BAD_CANVAS` with a `message` when the canvas breaks the format rules (the file is not touched); `400 BAD_ARGS` for a malformed body; `404` for no such canvas; `403 PLUGIN_SCOPE` for a token without `canvas`.
 
+## Story Planner routes (the app's own, not API v1)
+
+These routes store causal links between scenes, per-scene planning fields and the book's story plan (see [format.md](format.md), "Story Planner files"). They sit under `/api/books/:b/`, are **not part of plugin API v1**, and a bearer token is refused (`403 PLUGIN_SCOPE`). They are for the StoryForge app itself.
+
+A link is named by its `slug`. A scene plan is named by its scene's id. The story plan is one file per book and has no name in the route. Reads are not gated by a module.
+
+### Reads
+
+| Route | Answer |
+|---|---|
+| `GET /api/books/:b/links` | `{ links: [Link], archived: [Link] }` |
+| `GET /api/books/:b/links/:slug` | `Link` plus `archived` (true when only the archived file exists); `404` if neither exists |
+| `GET /api/books/:b/scene-plans/:sceneId` | `{ scene_id, path, sha256, fields, characters, body }`; `404` for an unknown book or a scene that is not live |
+| `GET /api/books/:b/flow` | `{ nodes, edges }`, below |
+| `GET /api/books/:b/story-plan` | `{ path, sha256, fields, body }`; `404` for an unknown book |
+| `GET /api/books/:b/plan-overview` | `{ story, counts, unlinked }`; `404` for an unknown book |
+
+`Link` is `{ id, slug, path, from, to, relation, rationale, created, sha256, from_title, to_title, problems: [{ code, message }] }`. `rationale` is the body. `from_title` and `to_title` are `null` when the scene is not live. `problems` are the diagnostics on that file.
+
+A scene plan's `fields` has all ten keys (`goal`, `opposition`, `conflict`, `turn`, `outcome`, `consequence`, `stakes`, `emotional_start`, `emotional_end`, `purpose`), each a string or `null`. A scene with no plan answers `path: null`, `sha256: null`, all fields `null`, `characters: []`, `body: ""`.
+
+`flow`: `nodes` are the live scenes in reading order, `{ id, kind: "scene", title, summary, status, pov, act, chapter, sequence, plan }` (`plan` is true when the scene has a plan). `edges` are the live links, `{ id, slug, from, to, relation, rationale, sha256, broken }`; `broken` is true when an end is not a live scene.
+
+A story plan's `fields` has all seven keys (`premise`, `logline`, `theme_question`, `central_conflict`, `protagonist_goal`, `stakes`, `protagonist`), each a string or `null`. A book with no story plan answers `path: null`, `sha256: null`, all fields `null`, `body: ""`. Only a live file at `planning/story.md` counts.
+
+`plan-overview`: `story` is the same object as `story-plan`. `counts` is `{ scenes, planned_scenes, links, linked_scenes, unlinked_scenes, broken_links, archived_links, threads }`: `scenes` is the number of flow nodes, `planned_scenes` those with a plan, `links` the live links, `linked_scenes` the scenes at an end of a live link, `unlinked_scenes` the rest, `broken_links` the live links with an end that is not a live scene, `archived_links` the archived links, `threads` the live plot threads. `unlinked` is `[{ id, title }]`: the scenes at no end of a live link, in reading order, at most 50.
+
+### Writes
+
+All are `POST` with a JSON body. The module is `planner`: with it off, every write is `403 MODULE_OFF` (`module: "planner"`) and nothing is written. Every write accepts `"dryRun": true` and then returns `{ ok: true, dryRun: true, changes, … }` without writing. A real write answers with `opId` and `undo`. `base_sha256` is the `sha256` you read; if the file has changed, the answer is `409 { error: "conflict", current: { sha256, text } }` (the file as it is now) and nothing is written.
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /api/books/:b/links` | `{ from, to, relation, rationale? }` (scene ids; `relation` as in [format.md](format.md)) | `201`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/links/:slug` | `{ base_sha256, relation?, from?, to?, rationale? }`, at least one of the four | `200`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/links/:slug/archive` | optional `{ base_sha256 }` | `200`, with `slug`, `path` (now under `archive/`) |
+| `POST /api/books/:b/links/:slug/restore` | optional `{ base_sha256 }` | `200`, with `slug`, `path` |
+| `POST /api/books/:b/scene-plans/:sceneId` | `{ fields?, characters?, base_sha256? }` | `200`, with `id`, `scene_id`, `path`, `created` |
+| `POST /api/books/:b/story-plan` | `{ fields?, body?, base_sha256? }` | `200`, with `id`, `path`, `created` |
+
+- A dry run answers `200` where a real write would answer `201`.
+- `rationale` is up to 20,000 characters. The file name and slug of a link never change on update. The body is replaced only when `rationale` is sent.
+- `fields` holds any of the ten planning keys. A string sets the key; `null` or `""` removes it. A value is one line, up to 2,000 characters, without control characters. `characters` is a list of up to 100 entry slugs; `[]` removes the key.
+- A scene with no plan: send no `base_sha256` (or `null`); the file `planning/scene-plans/<scene-slug>.md` is created, and `created` is `true`. If every value is empty nothing is created (`REFUSED_BAD_ARGS`). A scene with a plan: `base_sha256` is required.
+- `POST .../story-plan`: `fields` holds any of the seven story keys, with the same rules as a scene plan's (a string sets, `null` or `""` removes, one line, up to 2,000 characters). `protagonist` must be the slug of a live entry. `body` is up to 20,000 characters, may have several lines, and replaces the body only when sent. At least one of `fields` and `body` is needed.
+- No `planning/story.md` yet: send no `base_sha256` (or `null`); the file is created, and `created` is `true`. If every value is empty nothing is created (`REFUSED_BAD_ARGS`). A story plan exists: `base_sha256` is required. If `planning/story.md` exists but is not a story plan, the write is `REFUSED_PATH_TAKEN`.
+- Scene files, `book.md` and the story text are never read for writing or changed.
+- Undo: `POST /api/books/:b/ops/:opId/restore`. Undo may remove a link, scene plan or story plan that the write created.
+
+Errors:
+
+| Status | Code | When |
+|---|---|---|
+| `400` | `BAD_ARGS` | The body is malformed (wrong type, a `body` that is not a string, missing `from` / `to` / `relation`, missing `base_sha256` on an update). |
+| `400` | `REFUSED_BAD_ARGS` | A value is out of range (unknown `relation`, unknown planning key, over-long text or body, nothing to change, `base_sha256` where none is allowed or missing where required). |
+| `400` | `REFUSED_UNKNOWN_SCENE` | `from`, `to` or the scene is not a live scene (`field` says which). |
+| `400` | `REFUSED_UNKNOWN_ENTRY` | A `characters` slug, or the story plan's `protagonist`, is not an entry (`entry` names it). |
+| `400` | `REFUSED_SELF_LINK` | `from` and `to` are the same scene. |
+| `404` | | No such book, link, or live scene. |
+| `409` | `REFUSED_DUPLICATE_LINK` | A live link already has the same `from`, `to` and `relation` (also on restore). The answer carries `existing: { slug }`. |
+| `409` | `REFUSED_PATH_TAKEN` | A restore would overwrite a live link file, or `planning/story.md` exists but is not a story plan. |
+| `409` | `CONFLICT` | The file changed since `base_sha256`. |
+| `403` | `MODULE_OFF` | The `planner` module is off. |
+
+A write that would add a validation error to the book is refused and nothing is written.
+
 ## Webhooks
 
 Webhooks send events *out*. The author creates them in **Settings, then Webhooks**; a plugin with the `events` permission can create its own (for its own URL only).

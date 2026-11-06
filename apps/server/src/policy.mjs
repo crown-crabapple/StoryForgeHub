@@ -37,6 +37,8 @@ export const WRITE_CLASSES = Object.freeze({
   'entry-move-to-series': 'write', 'entry-copy-to-book': 'write', 'labels-set': 'write', 'template-save': 'admin',
   // M09-J01 canvases (planning/canvases/*.canvas; planning material, never prose)
   'canvas-create': 'write', 'canvas-save': 'write', 'canvas-archive': 'write', 'canvas-restore': 'write',
+  // Story Planner M1 (ADR 0003): planning/links/*.md and planning/scene-plans/*.md only; never a scene file
+  'planner-link-create': 'write', 'planner-link-update': 'write', 'planner-link-archive': 'write', 'planner-link-restore': 'write', 'planner-scene-plan-save': 'write', 'planner-story-plan-save': 'write',
   // M07-J02 goals and revision tasks (book files; never prose)
   'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
   // M07-J04 profiles: per-machine appearance settings of the server process, so in shared mode only the owner changes them

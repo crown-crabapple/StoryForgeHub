@@ -26,6 +26,10 @@ const CONTRACT_CASES = [
   'E301-shared-private-link', 'E302-cross-book-reference', 'E208-shared-duplicate-slug', 'W303-cross-book-archived',
   // M07-J02: goals, sessions and revision tasks
   'W313-task-target', 'E102-goal-shape', 'E102-task-shape', 'E301-goal-scope', 'W201-task-folder',
+  // Story Planner M1: links and scene plans
+  'E211-self-link', 'W316-duplicate-link', 'W317-duplicate-scene-plan',
+  // Story Planner M2: the story plan
+  'W318-story-plan-path',
 ];
 
 test('invalid fixture set matches the contract case table', () => {

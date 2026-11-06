@@ -17,7 +17,7 @@ my-library/                  any folder; holds one or more books
           0010-arrival.md    one scene per file
           0020-the-key.md
     codex/                   characters, locations, factions, objects, lore (one file each)
-    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas)
+    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/ and scene-plans/ hold Story Planner files, and story.md is the story plan
     research/                research notes and sources
     assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
     activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
@@ -51,11 +51,97 @@ Scenes marked as an alternate version of another scene (`variant_of`) are kept b
 | --- | --- |
 | Scenes in `manuscript/` | `research/` notes (canon only if a note says `canon: true`) |
 | `codex/` entries | `suggestions/` until you accept them |
-| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards |
+| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/` and `planning/story.md` |
 | `book.md`, `act.md`, `chapter.md` | `archive/` (left out of order, counts and export) |
 | `assets/` the book uses | `legacy/` (see below) |
 
 Notes in a scene written as `<!-- note: ... -->` stay in the file, show in the notes rail, and are never exported.
+
+## Story Planner files
+
+Three kinds of file hold planning data. None is story text or canon, and none changes a scene file.
+
+### A causal link: `planning/links/key-therefore-ferry.md`
+
+```yaml
+---
+schema: storyforge.link/v1
+id: note_01S50000000000000000000013
+slug: key-therefore-ferry
+from: scene_01S50000000000000000000003
+to: scene_01S50000000000000000000005
+relation: therefore
+created: 2026-11-05
+---
+The key failing forces Maren onto the ferry.
+```
+
+- One link per file. The body is the rationale.
+- Required: `slug`, `from`, `to`, `relation`. `created` is optional.
+- `relation` is one of `therefore`, `but`, `enables`, `reveals`, `motivates`, `prevents`, `foreshadows`, `pays_off`, `parallel`, `other`.
+- `from` and `to` are scene ids. A missing target is `E301`. A target that is archived is `W303`.
+- A link from a scene to itself is `E211` (at `to`).
+- Two live links with the same `from`, `to` and `relation` give `W316` on the second (at `relation`). Archived links are not counted.
+- StoryForge names the file after the two scene slugs and the relation (up to 60 characters; `-2`, `-3` … when the name is taken).
+- Archive moves the file to `archive/planning/links/`. Restore moves it back.
+
+### A scene plan: `planning/scene-plans/the-key.md`
+
+```yaml
+---
+schema: storyforge.scene-plan/v1
+id: note_01S50000000000000000000014
+scene: scene_01S50000000000000000000003
+goal: Prove the harbour key opens the sea gate.
+opposition: The harbourmaster wants the key returned before dusk.
+conflict: Maren must choose between the gate and her apprenticeship.
+turn: The key opens a different door.
+outcome: Maren is locked out of the guild.
+consequence: She has to ask the ferryman for passage.
+stakes: Her place in the town.
+emotional_start: hopeful
+emotional_end: cornered
+purpose: Close off the safe path.
+characters: [maren-hollis, pell]
+---
+Free planning notes for this scene.
+```
+
+- One file per planned scene. `scene` (the scene's id) is the key; the file name is only a label and is not changed if the scene is renamed. A scene with no plan has no file.
+- Required: `scene`. Optional: `goal`, `opposition`, `conflict`, `turn`, `outcome`, `consequence`, `stakes`, `emotional_start`, `emotional_end`, `purpose` (each a one-line string; StoryForge writes at most 2,000 characters) and `characters` (a list of entry slugs).
+- `scene` and each `characters` slug must resolve: a miss is `E301`.
+- Two live plans for the same scene give `W317` on the second (at `scene`). Archived plans are not counted.
+
+### The story plan: `planning/story.md`
+
+```yaml
+---
+schema: storyforge.story-plan/v1
+id: note_01S50000000000000000000015
+premise: An apprentice finds that the harbour key opens the wrong door.
+logline: Maren must choose between the sea gate and her place in the guild.
+theme_question: What does belonging cost?
+central_conflict: The guild wants the key back; Maren wants to know what it opens.
+protagonist_goal: Learn what the key opens.
+stakes: Her place in the town.
+protagonist: maren-hollis
+---
+Free story notes.
+```
+
+- One story plan per book, and it must be at `planning/story.md`. The body is free notes.
+- Nothing is required. Optional: `premise`, `logline`, `theme_question`, `central_conflict`, `protagonist_goal`, `stakes` (each a one-line string; StoryForge writes at most 2,000 characters) and `protagonist` (an entry slug).
+- `protagonist` must resolve: a miss is `E301`.
+- A live story plan at any other path gives `W318` (at `schema`), on every such file. Archived story plans are not counted.
+
+### Diagnostics
+
+| Code | Severity | Meaning |
+| --- | --- | --- |
+| `E211` | error | A link's `from` and `to` are the same scene |
+| `W316` | warning | Two live links have the same `from`, `to` and `relation` |
+| `W317` | warning | Two live scene plans name the same scene |
+| `W318` | warning | A live story plan is not at `planning/story.md` |
 
 ## `.storyforge/` is disposable
 

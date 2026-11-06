@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W317",
+      "file": "planning/scene-plans/first-2.md",
+      "location": "scene"
+    }
+  ]
+}

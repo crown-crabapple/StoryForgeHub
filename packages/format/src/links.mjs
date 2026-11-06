@@ -37,6 +37,15 @@ export const REFERENCES = {
     { field: 'locations', kinds: ENTRY, list: true },
   ],
   research: [{ field: 'links', kinds: null, list: true }],
+  link: [
+    { field: 'from', kinds: ['scene'], list: false },
+    { field: 'to', kinds: ['scene'], list: false },
+  ],
+  'scene-plan': [
+    { field: 'scene', kinds: ['scene'], list: false },
+    { field: 'characters', kinds: ENTRY, list: true },
+  ],
+  'story-plan': [{ field: 'protagonist', kinds: ENTRY, list: false }],
 };
 
 /** Event `state` links (spec 6.2): which entry `type` each slug / value must have, per `event` word. */

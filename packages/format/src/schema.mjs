@@ -135,6 +135,31 @@ export const KINDS = {
     required: ['slug', 'title', 'status'],
     fields: { slug: 'slug', title: 'str', status: ['open', 'doing', 'done', 'dropped'], source: 'map', targets: 'list', created: 'any' },
   },
+  // Added 2026-11-05, Story Planner M1 (ADR 0003, additive within v1): one causal link between two scenes, under planning/links/. Never story text or canon.
+  link: {
+    prefix: 'note',
+    required: ['slug', 'from', 'to', 'relation'],
+    fields: {
+      slug: 'slug', from: 'str', to: 'str',
+      relation: ['therefore', 'but', 'enables', 'reveals', 'motivates', 'prevents', 'foreshadows', 'pays_off', 'parallel', 'other'],
+      created: 'any',
+    },
+  },
+  // Added 2026-11-05, Story Planner M1 (ADR 0003, additive within v1): the planning sidecar of one scene, under planning/scene-plans/. Never story text or canon.
+  'scene-plan': {
+    prefix: 'note',
+    required: ['scene'],
+    fields: {
+      scene: 'str', goal: 'str', opposition: 'str', conflict: 'str', turn: 'str', outcome: 'str', consequence: 'str', stakes: 'str',
+      emotional_start: 'str', emotional_end: 'str', purpose: 'str', characters: 'list',
+    },
+  },
+  // Added 2026-11-05, Story Planner M2 (ADR 0003, additive within v1): the book-level story plan, one file at planning/story.md. Never story text or canon.
+  'story-plan': {
+    prefix: 'note',
+    required: [],
+    fields: { premise: 'str', logline: 'str', theme_question: 'str', central_conflict: 'str', protagonist_goal: 'str', stakes: 'str', protagonist: 'str' },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],
@@ -533,6 +558,8 @@ export function checkFields(doc, ctx, add) {
     }
     if (typeof doc.body === 'string' && doc.body.trim() === '') add('E102', file, 'body', 'the exception needs a written rationale');
   }
+
+  if (doc.kind === 'link' && typeof fm.from === 'string' && fm.from === fm.to) add('E211', file, 'to', 'a link cannot point from a scene to itself');
 
   if (doc.kind === 'suggestion') checkSuggestion(doc, add);
   if (doc.kind === 'comment') checkComment(doc, add);

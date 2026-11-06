@@ -33,7 +33,7 @@ const { root: TOKENS } = parseTokens();
 
 // ---------------------------------------------------------------- fixtures: what GET /api/preferences answers
 
-const ALL_ON = Object.fromEntries(['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'integrations'].map((id) => [id, { on: true, source: 'builtin', locked: false }]));
+const ALL_ON = Object.fromEntries(['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'planner', 'integrations'].map((id) => [id, { on: true, source: 'builtin', locked: false }]));
 const DEFAULTS = { theme: 'dark', typography: { family: 'serif', size: 18, lineHeight: 1.7, paragraphSpacing: 0, letterSpacing: 0, measure: 72 }, layout: { name: 'Writing' }, shortcuts: {}, modules: {}, labels: {}, export: {} };
 /** A preferences answer for `effective` overrides, modules off, and the profile's own parts. */
 function prefs({ effective = {}, off = [], profile = {}, locked = [] } = {}) {
@@ -217,9 +217,11 @@ describe('modules', () => {
   const tabs = (markup) => [...walk(parse(markup))].filter((n) => n.attrs.class === 'project-tab').map((n) => n.attrs.href.replace('/books/book_1', '') || '/');
   test('a tab of a module that is off disappears from the project navigation', () => {
     const on = html(withPrefs(prefs(), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
-    assert.deepEqual(tabs(on), ['/', '/codex', '/timeline', '/continuity', '/places', '/notes', '/canvas']);
+    assert.deepEqual(tabs(on), ['/', '/plan', '/codex', '/timeline', '/continuity', '/places', '/notes', '/canvas']);
     const off = html(withPrefs(prefs({ off: ['timeline', 'continuity', 'research', 'board'] }), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
-    assert.deepEqual(tabs(off), ['/', '/codex', '/places']);
+    assert.deepEqual(tabs(off), ['/', '/plan', '/codex', '/places']);
+    const noPlan = html(withPrefs(prefs({ off: ['planner'] }), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
+    assert.deepEqual(tabs(noPlan), ['/', '/codex', '/timeline', '/continuity', '/places', '/notes', '/canvas'], 'the Plan tab follows the planner module');
   });
 
   test("the pages J02 adds are gated by id: insights and tasks follow their module when they exist", () => {
@@ -228,6 +230,7 @@ describe('modules', () => {
     assert.equal(m.tabModule('timeline'), 'timeline');
     assert.equal(m.tabModule('notes'), 'research');
     assert.equal(m.tabModule('canvas'), 'board', 'M09-J01: the Canvas follows the board module');
+    assert.equal(m.tabModule('plan'), 'planner');
     assert.equal(m.tabModule('codex'), null);
     assert.deepEqual(m.MODULES.map((x) => x.id), Object.keys(ALL_ON));
   });
