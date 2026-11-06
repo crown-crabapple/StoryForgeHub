@@ -98,3 +98,35 @@ test('a scene plan: unknown scene or character is E301, a stray key is I401, a n
   assert.deepEqual(await added((root) => put(root, PLAN, plan({ extra: 'mood: tense\n' }))), [`I401 | ${PLAN} | mood`]);
   assert.deepEqual(await added((root) => put(root, PLAN, plan({ extra: 'stakes: [a, b]\n' }))), [`E102 | ${PLAN} | stakes`]);
 });
+
+const STORY = 'planning/story.md';
+const story = ({ id = 'note_01S50000000000000000000S01', extra = '' } = {}) => `---
+schema: storyforge.story-plan/v1
+id: ${id}
+premise: An apprentice finds the harbour key opens the wrong door.
+protagonist: maren-hollis
+${extra}---
+
+Free story notes.
+`;
+
+test('a story plan at planning/story.md adds no diagnostics; a plan with no fields and no body is fine', async () => {
+  assert.deepEqual(await added((root) => put(root, STORY, story())), []);
+  assert.deepEqual(await added((root) => put(root, STORY, '---\nschema: storyforge.story-plan/v1\nid: note_01S50000000000000000000S01\n---\n')), []);
+});
+
+test('E301: a story plan whose protagonist is not an entry of the book', async () => {
+  assert.deepEqual(await added((root) => put(root, STORY, story().replace('maren-hollis', 'nobody-here'))), [`E301 | ${STORY} | protagonist`]);
+});
+
+test('story plan: a stray key is I401, a non-text field is E102', async () => {
+  assert.deepEqual(await added((root) => put(root, STORY, story({ extra: 'mood: tense\n' }))), [`I401 | ${STORY} | mood`]);
+  assert.deepEqual(await added((root) => put(root, STORY, story({ extra: 'stakes: [a, b]\n' }))), [`E102 | ${STORY} | stakes`]);
+});
+
+test('W318: a story plan anywhere but planning/story.md; an archived one is ignored', async () => {
+  const other = 'planning/story-2.md';
+  assert.deepEqual(await added((root) => { put(root, STORY, story()); put(root, other, story({ id: 'note_01S50000000000000000000S02' })); }), [`W318 | ${other} | schema`]);
+  assert.deepEqual(await added((root) => put(root, STORY, story())), []);
+  assert.deepEqual(await added((root) => put(root, `archive/${STORY}`, story())), []);
+});

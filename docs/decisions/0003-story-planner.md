@@ -170,3 +170,10 @@ There is no migration. An old book has no `planning/links/` or `planning/scene-p
 3. Sidecar rename: not in M1. The sidecar keeps its first file name; `scene:` is the key. Revisit if authors find stale names confusing.
 
 New diagnostic codes chosen in M1: `E211` (link from a scene to itself), `W316` (duplicate live link with the same from, to and relation), `W317` (two live scene plans for one scene). A missing `from`, `to` or `scene` target is the existing `E301`.
+
+## M2 decisions (2026-11-05)
+
+- **Story plan:** `planning/story.md`, kind `story-plan` (`storyforge.story-plan/v1`), one per book. Fields: `premise`, `logline`, `theme_question`, `central_conflict`, `protagonist` (Codex entry slug), `protagonist_goal`, `stakes`; free notes in the body. `W318` flags a story plan anywhere else. It is never written into `book.md`. Routes: `GET`/`POST /api/books/:b/story-plan` (`planner-story-plan-save`) and `GET /api/books/:b/plan-overview` (story plan + counts).
+- **Where it lives in the app:** a new project tab **Plan** (`/books/:id/plan`, module `planner`) with Overview and Flow. Board and Outline stay in the Manuscript tab; Plan links to them rather than copying them.
+- **Scene planning fields** appear as a **Plan** section of the scene inspector (`INSPECTOR_SECTIONS` id `plan`), so they sit next to the prose in Write and next to the graph in Flow.
+- **No dragging in the graph yet.** Layout is by manuscript order (one column per chapter). Saved positions (D03) wait until an author asks to arrange the graph by hand.

@@ -4,7 +4,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { REPO_ROOT } from './helpers.mjs';
 
-const WRITE_CALLS = /writeFile|appendFile|rename\(|copyFile|unlink|rmSync|rmdir|\brm\(|mkdir|createWriteStream/;
+// `unlink` / `unlinkSync` as whole words: words like "unlinked" (Story Planner counts) are not file calls.
+const WRITE_CALLS = /writeFile|appendFile|rename\(|copyFile|\bunlink(?:Sync)?\b|rmSync|rmdir|\brm\(|mkdir|createWriteStream/;
 const EXT = /\.(mjs|js|jsx)$/;
 const STORE_SRC = path.join(REPO_ROOT, 'packages', 'store', 'src');
 

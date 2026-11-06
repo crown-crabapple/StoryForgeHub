@@ -17,7 +17,7 @@ my-library/                  any folder; holds one or more books
           0010-arrival.md    one scene per file
           0020-the-key.md
     codex/                   characters, locations, factions, objects, lore (one file each)
-    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/ and scene-plans/ hold Story Planner files
+    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/ and scene-plans/ hold Story Planner files, and story.md is the story plan
     research/                research notes and sources
     assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
     activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
@@ -51,7 +51,7 @@ Scenes marked as an alternate version of another scene (`variant_of`) are kept b
 | --- | --- |
 | Scenes in `manuscript/` | `research/` notes (canon only if a note says `canon: true`) |
 | `codex/` entries | `suggestions/` until you accept them |
-| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/` and `planning/scene-plans/` |
+| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/` and `planning/story.md` |
 | `book.md`, `act.md`, `chapter.md` | `archive/` (left out of order, counts and export) |
 | `assets/` the book uses | `legacy/` (see below) |
 
@@ -59,7 +59,7 @@ Notes in a scene written as `<!-- note: ... -->` stay in the file, show in the n
 
 ## Story Planner files
 
-Two kinds of file hold planning data. Neither is story text or canon, and neither changes a scene file.
+Three kinds of file hold planning data. None is story text or canon, and none changes a scene file.
 
 ### A causal link: `planning/links/key-therefore-ferry.md`
 
@@ -112,6 +112,28 @@ Free planning notes for this scene.
 - `scene` and each `characters` slug must resolve: a miss is `E301`.
 - Two live plans for the same scene give `W317` on the second (at `scene`). Archived plans are not counted.
 
+### The story plan: `planning/story.md`
+
+```yaml
+---
+schema: storyforge.story-plan/v1
+id: note_01S50000000000000000000015
+premise: An apprentice finds that the harbour key opens the wrong door.
+logline: Maren must choose between the sea gate and her place in the guild.
+theme_question: What does belonging cost?
+central_conflict: The guild wants the key back; Maren wants to know what it opens.
+protagonist_goal: Learn what the key opens.
+stakes: Her place in the town.
+protagonist: maren-hollis
+---
+Free story notes.
+```
+
+- One story plan per book, and it must be at `planning/story.md`. The body is free notes.
+- Nothing is required. Optional: `premise`, `logline`, `theme_question`, `central_conflict`, `protagonist_goal`, `stakes` (each a one-line string; StoryForge writes at most 2,000 characters) and `protagonist` (an entry slug).
+- `protagonist` must resolve: a miss is `E301`.
+- A live story plan at any other path gives `W318` (at `schema`), on every such file. Archived story plans are not counted.
+
 ### Diagnostics
 
 | Code | Severity | Meaning |
@@ -119,6 +141,8 @@ Free planning notes for this scene.
 | `E211` | error | A link's `from` and `to` are the same scene |
 | `W316` | warning | Two live links have the same `from`, `to` and `relation` |
 | `W317` | warning | Two live scene plans name the same scene |
+| `W318` | warning | A live story plan is not at `planning/story.md` |
+
 ## `.storyforge/` is disposable
 
 `.storyforge/` holds the search index, edit locks, prior versions from saves, local revision copies and per-machine screen settings. None of it is your book.

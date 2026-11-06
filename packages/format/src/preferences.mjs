@@ -12,7 +12,7 @@ export const APPEARANCE_KEYS = ['theme', 'typography', 'layout', 'shortcuts'];
 export const PREFERENCE_KEYS = [...PROJECT_KEYS, ...APPEARANCE_KEYS];
 
 /** The right-rail sections a layout can pin, in the default order. */
-export const INSPECTOR_SECTIONS = ['goal', 'scene', 'linked', 'notes', 'events', 'research', 'continuity', 'comments', 'suggestions', 'problems', 'revisions', 'receipts', 'book-problems'];
+export const INSPECTOR_SECTIONS = ['goal', 'scene', 'plan', 'linked', 'notes', 'events', 'research', 'continuity', 'comments', 'suggestions', 'problems', 'revisions', 'receipts', 'book-problems'];
 
 export const BUILTIN_THEMES = ['dark', 'light', 'high-contrast'];
 export const FONT_FAMILIES = ['serif', 'sans', 'mono', 'accessible'];

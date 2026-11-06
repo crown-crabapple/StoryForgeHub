@@ -286,3 +286,83 @@ export function saveScenePlan(bookRoot, sceneId, args = {}) {
     return finish({ bookRoot, store, lb, op: 'saveScenePlan', args: { sceneId, fields: Object.keys(fields), characters: characters?.length, file: rel }, changes, dryRun, withDiff: true, extra: { id: existing.fm.id, scene_id: sceneId, path: rel, created: false } });
   });
 }
+
+// ---------------------------------------------------------------- saveStoryPlan
+
+/** The planning keys of the story plan, in the order they are written; `protagonist` is an entry slug, the rest are single-line text. */
+export const STORY_FIELDS = ['premise', 'logline', 'theme_question', 'central_conflict', 'protagonist_goal', 'stakes', 'protagonist'];
+export const STORY_PATH = 'planning/story.md';
+
+/** Anchors for inserting a story key: the keys before it, nearest first, then `id`. */
+const storyAnchors = (key) => [...STORY_FIELDS.slice(0, STORY_FIELDS.indexOf(key)).reverse(), 'id'];
+
+/**
+ * Save the book's story plan, planning/story.md (ADR 0003 M2). `fields` holds any of the seven keys (premise, logline, theme_question, central_conflict,
+ * protagonist_goal, stakes, protagonist): a string sets it, `null` or '' removes the key. `protagonist` must be the slug of a live entry (REFUSED_UNKNOWN_ENTRY).
+ * `body` (optional, max 20000, may be multi-line) replaces the body and keeps the front matter bytes. No file yet: it is created (`baseSha256` must be absent).
+ * A file exists: `baseSha256` is required and a different file on disk is CONFLICT with `current`. book.md and scenes are never read for writing or written.
+ * @param {string} bookRoot
+ * @param {{ fields?: Record<string, string | null>, body?: string, baseSha256?: string | null, dryRun?: boolean }} args
+ */
+export function saveStoryPlan(bookRoot, args = {}) {
+  return guarded(async () => {
+    const { fields = {}, body, baseSha256, dryRun = false } = args ?? {};
+    if (!isMap(fields)) return fail('REFUSED_BAD_ARGS', 'fields must be an object');
+    for (const [key, value] of Object.entries(fields)) {
+      if (!STORY_FIELDS.includes(key)) return fail('REFUSED_BAD_ARGS', `unknown story field ${key}; the fields are ${STORY_FIELDS.join(', ')}`, { field: key });
+      if (value !== null && !(isText(value) && value.length <= 2000)) return fail('REFUSED_BAD_ARGS', `${key} must be a single line of text without control characters (max 2000), or null to remove it`, { field: key });
+    }
+    if (body !== undefined && (typeof body !== 'string' || body.length > 20000 || BODY_BAD_RE.test(body))) return fail('REFUSED_BAD_ARGS', 'body must be text without control characters (max 20000 characters)', { field: 'body' });
+    if (baseSha256 !== undefined && baseSha256 !== null && typeof baseSha256 !== 'string') return fail('REFUSED_BAD_ARGS', 'base_sha256 must be a string');
+    if (Object.keys(fields).length === 0 && body === undefined) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const protagonist = fields.protagonist;
+    if (typeof protagonist === 'string' && protagonist !== '') {
+      const slugs = new Set([...docs, ...(lb.shared?.docs ?? [])].filter((d) => d.kind === 'entry' && !d.archived && typeof d.fm.slug === 'string').map((d) => d.fm.slug));
+      if (!okSlug(protagonist) || !slugs.has(protagonist)) return fail('REFUSED_UNKNOWN_ENTRY', `no entry ${protagonist}`, { field: 'protagonist', entry: protagonist });
+    }
+    const argSummary = { fields: Object.keys(fields), body: body === undefined ? undefined : `<${body.length} chars>`, file: STORY_PATH };
+
+    if (!(await store.exists(STORY_PATH))) {
+      if (baseSha256 !== undefined && baseSha256 !== null) return fail('REFUSED_BAD_ARGS', 'the book has no story plan yet, so base_sha256 must be absent');
+      const lines = ['---', 'schema: storyforge.story-plan/v1', `id: note_${ulid()}`];
+      for (const key of STORY_FIELDS) {
+        const v = fields[key];
+        if (typeof v === 'string' && v !== '') lines.push(`${key}: ${formatYamlText(v)}`);
+      }
+      const text = typeof body === 'string' ? bodyText(body, '\n') : '';
+      if (lines.length === 3 && text === '') return fail('REFUSED_BAD_ARGS', 'nothing to save: every value is empty');
+      lines.push('---', '');
+      const id = lines[2].slice(4);
+      const content = Buffer.from(lines.join('\n') + text, 'utf8');
+      return finish({ bookRoot, store, lb, op: 'saveStoryPlan', args: argSummary, changes: [{ from: null, to: STORY_PATH, content, before: null }], dryRun, withDiff: true, extra: { id, path: STORY_PATH, created: true } });
+    }
+
+    const existing = docs.find((d) => d.kind === 'story-plan' && !d.archived && d.rel === STORY_PATH);
+    if (!existing) return fail('REFUSED_PATH_TAKEN', `${STORY_PATH} exists but is not a story plan`, { path: STORY_PATH });
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required to change the story plan');
+    const before = await readBytes(store, STORY_PATH);
+    const changed = stale(before, baseSha256, STORY_PATH);
+    if (changed) return changed;
+    let buf = before;
+    const has = (key) => new RegExp(`^${key}:`, 'm').test(buf.toString('latin1'));
+    for (const key of STORY_FIELDS) {
+      if (!Object.hasOwn(fields, key)) continue;
+      const v = fields[key];
+      const r = v === null || v === '' ? (has(key) ? replaceFrontMatterBlock(buf, key, []) : { ok: true, buf }) : editFrontMatterLine(buf, key, v, { anchors: storyAnchors(key), plain: true });
+      if (!r.ok) return fail(r.code, `${STORY_PATH}: ${r.message}`, { file: STORY_PATH, field: key });
+      buf = r.buf;
+    }
+    if (body !== undefined) {
+      const parts = splitDocument(buf);
+      if (!parts) return fail('REFUSED_UNSIMPLE_FIELD', `${STORY_PATH}: the file has no closed front matter`, { file: STORY_PATH, field: 'body' });
+      const head = buf.subarray(0, parts.bodyStart);
+      buf = Buffer.concat([head, Buffer.from(bodyText(body, head.includes('\r\n') ? '\r\n' : '\n'), 'utf8')]);
+    }
+    const changes = buf.equals(before) ? [] : [{ from: STORY_PATH, to: STORY_PATH, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'saveStoryPlan', args: argSummary, changes, dryRun, withDiff: true, extra: { id: existing.fm.id, path: STORY_PATH, created: false } });
+  });
+}

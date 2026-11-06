@@ -48,10 +48,11 @@ export function typographyVars(t) {
 // ---------------------------------------------------------------- layouts
 
 /** The right-rail sections a layout can pin, in the default order (the same as @storyforge/format INSPECTOR_SECTIONS). */
-export const INSPECTOR_SECTIONS = ['goal', 'scene', 'linked', 'notes', 'events', 'research', 'continuity', 'comments', 'suggestions', 'problems', 'revisions', 'receipts', 'book-problems'];
+export const INSPECTOR_SECTIONS = ['goal', 'scene', 'plan', 'linked', 'notes', 'events', 'research', 'continuity', 'comments', 'suggestions', 'problems', 'revisions', 'receipts', 'book-problems'];
 export const SECTION_LABELS = {
   goal: 'Goal',
   scene: 'Scene facts',
+  plan: 'Plan',
   linked: 'Linked entries',
   notes: 'Notes in the text',
   events: 'Events',
@@ -69,7 +70,7 @@ export const PANEL_WIDTHS = { rail: { min: 180, max: 480, step: 16 }, inspector:
 /** Named layouts. `pinned: null` shows every section in the default order. Writing is the reference layout (rail 260, inspector 340). */
 export const LAYOUT_PRESETS = {
   Writing: { rail: { shown: true, width: 260 }, inspector: { shown: true, width: 340 }, pinned: null },
-  Planning: { rail: { shown: true, width: 320 }, inspector: { shown: true, width: 420 }, pinned: ['goal', 'scene', 'linked', 'events', 'research', 'notes', 'problems', 'book-problems'] },
+  Planning: { rail: { shown: true, width: 320 }, inspector: { shown: true, width: 420 }, pinned: ['goal', 'scene', 'plan', 'linked', 'events', 'research', 'notes', 'problems', 'book-problems'] },
   Review: { rail: { shown: false, width: 260 }, inspector: { shown: true, width: 460 }, pinned: ['continuity', 'comments', 'suggestions', 'receipts', 'revisions', 'problems', 'book-problems', 'goal'] },
 };
 export const LAYOUT_NAMES = Object.keys(LAYOUT_PRESETS);

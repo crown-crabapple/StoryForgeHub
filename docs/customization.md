@@ -105,6 +105,7 @@ A layout says which side panels show, how wide they are, and which sections the 
 
 - **Writing** (the default: chapters on the left, everything on the right), **Planning** (wider panels, events and research first) and **Review** (no chapter panel; continuity, suggestions and receipts first).
 - Settings > Layout switches layouts, hides or shows either panel, reorders the right panel's sections, and **saves the current layout under a name** of your own.
+- The right panel's sections are `goal`, `scene`, `plan`, `linked`, `notes`, `events`, `research`, `continuity`, `comments`, `suggestions`, `problems`, `revisions`, `receipts` and `book-problems`. `plan` (shown as "Plan", after Scene facts) holds the scene's planning fields; it belongs to the `planner` feature, so it is hidden when that feature is off. The Planning layout pins it.
 - Switching layout never reloads the page and never loses text you have not saved yet.
 - Resize a panel by dragging its edge, or Tab to the edge (it is a separator with a value) and use Left and Right arrows (Shift for bigger steps, Home and End for the limits).
 - Below 900 px wide the narrow-screen rules still apply: one column, the chapters behind a button.
@@ -123,7 +124,7 @@ Default commands: `editor.bold` Ctrl+B, `editor.italic` Ctrl+I, `editor.link` Ct
 
 ## Features (modules)
 
-Settings > Features turns features on and off: `ai`, `continuity`, `receipts`, `suggestions`, `timeline`, `board`, `threads`, `insights`, `tasks`, `research`, `planner` (Story Planner: causal links and scene plans), `integrations`.
+Settings > Features turns features on and off: `ai`, `continuity`, `receipts`, `suggestions`, `timeline`, `board`, `threads`, `insights`, `tasks`, `research`, `planner` (Story Planner: causal links, scene plans and the story plan), `integrations`.
 
 A feature that is **off**:
 

@@ -34,6 +34,7 @@ import {
   setNoteFields,
   setSceneFields,
   saveScenePlan,
+  saveStoryPlan,
   setThreadFields,
   slugify,
   splitScene,
@@ -532,6 +533,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     archiveLink: (bookId, slug, args = {}) => structure(bookId, (b) => archiveLink(b, slug, args ?? {}), PLANNER_CODES),
     restoreLink: (bookId, slug, args = {}) => structure(bookId, (b) => restoreLink(b, slug, args ?? {}), PLANNER_CODES),
     saveScenePlan: (bookId, sceneId, args = {}) => structure(bookId, (b) => saveScenePlan(b, sceneId, args ?? {}), PLANNER_CODES),
+    saveStoryPlan: (bookId, args = {}) => structure(bookId, (b) => saveStoryPlan(b, args ?? {}), PLANNER_CODES), // Story Planner M2: planning/story.md
 
     // ---- M04-J04: timeline events, research notes / planning docs / sources, attachments (canonical files only; dryRun previews with diffs)
     createEvent: (bookId, args = {}) => structure(bookId, (b) => createEvent(b, args ?? {})),

@@ -154,6 +154,12 @@ export const KINDS = {
       emotional_start: 'str', emotional_end: 'str', purpose: 'str', characters: 'list',
     },
   },
+  // Added 2026-11-05, Story Planner M2 (ADR 0003, additive within v1): the book-level story plan, one file at planning/story.md. Never story text or canon.
+  'story-plan': {
+    prefix: 'note',
+    required: [],
+    fields: { premise: 'str', logline: 'str', theme_question: 'str', central_conflict: 'str', protagonist_goal: 'str', stakes: 'str', protagonist: 'str' },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],

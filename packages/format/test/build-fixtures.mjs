@@ -609,6 +609,12 @@ bookCase('W317-duplicate-scene-plan', (b, ids) => {
   return [D('W317', p2, 'scene')];
 });
 
+bookCase('W318-story-plan-path', (b, ids) => {
+  const p = 'planning/story-notes.md';
+  b.files.set(p, { fm: { schema: 'storyforge.story-plan/v1', id: ids('note'), premise: 'A harbour key opens the wrong door.' }, body: 'Free notes.\n' });
+  return [D('W318', p, 'schema')];
+});
+
 // ---- suggestion documents (M05-J06)
 const suggestionFor = (ids, targetId, targetPath, baseBytes, proposed) =>
   buildSuggestion({
@@ -1279,6 +1285,19 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
       characters: ['maren-hollis', 'pell'],
     },
     body: 'Free planning notes for this scene.\n',
+  });
+  files.set('planning/story.md', {
+    fm: {
+      schema: 'storyforge.story-plan/v1', id: ids('note'),
+      premise: 'An apprentice finds that the harbour key opens the wrong door.',
+      logline: 'Maren must choose between the sea gate and her place in the guild.',
+      theme_question: 'What does belonging cost?',
+      central_conflict: 'The guild wants the key back; Maren wants to know what it opens.',
+      protagonist_goal: 'Learn what the key opens.',
+      stakes: 'Her place in the town.',
+      protagonist: 'maren-hollis',
+    },
+    body: 'Free story notes.\n',
   });
   checkIds(files);
   const dir = path.join(FIXTURES, 'valid', 'planner');

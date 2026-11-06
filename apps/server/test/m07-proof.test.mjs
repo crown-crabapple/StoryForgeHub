@@ -151,6 +151,7 @@ const SAMPLES = {
   'planner-link-archive': ['POST', `${b}/links/key-therefore-ferry/archive`],
   'planner-link-restore': ['POST', `${b}/links/key-therefore-ferry/restore`],
   'planner-scene-plan-save': ['POST', `${b}/scene-plans/${SCENE}`],
+  'planner-story-plan-save': ['POST', `${b}/story-plan`],
   'goal-set': ['POST', `${b}/goals`],
   'goal-remove': ['DELETE', `${b}/goals/goal_X`],
   'task-create': ['POST', `${b}/tasks`],
@@ -185,14 +186,14 @@ const GET_SAMPLES = {
     // private project data: members only, never a share (DECISIONS 12)
     `${b}/receipts`, `${b}/receipts/verify`, `${b}/suggestions`, `${b}/comments`, `${b}/notes`, `${b}/scene-notes`, `${S}/revisions`, `${b}/activity`,
     `${b}/raw?path=book.md`, `${b}/ai/status`, `${b}/presence`, `${b}/objects`,
-    `${b}/links`, `${b}/links/key-therefore-ferry`, `${b}/flow`, `${b}/scene-plans/${SCENE}`,
+    `${b}/links`, `${b}/links/key-therefore-ferry`, `${b}/flow`, `${b}/scene-plans/${SCENE}`, `${b}/story-plan`, `${b}/plan-overview`,
     `/api/books/${OTHER_BOOK}`, `/api/books/${OTHER_BOOK}/scenes/${SCENE}`,
   ],
   export: [`${b}/export?format=markdown`, `/api/books/${OTHER_BOOK}/export?format=markdown`],
   admin: ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/plugins', '/api/webhooks', '/api/ai/profiles', '/api/recover/last', '/api/library/recent', `${b}/backup`, `${b}/repair/plan`],
   auth: ['/api/auth/me'],
 };
-const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`].map((x) => `${b}/${x}`);
+const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview'].map((x) => `${b}/${x}`);
 
 const PRINCIPALS = ['owner', 'editor', 'reviewer', 'viewer', 'share', 'exportShare', 'anonymous'];
 /** The principal object allowed() takes for each caller kind of the sweep. */

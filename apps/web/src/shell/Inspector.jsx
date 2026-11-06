@@ -12,6 +12,7 @@ import { RailComments } from '../collab/RailComments.jsx';
 import { RailReceipts } from '../receipts/RailReceipts.jsx';
 import { RailEvents } from '../timeline/RailEvents.jsx';
 import { eventsForScene } from '../timeline/model.js';
+import { ScenePlanSection } from '../planner/ScenePlanSection.jsx';
 import { threadActionsFor } from '../planning/ThreadMarks.jsx';
 import { useStructure } from '../structure/useStructure.jsx';
 import { threadListRequest } from '../planning/requests.js';
@@ -91,6 +92,9 @@ export function SceneInspector({ book, scene, diagnostics, objects = null, onCha
               <SceneSection book={book} scene={scene} objects={objects} onChanged={onChanged} />
             </RailSlot>
           )}
+          <RailSlot id="plan" module="planner">
+            <ScenePlanSection book={book} sceneId={scene.id} onChanged={onChanged} />
+          </RailSlot>
           <RailSlot id="linked">
             <LinkedEntries bookId={book.id} front={scene.front_matter} body={body} objects={objects} threadActions={planning && prefs.moduleOn('threads') ? threadActionsFor({ planning, sceneId: scene.id, onMark: markThread }) : null} />
           </RailSlot>

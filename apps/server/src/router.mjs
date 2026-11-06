@@ -280,6 +280,15 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const flow = await repository.flowGraph(b);
       return flow ? { status: 200, body: flow } : NOT_FOUND;
     }
+    // Story Planner M2: the book's story plan (planning/story.md) and the Plan overview (story plan + counts)
+    if (c === 'story-plan' && d === undefined) {
+      const plan = await repository.getStoryPlan(b);
+      return plan ? { status: 200, body: plan } : NOT_FOUND;
+    }
+    if (c === 'plan-overview' && d === undefined) {
+      const overview = await repository.planOverview(b);
+      return overview ? { status: 200, body: overview } : NOT_FOUND;
+    }
     // M05-J04 status; M08-J03: the cover generator's state, a draft picture, and a streamed reply in progress
     if (c === 'ai' && ['status', 'cover', 'cover-draft', 'stream'].includes(d) && e === undefined) return handleAiRead(repository, state, d, b, params);
     if (c === 'graph' && d === undefined) {
@@ -631,6 +640,7 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'links' && d !== undefined && e === 'archive') return { route: 'planner-link-archive', bookId: b, slug: d };
   if (method === 'POST' && c === 'links' && d !== undefined && e === 'restore') return { route: 'planner-link-restore', bookId: b, slug: d };
   if (method === 'POST' && c === 'scene-plans' && d !== undefined && e === undefined) return { route: 'planner-scene-plan-save', bookId: b, sceneId: d };
+  if (method === 'POST' && c === 'story-plan' && d === undefined) return { route: 'planner-story-plan-save', bookId: b };
   return null;
 }
 
@@ -1133,7 +1143,7 @@ async function handleStructure(repository, match, body) {
       const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
     }
-    // ---- Story Planner M1 (ADR 0003): the only files these routes write are planning/links/<slug>.md and planning/scene-plans/<slug>.md (archive/ when archived)
+    // ---- Story Planner M1 (ADR 0003): the only files these routes write are planning/links/<slug>.md, planning/scene-plans/<slug>.md and planning/story.md (archive/ when archived)
     case 'planner-link-create':
     case 'planner-link-update': {
       const creating = match.route === 'planner-link-create';
@@ -1159,6 +1169,14 @@ async function handleStructure(repository, match, body) {
       if (body.characters !== undefined && !(Array.isArray(body.characters) && body.characters.every((s) => typeof s === 'string'))) return badRequest('characters must be a list of entry slugs');
       if (body.base_sha256 !== undefined && body.base_sha256 !== null && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string or null');
       const r = await repository.saveScenePlan(bookId, /** @type {string} */ (match.sceneId), { fields: body.fields ?? {}, characters: body.characters, baseSha256: body.base_sha256 ?? null, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-story-plan-save': {
+      if (body.fields !== undefined && !isObject(body.fields)) return badRequest('fields must be an object');
+      for (const [k, v] of Object.entries(body.fields ?? {})) if (v !== null && typeof v !== 'string') return badRequest(`fields.${k} must be a string or null`);
+      if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string');
+      if (body.base_sha256 !== undefined && body.base_sha256 !== null && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string or null');
+      const r = await repository.saveStoryPlan(bookId, { fields: body.fields ?? {}, body: body.body, baseSha256: body.base_sha256 ?? null, dryRun });
       return respondPlanner(r, 200);
     }
     // ---- M05-J02 continuity exceptions: the only files these routes write are planning/continuity/<slug>.md (archive/ when removed)
