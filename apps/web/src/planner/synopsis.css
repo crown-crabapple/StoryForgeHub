@@ -1,0 +1,124 @@
+/* The Synopsis view of the Plan tab (sy- prefix). */
+.sy-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.sy-list {
+  margin: 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.sy-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.sy-new,
+.sy-editor,
+.sy-review,
+.sy-ai {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.sy-review,
+.sy-ai {
+  margin-top: var(--s4);
+}
+.sy-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-bottom: var(--s3);
+}
+.sy-field textarea {
+  width: 100%;
+  font-family: var(--font-prose);
+}
+.sy-bar,
+.sy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.sy-stale {
+  padding: var(--s3);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.sy-hunks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.sy-hunk {
+  padding: var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-card);
+}
+.sy-hunk[data-status='accepted'] {
+  border-color: var(--text-3);
+}
+.sy-hunk[data-status='declined'] {
+  opacity: 0.75;
+}
+.sy-hunk-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.sy-chip {
+  color: var(--text-3);
+  font-size: var(--fs-12);
+}
+.sy-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+  margin: var(--s2) 0;
+}
+@media (max-width: 760px) {
+  .sy-sides {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.sy-sides h4 {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-12);
+}
+.sy-text {
+  margin: var(--s1) 0 0;
+  padding: var(--s2) var(--s3);
+  max-height: 280px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-input);
+  font-family: var(--font-prose);
+  white-space: pre-wrap;
+}
+.sy-text del {
+  background: rgb(220 70 70 / 0.22);
+  text-decoration: line-through;
+}
+.sy-text ins {
+  background: rgb(70 170 90 / 0.25);
+  text-decoration: underline;
+}
+.sy-dirty {
+  color: var(--text-3);
+  font-size: var(--fs-12);
+}

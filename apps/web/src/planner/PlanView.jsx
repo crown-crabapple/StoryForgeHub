@@ -11,6 +11,8 @@ import { ConnectDialog } from './ConnectDialog.jsx';
 import { NewStructureDialog } from './NewStructureDialog.jsx';
 import { NewRelationshipDialog, RelationshipEditor } from './RelationshipEditor.jsx';
 import { StructureView } from './StructureView.jsx';
+import { SynopsisView } from './SynopsisView.jsx';
+import { synopsesUrl, synopsisUrl } from './synopsis.js';
 import { useStructureWrites } from './useStructureWrites.js';
 import { FlowView } from './FlowView.jsx';
 import { OverviewView } from './OverviewView.jsx';
@@ -72,12 +74,15 @@ export function PlanView({ bookId, search = '' }) {
   const book = useMemo(() => ({ id: bookId }), [bookId]);
   const structure = useStructure({ book, activeId: null, onChanged: refresh });
 
-  const overview = useApi(url.view === 'overview' || url.view === 'structure' ? planOverviewUrl(bookId) : null, version);
+  const overview = useApi(url.view === 'overview' || url.view === 'structure' || url.view === 'synopsis' ? planOverviewUrl(bookId) : null, version);
   const entries = useApi(url.view === 'overview' || url.view === 'arcs' ? entriesUrl(bookId) : null, version);
   const arcs = useApi(url.view === 'arcs' ? arcsUrl(bookId) : null, version);
   const relationships = useApi(url.view === 'arcs' ? relationshipsUrl(bookId) : null, version);
   const threads = useApi(url.view === 'arcs' ? threadsUrl(bookId) : null, version);
   const structures = useApi(url.view === 'structure' ? structuresUrl(bookId) : null, version);
+  const synopses = useApi(url.view === 'synopsis' ? synopsesUrl(bookId) : null, version);
+  const synopsisSlug = new URLSearchParams(search).get('synopsis') || null;
+  const synopsisDetail = useApi(url.view === 'synopsis' && synopsisSlug ? synopsisUrl(bookId, synopsisSlug) : null, version);
   const flow = useApi(flowUrl(bookId), version);
   const links = useApi(linksUrl(bookId), version);
 
@@ -326,6 +331,24 @@ export function PlanView({ bookId, search = '' }) {
               go({ view: 'arcs', arc: slug, relationship: null });
             },
           }}
+        />
+      );
+    }
+  } else if (url.view === 'synopsis') {
+    if (synopses.error) body = <p className="error">{synopses.error}</p>;
+    else if (!synopses.loading && !synopses.data) body = <NotFound />;
+    else {
+      body = (
+        <SynopsisView
+          bookId={bookId}
+          list={synopses.data}
+          detail={synopsisDetail.data}
+          detailLoading={synopsisDetail.loading}
+          selected={synopsisSlug}
+          hasStory={typeof overview.data?.story?.sha256 === 'string'}
+          structure={structure}
+          refresh={refresh}
+          onSelect={(slug) => navigate(planHref(bookId, { view: 'synopsis', synopsis: slug }))}
         />
       );
     }

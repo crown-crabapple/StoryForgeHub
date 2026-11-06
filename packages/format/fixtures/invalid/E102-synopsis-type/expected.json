@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E102",
+      "file": "planning/synopses/one-page.md",
+      "location": "type"
+    }
+  ]
+}

@@ -1035,3 +1035,149 @@ function moveRelationship(bookRoot, slug, args, restoring) {
     return finish({ bookRoot, store, lb, op: restoring ? 'restoreRelationship' : 'archiveRelationship', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
   });
 }
+
+// ------------------------------------------------------------------ synopses (ADR 0003 M7)
+
+export const SYNOPSIS_DIR = 'planning/synopses';
+/** The synopsis types, in the order the Synopsis view lists them, with the label used as the default name and file name. */
+export const SYNOPSIS_TYPES = ['premise', 'logline', 'elevator-pitch', 'short', 'one-page', 'long', 'chapter-treatment', 'custom'];
+export const SYNOPSIS_LABELS = {
+  premise: 'Premise', logline: 'Logline', 'elevator-pitch': 'Elevator pitch', short: 'Short synopsis', 'one-page': 'One-page synopsis',
+  long: 'Long synopsis', 'chapter-treatment': 'Chapter treatment', custom: 'Custom synopsis',
+};
+const BASIS_RE = /^[0-9a-f]{64}$/;
+const MAX_TARGET_WORDS = 10000000;
+const isTarget = (v) => Number.isInteger(v) && v >= 1 && v <= MAX_TARGET_WORDS;
+
+/** Book-relative path of a live synopsis. @param {string} slug */
+export const synopsisPath = (slug) => `${SYNOPSIS_DIR}/${slug}.md`;
+const synopsisDocs = (docs, archived) => docs.filter((d) => d.kind === 'synopsis' && d.archived === archived);
+/** Anchors for inserting a synopsis key: the keys before it, nearest first, then slug and id. */
+const synopsisAnchors = (key) => {
+  const order = ['type', 'name', 'target_words', 'basis'];
+  return [...order.slice(0, order.indexOf(key)).reverse(), 'slug', 'id'];
+};
+
+/** A message when a synopsis `name` / `target_words` / `basis` is badly shaped (null is fine only when `nullable`), else null. */
+function badSynopsisField(key, value, nullable) {
+  if (value === null && nullable) return null;
+  if (key === 'name' && !lineText(value)) return `name must be a single line of text without control characters (max 2000)${nullable ? ', or null to remove it' : ''}`;
+  if (key === 'target_words' && !isTarget(value)) return `target_words must be a whole number of 1 or more${nullable ? ', or null to remove it' : ''}`;
+  if (key === 'basis' && !(typeof value === 'string' && BASIS_RE.test(value))) return `basis must be 64 lower-case hex characters${nullable ? ', or null to remove it' : ''}`;
+  return null;
+}
+
+/**
+ * New synopsis file planning/synopses/<slug>.md: schema, id (note_<ulid>), slug, type, then name and target_words when given, then created; the body is the author's text.
+ * `type` must be one of SYNOPSIS_TYPES, `target_words` a whole number of 1 or more, `name` a single line (REFUSED_BAD_ARGS, with `field`). The slug comes from the name,
+ * else from the type's label; -2, -3 on a clash with a live or archived file name. More than one synopsis of a type is allowed.
+ * @param {string} bookRoot
+ * @param {{ type: string, name?: string, target_words?: number | null, body?: string, dryRun?: boolean }} args
+ */
+export function createSynopsis(bookRoot, args = {}) {
+  return guarded(async () => {
+    const { type, name, target_words: target, body = '', dryRun = false } = args ?? {};
+    if (!SYNOPSIS_TYPES.includes(type)) return fail('REFUSED_BAD_ARGS', `type must be one of ${SYNOPSIS_TYPES.join(', ')}`, { field: 'type' });
+    const hasName = name !== undefined && name !== null && name !== '';
+    if (hasName) { const bad = badSynopsisField('name', name, false); if (bad) return fail('REFUSED_BAD_ARGS', bad, { field: 'name' }); }
+    const hasTarget = target !== undefined && target !== null;
+    if (hasTarget) { const bad = badSynopsisField('target_words', target, false); if (bad) return fail('REFUSED_BAD_ARGS', bad, { field: 'target_words' }); }
+    if (typeof body !== 'string' || body.length > 200000 || BODY_BAD_RE.test(body)) return fail('REFUSED_BAD_ARGS', 'body must be text without control characters (max 200000 characters)', { field: 'body' });
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store } = prep;
+
+    const slug = await freeName(store, slugify(hasName ? name : SYNOPSIS_LABELS[type]) || type, synopsisPath);
+    const id = `note_${ulid()}`;
+    const rel = synopsisPath(slug);
+    const lines = ['---', 'schema: storyforge.synopsis/v1', `id: ${id}`, `slug: ${slug}`, `type: ${type}`];
+    if (hasName) lines.push(`name: ${formatYamlText(name)}`);
+    if (hasTarget) lines.push(`target_words: ${target}`);
+    lines.push(`created: ${today()}`, '---', '');
+    const content = Buffer.from(lines.join('\n') + bodyText(body, '\n'), 'utf8');
+    const changes = [{ from: null, to: rel, content, before: null }];
+    return finish({ bookRoot, store, lb, op: 'createSynopsis', args: { type, name: hasName ? name : undefined, target_words: hasTarget ? target : undefined, body: `<${body.length} chars>`, file: rel }, changes, dryRun, withDiff: true, extra: { id, slug, path: rel } });
+  });
+}
+
+/**
+ * Change a synopsis's name, target, basis or text. `baseSha256` is required (REFUSED_BAD_ARGS); a different file on disk is CONFLICT with `current`. `name`: a string sets it,
+ * `null` or '' removes the key. `target_words`: a whole number of 1 or more sets it, `null` removes the line. `basis`: 64 lower-case hex sets it, `null` removes the line.
+ * `body` (optional, max 200000) replaces the body; with only `basis` or `target_words` the body bytes are untouched. The type, file name and slug never change here.
+ * @param {string} bookRoot @param {string} slug
+ * @param {{ name?: string | null, target_words?: number | null, body?: string, basis?: string | null, baseSha256: string, dryRun?: boolean }} args
+ */
+export function updateSynopsis(bookRoot, slug, args = {}) {
+  return guarded(async () => {
+    const { body, baseSha256, dryRun = false } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no synopsis ${slug}`);
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
+    const keys = ['name', 'target_words', 'basis'].filter((k) => args[k] !== undefined);
+    for (const key of keys) {
+      const bad = args[key] === '' && key === 'name' ? null : badSynopsisField(key, args[key], true);
+      if (bad) return fail('REFUSED_BAD_ARGS', bad, { field: key });
+    }
+    if (body !== undefined && (typeof body !== 'string' || body.length > 200000 || BODY_BAD_RE.test(body))) return fail('REFUSED_BAD_ARGS', 'body must be text without control characters (max 200000 characters)', { field: 'body' });
+    if (keys.length === 0 && body === undefined) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const rel = synopsisPath(slug);
+    const doc = synopsisDocs(docs, false).find((d) => d.rel === rel);
+    if (!doc) return fail('NOT_FOUND', `no synopsis ${slug}`);
+    const before = await readBytes(store, rel);
+    const changed = stale(before, baseSha256, rel);
+    if (changed) return changed;
+
+    let buf = before;
+    const has = (key) => new RegExp(`^${key}:`, 'm').test(buf.toString('latin1'));
+    for (const key of ['name', 'target_words', 'basis']) {
+      if (!keys.includes(key)) continue;
+      const v = args[key];
+      let r;
+      if (v === null || v === '') r = has(key) ? replaceFrontMatterBlock(buf, key, []) : { ok: true, buf };
+      else if (key === 'target_words') r = editFrontMatterLine(buf, key, String(v), { anchors: synopsisAnchors(key), integer: true });
+      else r = editFrontMatterLine(buf, key, v, { anchors: synopsisAnchors(key), plain: true });
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: key });
+      buf = r.buf;
+    }
+    if (body !== undefined) {
+      const parts = splitDocument(buf);
+      if (!parts) return fail('REFUSED_UNSIMPLE_FIELD', `${rel}: the file has no closed front matter`, { file: rel, field: 'body' });
+      const head = buf.subarray(0, parts.bodyStart);
+      buf = Buffer.concat([head, Buffer.from(bodyText(body, head.includes('\r\n') ? '\r\n' : '\n'), 'utf8')]);
+    }
+    const out = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'updateSynopsis', args: { slug, fields: keys, body: body === undefined ? undefined : `<${body.length} chars>` }, changes: out, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+  });
+}
+
+/** Move a synopsis to archive/planning/synopses/. @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args */
+export function archiveSynopsis(bookRoot, slug, args = {}) {
+  return moveSynopsis(bookRoot, slug, args, false);
+}
+
+/** Move an archived synopsis back. A live file with that name: REFUSED_PATH_TAKEN. @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args */
+export function restoreSynopsis(bookRoot, slug, args = {}) {
+  return moveSynopsis(bookRoot, slug, args, true);
+}
+
+function moveSynopsis(bookRoot, slug, args, restoring) {
+  return guarded(async () => {
+    const { dryRun = false, baseSha256 } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no synopsis ${slug}`);
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store } = prep;
+    const live = synopsisPath(slug);
+    const from = restoring ? `archive/${live}` : live;
+    const to = restoring ? live : `archive/${live}`;
+    if (!(await store.exists(from))) return fail('NOT_FOUND', `no ${restoring ? 'archived ' : ''}synopsis ${slug}`);
+    const before = await readBytes(store, from);
+    const changed = stale(before, baseSha256, from);
+    if (changed) return changed;
+    if (restoring && (await store.exists(live))) return fail('REFUSED_PATH_TAKEN', `a synopsis file ${live} already exists`, { path: live });
+    return finish({ bookRoot, store, lb, op: restoring ? 'restoreSynopsis' : 'archiveSynopsis', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
+  });
+}

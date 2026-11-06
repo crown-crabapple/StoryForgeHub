@@ -650,6 +650,22 @@ bookCase('W320-duplicate-relationship', (b, ids) => {
   return [D('W320', p2, 'b')];
 });
 
+// Story Planner M7: E102 on a synopsis type or basis
+const synopsisDoc = (ids, slug, o = {}) => ({
+  fm: { schema: 'storyforge.synopsis/v1', id: ids('note'), slug, type: 'one-page', name: 'One page', target_words: 300, created: '2026-11-06', ...o },
+  body: 'Free synopsis text.\n',
+});
+bookCase('E102-synopsis-type', (b, ids) => {
+  const p = 'planning/synopses/one-page.md';
+  b.files.set(p, synopsisDoc(ids, 'one-page', { type: 'blurb' }));
+  return [D('E102', p, 'type')];
+});
+bookCase('E102-synopsis-basis', (b, ids) => {
+  const p = 'planning/synopses/one-page.md';
+  b.files.set(p, synopsisDoc(ids, 'one-page', { basis: 'not-a-hash' }));
+  return [D('E102', p, 'basis')];
+});
+
 // Story Planner M4: E102 for a beat id used twice
 bookCase('E102-duplicate-beat-id', (b, ids) => {
   const p = 'planning/structures/main-three-act.md';
@@ -1429,6 +1445,8 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
     fm: { schema: 'storyforge.link/v1', id: ids('note'), slug: 'key-enables-inciting-event', from: KEY, to: beatIds[1], relation: 'enables', created: '2026-11-06' },
     body: 'The key scene is where the inciting event lands.\n',
   });
+  // Story Planner M7: one one-page synopsis with a target
+  files.set('planning/synopses/one-page.md', synopsisDoc(ids, 'one-page'));
   checkIds(files);
   const dir = path.join(FIXTURES, 'valid', 'planner');
   writeTree(dir, files);
