@@ -48,11 +48,13 @@ fingerprint: cf1-3b9e0c1d2a4f5e6b      # exactly one finding fingerprint
 rule: CF1
 title: Maren's eyes look green in the hut glass
 created: "2026-11-02"
+intentional: true                      # optional; only ever written as true
 ---
 Rationale written by the author (free Markdown). Required to be non-empty.
 ```
 
 - Suppresses **only** the finding with exactly that fingerprint. Nothing else.
+- `intentional` is optional and must be `true` or `false` (`E102` otherwise). `true` means "this is on purpose"; absent means "acknowledged". Both suppress the same way. The engine reports it as `suppressed[].exception.intentional` (boolean).
 - Removing (or archiving) the file restores the finding.
 - Validator: missing `fingerprint`/`rule`/`title`, fingerprint not matching `^[a-z0-9]{2,4}-[0-9a-f]{16}$`, empty body → `E102`. Two exceptions with the same fingerprint → `W307` on each (new code) at `fingerprint`.
 - The `planning/continuity/` folder is exempt from the "planning doc" kind (these are their own kind); W201 applies if a continuity-exception file lives elsewhere.
@@ -139,6 +141,17 @@ A `knows` assertion for (character, fact) with no `learns` for that pair at a **
 
 - **TH1a payoff before setup (error):** the earliest payoff scene comes before the earliest setup scene in book order. Sources: [setup scene, payoff scene]. key = `order|<thread id>`.
 - **TH1b never resolved (info):** status `planted`/`developed`/`open` and the last scene of the book is past all its scenes (i.e. the book has a final scene) — reported once. Sources: [thread file `status`]. key = `open|<thread id>`. Threads with `unresolved` or `dropped` are intentional → no finding.
+
+### 3.6 `PL1`-`PL4` planner rules (Story Planner M6, ADR 0003; all version 1, structured records only, never prose)
+
+| Rule | Severity | Finds | Fingerprint key |
+|---|---|---|---|
+| `PL1` scene not in the flow | info | A scene with no live link in or out. Runs only when the book has at least one live link. Sources: [scene `title`]. | `unlinked|<scene id>` |
+| `PL2` transition not documented | info | Two scenes next to each other in reading order, each with a live link, and no direct live link between them in either direction. Subject: the earlier scene. Sources: [both scenes' `title`]. | `transition|<sorted scene ids>` |
+| `PL3` beat with no scenes | info | A beat (with an `id`) in a live structure whose `scenes` is missing or empty. Subject: the structure. Sources: [structure `beats`]. | `beat|<structure id>|<beat id>` |
+| `PL4` payoff with no setup | warning | A thread with `payoff` scenes and no `setup` scenes. Sources: [thread `payoff`]. | `nosetup|<thread id>` |
+
+Fingerprint subjects and source ids: PL1 (scene; scene), PL2 (earlier scene; both scenes), PL3 (structure; beat), PL4 (thread; thread). Archived links and structures are not live. `Source` gains role `plan` and kind `structure`; `subject.kind` gains `structure`.
 
 ## 4. Repository and API
 

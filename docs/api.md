@@ -237,6 +237,21 @@ Errors:
 
 A write that would add a validation error to the book is refused and nothing is written.
 
+## Continuity review (the app's own, not API v1)
+
+`GET /api/books/:b/continuity` answers `{ engine_version, findings, suppressed, stale_exceptions, skipped }`; `404` for an unknown book. The Story Planner rules are part of the same answer. They read only structured records, never prose, and they work with exceptions and "Make a task" like the other rules.
+
+| Rule | Severity | Finds |
+|---|---|---|
+| `PL1` | info | A scene with no live link in or out. Runs only when the book has at least one live link. |
+| `PL2` | info | Two scenes next to each other in reading order, each with a live link, and no direct live link between them. The message says "not documented in the planner". |
+| `PL3` | info | A beat in a live structure with no scenes. A beat whose `state` is `omitted` is skipped. |
+| `PL4` | warning | A plot thread with `payoff` scenes and no `setup` scenes. |
+
+`POST /api/books/:b/continuity/exceptions` accepts `{ fingerprint, rationale, title?, intentional?, dryRun? }`. `intentional` is optional and must be a boolean, else `400`. `true` writes `intentional: true` in the exception file ("This is on purpose"); `false` or no value writes no flag ("Acknowledged"). Both suppress the finding the same way. See [format.md](format.md), "Continuity exceptions".
+
+In `suppressed`, each item is `{ finding, exception }`, and `exception` is `{ file, slug, intentional }`. `intentional` is a boolean, `false` when the file has no flag.
+
 ## Webhooks
 
 Webhooks send events *out*. The author creates them in **Settings, then Webhooks**; a plugin with the `events` permission can create its own (for its own URL only).

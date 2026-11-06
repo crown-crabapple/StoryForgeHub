@@ -7,7 +7,7 @@ import { SuggestionsGroup } from '../suggestions/SuggestionsGroup.jsx';
 import { ShowBoth, SourceLink } from './ShowBoth.jsx';
 import { RAW_URL } from './requests.js';
 import { MakeTaskButton } from '../tasks/MakeTaskButton.jsx';
-import { RULE_INFO, SEVERITY_LABEL, STATUS_FILTERS, findByFingerprint, nextRowIndex, queueModel, rationaleOf, ruleName, sourceLabel, subjectLabel } from './model.js';
+import { RULE_FAMILIES, RULE_INFO, SEVERITY_LABEL, STATUS_FILTERS, findByFingerprint, nextRowIndex, queueModel, rationaleOf, ruleName, sourceLabel, subjectLabel } from './model.js';
 
 /** A small severity marker: a dot and always the word, so colour is never the only cue. */
 function Severity({ severity }) {
@@ -73,7 +73,7 @@ export function FindingDetail({ bookId, finding, version = '', handlers = {} }) 
       <header>
         <p className="muted cf-detail-kind">
           <Severity severity={finding.severity} /> · {finding.rule} {ruleName(finding.rule)}
-          {finding.exception && <span className="tag">Acknowledged</span>}
+          {finding.exception && <span className="tag">{finding.exception.intentional ? 'Intentional' : 'Acknowledged'}</span>}
         </p>
         <h2>{finding.title}</h2>
       </header>
@@ -153,6 +153,7 @@ export function FindingList({ rows, selectedFp, onSelect }) {
             <span className="cf-card-top">
               <Severity severity={f.severity} />
               <span className="tag">{ruleName(f.rule)}</span>
+              {f.exception?.intentional && <span className="tag">Intentional</span>}
             </span>
             <span className="nt-card-title">{f.title}</span>
             {f.message && <span className="nt-card-excerpt muted">{f.message}</span>}
@@ -207,13 +208,13 @@ function CloseButton({ label, onClose }) {
 
 /**
  * The Continuity review (/books/:id/continuity): filters on the left, the findings as a board of cards, and the open finding (or suggestion) in a dialog. Presentational: everything arrives by props.
- * @param {{ bookId: string, result: any, filter?: { status: string, rule: string | null, subject: string | null }, selectedFp?: string | null, version?: string,
+ * @param {{ bookId: string, result: any, filter?: { status: string, rule: string | null, subject: string | null, family?: 'facts' | 'plan' | null }, selectedFp?: string | null, version?: string,
  *   handlers?: { onFilter?: (patch: Record<string, any>) => void, onSelect?: (fp: string) => void, onClose?: () => void, onAcknowledge?: (f: any) => void, onRestore?: (slug: string) => void, onRemove?: (slug: string) => void },
  *   suggestions?: any[] | null, selectedSuggestion?: any | null, selectedSuggestionId?: string | null,
  *   suggestionHandlers?: { busy?: boolean, error?: string | null, onSelect?: (id: string) => void, onAccept?: (hunkId: string) => void, onDecline?: (hunkId: string) => void, onAcceptAll?: () => void, onDeclineAll?: () => void } }} props
  *   `suggestions` (GET /suggestions) adds the "Suggestions" group to the sidebar (M05-J06); the selected one (GET /suggestions/:id) is reviewed in the dialog instead of a finding.
  */
-export function ContinuityPage({ bookId, result, filter = { status: 'all', rule: null, subject: null }, selectedFp = null, version = '', handlers = {}, suggestions = null, selectedSuggestion = null, selectedSuggestionId = null, suggestionHandlers = {} }) {
+export function ContinuityPage({ bookId, result, filter = { status: 'all', rule: null, subject: null, family: null }, selectedFp = null, version = '', handlers = {}, suggestions = null, selectedSuggestion = null, selectedSuggestionId = null, suggestionHandlers = {} }) {
   const model = queueModel(result, filter);
   const selected = findByFingerprint(result, selectedFp);
   const set = (patch) => handlers.onFilter?.(patch);
@@ -226,6 +227,15 @@ export function ContinuityPage({ bookId, result, filter = { status: 'all', rule:
           <button key={s.key} type="button" className="codex-cat" aria-current={s.key === filter.status ? 'true' : undefined} onClick={() => set({ status: s.key })}>
             <span>{s.label}</span>
             <span className="codex-cat-count">{model.counts[s.key]}</span>
+          </button>
+        ))}
+        <h2 className="codex-sidebar-title cf-side-title">Family</h2>
+        <button type="button" className="codex-cat" aria-current={(filter.family ?? null) === null ? 'true' : undefined} onClick={() => set({ family: null, rule: null })}>
+          <span>All</span>
+        </button>
+        {Object.entries(RULE_FAMILIES).map(([key, fam]) => (
+          <button key={key} type="button" className="codex-cat" aria-current={filter.family === key ? 'true' : undefined} onClick={() => set({ family: key, rule: null })}>
+            <span>{fam.label}</span>
           </button>
         ))}
         <h2 className="codex-sidebar-title cf-side-title">Rule</h2>

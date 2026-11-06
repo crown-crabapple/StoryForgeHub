@@ -220,7 +220,7 @@ test('exception suppresses only its fingerprint; a second conflict still reports
   assert.equal(withEx.suppressed.length, 1);
   assert.equal(withEx.suppressed[0].finding.fingerprint, fp);
   assert.deepEqual(withEx.suppressed[0].finding, cf1(original)[0], 'suppressed finding is the full original finding');
-  assert.deepEqual(withEx.suppressed[0].exception, { file: EX_FILE, slug: 'maren-eyes' });
+  assert.deepEqual(withEx.suppressed[0].exception, { file: EX_FILE, slug: 'maren-eyes', intentional: false });
   assert.deepEqual(withEx.stale_exceptions, []);
 
   // a second conflict in another scene is a different finding and is NOT hidden

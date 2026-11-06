@@ -1,4 +1,8 @@
 import { useRef, useState } from 'react';
+import { useApi } from '../api.js';
+import { continuityHref, planNoteCount, planNotesLabel } from '../continuity/model.js';
+import { continuityUrl } from '../continuity/requests.js';
+import { useModule } from '../prefs/PrefsContext.jsx';
 import { Link } from '../router.jsx';
 import { viewHref } from '../planning/model.js';
 import { STORY_FIELDS, fieldValue, planHref } from './requests.js';
@@ -73,6 +77,21 @@ function StoryNotes({ saved, onSave }) {
         </button>
       </div>
     </form>
+  );
+}
+
+/** The Review card: how many plan notes the continuity review holds, opening the queue on the Plan family. Shows nothing while loading, when the fetch fails or with the continuity module off. */
+function ReviewCard({ bookId }) {
+  const on = useModule('continuity');
+  const { data, error } = useApi(on ? continuityUrl(bookId) : null);
+  if (!on || error || !data) return null;
+  return (
+    <section aria-labelledby="plan-review-h" className="plan-block">
+      <h2 id="plan-review-h">Review</h2>
+      <p>
+        <Link to={continuityHref(bookId, { family: 'plan' })}>{planNotesLabel(planNoteCount(data))}</Link>
+      </p>
+    </section>
   );
 }
 
@@ -179,6 +198,8 @@ export function OverviewView({ bookId, overview, characters = [], message = null
           </Link>
         </p>
       </section>
+
+      <ReviewCard bookId={bookId} />
 
       {!noScenes && (
         <section aria-labelledby="plan-unlinked-h" className="plan-block">

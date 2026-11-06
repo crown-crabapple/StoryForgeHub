@@ -55,13 +55,14 @@ export function createContinuityExceptionMethods({ root, afterWrite = () => {}, 
 
   /**
    * Acknowledge one finding: write planning/continuity/<slug>.md. Refusals write nothing: FINDING_NOT_FOUND, ALREADY_EXCEPTED, RATIONALE_REQUIRED, BAD_ARGS.
-   * @param {string} bookId @param {{ fingerprint?: string, rationale?: string, title?: string, dryRun?: boolean }} args
+   * @param {string} bookId @param {{ fingerprint?: string, rationale?: string, title?: string, intentional?: boolean, dryRun?: boolean }} args
    */
   async function createContinuityException(bookId, args = {}) {
-    const { fingerprint, rationale, title: given, dryRun = false } = args ?? {};
+    const { fingerprint, rationale, title: given, intentional, dryRun = false } = args ?? {};
     if (typeof fingerprint !== 'string' || fingerprint === '') return fail('BAD_ARGS', { message: 'fingerprint must be a string' });
     if (typeof rationale !== 'string' || rationale.trim() === '') return fail('RATIONALE_REQUIRED', { message: 'write why this is fine (the rationale is required)' });
     if (given !== undefined && given !== null && (typeof given !== 'string' || CONTROL_RE.test(given) || given.length > 300)) return fail('BAD_ARGS', { message: 'title must be one line of text (max 300)' });
+    if (intentional !== undefined && intentional !== null && typeof intentional !== 'boolean') return fail('BAD_ARGS', { message: 'intentional must be true or false' });
     const found = await findBook(bookId);
     if (!found) return fail('NOT_FOUND');
     const bookRoot = bookRootOf(found.book);
@@ -83,7 +84,7 @@ export function createContinuityExceptionMethods({ root, afterWrite = () => {}, 
     }
     const file = `${DIR}/${slug}.md`;
     const id = `note_${ulid()}`;
-    const text = `---\nschema: storyforge.continuity-exception/v1\nid: ${id}\nslug: ${slug}\nfingerprint: ${fingerprint}\nrule: ${finding.rule}\ntitle: ${yamlText(title)}\ncreated: "${localDate(new Date(Number(now())))}"\n---\n${rationale.trim()}\n`;
+    const text = `---\nschema: storyforge.continuity-exception/v1\nid: ${id}\nslug: ${slug}\nfingerprint: ${fingerprint}\nrule: ${finding.rule}\ntitle: ${yamlText(title)}\ncreated: "${localDate(new Date(Number(now())))}"\n${intentional === true ? 'intentional: true\n' : ''}---\n${rationale.trim()}\n`;
     if (dryRun) return { ok: true, code: 'OK', dryRun: true, file, slug, id, text, changes: [{ from: null, to: file }] };
     const bytes = Buffer.from(text, 'utf8');
     const r = await run(found, store, 'createContinuityException', { fingerprint, file }, (tx) => tx.create(file, bytes));

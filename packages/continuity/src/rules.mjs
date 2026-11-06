@@ -17,6 +17,14 @@ export const RULES = Object.freeze([
     description: 'ST1a: a lost object is held or placed before it is found ("lost|slug|using event"). ST1b: two holders for one object at the same order ("holders|slug|sorted events"). Fingerprint: ST1, the object, the two events, the key.' },
   { id: 'TH1', version: 1, title: 'Thread lifecycle', severity: 'error',
     description: 'TH1a (error): the first payoff scene comes before the first setup scene ("order|thread id"). TH1b (info): a planted, developed or open thread is never resolved by the end of the book ("open|thread id"). Fingerprint: TH1, the thread, its scenes (TH1a only), the key.' },
+  { id: 'PL1', version: 1, title: 'Scene not in the flow', severity: 'info',
+    description: 'A scene has no live planner link in or out, in a book that has at least one live link. Fingerprint: PL1, the scene, the scene, "unlinked|scene id".' },
+  { id: 'PL2', version: 1, title: 'Transition not documented', severity: 'info',
+    description: 'Two scenes next to each other in reading order each have links, but no live link joins them in either direction. Fingerprint: PL2, the earlier scene, both scenes, "transition|sorted scene ids".' },
+  { id: 'PL3', version: 1, title: 'Beat with no scenes', severity: 'info',
+    description: 'A beat in a live structure lists no scenes. Fingerprint: PL3, the structure, the beat, "beat|structure id|beat id".' },
+  { id: 'PL4', version: 1, title: 'Payoff with no setup', severity: 'warning',
+    description: 'A thread lists payoff scenes but no setup scenes. Fingerprint: PL4, the thread, the thread, "nosetup|thread id".' },
 ]);
 
 /**

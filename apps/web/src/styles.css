@@ -4988,7 +4988,7 @@ kbd {
 /* ---------- Story Planner: the Plan tab (Overview and Flow) ---------- */
 
 .plan-page {
-  max-width: 1400px;
+  max-width: none; /* the Plan tab uses the full width; .page caps it at 960px elsewhere */
 }
 .plan-switch {
   align-items: flex-end;

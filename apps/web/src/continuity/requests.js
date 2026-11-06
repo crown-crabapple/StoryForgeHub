@@ -13,11 +13,11 @@ export const contextUrl = (bookId, source, radius = 3) => `${base(bookId)}/conte
 /** GET: a whole book file ({ path, body, sha256 }); `file` is book-relative. @param {string} bookId @param {string} file */
 export const RAW_URL = (bookId, file) => `/api/books/${enc(bookId)}/raw?path=${enc(file)}`;
 
-/** POST: write planning/continuity/<slug>.md for one finding. @param {string} bookId @param {{ fingerprint: string, rationale: string, title?: string }} v */
-export const acknowledgeRequest = (bookId, { fingerprint, rationale, title }) => ({
+/** POST: write planning/continuity/<slug>.md for one finding. @param {string} bookId @param {{ fingerprint: string, rationale: string, title?: string, intentional?: boolean }} v */
+export const acknowledgeRequest = (bookId, { fingerprint, rationale, title, intentional }) => ({
   method: /** @type {const} */ ('POST'),
   url: `${base(bookId)}/exceptions`,
-  body: { fingerprint, rationale, ...(title ? { title } : {}) },
+  body: { fingerprint, rationale, ...(title ? { title } : {}), ...(intentional === true ? { intentional: true } : {}) },
 });
 
 /** DELETE: archive the exception (its finding comes back). @param {string} bookId @param {string} slug */

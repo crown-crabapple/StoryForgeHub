@@ -197,6 +197,13 @@ for (const [label, body] of [['empty', ''], ['whitespace only', '  \n\n']]) {
   });
 }
 
+test('continuity exception: intentional must be true or false', async () => {
+  const withFlag = (v) => added((root) => put(root, EXC, exc({}).replace('created:', `intentional: ${v}\ncreated:`)));
+  assert.deepEqual(await withFlag('true'), []);
+  assert.deepEqual(await withFlag('false'), []);
+  assert.deepEqual(await withFlag('"yes"'), [`E102 | ${EXC} | intentional`]);
+});
+
 test('W307: two exceptions with the same fingerprint warn on each, at fingerprint', async () => {
   const r = await added((root) => {
     put(root, 'planning/continuity/one.md', exc({ slug: 'one', n: '05' }));

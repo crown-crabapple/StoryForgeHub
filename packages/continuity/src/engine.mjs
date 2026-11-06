@@ -4,12 +4,13 @@ import { loadModel } from './model.mjs';
 import { factConflicts } from './facts.mjs';
 import { timelineFindings } from './timeline.mjs';
 import { threadFindings } from './threads.mjs';
+import { plannerFindings } from './planner.mjs';
 
 /**
  * @typedef {import('./model.mjs').Source} Source
  * @typedef {{ fingerprint: string, rule: string, rule_version: number, severity: 'error'|'warning'|'info', title: string, message: string,
- *   subject: { kind: 'entry'|'thread'|'event'|'scene', id: string, slug?: string, name?: string }, sources: Source[] }} Finding
- * @typedef {{ engine_version: 1, findings: Finding[], suppressed: { finding: Finding, exception: { file: string, slug: string } }[],
+ *   subject: { kind: 'entry'|'thread'|'event'|'scene'|'structure', id: string, slug?: string, name?: string }, sources: Source[] }} Finding
+ * @typedef {{ engine_version: 1, findings: Finding[], suppressed: { finding: Finding, exception: { file: string, slug: string, intentional: boolean } }[],
  *   stale_exceptions: { file: string, slug: string, fingerprint: string }[], skipped: string[] }} ContinuityResult
  */
 
@@ -31,14 +32,14 @@ const byOrder = (a, b) =>
  */
 export async function checkContinuity(bookRoot, _opts = {}) { // eslint-disable-line no-unused-vars
   const model = await loadModel(bookRoot);
-  const all = [...(await factConflicts(model)), ...(await timelineFindings(model)), ...(await threadFindings(model))];
+  const all = [...(await factConflicts(model)), ...(await timelineFindings(model)), ...(await threadFindings(model)), ...(await plannerFindings(model))];
   const seen = new Set();
   const found = all.filter((f) => !seen.has(f.fingerprint) && seen.add(f.fingerprint)).sort(byOrder);
 
-  /** @type {Map<string, { file: string, slug: string }>} first exception per fingerprint (files are sorted) */
+  /** @type {Map<string, { file: string, slug: string, intentional: boolean }>} first exception per fingerprint (files are sorted) */
   const exceptionFor = new Map();
   for (const x of model.exceptions) {
-    if (!exceptionFor.has(x.fm.fingerprint)) exceptionFor.set(x.fm.fingerprint, { file: x.file, slug: String(x.fm.slug ?? '') });
+    if (!exceptionFor.has(x.fm.fingerprint)) exceptionFor.set(x.fm.fingerprint, { file: x.file, slug: String(x.fm.slug ?? ''), intentional: x.fm.intentional === true });
   }
   const findings = found.filter((f) => !exceptionFor.has(f.fingerprint));
   const suppressed = found.filter((f) => exceptionFor.has(f.fingerprint)).map((finding) => ({ finding, exception: exceptionFor.get(finding.fingerprint) }));
