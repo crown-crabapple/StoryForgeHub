@@ -42,6 +42,7 @@ export const WRITE_CLASSES = Object.freeze({
   'planner-arc-create': 'write', 'planner-arc-update': 'write', 'planner-arc-milestones': 'write', 'planner-arc-archive': 'write', 'planner-arc-restore': 'write',
   'planner-structure-create': 'write', 'planner-structure-update': 'write', 'planner-structure-beats': 'write', 'planner-structure-archive': 'write', 'planner-structure-restore': 'write',
   'planner-relationship-create': 'write', 'planner-relationship-update': 'write', 'planner-relationship-developments': 'write', 'planner-relationship-archive': 'write', 'planner-relationship-restore': 'write',
+  'planner-synopsis-create': 'write', 'planner-synopsis-update': 'write', 'planner-synopsis-archive': 'write', 'planner-synopsis-restore': 'write',
   // M07-J02 goals and revision tasks (book files; never prose)
   'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
   // M07-J04 profiles: per-machine appearance settings of the server process, so in shared mode only the owner changes them

@@ -1324,6 +1324,9 @@ export function createFsRepository(libraryRoot, options = {}) {
     createPlannerMethods({
       root,
       readValidate,
+      async readSceneSummaries(order) {
+        return (await loadScenes(order)).map(({ fm }) => str(fm.summary));
+      },
       async readFileAt(libRel) {
         try {
           const real = await realpath(abs(libRel));

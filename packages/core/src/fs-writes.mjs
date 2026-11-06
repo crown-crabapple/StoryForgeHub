@@ -10,6 +10,7 @@ import {
   archiveLink,
   archiveNote,
   archiveRelationship,
+  archiveSynopsis,
   archiveStructure,
   changeEntrySlug,
   createAct,
@@ -21,6 +22,7 @@ import {
   createLink,
   createNote,
   createRelationship,
+  createSynopsis,
   createStructure,
   createThread,
   editFrontMatterLine,
@@ -34,6 +36,7 @@ import {
   restoreLink,
   restoreNote,
   restoreRelationship,
+  restoreSynopsis,
   restoreStructure,
   restoreOp,
   setActFields,
@@ -54,6 +57,7 @@ import {
   updateArc,
   updateLink,
   updateRelationship,
+  updateSynopsis,
   updateStructure,
   uploadAttachment,
 } from '@storyforge/manuscript';
@@ -562,6 +566,12 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     setRelationshipDevelopments: (bookId, slug, args = {}) => structure(bookId, (b) => setRelationshipDevelopments(b, slug, args ?? {}), PLANNER_CODES),
     archiveRelationship: (bookId, slug, args = {}) => structure(bookId, (b) => archiveRelationship(b, slug, args ?? {}), PLANNER_CODES),
     restoreRelationship: (bookId, slug, args = {}) => structure(bookId, (b) => restoreRelationship(b, slug, args ?? {}), PLANNER_CODES),
+
+    // ---- Story Planner M7: synopses (planning/synopses). REFUSED_BAD_ARGS carries `field`; CONFLICT carries `current`; creation is undoable.
+    createSynopsis: (bookId, args = {}) => structure(bookId, (b) => createSynopsis(b, args ?? {}), PLANNER_CODES),
+    updateSynopsis: (bookId, slug, args = {}) => structure(bookId, (b) => updateSynopsis(b, slug, args ?? {}), PLANNER_CODES),
+    archiveSynopsis: (bookId, slug, args = {}) => structure(bookId, (b) => archiveSynopsis(b, slug, args ?? {}), PLANNER_CODES),
+    restoreSynopsis: (bookId, slug, args = {}) => structure(bookId, (b) => restoreSynopsis(b, slug, args ?? {}), PLANNER_CODES),
 
     // ---- Story Planner M4: structures and beat sheets (planning/structures). REFUSED_UNKNOWN_SCENE is kept (with the beat `index`).
     createStructure: (bookId, args = {}) => structure(bookId, (b) => createStructure(b, args ?? {}), PLANNER_CODES),

@@ -254,3 +254,27 @@ New diagnostic codes chosen in M1: `E211` (link from a scene to itself), `W316` 
 - **Reopening.** Fingerprints name the records the finding is about, so an exception stops matching when those records change: the pair of scenes, the beat, the thread. The old exception then shows under "No longer matches a finding", as today.
 - **Review view.** The continuity queue gains a family filter: "Story facts" (CF1, TL1, KN1, ST1, TH1) and "Plan" (PL1 to PL4). Plan Overview gains a Review card with the plan finding count, which opens the queue filtered to Plan. A PL3 source opens the structure in the Plan tab. There is no story quality score.
 - **No new routes.** Findings come from `GET /continuity`. The only server change is that the exception route accepts `intentional`.
+
+## M7 decisions (Synopsis Studio)
+
+- **Storage.** One file per synopsis: `planning/synopses/<slug>.md`, kind `synopsis` (`storyforge.synopsis/v1`, id prefix `note`). The body is the author's Markdown text. Front matter:
+  - `type` (required): one of `premise`, `logline`, `elevator-pitch`, `short`, `one-page`, `long`, `chapter-treatment`, `custom`.
+  - `name`: one line. The default is the type's label.
+  - `target_words`: an optional whole number of 1 or more.
+  - `basis`: an optional sha256 of the extracted text the author last reviewed. It drives the stale indicator.
+  - A bad `type`, `target_words` or `basis` gives `E102`. More than one synopsis of the same type is allowed.
+- **Scope.** A synopsis always covers the whole book. The spec's series overview needs series scope, so it moves to M8 with the other series features.
+- **Deterministic extraction.** `GET /synopses/:slug/extract` builds text from structured records only, never from prose. It is offline and writes nothing.
+  - `premise`, `logline`, `elevator-pitch`: sentences from the story plan (`premise`, `logline`, `protagonist_goal`, `central_conflict`, `stakes`), in a fixed order per type.
+  - `short`: one paragraph per beat of the primary structure, made of the summaries of its scenes. With no primary structure, one paragraph per act.
+  - `one-page`: one paragraph per act, made of the scene summaries in reading order.
+  - `long`: one paragraph per chapter.
+  - `chapter-treatment`: a `## Chapter N` heading per chapter, then each scene's title and summary.
+  - `custom`: the same as `long`.
+  - Scenes without a summary are skipped and counted, so the author sees "3 scenes have no summary".
+  - The response is `{text, basis, skipped}`, where `basis` is the sha256 of `text`.
+- **Proposal, never overwrite.** Regenerating never writes. The web app shows the current text and the proposal as a line diff, grouped into hunks. The author accepts or declines each hunk, then presses Save. Save is a normal update with `base_sha256`, so a change made elsewhere meanwhile gives `CONFLICT`. Saving after a review also stores the proposal's `basis`.
+- **Stale.** A synopsis is stale when it has a `basis` and today's extraction hashes differently, meaning a summary, beat or story plan field changed since the last review. The list and the editor show "Sources changed". The author can review the new proposal, or choose "Keep my text", which stores the new `basis` without touching the body. A synopsis with no `basis` is never stale.
+- **AI (optional).** There is no new AI route and no new network code. The "Ask AI" button uses the existing workshop (`POST /ai/context` with `task: 'chat'`, then `POST /ai/send`), so the author sees exactly what will be sent and confirms cloud providers as today. The files sent are the synopsis file and `planning/story.md`; the instruction is prefilled and editable. The reply is never saved: "Use as proposal" puts it into the same hunk review. The button shows only when the `ai` module is on and a provider is set. With AI off, nothing leaves the machine.
+- **Routes.** `GET /synopses`, `GET /synopses/:slug`, `GET /synopses/:slug/extract`. `POST /synopses` (`planner-synopsis-create`). `POST /synopses/:slug` (`planner-synopsis-update`). `POST /synopses/:slug/archive` and `/restore`. Creation is undoable.
+- **Plan tab.** A new "Synopsis" view (`?view=synopsis`) lists the synopses with type, word count against target, and stale state, plus the editor and review. No export includes a synopsis unless the author chooses it. The existing exports are unchanged.

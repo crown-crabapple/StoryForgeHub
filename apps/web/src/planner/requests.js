@@ -44,10 +44,10 @@ export const relationLabel = (relation) => String(relation ?? '').replace(/_/g, 
 /**
  * Where the Plan tab shows something: `/books/:id/plan?view=flow&link=<slug>`. Only the given parts are put in the query (`mode` is `list` or `graph`, `filter` is `unlinked`).
  * @param {string} bookId
- * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null, structure?: string | null, relationship?: string | null }} [target]
+ * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null, structure?: string | null, relationship?: string | null, synopsis?: string | null }} [target]
  */
-export function planHref(bookId, { view, link, node, mode, filter, arc, structure, relationship } = {}) {
-  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc], ['structure', structure], ['relationship', relationship]]
+export function planHref(bookId, { view, link, node, mode, filter, arc, structure, relationship, synopsis } = {}) {
+  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc], ['structure', structure], ['relationship', relationship], ['synopsis', synopsis]]
     .filter(([, v]) => typeof v === 'string' && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
   return `/books/${encodeURIComponent(bookId)}/plan${q.length ? `?${q.join('&')}` : ''}`;

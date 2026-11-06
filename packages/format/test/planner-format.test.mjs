@@ -356,3 +356,39 @@ test('beat ids resolve only in links: a scene-plan or arc pointing at a beat id 
   const got = await added((root) => { put(root, STRUCT, structure()); put(root, PLAN, plan({ scene: B2 })); });
   assert.deepEqual(only(got, PLAN), [`E301 | ${PLAN} | scene`]);
 });
+
+// ---- M7: synopses
+const SYN = 'planning/synopses/one-page.md';
+const synopsis = ({ type = 'one-page', extra = '' } = {}) => `---
+schema: storyforge.synopsis/v1
+id: note_01S50000000000000000000S01
+slug: one-page
+type: ${type}
+name: One page
+target_words: 300
+created: 2026-11-06
+${extra}---
+
+The book in a page.
+`;
+
+test('a well-formed synopsis adds no diagnostics, for every type and with a basis', async () => {
+  assert.deepEqual(await added((root) => put(root, SYN, synopsis())), []);
+  for (const type of ['premise', 'logline', 'elevator-pitch', 'short', 'one-page', 'long', 'chapter-treatment', 'custom']) {
+    assert.deepEqual(await added((root) => put(root, SYN, synopsis({ type }))), [], type);
+  }
+  assert.deepEqual(await added((root) => put(root, SYN, synopsis({ extra: `basis: ${'a'.repeat(64)}\n` }))), []);
+});
+
+test('synopsis: a bad type, target_words, or basis is E102 at that key', async () => {
+  assert.deepEqual(await added((root) => put(root, SYN, synopsis({ type: 'blurb' }))), [`E102 | ${SYN} | type`]);
+  assert.deepEqual(await added((root) => put(root, SYN, synopsis({ extra: 'basis: ABC\n' }))), [`E102 | ${SYN} | basis`]);
+  assert.deepEqual(await added((root) => put(root, SYN, synopsis({ extra: `basis: ${'A'.repeat(64)}\n` }))), [`E102 | ${SYN} | basis`]);
+  assert.deepEqual(await added((root) => put(root, SYN, synopsis().replace('target_words: 300', 'target_words: 0'))), [`E102 | ${SYN} | target_words`]);
+  assert.deepEqual(await added((root) => put(root, SYN, synopsis().replace('target_words: 300', 'target_words: 3.5'))), [`E102 | ${SYN} | target_words`]);
+});
+
+test('synopsis: a missing type is E102 and a stray key is I401', async () => {
+  assert.deepEqual(await added((root) => put(root, SYN, synopsis().replace('type: one-page\n', ''))), [`E102 | ${SYN} | type`]);
+  assert.deepEqual(await added((root) => put(root, SYN, synopsis({ extra: 'mood: tense\n' }))), [`I401 | ${SYN} | mood`]);
+});

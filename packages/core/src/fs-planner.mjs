@@ -4,7 +4,9 @@
 // No filesystem access here: file bytes (for sha256) come from the `readFileAt` function fs-repository.mjs passes in.
 import { createHash } from 'node:crypto';
 import { extractDocs, extractShared, validate } from '@storyforge/format';
-import { ARC_TEXT_FIELDS, MILESTONE_FIELDS, PLAN_FIELDS, STORY_FIELDS, STORY_PATH, STRUCTURE_TEMPLATES } from '@storyforge/manuscript';
+import { ARC_TEXT_FIELDS, MILESTONE_FIELDS, PLAN_FIELDS, STORY_FIELDS, STORY_PATH, STRUCTURE_TEMPLATES, SYNOPSIS_LABELS, SYNOPSIS_TYPES } from '@storyforge/manuscript';
+import { basisOf, extractText } from './synopsis-extract.mjs';
+import { countWords } from './word-count.mjs';
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const text = (v) => (typeof v === 'string' ? v : null);
@@ -15,9 +17,10 @@ const tidy = (body) => (typeof body === 'string' ? body.replace(/^(?:\r?\n)+/, '
 const CHUNK = 32;
 
 /**
- * @param {{ root: string, readValidate?: () => Promise<any>, readFileAt: (libRel: string) => Promise<{ bytes: Buffer, mtimeMs: number } | null> }} deps
+ * @param {{ root: string, readValidate?: () => Promise<any>, readFileAt: (libRel: string) => Promise<{ bytes: Buffer, mtimeMs: number } | null>, readSceneSummaries?: (order: any[]) => Promise<(string | null)[]> }} deps
+ *   readSceneSummaries: the `summary` front matter value of each scene of `order` (null when it has none); only summaries are read for extraction (M7), never prose.
  */
-export function createPlannerMethods({ root, readValidate = () => validate(root), readFileAt }) {
+export function createPlannerMethods({ root, readValidate = () => validate(root), readFileAt, readSceneSummaries = async (order) => order.map(() => null) }) {
   async function load(bookId) {
     const result = await readValidate();
     const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
@@ -268,6 +271,46 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
     return { path: d.rel, sha256: f ? sha(f.bytes) : null, fields, body: tidy(d.body) };
   }
 
+  // ---- M7: synopses (planning/synopses)
+  const synopsisDocs = (ctx, archived) => ctx.docs.filter((d) => d.kind === 'synopsis' && d.archived === archived);
+  const typeRank = (t) => { const i = SYNOPSIS_TYPES.indexOf(t); return i < 0 ? SYNOPSIS_TYPES.length : i; };
+
+  /** The records extraction reads, from the validated documents and the scenes' summary lines: { storyPlan, scenes (reading order), primaryStructure }. */
+  async function extractionInputs(ctx) {
+    const order = ctx.book.order;
+    const summaries = await readSceneSummaries(order);
+    const scenes = order.map((s, i) => ({ id: s.id, title: s.title ?? null, summary: summaries[i] ?? null, act: Number.isInteger(s.act) ? s.act : null, chapter: Number.isInteger(s.chapter) ? s.chapter : null }));
+    const primaryId = primaryIdOf(ctx);
+    const primary = primaryId ? structureDocs(ctx, false).find((d) => d.fm.id === primaryId) : null;
+    return { storyPlan: await story(ctx), scenes, primaryStructure: primary ? { beats: structureOf(ctx, primary, null, primaryId).beats } : null };
+  }
+
+  const synopsisOf = (d, sha256, archived, extracted) => {
+    const type = text(d.fm.type);
+    const basis = typeof d.fm.basis === 'string' && /^[0-9a-f]{64}$/.test(d.fm.basis) ? d.fm.basis : null;
+    return {
+      id: text(d.fm.id),
+      slug: text(d.fm.slug) ?? stem(d.rel).split('/').pop(),
+      path: d.rel,
+      type,
+      name: text(d.fm.name) || SYNOPSIS_LABELS[type] || null,
+      target_words: Number.isInteger(d.fm.target_words) && d.fm.target_words >= 1 ? d.fm.target_words : null,
+      words: countWords(typeof d.body === 'string' ? d.body : ''),
+      basis,
+      stale: !archived && basis !== null && extracted !== null && basis !== extracted(type),
+      sha256,
+    };
+  };
+
+  /** A function type -> basis of today's extraction (memoised per type). */
+  const extractedBasis = (inputs) => {
+    const memo = new Map();
+    return (type) => {
+      if (!memo.has(type)) memo.set(type, basisOf(extractText(type, inputs).text));
+      return memo.get(type);
+    };
+  };
+
   return {
     /** GET /api/books/:b/links: { links, archived }. Null when there is no such book. */
     async listLinks(bookId) {
@@ -516,6 +559,57 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
         primary_structure: primary ? { id: primaryId, slug: text(primary.fm.slug) ?? stem(primary.rel).split('/').pop(), name: text(primary.fm.name) } : null,
         unlinked: unlinked.slice(0, 50).map((n) => ({ id: n.id, title: n.title })),
       };
+    },
+
+    /**
+     * GET /api/books/:b/synopses: { synopses, archived } (planning/synopses/*.md, archive/planning/synopses/*.md). Item = { id, slug, path, type, name (the type's label when the file has none), target_words: number | null,
+     * words (word count of the body), basis: string | null, stale: boolean, sha256 }. stale = the file has a basis and today's extraction for its type hashes differently (archived items are never stale).
+     * Both lists are by type (premise, logline, elevator-pitch, short, one-page, long, chapter-treatment, custom), then name, then slug. Null when there is no such book.
+     */
+    async listSynopses(bookId) {
+      const ctx = await load(bookId);
+      if (!ctx) return null;
+      const live = synopsisDocs(ctx, false);
+      const arch = synopsisDocs(ctx, true);
+      const sums = await hashes(ctx, [...live, ...arch].map((d) => d.rel));
+      const needsExtraction = live.some((d) => typeof d.fm.basis === 'string' && /^[0-9a-f]{64}$/.test(d.fm.basis));
+      const extracted = needsExtraction ? extractedBasis(await extractionInputs(ctx)) : null;
+      const order = (list) => list.sort((x, y) => typeRank(x.type) - typeRank(y.type) || (x.name.toLowerCase() < y.name.toLowerCase() ? -1 : x.name.toLowerCase() > y.name.toLowerCase() ? 1 : 0) || (x.slug < y.slug ? -1 : x.slug > y.slug ? 1 : 0));
+      return {
+        synopses: order(live.map((d) => synopsisOf(d, sums.get(d.rel) ?? null, false, extracted))),
+        archived: order(arch.map((d) => synopsisOf(d, sums.get(d.rel) ?? null, true, null))),
+      };
+    },
+
+    /** GET /api/books/:b/synopses/:slug: the live synopsis, else the archived one: the Item of listSynopses plus `body` (the author's text) and `archived`. Null when there is no such book or synopsis. */
+    async getSynopsis(bookId, slug) {
+      if (typeof slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
+      const ctx = await load(bookId);
+      if (!ctx) return null;
+      for (const archived of [false, true]) {
+        const rel = `${archived ? 'archive/' : ''}planning/synopses/${slug}.md`;
+        const d = synopsisDocs(ctx, archived).find((x) => x.rel === rel);
+        if (!d) continue;
+        const f = await readFileAt(`${ctx.prefix}${rel}`);
+        const basis = typeof d.fm.basis === 'string' && /^[0-9a-f]{64}$/.test(d.fm.basis) ? d.fm.basis : null;
+        const extracted = !archived && basis !== null ? extractedBasis(await extractionInputs(ctx)) : null;
+        return { ...synopsisOf(d, f ? sha(f.bytes) : null, archived, extracted), body: tidy(d.body), archived };
+      }
+      return null;
+    },
+
+    /**
+     * GET /api/books/:b/synopses/:slug/extract: { text, basis, skipped } for the type of the synopsis (live or archived), built from the story plan, the scene summaries and the primary structure only (no prose, no
+     * network, nothing written). basis = sha256 (hex) of text as UTF-8; skipped = scenes without a summary that the type would have used. Null when there is no such book or synopsis.
+     */
+    async extractSynopsis(bookId, slug) {
+      if (typeof slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
+      const ctx = await load(bookId);
+      if (!ctx) return null;
+      const d = [false, true].map((archived) => synopsisDocs(ctx, archived).find((x) => x.rel === `${archived ? 'archive/' : ''}planning/synopses/${slug}.md`)).find(Boolean);
+      if (!d) return null;
+      const { text: proposal, skipped } = extractText(text(d.fm.type) ?? '', await extractionInputs(ctx));
+      return { text: proposal, basis: basisOf(proposal), skipped };
     },
   };
 }

@@ -42,8 +42,8 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   if (parts.some((p) => p === null)) return NOT_FOUND;
   const [api, a, b, c, d, e, f, ...rest] = /** @type {string[]} */ (parts);
   if (api !== 'api' || rest.length > 0) return NOT_FOUND;
-  // only the revisions routes (scenes/:s/revisions[/:file]) are longer than five segments
-  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image')))) return NOT_FOUND;
+  // only the revisions routes (scenes/:s/revisions[/:file]), an entry image and a synopsis extract (synopses/:slug/extract) are longer than five segments
+  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image') || (c === 'synopses' && d !== undefined && e === 'extract' && f === undefined)))) return NOT_FOUND;
 
   if (a === 'health' && b === undefined) {
     const info = await repository.libraryInfo();
@@ -316,6 +316,19 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'relationships' && d !== undefined && e === undefined) {
       const rel = await repository.getRelationship(b, d);
       return rel ? { status: 200, body: rel } : NOT_FOUND;
+    }
+    // Story Planner M7: synopses (planning/synopses/<slug>.md) and their offline extraction from the plan (writes nothing)
+    if (c === 'synopses' && d === undefined) {
+      const list = await repository.listSynopses(b);
+      return list ? { status: 200, body: list } : NOT_FOUND;
+    }
+    if (c === 'synopses' && d !== undefined && e === undefined) {
+      const syn = await repository.getSynopsis(b, d);
+      return syn ? { status: 200, body: syn } : NOT_FOUND;
+    }
+    if (c === 'synopses' && d !== undefined && e === 'extract') {
+      const ex = await repository.extractSynopsis(b, d);
+      return ex ? { status: 200, body: ex } : NOT_FOUND;
     }
     if (c === 'plan-badges' && d === undefined) {
       const badges = await repository.planBadges(b);
@@ -688,6 +701,10 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'relationships' && d !== undefined && e === 'developments') return { route: 'planner-relationship-developments', bookId: b, slug: d };
   if (method === 'POST' && c === 'relationships' && d !== undefined && e === 'archive') return { route: 'planner-relationship-archive', bookId: b, slug: d };
   if (method === 'POST' && c === 'relationships' && d !== undefined && e === 'restore') return { route: 'planner-relationship-restore', bookId: b, slug: d };
+  if (method === 'POST' && c === 'synopses' && d === undefined) return { route: 'planner-synopsis-create', bookId: b };
+  if (method === 'POST' && c === 'synopses' && d !== undefined && e === undefined) return { route: 'planner-synopsis-update', bookId: b, slug: d };
+  if (method === 'POST' && c === 'synopses' && d !== undefined && e === 'archive') return { route: 'planner-synopsis-archive', bookId: b, slug: d };
+  if (method === 'POST' && c === 'synopses' && d !== undefined && e === 'restore') return { route: 'planner-synopsis-restore', bookId: b, slug: d };
   return null;
 }
 
@@ -1338,6 +1355,31 @@ async function handleStructure(repository, match, body) {
     case 'planner-relationship-restore': {
       if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
       const call = match.route === 'planner-relationship-archive' ? repository.archiveRelationship : repository.restoreRelationship;
+      const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
+      return respondPlanner(r, 200);
+    }
+    // ---- Story Planner M7: the only files these routes write are planning/synopses/<slug>.md (archive/ when archived); never a scene or the story plan
+    case 'planner-synopsis-create': {
+      if (typeof body.type !== 'string') return badRequest('expected { type: string, name?: string, target_words?: number, body?: string }');
+      if (body.name !== undefined && typeof body.name !== 'string') return badRequest('name must be a string');
+      if (body.target_words !== undefined && !Number.isInteger(body.target_words)) return badRequest('target_words must be a whole number');
+      if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string');
+      const r = await repository.createSynopsis(bookId, { type: body.type, name: body.name, target_words: body.target_words, body: body.body, dryRun });
+      return respondPlanner(r, created);
+    }
+    case 'planner-synopsis-update': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      if (body.name !== undefined && typeof body.name !== 'string') return badRequest('name must be a string');
+      if (body.target_words !== undefined && body.target_words !== null && !Number.isInteger(body.target_words)) return badRequest('target_words must be a whole number or null');
+      if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string');
+      if (body.basis !== undefined && body.basis !== null && typeof body.basis !== 'string') return badRequest('basis must be a string or null');
+      const r = await repository.updateSynopsis(bookId, /** @type {string} */ (match.slug), { name: body.name, target_words: body.target_words, body: body.body, basis: body.basis, baseSha256: body.base_sha256, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-synopsis-archive':
+    case 'planner-synopsis-restore': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const call = match.route === 'planner-synopsis-archive' ? repository.archiveSynopsis : repository.restoreSynopsis;
       const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
       return respondPlanner(r, 200);
     }

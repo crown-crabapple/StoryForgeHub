@@ -17,7 +17,7 @@ my-library/                  any folder; holds one or more books
           0010-arrival.md    one scene per file
           0020-the-key.md
     codex/                   characters, locations, factions, objects, lore (one file each)
-    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/, arcs/, structures/ and relationships/ hold Story Planner files, and story.md is the story plan
+    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/, arcs/, structures/, relationships/ and synopses/ hold Story Planner files, and story.md is the story plan
     research/                research notes and sources
     assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
     activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
@@ -51,7 +51,7 @@ Scenes marked as an alternate version of another scene (`variant_of`) are kept b
 | --- | --- |
 | Scenes in `manuscript/` | `research/` notes (canon only if a note says `canon: true`) |
 | `codex/` entries | `suggestions/` until you accept them |
-| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/`, `planning/structures/`, `planning/relationships/` and `planning/story.md` |
+| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/`, `planning/structures/`, `planning/relationships/`, `planning/synopses/` and `planning/story.md` |
 | `book.md`, `act.md`, `chapter.md` | `archive/` (left out of order, counts and export) |
 | `assets/` the book uses | `legacy/` (see below) |
 
@@ -243,6 +243,29 @@ Free relationship notes.
 - `a` equal to `b` is `E212` (at `b`). Two live relationships for the same pair, in either order, give `W320` on the later file (by file name, at `b`). Archived files are not counted.
 - StoryForge names the file `<a-slug>-and-<b-slug>` (`-2`, `-3` … when the name is taken) and writes `developments` as one block of plain mappings, like arc milestones.
 - Archive moves the file to `archive/planning/relationships/`. Restore moves it back.
+
+### A synopsis: `planning/synopses/one-page.md`
+
+```yaml
+---
+schema: storyforge.synopsis/v1
+id: note_01S5000000000000000000001D
+slug: one-page
+type: one-page
+name: One page
+target_words: 300
+created: 2026-11-06
+---
+Free synopsis text.
+```
+
+- One file per synopsis, covering the whole book. A book can have any number, including several of one type. The body is the author's Markdown text.
+- Required: `slug`, `type`. Optional: `name` (one line), `target_words`, `basis` and `created`.
+- `type` is `premise`, `logline`, `elevator-pitch`, `short`, `one-page`, `long`, `chapter-treatment` or `custom`.
+- `target_words` is a whole number of 1 or more. `basis` is 64 lowercase hex characters: the sha256 of the extracted text the author last reviewed. A synopsis with a `basis` is stale when the text extracted from the plan today hashes differently; one without a `basis` is never stale.
+- A `type` that is not one of the eight, a `name` that is not one line, a `target_words` that is not a whole number of 1 or more, or a `basis` that is not 64 lowercase hex characters is `E102`.
+- StoryForge names the file after the synopsis's name, else after the type's label (`-2`, `-3` … when the name is taken). It never writes the synopsis text from the plan on its own: the extracted text is only a proposal the author accepts.
+- Archive moves the file to `archive/planning/synopses/`. Restore moves it back.
 
 ### Diagnostics
 

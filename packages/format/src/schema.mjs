@@ -181,6 +181,15 @@ export const KINDS = {
     required: ['slug', 'a', 'b'],
     fields: { slug: 'slug', a: 'str', b: 'str', baseline: 'str', end_state: 'str', developments: 'list' },
   },
+  // Added 2026-11-06, Story Planner M7 (ADR 0003, additive within v1): one synopsis of the whole book, under planning/synopses/. The body is the author's own text. `basis` is the sha256 of the extracted text last reviewed. Never canon.
+  synopsis: {
+    prefix: 'note',
+    required: ['slug', 'type'],
+    fields: {
+      slug: 'slug', type: ['premise', 'logline', 'elevator-pitch', 'short', 'one-page', 'long', 'chapter-treatment', 'custom'],
+      name: 'str', target_words: 'int1', basis: 'str', created: 'any',
+    },
+  },
   doc: {
     prefix: 'note',
     required: ['title'],
@@ -582,6 +591,11 @@ export function checkFields(doc, ctx, add) {
 
   if (doc.kind === 'link' && typeof fm.from === 'string' && fm.from === fm.to) add('E211', file, 'to', 'a link cannot point from a scene or beat to itself');
   if (doc.kind === 'relationship' && typeof fm.a === 'string' && fm.a === fm.b) add('E212', file, 'b', 'a relationship needs two different entries');
+
+  if (doc.kind === 'synopsis') {
+    if (typeof fm.name === 'string' && /[\r\n]/.test(fm.name)) add('E102', file, 'name', 'name must be a single line');
+    if (typeof fm.basis === 'string' && !/^[0-9a-f]{64}$/.test(fm.basis)) add('E102', file, 'basis', 'basis must be 64 lower-case hex characters');
+  }
 
   if (doc.kind === 'suggestion') checkSuggestion(doc, add);
   if (doc.kind === 'comment') checkComment(doc, add);

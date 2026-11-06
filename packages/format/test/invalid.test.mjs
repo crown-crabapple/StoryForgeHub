@@ -36,6 +36,8 @@ const CONTRACT_CASES = [
   'E212-relationship-self', 'W320-duplicate-relationship',
   // Story Planner M4: structures and beat sheets
   'E102-duplicate-beat-id',
+  // Story Planner M7: synopses
+  'E102-synopsis-type', 'E102-synopsis-basis',
 ];
 
 test('invalid fixture set matches the contract case table', () => {
