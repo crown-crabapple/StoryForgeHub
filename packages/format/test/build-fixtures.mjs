@@ -628,6 +628,20 @@ bookCase('W319-duplicate-arc', (b, ids) => {
   return [D('W319', p2, 'character')];
 });
 
+// Story Planner M4: E102 for a beat id used twice
+bookCase('E102-duplicate-beat-id', (b, ids) => {
+  const p = 'planning/structures/main-three-act.md';
+  const beat = ids('note');
+  b.files.set(p, {
+    fm: {
+      schema: 'storyforge.structure/v1', id: ids('note'), slug: 'main-three-act', name: 'Main structure', template: 'three-act', template_version: 1,
+      beats: { block: [`  - id: ${beat}`, '    name: Opening image', `  - id: ${beat}`, '    name: Inciting event'] },
+    },
+    body: 'Free structure notes.\n',
+  });
+  return [D('E102', p, 'beats[1].id')];
+});
+
 // ---- suggestion documents (M05-J06)
 const suggestionFor = (ids, targetId, targetPath, baseBytes, proposed) =>
   buildSuggestion({
@@ -1339,6 +1353,34 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
     },
     body: 'Free arc notes.\n',
   });
+  // Story Planner M4: one structure, three beats; the key scene sits in two beats and one beat holds two scenes
+  const structureId = ids('note');
+  files.set('planning/structures/main-three-act.md', {
+    fm: {
+      schema: 'storyforge.structure/v1', id: structureId, slug: 'main-three-act', name: 'Main structure',
+      template: 'three-act', template_version: 1,
+      beats: {
+        block: [
+          `  - id: ${ids('note')}`,
+          '    name: Opening image',
+          '    purpose: Show the world before it changes.',
+          '    question: What does normal look like?',
+          '    position: about 1%',
+          '    state: done',
+          `    scenes: [${KEY}, ${FERRY}]`,
+          `  - id: ${ids('note')}`,
+          '    name: Inciting event',
+          '    purpose: Something knocks the hero off the usual path.',
+          `    scenes: [${KEY}]`,
+          `  - id: ${ids('note')}`,
+          '    name: Final choice',
+          '    state: omitted',
+        ],
+      },
+    },
+    body: 'Free structure notes.\n',
+  });
+  files.get('planning/story.md').fm.primary_structure = structureId;
   checkIds(files);
   const dir = path.join(FIXTURES, 'valid', 'planner');
   writeTree(dir, files);

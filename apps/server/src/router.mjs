@@ -298,6 +298,16 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const arc = await repository.getArc(b, d);
       return arc ? { status: 200, body: arc } : NOT_FOUND;
     }
+    // Story Planner M4: structure templates (built-in data) and structures (planning/structures/<slug>.md)
+    if (c === 'structure-templates' && d === undefined) return { status: 200, body: { templates: repository.listStructureTemplates() } };
+    if (c === 'structures' && d === undefined) {
+      const list = await repository.listStructures(b);
+      return list ? { status: 200, body: list } : NOT_FOUND;
+    }
+    if (c === 'structures' && d !== undefined && e === undefined) {
+      const structure = await repository.getStructure(b, d);
+      return structure ? { status: 200, body: structure } : NOT_FOUND;
+    }
     // M05-J04 status; M08-J03: the cover generator's state, a draft picture, and a streamed reply in progress
     if (c === 'ai' && ['status', 'cover', 'cover-draft', 'stream'].includes(d) && e === undefined) return handleAiRead(repository, state, d, b, params);
     if (c === 'graph' && d === undefined) {
@@ -655,6 +665,11 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'arcs' && d !== undefined && e === 'milestones') return { route: 'planner-arc-milestones', bookId: b, slug: d };
   if (method === 'POST' && c === 'arcs' && d !== undefined && e === 'archive') return { route: 'planner-arc-archive', bookId: b, slug: d };
   if (method === 'POST' && c === 'arcs' && d !== undefined && e === 'restore') return { route: 'planner-arc-restore', bookId: b, slug: d };
+  if (method === 'POST' && c === 'structures' && d === undefined) return { route: 'planner-structure-create', bookId: b };
+  if (method === 'POST' && c === 'structures' && d !== undefined && e === undefined) return { route: 'planner-structure-update', bookId: b, slug: d };
+  if (method === 'POST' && c === 'structures' && d !== undefined && e === 'beats') return { route: 'planner-structure-beats', bookId: b, slug: d };
+  if (method === 'POST' && c === 'structures' && d !== undefined && e === 'archive') return { route: 'planner-structure-archive', bookId: b, slug: d };
+  if (method === 'POST' && c === 'structures' && d !== undefined && e === 'restore') return { route: 'planner-structure-restore', bookId: b, slug: d };
   return null;
 }
 
@@ -685,6 +700,24 @@ function plannerFields(v) {
 function respondPlanner(r, okStatus) {
   if (!r.ok && (r.code === 'REFUSED_DUPLICATE_LINK' || r.code === 'REFUSED_DUPLICATE_ARC')) return { status: 409, body: { error: 'conflict', code: r.code, message: r.message, existing: r.existing ?? null } };
   return respond(r, okStatus, structureBody);
+}
+
+/**
+ * The shape check of a beats list (M4): an array of objects whose values are strings or null, except `scenes`, an array of strings. Returns an error message or null.
+ * The values themselves (lengths, ids, states, known scenes) are checked by setStructureBeats.
+ * @param {unknown} v
+ */
+function plannerBeats(v) {
+  if (!Array.isArray(v)) return 'beats must be a list';
+  for (const [i, x] of v.entries()) {
+    if (!isObject(x)) return `beats[${i}] must be an object`;
+    for (const [k, y] of Object.entries(x)) {
+      if (k === 'scenes') {
+        if (!Array.isArray(y) || !y.every((s) => typeof s === 'string')) return `beats[${i}].scenes must be a list of scene ids`;
+      } else if (y !== null && typeof y !== 'string') return `beats[${i}].${k} must be a string or null`;
+    }
+  }
+  return null;
 }
 
 /** Like respond(), with the continuity refusals named by their codes: 404 FINDING_NOT_FOUND, 409 ALREADY_EXCEPTED, 400 RATIONALE_REQUIRED. */
@@ -1229,6 +1262,33 @@ async function handleStructure(repository, match, body) {
     case 'planner-arc-restore': {
       if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
       const call = match.route === 'planner-arc-archive' ? repository.archiveArc : repository.restoreArc;
+      const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
+      return respondPlanner(r, 200);
+    }
+    // ---- Story Planner M4: the only files these routes write are planning/structures/<slug>.md (archive/ when archived); never a scene
+    case 'planner-structure-create': {
+      if (typeof body.template !== 'string' || typeof body.name !== 'string') return badRequest('expected { template: string, name: string }');
+      const r = await repository.createStructure(bookId, { template: body.template, name: body.name, dryRun });
+      return respondPlanner(r, created);
+    }
+    case 'planner-structure-update': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      if (body.name !== undefined && typeof body.name !== 'string') return badRequest('name must be a string');
+      if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string');
+      const r = await repository.updateStructure(bookId, /** @type {string} */ (match.slug), { name: body.name, body: body.body, baseSha256: body.base_sha256, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-structure-beats': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      const bad = plannerBeats(body.beats);
+      if (bad) return badRequest(bad);
+      const r = await repository.setStructureBeats(bookId, /** @type {string} */ (match.slug), { beats: body.beats, baseSha256: body.base_sha256, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-structure-archive':
+    case 'planner-structure-restore': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const call = match.route === 'planner-structure-archive' ? repository.archiveStructure : repository.restoreStructure;
       const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
       return respondPlanner(r, 200);
     }

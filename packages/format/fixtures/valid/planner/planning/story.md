@@ -8,5 +8,6 @@ central_conflict: The guild wants the key back; Maren wants to know what it open
 protagonist_goal: Learn what the key opens.
 stakes: Her place in the town.
 protagonist: maren-hollis
+primary_structure: note_01S50000000000000000000017
 ---
 Free story notes.

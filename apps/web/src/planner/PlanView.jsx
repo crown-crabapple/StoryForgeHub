@@ -8,6 +8,9 @@ import { useStructure } from '../structure/useStructure.jsx';
 import { ArcEditor } from './ArcEditor.jsx';
 import { ArcsView, NewArcDialog } from './ArcsView.jsx';
 import { ConnectDialog } from './ConnectDialog.jsx';
+import { NewStructureDialog } from './NewStructureDialog.jsx';
+import { StructureView } from './StructureView.jsx';
+import { useStructureWrites } from './useStructureWrites.js';
 import { FlowView } from './FlowView.jsx';
 import { OverviewView } from './OverviewView.jsx';
 import { PlanPage } from './PlanPage.jsx';
@@ -26,6 +29,9 @@ import {
   linksUrl,
   planHref,
   planOverviewUrl,
+  structureTemplatesUrl,
+  structureUrl,
+  structuresUrl,
   reverseLinkBody,
   storyPlanBody,
   storyPlanUrl,
@@ -60,9 +66,10 @@ export function PlanView({ bookId, search = '' }) {
   const book = useMemo(() => ({ id: bookId }), [bookId]);
   const structure = useStructure({ book, activeId: null, onChanged: refresh });
 
-  const overview = useApi(url.view === 'overview' ? planOverviewUrl(bookId) : null, version);
+  const overview = useApi(url.view === 'overview' || url.view === 'structure' ? planOverviewUrl(bookId) : null, version);
   const entries = useApi(url.view === 'overview' || url.view === 'arcs' ? entriesUrl(bookId) : null, version);
   const arcs = useApi(url.view === 'arcs' ? arcsUrl(bookId) : null, version);
+  const structures = useApi(url.view === 'structure' ? structuresUrl(bookId) : null, version);
   const flow = useApi(flowUrl(bookId), version);
   const links = useApi(linksUrl(bookId), version);
 
@@ -70,10 +77,13 @@ export function PlanView({ bookId, search = '' }) {
   const [connect, setConnect] = useState(/** @type {{ from: string | null } | null} */ (null));
   const [storyState, setStoryState] = useState({ message: null, error: null });
   const [newArc, setNewArc] = useState(false);
+  const [newStructure, setNewStructure] = useState(false);
+  const templates = useApi(newStructure ? structureTemplatesUrl(bookId) : null, 0);
   const [milestone, setMilestone] = useState(/** @type {{ slug: string, index: number } | null} */ (null));
   const [linkState, setLinkState] = useState({ slug: null, busy: false, message: null, error: null });
 
   const arcWrites = useArcWrites({ bookId, structure, refresh });
+  const structureWrites = useStructureWrites({ bookId, structure, refresh });
   const go = (patch) => navigate(planUrl(bookId, url, patch));
   const toLink = (slug) => planHref(bookId, { view: 'flow', link: slug, mode: url.mode });
   const characters = (entries.data ?? []).filter((o) => o.kind === 'entry' && o.type === 'character' && typeof o.slug === 'string').map((o) => ({ id: o.id, slug: o.slug, title: o.title }));
@@ -183,6 +193,38 @@ export function PlanView({ bookId, search = '' }) {
         />
       );
     }
+  } else if (url.view === 'structure') {
+    if (flow.error || structures.error) body = <p className="error">{flow.error ?? structures.error}</p>;
+    else if (!structures.loading && !structures.data) body = <NotFound />;
+    else {
+      const selected = url.structure ? structures.data?.structures?.find((s) => s.slug === url.structure) : (structures.data?.structures?.find((s) => s.primary) ?? structures.data?.structures?.[0]);
+      body = (
+        <StructureView
+          bookId={bookId}
+          structures={structures.data}
+          flow={flow.data}
+          url={url}
+          state={selected && structureWrites.state.slug === selected.slug ? structureWrites.state : {}}
+          handlers={{
+            ...(selected ? structureWrites.handlersFor(selected, { onArchived: () => go({ view: 'structure', structure: null }) }) : {}),
+            onNewStructure: () => setNewStructure(true),
+            onSetPrimary: async (s) => {
+              if (!(await writeStory({ fields: { primary_structure: s.id } }, 'Primary structure set.'))) structure.showToast({ message: 'Not changed: the story plan could not be saved. Try again.' });
+            },
+            onRestore: async (archivedStructure) => {
+              const r = await structure.apply({
+                url: structureUrl(bookId, archivedStructure.slug, '/restore'),
+                body: {},
+                done: 'Structure restored.',
+                undoable: true,
+                after: () => go({ view: 'structure', structure: archivedStructure.slug }),
+              });
+              if (!r.ok) structure.showToast({ message: `Not restored: ${r.message}` });
+            },
+          }}
+        />
+      );
+    }
   } else if (url.view === 'arcs') {
     if (flow.error || arcs.error) body = <p className="error">{flow.error ?? arcs.error}</p>;
     else if (!arcs.loading && !arcs.data) body = <NotFound />;
@@ -282,6 +324,20 @@ export function PlanView({ bookId, search = '' }) {
             go({ view: 'arcs', arc: slug });
           }}
           onClose={() => setNewArc(false)}
+        />
+      )}
+      {newStructure && (
+        <NewStructureDialog
+          templates={templates.data?.templates ?? (templates.error ? [] : null)}
+          onCreate={async (v) => {
+            const r = await structureWrites.create(v);
+            if (r.ok) {
+              setNewStructure(false);
+              if (r.slug) go({ view: 'structure', structure: r.slug });
+            }
+            return r;
+          }}
+          onClose={() => setNewStructure(false)}
         />
       )}
       {structure.ui}

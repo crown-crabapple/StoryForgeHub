@@ -45,7 +45,10 @@ export const REFERENCES = {
     { field: 'scene', kinds: ['scene'], list: false },
     { field: 'characters', kinds: ENTRY, list: true },
   ],
-  'story-plan': [{ field: 'protagonist', kinds: ENTRY, list: false }],
+  'story-plan': [
+    { field: 'protagonist', kinds: ENTRY, list: false },
+    { field: 'primary_structure', kinds: ['structure'], list: false },
+  ],
   arc: [{ field: 'character', kinds: ENTRY, list: false }],
 };
 

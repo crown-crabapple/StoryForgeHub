@@ -7,23 +7,25 @@ import { planHref, relationLabel } from './requests.js';
 export const PLAN_VIEWS = [
   { key: 'overview', label: 'Overview' },
   { key: 'flow', label: 'Flow' },
+  { key: 'structure', label: 'Structure' },
   { key: 'arcs', label: 'Arcs' },
 ];
 
 /**
- * What /books/:id/plan?… asks for: `view` (overview unless `view=flow`), `node` (a scene id), `link` (a link slug), `arc` (an arc slug, with view=arcs), `mode` ('list', 'graph' (lanes in the Arcs view),
+ * What /books/:id/plan?… asks for: `view` (overview unless `view=flow`), `node` (a scene id), `link` (a link slug), `arc` (an arc slug, with view=arcs), `structure` (a structure slug, with view=structure), `mode` ('list', 'graph' (lanes in the Arcs view),
  * or null for "the default of the screen width") and `filter` ('unlinked' or null).
  * @param {string} [search]
- * @returns {{ view: 'overview' | 'flow' | 'arcs', node: string | null, link: string | null, arc: string | null, mode: 'list' | 'graph' | null, filter: 'unlinked' | null }}
+ * @returns {{ view: 'overview' | 'flow' | 'structure' | 'arcs', node: string | null, link: string | null, arc: string | null, structure: string | null, mode: 'list' | 'graph' | null, filter: 'unlinked' | null }}
  */
 export function parsePlanSearch(search = '') {
   const p = new URLSearchParams(search);
   const mode = p.get('mode');
   return {
-    view: p.get('view') === 'flow' ? 'flow' : p.get('view') === 'arcs' ? 'arcs' : 'overview',
+    view: p.get('view') === 'flow' ? 'flow' : p.get('view') === 'arcs' ? 'arcs' : p.get('view') === 'structure' ? 'structure' : 'overview',
     node: p.get('node') || null,
     link: p.get('link') || null,
     arc: p.get('arc') || null,
+    structure: p.get('structure') || null,
     mode: mode === 'list' || mode === 'graph' ? mode : null,
     filter: p.get('filter') === 'unlinked' ? 'unlinked' : null,
   };
@@ -37,7 +39,7 @@ export function parsePlanSearch(search = '') {
  */
 export const planUrl = (bookId, state, patch = {}) => {
   const next = { ...state, ...patch };
-  return planHref(bookId, { view: next.view === 'flow' || next.view === 'arcs' ? next.view : null, node: next.node, link: next.link, mode: next.mode, filter: next.filter, arc: next.arc });
+  return planHref(bookId, { view: next.view === 'flow' || next.view === 'arcs' || next.view === 'structure' ? next.view : null, node: next.node, link: next.link, mode: next.mode, filter: next.filter, arc: next.arc, structure: next.structure });
 };
 
 export const sceneName = (title) => title || 'Untitled scene';

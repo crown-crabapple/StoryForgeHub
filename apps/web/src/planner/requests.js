@@ -44,10 +44,10 @@ export const relationLabel = (relation) => String(relation ?? '').replace(/_/g, 
 /**
  * Where the Plan tab shows something: `/books/:id/plan?view=flow&link=<slug>`. Only the given parts are put in the query (`mode` is `list` or `graph`, `filter` is `unlinked`).
  * @param {string} bookId
- * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null }} [target]
+ * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null, structure?: string | null }} [target]
  */
-export function planHref(bookId, { view, link, node, mode, filter, arc } = {}) {
-  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc]]
+export function planHref(bookId, { view, link, node, mode, filter, arc, structure } = {}) {
+  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc], ['structure', structure]]
     .filter(([, v]) => typeof v === 'string' && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
   return `/books/${encodeURIComponent(bookId)}/plan${q.length ? `?${q.join('&')}` : ''}`;
@@ -216,4 +216,70 @@ export function explainArcFailure(status, json) {
  */
 export function arcMilestonesForScene(data, sceneId) {
   return (data?.arcs ?? []).flatMap((arc) => (arc.milestones ?? []).filter((m) => m.scene === sceneId).map((milestone) => ({ arc, milestone })));
+}
+
+// ---------------------------------------------------------------- structures and beat sheets (M4)
+
+/** The three states of a beat, with the words the select shows. */
+export const BEAT_STATES = [
+  { value: 'open', label: 'Open' },
+  { value: 'done', label: 'Done' },
+  { value: 'omitted', label: 'Omitted' },
+];
+
+/** GET /api/books/:b/structure-templates */
+export const structureTemplatesUrl = (bookId) => bookUrl(bookId, '/structure-templates');
+/** GET and POST /api/books/:b/structures */
+export const structuresUrl = (bookId) => bookUrl(bookId, '/structures');
+/** GET and POST /api/books/:b/structures/:slug, and with the tails /beats, /archive and /restore. */
+export const structureUrl = (bookId, slug, tail = '') => bookUrl(bookId, `/structures/${encodeURIComponent(slug)}${tail}`);
+
+/** The request that starts a structure from a template. @param {string} bookId @param {{ template: string, name: string }} v */
+export const createStructureRequest = (bookId, { template, name }) => ({ url: structuresUrl(bookId), body: { template, name: String(name).trim() } });
+
+/** The body that changes a structure's name and/or notes, plus the sha256 last read. @param {{ sha256: string }} structure @param {{ name?: string, body?: string, dryRun?: boolean }} patch */
+export const updateStructureBody = (structure, { name, body, dryRun } = {}) => ({
+  ...(name !== undefined ? { name: String(name).trim() } : {}),
+  ...(body !== undefined ? { body } : {}),
+  base_sha256: structure.sha256,
+  ...(dryRun ? { dryRun: true } : {}),
+});
+
+/**
+ * The body that writes the whole ordered beat list: text values trimmed and an empty one left out, the order kept, an existing `id` kept (a beat without one gets a new id on the server),
+ * `state` and the assigned scene ids (an empty list clears them) always sent.
+ * @param {{ sha256: string }} structure
+ * @param {{ id?: string, name: string, purpose?: string, question?: string, position?: string, state?: string, scenes?: string[] }[]} beats @param {{ dryRun?: boolean }} [opts]
+ */
+export function beatsBody(structure, beats, { dryRun } = {}) {
+  const list = beats.map((b) => {
+    const out = {};
+    if (typeof b.id === 'string' && b.id !== '') out.id = b.id;
+    out.name = String(b.name ?? '').trim();
+    for (const key of ['purpose', 'question', 'position']) {
+      const v = String(b[key] ?? '').trim();
+      if (v !== '') out[key] = v;
+    }
+    out.state = BEAT_STATES.some((s) => s.value === b.state) ? b.state : 'open';
+    out.scenes = (b.scenes ?? []).map(String);
+    return out;
+  });
+  return { beats: list, base_sha256: structure.sha256, ...(dryRun ? { dryRun: true } : {}) };
+}
+
+/** A sentence for the refusals of a structure write that need their own words; null for the others (they go to explainFailure). */
+export function explainStructureFailure(status, json) {
+  if (json?.code === 'REFUSED_UNKNOWN_SCENE') return `A beat points at a scene that is not in the book${typeof json.index === 'number' ? ` (beat ${json.index + 1})` : ''}.`;
+  if (isStaleWrite(status, json)) return 'This structure changed elsewhere; reloaded.';
+  return null;
+}
+
+/**
+ * The beats that hold a scene, from GET /structures: one `{ structure, beat, index }` per beat whose `scenes` include the scene id, structures and beats in the order given.
+ * @param {{ structures?: any[] } | null | undefined} data
+ */
+export function beatsForScene(data, sceneId) {
+  return (data?.structures ?? []).flatMap((structure) =>
+    (structure.beats ?? []).flatMap((beat, index) => ((beat.scenes ?? []).some((s) => (typeof s === 'string' ? s : s?.id) === sceneId) ? [{ structure, beat, index }] : [])),
+  );
 }

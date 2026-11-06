@@ -5,6 +5,7 @@ import { flowList, prepareCodex, replaceFrontMatterBlock, stale as staleBare } f
 import { editFrontMatterLine, formatYamlText, splitDocument } from './frontmatter.mjs';
 import { fail, finish, guarded, readBytes } from './ops.mjs';
 import { sceneSlugOf } from './paths.mjs';
+import { STRUCTURE_TEMPLATES, templateById } from './structure-templates.mjs';
 import { SLUG_RE, sha256, slugify, ulid } from './util.mjs';
 
 /** CONFLICT with the file as it is now ({ sha256, text }), so the author can see what changed (ADR 0003 D05); null when the sha matches. */
@@ -289,16 +290,16 @@ export function saveScenePlan(bookRoot, sceneId, args = {}) {
 
 // ---------------------------------------------------------------- saveStoryPlan
 
-/** The planning keys of the story plan, in the order they are written; `protagonist` is an entry slug, the rest are single-line text. */
-export const STORY_FIELDS = ['premise', 'logline', 'theme_question', 'central_conflict', 'protagonist_goal', 'stakes', 'protagonist'];
+/** The planning keys of the story plan, in the order they are written; `protagonist` is an entry slug, `primary_structure` a structure id (M4), the rest are single-line text. */
+export const STORY_FIELDS = ['premise', 'logline', 'theme_question', 'central_conflict', 'protagonist_goal', 'stakes', 'protagonist', 'primary_structure'];
 export const STORY_PATH = 'planning/story.md';
 
 /** Anchors for inserting a story key: the keys before it, nearest first, then `id`. */
 const storyAnchors = (key) => [...STORY_FIELDS.slice(0, STORY_FIELDS.indexOf(key)).reverse(), 'id'];
 
 /**
- * Save the book's story plan, planning/story.md (ADR 0003 M2). `fields` holds any of the seven keys (premise, logline, theme_question, central_conflict,
- * protagonist_goal, stakes, protagonist): a string sets it, `null` or '' removes the key. `protagonist` must be the slug of a live entry (REFUSED_UNKNOWN_ENTRY).
+ * Save the book's story plan, planning/story.md (ADR 0003 M2). `fields` holds any of the eight keys (premise, logline, theme_question, central_conflict,
+ * protagonist_goal, stakes, protagonist, primary_structure): a string sets it, `null` or '' removes the key. `protagonist` must be the slug of a live entry (REFUSED_UNKNOWN_ENTRY).
  * `body` (optional, max 20000, may be multi-line) replaces the body and keeps the front matter bytes. No file yet: it is created (`baseSha256` must be absent).
  * A file exists: `baseSha256` is required and a different file on disk is CONFLICT with `current`. book.md and scenes are never read for writing or written.
  * @param {string} bookRoot
@@ -578,5 +579,217 @@ function moveArc(bookRoot, slug, args, restoring) {
       if (twin) return fail('REFUSED_DUPLICATE_ARC', `${twin.rel} is already the arc of this character`, { existing: { slug: arcSlugOf(twin) } });
     }
     return finish({ bookRoot, store, lb, op: restoring ? 'restoreArc' : 'archiveArc', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
+  });
+}
+
+// ------------------------------------------------------------------ structures and beat sheets (ADR 0003 M4)
+
+export const STRUCTURE_DIR = 'planning/structures';
+/** The text keys of a beat besides `name`, in the order they are written (after id and name). */
+export const BEAT_TEXT_FIELDS = ['purpose', 'question', 'position'];
+export const BEAT_STATES = ['open', 'done', 'omitted'];
+const BEAT_ID_RE = /^note_[0-9A-HJKMNP-TV-Z]{26}$/;
+const MAX_BEATS = 200;
+const MAX_BEAT_SCENES = 50;
+const STRUCTURE_BEFORE_BEATS = ['template_version', 'template', 'name', 'slug', 'id'];
+
+/** Book-relative path of a live structure. @param {string} slug */
+export const structurePath = (slug) => `${STRUCTURE_DIR}/${slug}.md`;
+const structureDocs = (docs, archived) => docs.filter((d) => d.kind === 'structure' && d.archived === archived);
+const structureName = (v) => isText(v) && v.trim() !== '' && v.length <= 200;
+
+/** The lines of a `beats:` block for already checked beats ({ id, name, purpose?, question?, position?, state?, scenes? }); no lines for no beats. */
+function beatLines(beats) {
+  if (beats.length === 0) return [];
+  const lines = ['beats:'];
+  for (const b of beats) {
+    lines.push(`  - id: ${b.id}`, `    name: ${formatYamlText(b.name)}`);
+    for (const key of BEAT_TEXT_FIELDS) {
+      const v = b[key];
+      if (typeof v === 'string' && v !== '') lines.push(`    ${key}: ${formatYamlText(v)}`);
+    }
+    if (b.state === 'done' || b.state === 'omitted') lines.push(`    state: ${b.state}`);
+    if (Array.isArray(b.scenes) && b.scenes.length > 0) lines.push(`    scenes: [${b.scenes.join(', ')}]`);
+  }
+  return lines;
+}
+
+/**
+ * New structure file planning/structures/<slug>.md from a built-in template: schema, id, slug, name, template, template_version, then the template's beats copied with
+ * fresh note_ ids (state absent = open, no scenes). `template` must be a known template id (REFUSED_BAD_ARGS, field template); `name` a single line of 1 to 200 characters.
+ * The slug is slugify(name) (-2, -3 on a clash with a live or archived file). The template never changes the file again.
+ * @param {string} bookRoot
+ * @param {{ template: string, name: string, dryRun?: boolean }} args
+ */
+export function createStructure(bookRoot, args = {}) {
+  return guarded(async () => {
+    const { template: templateId, name, dryRun = false } = args ?? {};
+    const template = templateById(templateId);
+    if (!template) return fail('REFUSED_BAD_ARGS', `template must be one of ${STRUCTURE_TEMPLATES.map((t) => t.id).join(', ')}`, { field: 'template' });
+    if (!structureName(name)) return fail('REFUSED_BAD_ARGS', 'name must be a single line of 1 to 200 characters', { field: 'name' });
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store } = prep;
+    const slug = await freeName(store, slugify(name) || 'structure', structurePath);
+    const id = `note_${ulid()}`;
+    const rel = structurePath(slug);
+    const beats = template.beats.map((b) => ({ ...b, id: `note_${ulid()}` }));
+    const lines = ['---', 'schema: storyforge.structure/v1', `id: ${id}`, `slug: ${slug}`, `name: ${formatYamlText(name)}`, `template: ${template.id}`, `template_version: ${template.version}`, ...beatLines(beats), '---', ''];
+    const changes = [{ from: null, to: rel, content: Buffer.from(lines.join('\n'), 'utf8'), before: null }];
+    return finish({ bookRoot, store, lb, op: 'createStructure', args: { template: template.id, name, file: rel }, changes, dryRun, withDiff: true, extra: { id, slug, path: rel } });
+  });
+}
+
+/** The live structure `slug` of a prepared book, read for writing: { doc, rel, before } or { result }. */
+async function liveStructure(store, docs, slug) {
+  const rel = structurePath(slug);
+  const doc = structureDocs(docs, false).find((d) => d.rel === rel);
+  if (!doc) return { result: fail('NOT_FOUND', `no structure ${slug}`) };
+  return { doc, rel, before: await readBytes(store, rel) };
+}
+
+/**
+ * Change a structure's name or notes. `baseSha256` is required; a different file on disk is CONFLICT with `current`. `name` (single line, 1 to 200) replaces the name; `body`
+ * (optional, max 20000) replaces the body. The template, template_version, beats, file name and slug are never changed here.
+ * @param {string} bookRoot @param {string} slug
+ * @param {{ name?: string, body?: string, baseSha256: string, dryRun?: boolean }} args
+ */
+export function updateStructure(bookRoot, slug, args = {}) {
+  return guarded(async () => {
+    const { name, body, baseSha256, dryRun = false } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no structure ${slug}`);
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
+    if (name !== undefined && !structureName(name)) return fail('REFUSED_BAD_ARGS', 'name must be a single line of 1 to 200 characters', { field: 'name' });
+    if (body !== undefined && (typeof body !== 'string' || body.length > 20000 || BODY_BAD_RE.test(body))) return fail('REFUSED_BAD_ARGS', 'body must be text without control characters (max 20000 characters)', { field: 'body' });
+    if (name === undefined && body === undefined) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const got = await liveStructure(store, docs, slug);
+    if (got.result) return got.result;
+    const { doc, rel, before } = got;
+    const changed = stale(before, baseSha256, rel);
+    if (changed) return changed;
+
+    let buf = before;
+    if (name !== undefined) {
+      const r = editFrontMatterLine(buf, 'name', name, { anchors: ['slug', 'id'], plain: true });
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: 'name' });
+      buf = r.buf;
+    }
+    if (body !== undefined) {
+      const parts = splitDocument(buf);
+      if (!parts) return fail('REFUSED_UNSIMPLE_FIELD', `${rel}: the file has no closed front matter`, { file: rel, field: 'body' });
+      const head = buf.subarray(0, parts.bodyStart);
+      buf = Buffer.concat([head, Buffer.from(bodyText(body, head.includes('\r\n') ? '\r\n' : '\n'), 'utf8')]);
+    }
+    const out = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'updateStructure', args: { slug, name, body: body === undefined ? undefined : `<${body.length} chars>` }, changes: out, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+  });
+}
+
+/**
+ * Replace the whole `beats:` block of a structure. `beats` is an array (max 200) of { id?, name, purpose?, question?, position?, state?, scenes? }: `name` is required (single
+ * line, max 200); the texts are single lines (max 2000; an empty text is left out); `state` is open, done or omitted (open is written as no key); `scenes` is an array (max 50)
+ * of scene ids, de-duplicated keeping the order, each a live scene of the book (REFUSED_UNKNOWN_SCENE with the beat `index`). An `id` must be a note_ id and unique in the list
+ * (REFUSED_BAD_ARGS); a beat without one gets a new id. Written as a block of mappings through replaceFrontMatterBlock (after template_version when absent, removed when the list
+ * is empty); a hand-edited block with a comment, anchor or alias is REFUSED_UNSIMPLE_FIELD. `baseSha256` is required; a different file on disk is CONFLICT with `current`.
+ * @param {string} bookRoot @param {string} slug
+ * @param {{ beats: { id?: string, name: string, purpose?: string, question?: string, position?: string, state?: string, scenes?: string[] }[], baseSha256: string, dryRun?: boolean }} args
+ */
+export function setStructureBeats(bookRoot, slug, args = {}) {
+  return guarded(async () => {
+    const { beats, baseSha256, dryRun = false } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no structure ${slug}`);
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
+    if (!Array.isArray(beats) || beats.length > MAX_BEATS) return fail('REFUSED_BAD_ARGS', `beats must be a list of up to ${MAX_BEATS} items`, { field: 'beats' });
+    const ids = new Set();
+    /** @type {{ id: string, name: string, purpose?: string, question?: string, position?: string, state?: string, scenes: string[] }[]} */
+    const clean = [];
+    for (const [i, b] of beats.entries()) {
+      const at = (k) => `beats[${i}].${k}`;
+      if (!isMap(b)) return fail('REFUSED_BAD_ARGS', `beats[${i}] must be an object with a name`, { field: `beats[${i}]`, index: i });
+      for (const key of Object.keys(b)) {
+        if (!['id', 'name', ...BEAT_TEXT_FIELDS, 'state', 'scenes'].includes(key)) return fail('REFUSED_BAD_ARGS', `unknown beat field ${key}; the fields are id, name, ${BEAT_TEXT_FIELDS.join(', ')}, state, scenes`, { field: at(key), index: i });
+      }
+      if (!structureName(b.name)) return fail('REFUSED_BAD_ARGS', `${at('name')} must be a single line of 1 to 200 characters`, { field: at('name'), index: i });
+      for (const key of BEAT_TEXT_FIELDS) {
+        const v = b[key];
+        if (v !== undefined && v !== null && !lineText(v)) return fail('REFUSED_BAD_ARGS', `${at(key)} must be a single line of text without control characters (max 2000)`, { field: at(key), index: i });
+      }
+      let state = b.state;
+      if (state === undefined || state === null || state === '') state = 'open';
+      if (!BEAT_STATES.includes(state)) return fail('REFUSED_BAD_ARGS', `${at('state')} must be one of ${BEAT_STATES.join(', ')}`, { field: at('state'), index: i });
+      let scenes = b.scenes ?? [];
+      if (!Array.isArray(scenes) || scenes.length > MAX_BEAT_SCENES) return fail('REFUSED_BAD_ARGS', `${at('scenes')} must be a list of up to ${MAX_BEAT_SCENES} scene ids`, { field: at('scenes'), index: i });
+      for (const [j, s] of scenes.entries()) {
+        if (typeof s !== 'string' || s === '' || s.length > 100) return fail('REFUSED_BAD_ARGS', `${at('scenes')}[${j}] must be a scene id`, { field: `${at('scenes')}[${j}]`, index: i });
+      }
+      scenes = [...new Set(scenes)];
+      let id = b.id;
+      if (id === undefined || id === null || id === '') id = `note_${ulid()}`;
+      else if (typeof id !== 'string' || !BEAT_ID_RE.test(id)) return fail('REFUSED_BAD_ARGS', `${at('id')} must be a note_ id`, { field: at('id'), index: i });
+      if (ids.has(id)) return fail('REFUSED_BAD_ARGS', `${at('id')} ${id} is used by another beat of the list`, { field: at('id'), index: i });
+      ids.add(id);
+      clean.push({ id, name: b.name, purpose: b.purpose ?? undefined, question: b.question ?? undefined, position: b.position ?? undefined, state, scenes });
+    }
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const got = await liveStructure(store, docs, slug);
+    if (got.result) return got.result;
+    const { doc, rel, before } = got;
+    const changed = stale(before, baseSha256, rel);
+    if (changed) return changed;
+    const scenes = liveScenes(lb);
+    for (const [i, b] of clean.entries()) {
+      for (const [j, s] of b.scenes.entries()) {
+        if (!scenes.has(s)) return fail('REFUSED_UNKNOWN_SCENE', `no scene ${s} in the book`, { field: `beats[${i}].scenes[${j}]`, index: i });
+      }
+    }
+
+    const lines = beatLines(clean);
+    let buf = before;
+    if (lines.length > 0 || /^beats:/m.test(buf.toString('latin1'))) {
+      const r = replaceFrontMatterBlock(buf, 'beats', lines, { after: STRUCTURE_BEFORE_BEATS });
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: 'beats' });
+      buf = r.buf;
+    }
+    const out = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'setStructureBeats', args: { slug, beats: clean.length }, changes: out, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+  });
+}
+
+/** Move a structure to archive/planning/structures/. @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args */
+export function archiveStructure(bookRoot, slug, args = {}) {
+  return moveStructure(bookRoot, slug, args, false);
+}
+
+/**
+ * Move an archived structure back. A live file with that name: REFUSED_PATH_TAKEN.
+ * @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args
+ */
+export function restoreStructure(bookRoot, slug, args = {}) {
+  return moveStructure(bookRoot, slug, args, true);
+}
+
+function moveStructure(bookRoot, slug, args, restoring) {
+  return guarded(async () => {
+    const { dryRun = false, baseSha256 } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no structure ${slug}`);
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store } = prep;
+    const live = structurePath(slug);
+    const from = restoring ? `archive/${live}` : live;
+    const to = restoring ? live : `archive/${live}`;
+    if (!(await store.exists(from))) return fail('NOT_FOUND', `no ${restoring ? 'archived ' : ''}structure ${slug}`);
+    const before = await readBytes(store, from);
+    const changed = stale(before, baseSha256, from);
+    if (changed) return changed;
+    if (restoring && (await store.exists(live))) return fail('REFUSED_PATH_TAKEN', `a structure file ${live} already exists`, { path: live });
+    return finish({ bookRoot, store, lb, op: restoring ? 'restoreStructure' : 'archiveStructure', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
   });
 }
