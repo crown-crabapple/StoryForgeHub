@@ -1,5 +1,8 @@
 // The Canvas page's pure model (M09-J01): node kinds and defaults, safe Markdown blocks, to-do lists, column layout, edge geometry, view fitting and the
 // undo history. Nothing here touches the DOM or the network, so all of it is tested in node.
+import { relationStroke } from '../planner/model.js';
+import { RELATIONS, explainLinkFailure, relationLabel } from '../planner/requests.js';
+import { explainFailure } from '../structure/helpers.js';
 
 const enc = encodeURIComponent;
 
@@ -334,6 +337,89 @@ export function connect(c, fromId, toId, rand = Math.random) {
   if (!a || !b) return c;
   const [fromSide, toSide] = facingSides(a, b);
   return { ...c, edges: [...c.edges, { id: newId(rand), fromNode: fromId, fromSide, toNode: toId, toSide, toEnd: 'arrow' }] };
+}
+
+// ---------------------------------------------------------------- Flow relations on a connection
+
+/** The slug of the Flow link an edge carries (`storyforge.link`), or null. @param {any} edge */
+export const edgeLink = (edge) => (typeof edge?.storyforge?.link === 'string' && edge.storyforge.link !== '' ? edge.storyforge.link : null);
+
+/**
+ * The scene ids at the two ends of an edge `{ from, to }` when both ends are story cards of a live scene (refs entry of kind scene, state ok), else null.
+ * @param {any} edge @param {any[]} nodes @param {Record<string, any>} refs node id -> ref info
+ */
+export function sceneEnds(edge, nodes, refs) {
+  const end = (id) => {
+    const n = nodes.find((x) => x.id === id);
+    const r = refs?.[id];
+    return n && nodeKind(n) === 'story' && r?.kind === 'scene' && r.state === 'ok' && typeof r.id === 'string' && r.id !== '' ? r.id : null;
+  };
+  const from = end(edge?.fromNode);
+  const to = end(edge?.toNode);
+  return from && to ? { from, to } : null;
+}
+
+/** The edge tied to a Flow link: `storyforge.link` is the slug and the label is the relation in words (so Obsidian shows it). @param {any} edge @param {string} slug @param {string} relation */
+export const withLink = (edge, slug, relation) => ({ ...edge, label: relationLabel(relation), storyforge: { ...(edge.storyforge ?? {}), link: slug } });
+
+/** The edge with no Flow link and no label; an empty `storyforge` is dropped. @param {any} edge */
+export function withoutLink(edge) {
+  const next = { ...edge };
+  delete next.label;
+  const { storyforge } = next;
+  if (storyforge) {
+    const other = { ...storyforge };
+    delete other.link;
+    if (Object.keys(other).length > 0) next.storyforge = other;
+    else delete next.storyforge;
+  }
+  return next;
+}
+
+/** The edge turned around: from and to swap, and so do their sides (the arrow ends stay where they are). @param {any} edge */
+export function reverseEdge(edge) {
+  const { fromNode, toNode, fromSide, toSide, ...rest } = edge;
+  return { ...rest, fromNode: toNode, toNode: fromNode, ...(toSide !== undefined ? { fromSide: toSide } : {}), ...(fromSide !== undefined ? { toSide: fromSide } : {}) };
+}
+
+/** The relation a label spells ("pays off" -> "pays_off"), or null. @param {unknown} label */
+export function relationFromLabel(label) {
+  const t = String(label ?? '').trim().toLowerCase();
+  return RELATIONS.find((r) => relationLabel(r.value) === t)?.value ?? null;
+}
+
+/** The live links of GET /links by slug. @param {{ links?: any[] } | null | undefined} data @returns {Map<string, any>} */
+export const indexLinks = (data) => new Map((data?.links ?? []).filter((l) => typeof l?.slug === 'string').map((l) => [l.slug, l]));
+
+/**
+ * How an edge is drawn. Without a link: `plain` (its own label). With one: `live` (the link is the truth: its relation as the label and the Flow dash style),
+ * `unlinked` (the slug is not a live link: stored label, muted) or `pending` (the links are not loaded yet: stored label).
+ * @param {any} edge @param {Map<string, any> | null | undefined} links
+ * @returns {{ state: 'plain' | 'live' | 'unlinked' | 'pending', slug: string | null, link: any, label: string, dasharray: string | null, group: string | null }}
+ */
+export function edgeView(edge, links) {
+  const slug = edgeLink(edge);
+  const own = { slug, link: null, label: edge?.label ?? '', dasharray: null, group: null };
+  if (!slug) return { state: 'plain', ...own };
+  if (!links) return { state: 'pending', ...own };
+  const link = links.get(slug);
+  if (!link) return { state: 'unlinked', ...own };
+  const { group, dasharray } = relationStroke(link.relation);
+  return { state: 'live', slug, link, label: relationLabel(link.relation), dasharray, group };
+}
+
+/** The slug of the link a refused create names (409 REFUSED_DUPLICATE_LINK, `existing: { slug }`), or null. @param {number} status @param {any} json */
+export function duplicateLinkSlug(status, json) {
+  if (status !== 409 || json?.code !== 'REFUSED_DUPLICATE_LINK') return null;
+  const e = json.existing;
+  const slug = typeof e === 'string' ? e : e?.slug;
+  return typeof slug === 'string' && slug !== '' ? slug : null;
+}
+
+/** A refused link write in words. @param {number} status @param {any} json */
+export function explainCanvasLinkFailure(status, json) {
+  if (json?.code === 'MODULE_OFF') return 'The planner module is off, so Flow links cannot be changed.';
+  return explainLinkFailure(status, json) ?? explainFailure(status, json);
 }
 
 // ---------------------------------------------------------------- history

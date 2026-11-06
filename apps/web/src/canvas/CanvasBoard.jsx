@@ -1,6 +1,8 @@
 // The interactive board of one canvas (M09-J01): pan and zoom, select, drag, resize, connect, edit in place, and the Storyflow-style toolbar.
 // It owns only what is on the screen (view, selection, the gesture in progress); the canvas document lives in CanvasView, which saves it.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useModule } from '../prefs/PrefsContext.jsx';
+import { RELATIONS, relationLabel } from '../planner/requests.js';
 import { Dialog } from '../shell/Dialog.jsx';
 import { useShortcuts } from '../shortcuts/ShortcutsContext.jsx';
 import { CardBody, ContainerHead } from './CanvasCard.jsx';
@@ -16,6 +18,7 @@ import {
   cssColor,
   duplicate,
   edgeGeometry,
+  edgeView,
   fitView,
   isContainer,
   layoutColumns,
@@ -26,10 +29,15 @@ import {
   patchNode,
   readingOrder,
   refOf,
+  relationFromLabel,
   removeIds,
+  reverseEdge,
   safeUrl,
+  sceneEnds,
   snap,
   toWorld,
+  withLink,
+  withoutLink,
   zoomAt,
 } from './model.js';
 import { IMAGE_ACCEPT } from './requests.js';
@@ -51,9 +59,11 @@ const TOOL_GLYPH = { note: 'Aa', todo: '☑', swatch: '◐', image: '▣', story
 /**
  * @param {{ bookId: string, doc: { nodes: any[], edges: any[] }, refs: Record<string, any>, targets: any[], readOnly: boolean, fitKey: string,
  *   onChange: (next: any, opts?: { commit?: boolean }) => void, onUndo: () => void, onRedo: () => void,
- *   onUploadImage: (file: File) => Promise<{ ok: true, path: string } | { ok: false, message: string }>, onProblem: (message: string | null) => void }} props
+ *   onUploadImage: (file: File) => Promise<{ ok: true, path: string } | { ok: false, message: string }>, onProblem: (message: string | null) => void,
+ *   links?: Map<string, any> | null, linkWrites?: ReturnType<typeof import('./useCanvasLinks.js').useCanvasLinks> | null }} props
+ *   `links` are the live Flow links by slug (null until loaded); `linkWrites` makes a scene-to-scene connection a real Flow link.
  */
-export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onChange, onUndo, onRedo, onUploadImage, onProblem }) {
+export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onChange, onUndo, onRedo, onUploadImage, onProblem, links = null, linkWrites = null }) {
   const shortcuts = useShortcuts(); // the canvas keys come from the shortcut registry (M07-J04), so they can be rebound
   const boardRef = useRef(null);
   const fileRef = useRef(null);
@@ -65,6 +75,8 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
   const [pending, setPending] = useState(null); // connect: the first card
   const [picker, setPicker] = useState(null); // story card picker: { at }
   const [linkAsk, setLinkAsk] = useState(null); // web link: { at }
+  const [confirmDel, setConfirmDel] = useState(null); // deleting a linked connection: { id, link, from, to }
+  const plannerOn = useModule('planner');
   const gesture = useRef(null);
   const docRef = useRef(doc);
   const viewRef = useRef(view);
@@ -76,6 +88,7 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
 
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc.nodes]);
   const ordered = useMemo(() => readingOrder(doc.nodes), [doc.nodes]);
+  const sceneRefs = useMemo(() => Object.fromEntries(doc.nodes.filter((n) => nodeKind(n) === 'story').map((n) => [n.id, refOf(n, refs, targets)])), [doc.nodes, refs, targets]);
 
   // fit the canvas into the board when another canvas opens
   useLayoutEffect(() => {
@@ -236,8 +249,7 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
     const write = !readOnly;
     const del = () => {
       if (edgeSel) {
-        onChange(removeIds(docRef.current, new Set([edgeSel])));
-        setEdgeSel(null);
+        removeEdge(edgeSel);
       } else if (selected.size > 0) {
         onChange(layoutColumns(removeIds(docRef.current, selected)));
         setSelected(new Set());
@@ -318,11 +330,71 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
       boardRef.current?.focus({ preventScroll: true });
     }
   }
+  function onEdgeSelectKey(e) {
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      e.currentTarget.blur();
+      setEdgeSel(null);
+      boardRef.current?.focus({ preventScroll: true });
+    }
+  }
   function onEdgeArrow() {
     onChange(patchEdge(docRef.current, edgeSel, (x) => ({ ...x, toEnd: (x.toEnd ?? 'arrow') === 'arrow' ? 'none' : 'arrow' })));
   }
   function onEdgeRemove() {
-    onChange(removeIds(docRef.current, new Set([edgeSel])));
+    removeEdge(edgeSel);
+  }
+
+  // ------------------------------------------------------------ Flow relations on a scene-to-scene connection
+
+  const canRelate = !readOnly && plannerOn && linkWrites !== null;
+  const edgeEnds = edgeEditing ? sceneEnds(edgeEditing, doc.nodes, sceneRefs) : null;
+  const edgeInfo = edgeEditing ? edgeView(edgeEditing, links) : null;
+  const showRelation = canRelate && edgeEnds !== null;
+  const patchThis = (id, fn) => onChange(patchEdge(docRef.current, id, fn));
+
+  /** The Relation select: None archives the link, another relation changes it, the first one creates it (or adopts the one Flow already has). */
+  async function chooseRelation(id, relation) {
+    const edge = docRef.current.edges.find((x) => x.id === id);
+    const ends = edge ? sceneEnds(edge, docRef.current.nodes, sceneRefs) : null;
+    if (!edge || !ends || !linkWrites) return;
+    const view = edgeView(edge, links);
+    if (relation === '') {
+      if (!view.slug) return;
+      if (view.link && !(await linkWrites.archive(view.link)).ok) return;
+      patchThis(id, withoutLink);
+    } else if (view.link) {
+      if (view.link.relation === relation) return;
+      if ((await linkWrites.setRelation(view.link, relation)).ok) patchThis(id, (x) => withLink(x, view.slug, relation));
+    } else {
+      const r = await linkWrites.create({ from: ends.from, to: ends.to, relation });
+      if (r.ok) patchThis(id, (x) => withLink(x, r.slug, relation));
+    }
+  }
+  async function reverseLinked(id) {
+    const edge = docRef.current.edges.find((x) => x.id === id);
+    const view = edge ? edgeView(edge, links) : null;
+    if (!view?.link || !linkWrites) return;
+    if ((await linkWrites.reverse(view.link)).ok) patchThis(id, reverseEdge);
+  }
+  /** Delete one connection. One that shows a live Flow link asks first whether the link goes too. */
+  function removeEdge(id) {
+    const edge = docRef.current.edges.find((x) => x.id === id);
+    const view = edge ? edgeView(edge, links) : null;
+    if (edge && view?.link && canRelate) {
+      const name = (nodeId, fallback) => sceneRefs[nodeId]?.title || fallback;
+      setConfirmDel({ id, link: view.link, from: name(edge.fromNode, view.link.from), to: name(edge.toNode, view.link.to) });
+      return;
+    }
+    onChange(removeIds(docRef.current, new Set([id])));
+    setEdgeSel(null);
+  }
+  async function answerDelete(archive) {
+    const ask = confirmDel;
+    setConfirmDel(null);
+    if (!ask) return;
+    if (archive && !(await linkWrites.archive(ask.link)).ok) return;
+    onChange(removeIds(docRef.current, new Set([ask.id])));
     setEdgeSel(null);
   }
 
@@ -389,8 +461,9 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
               if (!a || !b) return null;
               const g = edgeGeometry(ed, a, b);
               const color = cssColor(ed.color);
+              const view = edgeView(ed, links);
               return (
-                <g key={ed.id} className={edgeSel === ed.id ? 'cv-edge is-selected' : 'cv-edge'} style={color ? { '--cv-edge': color } : undefined}>
+                <g key={ed.id} className={['cv-edge', edgeSel === ed.id ? 'is-selected' : '', view.state === 'unlinked' ? 'is-unlinked' : ''].filter(Boolean).join(' ')} style={color ? { '--cv-edge': color } : undefined}>
                   <path
                     className="cv-edge-hit"
                     d={g.d}
@@ -401,10 +474,10 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
                       boardRef.current?.focus({ preventScroll: true });
                     }}
                   />
-                  <path className="cv-edge-line" d={g.d} markerEnd={(ed.toEnd ?? 'arrow') === 'arrow' ? 'url(#cv-arrow)' : undefined} markerStart={ed.fromEnd === 'arrow' ? 'url(#cv-arrow)' : undefined} />
-                  {ed.label && edgeSel !== ed.id && (
+                  <path className="cv-edge-line" d={g.d} data-relation={view.link?.relation} data-style={view.group ?? undefined} strokeDasharray={view.dasharray ?? undefined} markerEnd={(ed.toEnd ?? 'arrow') === 'arrow' ? 'url(#cv-arrow)' : undefined} markerStart={ed.fromEnd === 'arrow' ? 'url(#cv-arrow)' : undefined} />
+                  {view.label && edgeSel !== ed.id && (
                     <text className="cv-edge-label" x={g.mid.x} y={g.mid.y} textAnchor="middle" dominantBaseline="middle">
-                      {ed.label}
+                      {view.label}
                     </text>
                   )}
                 </g>
@@ -414,7 +487,35 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
           <div className="cv-layer cv-layer-cards">{cards.map(renderNode)}</div>
           {edgeEditing && !readOnly && edgeMid && (
             <div className="cv-edge-edit" style={{ left: edgeMid.x, top: edgeMid.y }} onPointerDown={(e) => e.stopPropagation()}>
-              <input type="text" aria-label="Connection label" placeholder="Label" value={edgeEditing.label ?? ''} onChange={onEdgeLabel} onBlur={onEdgeBlur} onKeyDown={onEdgeKey} />
+              {edgeInfo.state !== 'live' && !(showRelation && edgeInfo.slug) && (
+                <input type="text" aria-label="Connection label" placeholder="Label" value={edgeEditing.label ?? ''} onChange={onEdgeLabel} onBlur={onEdgeBlur} onKeyDown={onEdgeKey} />
+              )}
+              {edgeInfo.state === 'live' && !showRelation && <span className="cv-edge-note">{`Flow: ${edgeInfo.label}`}</span>}
+              {showRelation && (
+                <select aria-label="Relation" value={edgeInfo.link?.relation ?? ''} onChange={(e) => chooseRelation(edgeEditing.id, e.target.value)} onKeyDown={onEdgeSelectKey}>
+                  <option value="">None</option>
+                  {RELATIONS.map((r) => (
+                    <option key={r.value} value={r.value} title={r.description}>
+                      {relationLabel(r.value)}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {edgeInfo.state === 'unlinked' && (
+                <span className="cv-edge-note" role="status">
+                  The Flow link is archived or gone
+                </span>
+              )}
+              {showRelation && edgeInfo.state === 'unlinked' && relationFromLabel(edgeEditing.label) && (
+                <button type="button" className="btn" onClick={() => chooseRelation(edgeEditing.id, relationFromLabel(edgeEditing.label))}>
+                  Link again
+                </button>
+              )}
+              {showRelation && edgeInfo.state === 'live' && (
+                <button type="button" className="btn" onClick={() => reverseLinked(edgeEditing.id)}>
+                  Reverse
+                </button>
+              )}
               <button type="button" className="btn" onClick={onEdgeArrow}>
                 {(edgeEditing.toEnd ?? 'arrow') === 'arrow' ? 'No arrow' : 'Arrow'}
               </button>
@@ -494,6 +595,23 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
             setPicker(null);
           }}
         />
+      )}
+      {confirmDel && (
+        <Dialog label="Delete the connection" onClose={() => setConfirmDel(null)}>
+          <h2>Delete the connection</h2>
+          <p>{`Also archive the Flow link ${confirmDel.from} → ${confirmDel.to}?`}</p>
+          <div className="dialog-actions">
+            <button type="button" className="btn" onClick={() => setConfirmDel(null)}>
+              Cancel
+            </button>
+            <button type="button" className="btn" onClick={() => answerDelete(false)}>
+              Keep the link
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => answerDelete(true)}>
+              Archive link too
+            </button>
+          </div>
+        </Dialog>
       )}
       {linkAsk && (
         <LinkDialog

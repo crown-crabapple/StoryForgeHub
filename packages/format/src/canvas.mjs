@@ -13,6 +13,7 @@ export const CANVAS_LIMITS = Object.freeze({ nodes: 2000, edges: 4000, bytes: 5 
 
 const COLOR_RE = /^(?:[1-6]|#[0-9a-fA-F]{3}|#[0-9a-fA-F]{6})$/;
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const URL_RE = /^(?:https?:\/\/[^\s]+|mailto:[^\s]+)$/i;
 const CONTROL_RE = new RegExp(`[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]`);
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -95,6 +96,11 @@ export function parseCanvas(input) {
     for (const k of ['fromEnd', 'toEnd']) if (e[k] !== undefined && !CANVAS_ENDS.includes(e[k])) return bad(`${where}: ${k} must be none or arrow`);
     if (e.color !== undefined && !(typeof e.color === 'string' && COLOR_RE.test(e.color))) return bad(`${where}: color must be "1" to "6" or a #hex colour`);
     if (e.label !== undefined && !shortText(e.label, CANVAS_LIMITS.label)) return bad(`${where}: label must be text of at most ${CANVAS_LIMITS.label} characters`);
+    if (e.storyforge !== undefined) {
+      if (!isObject(e.storyforge)) return bad(`${where}: storyforge must be an object`);
+      const link = e.storyforge.link;
+      if (link !== undefined && !(typeof link === 'string' && link.length <= 120 && SLUG_RE.test(link))) return bad(`${where}: storyforge.link must be a link slug`);
+    }
     edges.push({ ...e });
   }
   const canvas = { ...d, nodes, edges };

@@ -492,6 +492,18 @@
   background: var(--surface);
   border: 1px solid var(--accent);
 }
+.cv-edge.is-unlinked .cv-edge-line {
+  opacity: 0.45;
+}
+.cv-edge.is-unlinked .cv-edge-label {
+  fill: var(--muted);
+}
+.cv-edge-note {
+  align-self: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cv-edge-edit select,
 .cv-edge-edit input {
   font: inherit;
   color: var(--text);
