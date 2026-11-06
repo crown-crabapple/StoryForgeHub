@@ -120,7 +120,7 @@
  *   getScene(bookId: string, sceneId: string): Promise<SceneDoc | null>,
  *   getDiagnostics(bookId?: string): Promise<Diagnostic[]>,
  *   getContinuity(bookId: string): Promise<import('@storyforge/continuity').ContinuityResult | null>,
- *   createContinuityException(bookId: string, args: { fingerprint: string, rationale: string, title?: string, dryRun?: boolean }): Promise<WriteResult & Record<string, any>>,
+ *   createContinuityException(bookId: string, args: { fingerprint: string, rationale: string, title?: string, intentional?: boolean, dryRun?: boolean }): Promise<WriteResult & Record<string, any>>,
  *   archiveContinuityException(bookId: string, slug: string, args?: { dryRun?: boolean }): Promise<WriteResult & Record<string, any>>,
  *   getContinuityContext(bookId: string, args: { file?: unknown, line?: unknown, radius?: unknown }): Promise<WriteResult & { lines?: { n: number, text: string }[] }>,
  *   createSuggestion(bookId: string, args: { target: string, proposedText?: string, proposedRange?: { from: number, to: number, replacement: string }, source: 'ai' | 'claude-book' | 'author', mode?: 'suggest' | 'state' | 'canon', rationale?: string, ai?: Record<string, any>, expectSha256?: string }): Promise<WriteResult & Record<string, any>>,

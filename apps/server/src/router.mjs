@@ -1345,7 +1345,8 @@ async function handleStructure(repository, match, body) {
     case 'continuity-exception-create': {
       for (const k of ['fingerprint', 'rationale', 'title']) if (body[k] !== undefined && typeof body[k] !== 'string') return badRequest(`${k} must be a string`);
       if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
-      const r = await repository.createContinuityException(bookId, { fingerprint: body.fingerprint, rationale: body.rationale, title: body.title, dryRun: body.dryRun === true });
+      if (body.intentional !== undefined && typeof body.intentional !== 'boolean') return badRequest('intentional must be a boolean');
+      const r = await repository.createContinuityException(bookId, { fingerprint: body.fingerprint, rationale: body.rationale, title: body.title, intentional: body.intentional === true, dryRun: body.dryRun === true });
       return respondContinuity(r, body.dryRun === true ? 200 : 201, (x) => (x.dryRun ? { ok: true, dryRun: true, file: x.file, slug: x.slug, text: x.text, changes: x.changes } : { ok: true, file: x.file, slug: x.slug, opId: x.opId ?? null, undo: x.undo ?? null }));
     }
     case 'continuity-exception-archive': {

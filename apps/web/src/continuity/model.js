@@ -2,6 +2,7 @@
 // Findings are shown exactly as the engine reported them; the only narrowing is the filters the author chooses.
 import { codexHref } from '../codex/model.js';
 import { notesHref, sceneLineHref } from '../notes/model.js';
+import { planHref } from '../planner/requests.js';
 import { viewHref } from '../planning/model.js';
 import { timelineHref } from '../timeline/model.js';
 
@@ -14,8 +15,26 @@ export const RULE_INFO = {
   KN1: { name: 'Character knowledge', description: 'A character is said to know something before any event teaches it to them.' },
   ST1: { name: 'Possession and location', description: 'A lost object is held or placed before it is found, or one object has two holders at the same time.' },
   TH1: { name: 'Thread lifecycle', description: 'A plot thread pays off before it is set up, or is planted and never resolved by the end of the book.' },
+  PL1: { name: 'Scene not in the flow', description: 'A scene has no planner link in or out, while other scenes are linked. It is not documented in the plan; it may be on purpose.' },
+  PL2: { name: 'Transition not documented', description: 'Two scenes next to each other each have links, but no link between them. The transition is not documented in the plan.' },
+  PL3: { name: 'Beat with no scenes', description: 'A beat in a story structure has no scenes listed. The beat is not documented in the plan yet.' },
+  PL4: { name: 'Payoff with no setup', description: 'A plot thread lists scenes where it pays off but none where it is set up. The setup is not documented in the plan.' },
 };
 export const RULE_IDS = Object.keys(RULE_INFO);
+
+/** The two families of rules the queue can be narrowed to: facts the story states, and what the plan documents. */
+export const RULE_FAMILIES = {
+  facts: { label: 'Story facts', rules: ['CF1', 'TL1', 'KN1', 'ST1', 'TH1'] },
+  plan: { label: 'Plan', rules: ['PL1', 'PL2', 'PL3', 'PL4'] },
+};
+/** The family key ('facts' | 'plan') of a rule id (a sub-rule such as TH1a counts as its rule); null when unknown. @param {string} rule @returns {'facts' | 'plan' | null} */
+export function familyOf(rule) {
+  const id = /^[A-Za-z]+\d+/.exec(String(rule ?? ''))?.[0]?.toUpperCase();
+  if (!id) return null;
+  return /** @type {'facts' | 'plan' | null} */ (Object.keys(RULE_FAMILIES).find((k) => RULE_FAMILIES[k].rules.includes(id)) ?? null);
+}
+/** @param {string | null | undefined} family @returns {'facts' | 'plan' | null} a known family key, else null (All) */
+export const normalizeFamily = (family) => (family === 'facts' || family === 'plan' ? family : null);
 /** @param {string} rule */
 export const ruleName = (rule) => RULE_INFO[rule]?.name ?? rule;
 
@@ -30,17 +49,25 @@ export const STATUS_FILTERS = [
   { key: 'acknowledged', label: 'Acknowledged' },
 ];
 
-/** /books/:id/continuity with the optional ?finding= (the fingerprint shown first) or ?suggestion= (a suggestion open for review, M05-J06). @param {string} bookId @param {{ finding?: string | null, suggestion?: string | null }} [q] */
-export function continuityHref(bookId, { finding = null, suggestion = null } = {}) {
-  const q = finding ? `?finding=${enc(finding)}` : suggestion ? `?suggestion=${enc(suggestion)}` : '';
-  return `/books/${enc(bookId)}/continuity${q}`;
+/** /books/:id/continuity with the optional ?finding= (the fingerprint shown first) or ?suggestion= (a suggestion open for review, M05-J06), and ?family= (plan | facts). @param {string} bookId @param {{ finding?: string | null, suggestion?: string | null, family?: string | null }} [q] */
+export function continuityHref(bookId, { finding = null, suggestion = null, family = null } = {}) {
+  const parts = [];
+  if (finding) parts.push(`finding=${enc(finding)}`);
+  else if (suggestion) parts.push(`suggestion=${enc(suggestion)}`);
+  if (normalizeFamily(family)) parts.push(`family=${family}`);
+  return `/books/${enc(bookId)}/continuity${parts.length ? `?${parts.join('&')}` : ''}`;
 }
 
-/** @param {string} search the query string of the URL @returns {{ finding: string | null, suggestion: string | null }} */
+/** @param {string} search the query string of the URL @returns {{ finding: string | null, suggestion: string | null, family: 'facts' | 'plan' | null }} */
 export function parseContinuitySearch(search = '') {
   const q = new URLSearchParams(search);
-  return { finding: q.get('finding') || null, suggestion: q.get('suggestion') || null };
+  return { finding: q.get('finding') || null, suggestion: q.get('suggestion') || null, family: normalizeFamily(q.get('family')) };
 }
+
+/** How many live findings belong to the Plan family. @param {{ findings?: any[] } | null | undefined} result */
+export const planNoteCount = (result) => (result?.findings ?? []).filter((f) => familyOf(f.rule) === 'plan').length;
+/** "3 plan notes to review" / "1 plan note to review" / "No plan notes to review". @param {number} n */
+export const planNotesLabel = (n) => (n === 0 ? 'No plan notes to review' : `${n} plan ${n === 1 ? 'note' : 'notes'} to review`);
 
 /** The findings that have a source in this scene (by scene ID), in the engine's order (errors first). @param {{ findings?: any[] } | null | undefined} result @param {string} sceneId */
 export function findingsForScene(result, sceneId) {
@@ -48,7 +75,7 @@ export function findingsForScene(result, sceneId) {
 }
 
 /** "codex/characters/maren-hollis.md › Maren Hollis, line 13" @param {{ file: string, heading: string, line: number }} s */
-export const sourceLabel = (s) => `${s.file} › ${s.heading}, line ${s.line}`;
+export const sourceLabel = (s) => (s.heading && s.line ? `${s.file} › ${s.heading}, line ${s.line}` : `${s.file}${s.location ? ` › ${s.location}` : ''}`);
 
 /** Same subject, one key. @param {{ kind: string, id: string }} subject */
 export const subjectKey = (subject) => `${subject.kind}:${subject.id}`;
@@ -59,14 +86,16 @@ export const subjectLabel = (subject) => subject.name ?? subject.slug ?? subject
 export const acknowledgedRows = (result) => (result?.suppressed ?? []).map((s) => ({ ...s.finding, exception: s.exception }));
 
 /**
- * What the queue shows for a filter: `status` ('all' | 'error' | 'warning' | 'info' | 'acknowledged'), `rule` (rule id or null) and `subject` (subjectKey or null).
+ * What the queue shows for a filter: `status` ('all' | 'error' | 'warning' | 'info' | 'acknowledged'), `rule` (rule id or null), `subject` (subjectKey or null) and `family` ('facts' | 'plan' | null for All).
  * `counts` are for the sidebar (before the rule and subject filters of their own group); `rules` / `subjects` list what exists in the shown set.
- * @param {any} result @param {{ status?: string, rule?: string | null, subject?: string | null }} [filter]
+ * @param {any} result @param {{ status?: string, rule?: string | null, subject?: string | null, family?: string | null }} [filter]
  */
-export function queueModel(result, { status = 'all', rule = null, subject = null } = {}) {
-  const live = result?.findings ?? [];
-  const acknowledged = acknowledgedRows(result);
-  const stale = result?.stale_exceptions ?? [];
+export function queueModel(result, { status = 'all', rule = null, subject = null, family = null } = {}) {
+  const inFamily = (r) => family === null || familyOf(r) === family;
+  const live = (result?.findings ?? []).filter((f) => inFamily(f.rule));
+  const acknowledged = acknowledgedRows(result).filter((f) => inFamily(f.rule));
+  // a stale exception has no finding; its family is read from the rule in its fingerprint ("pl3-...")
+  const stale = (result?.stale_exceptions ?? []).filter((x) => inFamily(String(x.fingerprint ?? '').split('-')[0]));
   const base = status === 'acknowledged' ? acknowledged : status === 'all' ? live : live.filter((f) => f.severity === status);
   const rows = base.filter((f) => (rule === null || f.rule === rule) && (subject === null || subjectKey(f.subject) === subject));
   const subjects = new Map();
@@ -76,7 +105,7 @@ export function queueModel(result, { status = 'all', rule = null, subject = null
     hit.count += 1;
     subjects.set(key, hit);
   }
-  const rules = RULE_IDS.map((id) => ({ id, name: ruleName(id), count: base.filter((f) => f.rule === id).length }));
+  const rules = RULE_IDS.filter((id) => inFamily(id)).map((id) => ({ id, name: ruleName(id), count: base.filter((f) => f.rule === id).length }));
   return {
     rows,
     stale: status === 'acknowledged' ? stale : [],
@@ -137,12 +166,20 @@ export function sourceHref(bookId, source, bodyLine = null) {
       return timelineHref(bookId, { event: source.id });
     case 'thread':
       return viewHref(bookId, 'threads', { thread: source.id });
+    case 'structure':
+      return structureHref(bookId, source.slug ?? structureSlugOf(source.file));
     case 'research':
       return notesHref(bookId, { section: 'research', note: source.id });
     default:
       return `/books/${enc(bookId)}`;
   }
 }
+
+/** The Plan tab's structure view for a structure slug (the structure list when there is no slug). @param {string} bookId @param {string | null | undefined} slug */
+export const structureHref = (bookId, slug) => planHref(bookId, { view: 'structure', structure: slug ?? null });
+
+/** The slug of a structure from its file ("planning/structures/three-act.md" -> "three-act"); null when the path is not one. @param {string | null | undefined} file */
+export const structureSlugOf = (file) => /([^/\\]+)\.md$/i.exec(String(file ?? ''))?.[1] ?? null;
 
 /** The text of an exception file after its front matter, trimmed: the author's rationale. @param {string} fileText */
 export function rationaleOf(fileText) {

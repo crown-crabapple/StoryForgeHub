@@ -262,6 +262,26 @@ Relationship developments use the same codes: `E102` (malformed development, or 
 
 Structure beats use the same codes: `E102` (malformed beat, or a beat id used twice), `I401` (unknown beat key), `E301` (unknown scene) and `W303` (archived scene). A story plan's `primary_structure` uses `E301` and `W303`.
 
+## Continuity exceptions: `planning/continuity/<slug>.md`
+
+```yaml
+---
+schema: storyforge.continuity-exception/v1
+id: note_01…
+slug: maren-eyes-are-green-on-purpose
+fingerprint: cf1-3b9e0c1d2a4f5e6b
+rule: CF1
+title: Maren's eyes look green in the hut glass
+created: "2026-11-02"
+intentional: true
+---
+Why the author accepts this finding.
+```
+
+- One file suppresses the one finding with that `fingerprint`, and nothing else. Removing or archiving the file brings the finding back.
+- `intentional` is optional and must be `true` or `false`; any other value is `E102`. `true` means "this is on purpose"; no key means "acknowledged". Both suppress the same way. StoryForge writes the key only as `true`.
+- Planner findings (`PL1` to `PL4`) use the same files.
+
 ## `.storyforge/` is disposable
 
 `.storyforge/` holds the search index, edit locks, prior versions from saves, local revision copies and per-machine screen settings. None of it is your book.

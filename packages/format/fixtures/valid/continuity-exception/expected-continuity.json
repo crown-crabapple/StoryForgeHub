@@ -48,7 +48,8 @@
       },
       "exception": {
         "file": "planning/continuity/maren-eyes.md",
-        "slug": "maren-eyes"
+        "slug": "maren-eyes",
+        "intentional": false
       }
     }
   ],

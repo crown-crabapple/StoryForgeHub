@@ -82,7 +82,7 @@ export const KINDS = {
   'continuity-exception': {
     prefix: 'note',
     required: ['slug', 'fingerprint', 'rule', 'title'],
-    fields: { slug: 'slug', fingerprint: 'str', rule: 'str', title: 'str', created: 'any' },
+    fields: { slug: 'slug', fingerprint: 'str', rule: 'str', title: 'str', created: 'any', intentional: 'bool' },
   },
   // Added 2026-11-02, M05-J04 (additive within v1): one saved AI chat or rewrite, under ai/<YYYY>/.
   'ai-record': {

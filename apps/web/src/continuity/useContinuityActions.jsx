@@ -8,12 +8,13 @@ import { acknowledgeRequest, archiveExceptionRequest, explainContinuityFailure, 
 const TOAST_MS = 12000;
 
 /**
- * "Acknowledge…": why this finding is fine. The rationale is required (nothing is sent without it). Presentational: `onSubmit({ rationale, title })` returns an error text or null.
- * @param {{ finding: { title: string, rule: string }, busy?: boolean, error?: string | null, onSubmit: (v: { rationale: string, title: string }) => void, onClose: () => void }} props
+ * "Acknowledge…": why this finding is fine. The rationale is required (nothing is sent without it). Presentational: `onSubmit({ rationale, title, intentional })` returns an error text or null.
+ * @param {{ finding: { title: string, rule: string }, busy?: boolean, error?: string | null, onSubmit: (v: { rationale: string, title: string, intentional: boolean }) => void, onClose: () => void }} props
  */
 export function AcknowledgeDialog({ finding, busy = false, error = null, onSubmit, onClose }) {
   const [rationale, setRationale] = useState('');
   const [title, setTitle] = useState(finding.title);
+  const [intentional, setIntentional] = useState(false);
   const [touched, setTouched] = useState(false);
   const missing = rationale.trim() === '';
   const slug = slugify(title.trim() === '' ? finding.title : title);
@@ -27,7 +28,7 @@ export function AcknowledgeDialog({ finding, busy = false, error = null, onSubmi
           e.preventDefault();
           setTouched(true);
           if (missing) return;
-          onSubmit({ rationale: rationale.trim(), title: title.trim() });
+          onSubmit({ rationale: rationale.trim(), title: title.trim(), intentional });
         }}
       >
         <div className="form-row">
@@ -45,6 +46,11 @@ export function AcknowledgeDialog({ finding, busy = false, error = null, onSubmi
           <label>
             <span className="form-label">Title</span>
             <input type="text" name="title" value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" />
+          </label>
+        </div>
+        <div className="form-row">
+          <label>
+            <input type="checkbox" name="intentional" checked={intentional} onChange={(e) => setIntentional(e.target.checked)} /> <span>This is on purpose</span>
           </label>
         </div>
         <p className="muted form-hint">
@@ -105,15 +111,15 @@ export function useContinuityActions({ bookId, onChanged }) {
   };
   const write = (r) => track(bookId, () => sendRequest(r));
 
-  async function submit({ rationale, title }) {
+  async function submit({ rationale, title, intentional }) {
     const finding = dialog?.finding;
     if (!finding) return;
     setBusy(true);
-    const { status, json } = await write(acknowledgeRequest(bookId, { fingerprint: finding.fingerprint, rationale, title }));
+    const { status, json } = await write(acknowledgeRequest(bookId, { fingerprint: finding.fingerprint, rationale, title, intentional }));
     setBusy(false);
     if (status === 201 || status === 200) {
       setDialog(null);
-      showToast({ message: 'Acknowledged. The finding is hidden; Restore it from Acknowledged any time.', undo: json?.opId ? { opId: json.opId } : null });
+      showToast({ message: `${intentional ? 'Marked as intentional' : 'Acknowledged'}. The finding is hidden; Restore it from Acknowledged any time.`, undo: json?.opId ? { opId: json.opId } : null });
       onChanged?.();
     } else {
       setDialog((d) => (d ? { ...d, error: explainContinuityFailure(status, json) } : d));

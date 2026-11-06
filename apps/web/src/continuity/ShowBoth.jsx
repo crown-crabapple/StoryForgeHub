@@ -92,6 +92,26 @@ export function SourcePanel({ bookId, source, context, withOpen = false }) {
   );
 }
 
+/** A source with no line of text (a beat in a structure): where it is, and Open. */
+function PlainPanel({ bookId, source }) {
+  return (
+    <section className="cf-panel" aria-label={`${source.role}: ${source.kind}`}>
+      <header>
+        <h3>{source.heading ?? source.location ?? source.kind}</h3>
+        <p className="muted cf-panel-where">
+          <code>{source.file}</code>
+          {source.location ? ` · ${source.location}` : ''}
+        </p>
+      </header>
+      <p>
+        <SourceLink bookId={bookId} source={source} className="btn">
+          Open
+        </SourceLink>
+      </p>
+    </section>
+  );
+}
+
 /** Fetches the context of one source and draws the panel. */
 function LoadedPanel({ bookId, source, version, withOpen }) {
   const { data, error, loading } = useApi(contextUrl(bookId, source), version);
@@ -106,9 +126,13 @@ function LoadedPanel({ bookId, source, version, withOpen }) {
 export function ShowBoth({ bookId, finding, version = '', withOpen = false, stacked = false }) {
   return (
     <div className={stacked ? 'cf-both cf-both-stacked' : 'cf-both'}>
-      {finding.sources.map((s, i) => (
-        <LoadedPanel key={`${s.file}|${s.line}|${i}`} bookId={bookId} source={s} version={version} withOpen={withOpen} />
-      ))}
+      {finding.sources.map((s, i) =>
+        typeof s.line === 'number' ? (
+          <LoadedPanel key={`${s.file}|${s.line}|${i}`} bookId={bookId} source={s} version={version} withOpen={withOpen} />
+        ) : (
+          <PlainPanel key={`${s.file}|${i}`} bookId={bookId} source={s} />
+        ),
+      )}
     </div>
   );
 }
