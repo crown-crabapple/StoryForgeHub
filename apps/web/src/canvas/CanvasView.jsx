@@ -1,13 +1,15 @@
 // /books/:id/canvas (M09-J01): the list of canvases and the open one. Loads the canvas, keeps the undo history, and saves every change on its own
 // (debounced, guarded by the sha256 last seen; a 409 shows the conflict banner).
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '../api.js';
 import { Dialog } from '../shell/Dialog.jsx';
 import { Link, useNavigate } from '../router.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
+import { useStructure } from '../structure/useStructure.jsx';
 import { CanvasBoard } from './CanvasBoard.jsx';
 import { canvasHref, canvasUrl, history, parseCanvasSearch, record, redo, undo } from './model.js';
+import { useCanvasLinks } from './useCanvasLinks.js';
 import { archiveCanvas, createCanvas, explainCanvasFailure, restoreCanvas, saveCanvas, uploadCanvasImage } from './requests.js';
 
 const enc = encodeURIComponent;
@@ -175,6 +177,14 @@ function OpenCanvas({ bookId, summary, onArchive, onSaved, initial }) {
 
 function Editor({ bookId, loaded, onArchive, onSaved }) {
   const { track } = useWrites();
+  const { status } = useStatus();
+  const book = useMemo(() => ({ id: bookId }), [bookId]);
+  const reloadLinks = useRef(() => {});
+  const structure = useStructure({ book, activeId: null, onChanged: () => reloadLinks.current() }); // only for its toast (with Undo)
+  const linkWrites = useCanvasLinks({ bookId, version: bookVersion(status, bookId), showToast: structure.showToast });
+  useEffect(() => {
+    reloadLinks.current = linkWrites.reload;
+  });
   const [hist, setHist] = useState(() => history(loaded.canvas));
   const [live, setLive] = useState(null);
   const [save, setSave] = useState({ state: 'saved', sha: loaded.sha256, message: null });
@@ -310,7 +320,10 @@ function Editor({ bookId, loaded, onArchive, onSaved }) {
         }}
         onUploadImage={(file) => track(bookId, () => uploadCanvasImage(bookId, file).then((r) => ({ ...r, status: r.ok ? 201 : 400 })))}
         onProblem={setProblem}
+        links={linkWrites.links}
+        linkWrites={linkWrites}
       />
+      {structure.ui}
     </div>
   );
 }

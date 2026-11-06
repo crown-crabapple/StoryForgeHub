@@ -65,6 +65,16 @@ test('each rule is refused with a message that names the node or edge', () => {
   refused({ storyforge: { title: 3 } }, /title/);
 });
 
+test('an edge may carry storyforge.link, a link slug', () => {
+  const edge = (storyforge) => ({ id: 'e', fromNode: 'a', toNode: 'a', storyforge });
+  for (const storyforge of [{ link: 'a-therefore-b' }, { link: 'x' }, {}]) assert.equal(parseCanvas({ nodes: [node()], edges: [edge(storyforge)] }).ok, true);
+  const kept = /** @type {any} */ (parseCanvas({ nodes: [node()], edges: [edge({ link: 'a-but-b' })] })).canvas;
+  assert.deepEqual(kept.edges[0].storyforge, { link: 'a-but-b' });
+  for (const storyforge of ['x', [], null, { link: 5 }, { link: '' }, { link: 'Not A Slug' }, { link: 'a_b' }, { link: '-a' }, { link: 'a'.repeat(121) }]) {
+    refused({ nodes: [node()], edges: [edge(storyforge)] }, /storyforge/);
+  }
+});
+
 test('serializeCanvas: nodes, edges, then the rest; two-space JSON with a final newline; titles', () => {
   const text = serializeCanvas({ storyforge: { title: 'T' }, edges: [], nodes: [] });
   assert.equal(text, '{\n  "nodes": [],\n  "edges": [],\n  "storyforge": {\n    "title": "T"\n  }\n}\n');
