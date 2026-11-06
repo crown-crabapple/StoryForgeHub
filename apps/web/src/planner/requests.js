@@ -44,10 +44,10 @@ export const relationLabel = (relation) => String(relation ?? '').replace(/_/g, 
 /**
  * Where the Plan tab shows something: `/books/:id/plan?view=flow&link=<slug>`. Only the given parts are put in the query (`mode` is `list` or `graph`, `filter` is `unlinked`).
  * @param {string} bookId
- * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null }} [target]
+ * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null }} [target]
  */
-export function planHref(bookId, { view, link, node, mode, filter } = {}) {
-  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter]]
+export function planHref(bookId, { view, link, node, mode, filter, arc } = {}) {
+  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc]]
     .filter(([, v]) => typeof v === 'string' && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
   return `/books/${encodeURIComponent(bookId)}/plan${q.length ? `?${q.join('&')}` : ''}`;
@@ -129,4 +129,91 @@ export function explainLinkFailure(status, json) {
   if (json?.code === 'REFUSED_UNKNOWN_ENTRY') return 'That character is not a Codex entry.';
   if (isStaleWrite(status, json)) return 'This changed elsewhere; reloaded.';
   return null;
+}
+
+// ---------------------------------------------------------------- character arcs (M3)
+
+/** The four kinds of arc, each with the plain words the editor shows next to its name. */
+export const ARC_TYPES = [
+  { value: 'positive', label: 'Positive', words: 'changes for the better' },
+  { value: 'negative', label: 'Negative', words: 'changes for the worse' },
+  { value: 'flat', label: 'Flat', words: 'stays the same and changes others' },
+  { value: 'custom', label: 'Custom', words: 'its own shape; say which in the notes' },
+];
+
+/** The seven fields of an arc, in the order the editor shows them. */
+export const ARC_FIELDS = [
+  { key: 'want', label: 'Want' },
+  { key: 'need', label: 'Need' },
+  { key: 'false_belief', label: 'False belief' },
+  { key: 'fear', label: 'Fear' },
+  { key: 'wound', label: 'Wound' },
+  { key: 'start_state', label: 'Starts as' },
+  { key: 'end_state', label: 'Ends as' },
+];
+
+/** The five text fields of a milestone (its scene comes first, as a select). */
+export const MILESTONE_FIELDS = [
+  { key: 'pressure', label: 'Pressure' },
+  { key: 'choice', label: 'Choice' },
+  { key: 'belief_before', label: 'Belief before' },
+  { key: 'belief_after', label: 'Belief after' },
+  { key: 'cost', label: 'Cost' },
+];
+
+/** GET /api/books/:b/arcs */
+export const arcsUrl = (bookId) => bookUrl(bookId, '/arcs');
+/** GET and POST /api/books/:b/arcs/:slug, and with the tails /milestones, /archive and /restore. */
+export const arcUrl = (bookId, slug, tail = '') => bookUrl(bookId, `/arcs/${encodeURIComponent(slug)}${tail}`);
+
+/** The request that starts an arc for a Codex entry (by id). @param {string} bookId @param {{ character: string, arc_type?: string | null, fields?: Record<string, string> }} v */
+export function createArcRequest(bookId, { character, arc_type, fields }) {
+  return { url: arcsUrl(bookId), body: { character, ...(arc_type ? { arc_type } : {}), ...(fields ? { fields } : {}) } };
+}
+
+/**
+ * The body that changes an arc: the given parts plus the sha256 last read. `fields` maps a key to a string or null (empty it); `arc_type` is a string or null.
+ * @param {{ sha256: string }} arc @param {{ arc_type?: string | null, fields?: Record<string, string | null>, body?: string, dryRun?: boolean }} patch
+ */
+export function updateArcBody(arc, { arc_type, fields, body, dryRun } = {}) {
+  return {
+    ...(arc_type !== undefined ? { arc_type } : {}),
+    ...(fields !== undefined ? { fields } : {}),
+    ...(body !== undefined ? { body } : {}),
+    base_sha256: arc.sha256,
+    ...(dryRun ? { dryRun: true } : {}),
+  };
+}
+
+/**
+ * The body that writes the whole ordered milestone list: string values only, and an empty text field is left out.
+ * @param {{ sha256: string }} arc @param {{ scene: string, pressure?: string, choice?: string, belief_before?: string, belief_after?: string, cost?: string }[]} milestones @param {{ dryRun?: boolean }} [opts]
+ */
+export function milestonesBody(arc, milestones, { dryRun } = {}) {
+  const list = milestones.map((m) => {
+    const out = { scene: String(m.scene) };
+    for (const f of MILESTONE_FIELDS) {
+      const v = String(m[f.key] ?? '').trim();
+      if (v !== '') out[f.key] = v;
+    }
+    return out;
+  });
+  return { milestones: list, base_sha256: arc.sha256, ...(dryRun ? { dryRun: true } : {}) };
+}
+
+/** A sentence for the refusals of an arc write that need their own words; null for the others (they go to explainFailure). */
+export function explainArcFailure(status, json) {
+  if (json?.code === 'REFUSED_DUPLICATE_ARC') return 'This character already has an arc in this book.';
+  if (json?.code === 'REFUSED_UNKNOWN_ENTRY') return 'That character is not a Codex entry.';
+  if (json?.code === 'REFUSED_UNKNOWN_SCENE') return `A milestone points at a scene that is not in the book${typeof json.index === 'number' ? ` (milestone ${json.index + 1})` : ''}.`;
+  if (isStaleWrite(status, json)) return 'This arc changed elsewhere; reloaded.';
+  return null;
+}
+
+/**
+ * The arc milestones set in a scene, from GET /arcs: one `{ arc, milestone }` per milestone whose `scene` is the scene id, arcs in the order given.
+ * @param {{ arcs?: any[] } | null | undefined} data
+ */
+export function arcMilestonesForScene(data, sceneId) {
+  return (data?.arcs ?? []).flatMap((arc) => (arc.milestones ?? []).filter((m) => m.scene === sceneId).map((milestone) => ({ arc, milestone })));
 }

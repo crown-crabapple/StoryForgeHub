@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "W319",
+      "file": "planning/arcs/maren-hollis-2.md",
+      "location": "character"
+    }
+  ]
+}

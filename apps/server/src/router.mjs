@@ -289,6 +289,15 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const overview = await repository.planOverview(b);
       return overview ? { status: 200, body: overview } : NOT_FOUND;
     }
+    // Story Planner M3: character arcs (planning/arcs/<slug>.md)
+    if (c === 'arcs' && d === undefined) {
+      const list = await repository.listArcs(b);
+      return list ? { status: 200, body: list } : NOT_FOUND;
+    }
+    if (c === 'arcs' && d !== undefined && e === undefined) {
+      const arc = await repository.getArc(b, d);
+      return arc ? { status: 200, body: arc } : NOT_FOUND;
+    }
     // M05-J04 status; M08-J03: the cover generator's state, a draft picture, and a streamed reply in progress
     if (c === 'ai' && ['status', 'cover', 'cover-draft', 'stream'].includes(d) && e === undefined) return handleAiRead(repository, state, d, b, params);
     if (c === 'graph' && d === undefined) {
@@ -641,6 +650,11 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'links' && d !== undefined && e === 'restore') return { route: 'planner-link-restore', bookId: b, slug: d };
   if (method === 'POST' && c === 'scene-plans' && d !== undefined && e === undefined) return { route: 'planner-scene-plan-save', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'story-plan' && d === undefined) return { route: 'planner-story-plan-save', bookId: b };
+  if (method === 'POST' && c === 'arcs' && d === undefined) return { route: 'planner-arc-create', bookId: b };
+  if (method === 'POST' && c === 'arcs' && d !== undefined && e === undefined) return { route: 'planner-arc-update', bookId: b, slug: d };
+  if (method === 'POST' && c === 'arcs' && d !== undefined && e === 'milestones') return { route: 'planner-arc-milestones', bookId: b, slug: d };
+  if (method === 'POST' && c === 'arcs' && d !== undefined && e === 'archive') return { route: 'planner-arc-archive', bookId: b, slug: d };
+  if (method === 'POST' && c === 'arcs' && d !== undefined && e === 'restore') return { route: 'planner-arc-restore', bookId: b, slug: d };
   return null;
 }
 
@@ -656,12 +670,20 @@ function respond(r, okStatus, okBody) {
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
 }
 
+/** A planner `fields` body: an object of string-or-null values ({} when absent), or an error message. @param {unknown} v @returns {Record<string, string | null> | string} */
+function plannerFields(v) {
+  if (v === undefined) return {};
+  if (!isObject(v)) return 'fields must be an object';
+  for (const [k, x] of Object.entries(/** @type {Record<string, unknown>} */ (v))) if (x !== null && typeof x !== 'string') return `fields.${k} must be a string or null`;
+  return /** @type {Record<string, string | null>} */ (v);
+}
+
 /**
- * Like respond(), for the Story Planner writes: a duplicate link is 409 with the existing link's slug, and the reference refusals are 400 with their codes.
+ * Like respond(), for the Story Planner writes: a duplicate link or arc is 409 with the existing one's slug, and the reference refusals are 400 with their codes.
  * @param {any} r @param {number} okStatus
  */
 function respondPlanner(r, okStatus) {
-  if (!r.ok && r.code === 'REFUSED_DUPLICATE_LINK') return { status: 409, body: { error: 'conflict', code: r.code, message: r.message, existing: r.existing ?? null } };
+  if (!r.ok && (r.code === 'REFUSED_DUPLICATE_LINK' || r.code === 'REFUSED_DUPLICATE_ARC')) return { status: 409, body: { error: 'conflict', code: r.code, message: r.message, existing: r.existing ?? null } };
   return respond(r, okStatus, structureBody);
 }
 
@@ -1177,6 +1199,37 @@ async function handleStructure(repository, match, body) {
       if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string');
       if (body.base_sha256 !== undefined && body.base_sha256 !== null && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string or null');
       const r = await repository.saveStoryPlan(bookId, { fields: body.fields ?? {}, body: body.body, baseSha256: body.base_sha256 ?? null, dryRun });
+      return respondPlanner(r, 200);
+    }
+    // ---- Story Planner M3: the only files these routes write are planning/arcs/<slug>.md (archive/ when archived); never a Codex entry or a scene
+    case 'planner-arc-create': {
+      if (typeof body.character !== 'string') return badRequest('expected { character: entryId, arc_type?: string, fields?: object }');
+      if (body.arc_type !== undefined && body.arc_type !== null && typeof body.arc_type !== 'string') return badRequest('arc_type must be a string');
+      const fields = plannerFields(body.fields);
+      if (typeof fields === 'string') return badRequest(fields);
+      const r = await repository.createArc(bookId, { character: body.character, arc_type: body.arc_type ?? undefined, fields, dryRun });
+      return respondPlanner(r, created);
+    }
+    case 'planner-arc-update': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      if (body.arc_type !== undefined && body.arc_type !== null && typeof body.arc_type !== 'string') return badRequest('arc_type must be a string or null');
+      if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string');
+      const fields = plannerFields(body.fields);
+      if (typeof fields === 'string') return badRequest(fields);
+      const r = await repository.updateArc(bookId, /** @type {string} */ (match.slug), { arc_type: body.arc_type, fields, body: body.body, baseSha256: body.base_sha256, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-arc-milestones': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      if (!Array.isArray(body.milestones) || !body.milestones.every((m) => isObject(m) && Object.values(m).every((v) => typeof v === 'string'))) return badRequest('milestones must be a list of objects with string values');
+      const r = await repository.setArcMilestones(bookId, /** @type {string} */ (match.slug), { milestones: body.milestones, baseSha256: body.base_sha256, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-arc-archive':
+    case 'planner-arc-restore': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const call = match.route === 'planner-arc-archive' ? repository.archiveArc : repository.restoreArc;
+      const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
       return respondPlanner(r, 200);
     }
     // ---- M05-J02 continuity exceptions: the only files these routes write are planning/continuity/<slug>.md (archive/ when removed)

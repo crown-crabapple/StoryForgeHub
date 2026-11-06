@@ -17,7 +17,7 @@ my-library/                  any folder; holds one or more books
           0010-arrival.md    one scene per file
           0020-the-key.md
     codex/                   characters, locations, factions, objects, lore (one file each)
-    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/ and scene-plans/ hold Story Planner files, and story.md is the story plan
+    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/ and arcs/ hold Story Planner files, and story.md is the story plan
     research/                research notes and sources
     assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
     activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
@@ -51,7 +51,7 @@ Scenes marked as an alternate version of another scene (`variant_of`) are kept b
 | --- | --- |
 | Scenes in `manuscript/` | `research/` notes (canon only if a note says `canon: true`) |
 | `codex/` entries | `suggestions/` until you accept them |
-| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/` and `planning/story.md` |
+| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/` and `planning/story.md` |
 | `book.md`, `act.md`, `chapter.md` | `archive/` (left out of order, counts and export) |
 | `assets/` the book uses | `legacy/` (see below) |
 
@@ -59,7 +59,7 @@ Notes in a scene written as `<!-- note: ... -->` stay in the file, show in the n
 
 ## Story Planner files
 
-Three kinds of file hold planning data. None is story text or canon, and none changes a scene file.
+Four kinds of file hold planning data. None is story text or canon, and none changes a scene file.
 
 ### A causal link: `planning/links/key-therefore-ferry.md`
 
@@ -134,6 +134,45 @@ Free story notes.
 - `protagonist` must resolve: a miss is `E301`.
 - A live story plan at any other path gives `W318` (at `schema`), on every such file. Archived story plans are not counted.
 
+### A character arc: `planning/arcs/maren-hollis.md`
+
+```yaml
+---
+schema: storyforge.arc/v1
+id: note_01S50000000000000000000016
+slug: maren-hollis
+character: entry_01S5000000000000000000000G
+arc_type: positive
+want: To learn what the harbour key opens.
+need: To trust the town that raised her.
+false_belief: Belonging means obeying the guild.
+fear: Being locked out for good.
+wound: Her mother left without a word.
+start_state: Obedient and certain.
+end_state: Free and uncertain.
+milestones:
+  - scene: scene_01S50000000000000000000003
+    pressure: The harbourmaster wants the key back.
+    choice: She keeps the key.
+    belief_before: The guild will protect her.
+    belief_after: The guild will not.
+    cost: Her apprenticeship.
+  - scene: scene_01S50000000000000000000005
+    pressure: The ferryman asks for a price.
+---
+Free arc notes.
+```
+
+- One arc per character per book. The arc belongs to the book; the Codex entry is never changed by it.
+- Required: `slug`, `character`. `character` is an entry id. It resolves like other entry references, and a series-shared entry resolves too. A miss is `E301`.
+- Optional: `arc_type` (one of `positive`, `negative`, `flat`, `custom`), `want`, `need`, `false_belief`, `fear`, `wound`, `start_state`, `end_state` (each a one-line string; StoryForge writes at most 2,000 characters) and `milestones`. The body is free notes.
+- `milestones` is an ordered list of mappings. Each has a `scene` (a scene id) and optional one-line `pressure`, `choice`, `belief_before`, `belief_after` and `cost`. Moving a scene never changes a milestone, because it names the scene by id.
+- A milestone that is not a mapping, has no `scene`, or has a non-string `pressure`, `choice`, `belief_before`, `belief_after` or `cost` is `E102` (at `milestones[i]` or `milestones[i].<key>`). A key other than those six is `I401`. A `scene` that does not resolve is `E301`; one that is archived is `W303`.
+- StoryForge writes `milestones` as one block of plain mappings. If you edit the block by hand and add a comment, anchor or alias, StoryForge refuses to change it from the app (`REFUSED_UNSIMPLE_FIELD`) until you fix the file.
+- Two live arcs naming the same `character` give `W319` on the later file (by file name, at `character`). Archived arcs are not counted.
+- StoryForge names the file after the character's slug (`-2`, `-3` … when the name is taken by a live or archived file).
+- Archive moves the file to `archive/planning/arcs/`. Restore moves it back.
+
 ### Diagnostics
 
 | Code | Severity | Meaning |
@@ -142,6 +181,9 @@ Free story notes.
 | `W316` | warning | Two live links have the same `from`, `to` and `relation` |
 | `W317` | warning | Two live scene plans name the same scene |
 | `W318` | warning | A live story plan is not at `planning/story.md` |
+| `W319` | warning | Two live arcs name the same character |
+
+Arc milestones also use the general codes `E102` (malformed milestone), `I401` (unknown milestone key), `E301` (unknown scene) and `W303` (archived scene).
 
 ## `.storyforge/` is disposable
 

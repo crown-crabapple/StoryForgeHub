@@ -366,3 +366,217 @@ export function saveStoryPlan(bookRoot, args = {}) {
     return finish({ bookRoot, store, lb, op: 'saveStoryPlan', args: argSummary, changes, dryRun, withDiff: true, extra: { id: existing.fm.id, path: STORY_PATH, created: false } });
   });
 }
+
+// ------------------------------------------------------------------ character arcs (ADR 0003 M3)
+
+export const ARC_TYPES = ['positive', 'negative', 'flat', 'custom'];
+/** The single-line text keys of an arc, in the order they are written (after arc_type). */
+export const ARC_TEXT_FIELDS = ['want', 'need', 'false_belief', 'fear', 'wound', 'start_state', 'end_state'];
+/** The text keys of a milestone besides `scene`, in the order they are written. */
+export const MILESTONE_FIELDS = ['pressure', 'choice', 'belief_before', 'belief_after', 'cost'];
+export const ARC_DIR = 'planning/arcs';
+const ARC_KEYS = ['arc_type', ...ARC_TEXT_FIELDS];
+
+/** Book-relative path of a live arc. @param {string} slug */
+export const arcPath = (slug) => `${ARC_DIR}/${slug}.md`;
+const arcDocs = (docs, archived) => docs.filter((d) => d.kind === 'arc' && d.archived === archived);
+const arcSlugOf = (d) => (typeof d.fm.slug === 'string' ? d.fm.slug : stem(d.rel).split('/').pop());
+/** Anchors for inserting an arc key: the keys before it, nearest first, then `character`. */
+const arcAnchors = (key) => [...ARC_KEYS.slice(0, ARC_KEYS.indexOf(key)).reverse(), 'character', 'slug', 'id'];
+const lineText = (v) => isText(v) && v.length <= 2000;
+
+/**
+ * New arc file planning/arcs/<slug>.md: schema, id, slug, character, arc_type, then the given fields (want, need, false_belief, fear, wound, start_state,
+ * end_state; single line, max 2000). `character` must be the id of a live entry of type character in the book or its series (REFUSED_UNKNOWN_ENTRY; another
+ * type: REFUSED_BAD_ARGS). A live arc for that character: REFUSED_DUPLICATE_ARC with `existing: { slug }`. The slug is the entry's slug (-2, -3 on a clash with a
+ * live or archived file). No milestones key. The Codex entry is never written.
+ * @param {string} bookRoot
+ * @param {{ character: string, arc_type?: string | null, fields?: Record<string, string | null>, dryRun?: boolean }} args
+ */
+export function createArc(bookRoot, args = {}) {
+  return guarded(async () => {
+    const { character, arc_type: arcType, fields = {}, dryRun = false } = args ?? {};
+    if (typeof character !== 'string' || character === '' || character.length > 100) return fail('REFUSED_BAD_ARGS', 'character must be an entry id', { field: 'character' });
+    if (arcType !== undefined && arcType !== null && arcType !== '' && !ARC_TYPES.includes(arcType)) return fail('REFUSED_BAD_ARGS', `arc_type must be one of ${ARC_TYPES.join(', ')}`, { field: 'arc_type' });
+    if (!isMap(fields)) return fail('REFUSED_BAD_ARGS', 'fields must be an object');
+    for (const [key, value] of Object.entries(fields)) {
+      if (!ARC_TEXT_FIELDS.includes(key)) return fail('REFUSED_BAD_ARGS', `unknown arc field ${key}; the fields are ${ARC_TEXT_FIELDS.join(', ')}`, { field: key });
+      if (value !== null && !lineText(value)) return fail('REFUSED_BAD_ARGS', `${key} must be a single line of text without control characters (max 2000)`, { field: key });
+    }
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const entry = [...docs, ...(lb.shared?.docs ?? [])].find((d) => d.kind === 'entry' && !d.archived && d.fm.id === character);
+    if (!entry) return fail('REFUSED_UNKNOWN_ENTRY', `no entry ${character}`, { field: 'character', entry: character });
+    if (entry.fm.type !== 'character') return fail('REFUSED_BAD_ARGS', `${character} is a ${entry.fm.type}, not a character`, { field: 'character' });
+    const twin = arcDocs(docs, false).find((d) => d.fm.character === character);
+    if (twin) return fail('REFUSED_DUPLICATE_ARC', `${twin.rel} is already the arc of this character`, { existing: { slug: arcSlugOf(twin) } });
+
+    const base = slugify(typeof entry.fm.slug === 'string' ? entry.fm.slug : '') || 'character';
+    const slug = await freeName(store, base, arcPath);
+    const id = `note_${ulid()}`;
+    const rel = arcPath(slug);
+    const lines = ['---', 'schema: storyforge.arc/v1', `id: ${id}`, `slug: ${slug}`, `character: ${character}`];
+    if (typeof arcType === 'string' && arcType !== '') lines.push(`arc_type: ${arcType}`);
+    for (const key of ARC_TEXT_FIELDS) {
+      const v = fields[key];
+      if (typeof v === 'string' && v !== '') lines.push(`${key}: ${formatYamlText(v)}`);
+    }
+    lines.push('---', '');
+    const changes = [{ from: null, to: rel, content: Buffer.from(lines.join('\n'), 'utf8'), before: null }];
+    return finish({ bookRoot, store, lb, op: 'createArc', args: { character, arc_type: arcType, fields: Object.keys(fields), file: rel }, changes, dryRun, withDiff: true, extra: { id, slug, path: rel } });
+  });
+}
+
+/** The live arc `slug` of a prepared book, read for writing: { doc, rel, before } or { result }. */
+async function liveArc(store, docs, slug) {
+  const rel = arcPath(slug);
+  const doc = arcDocs(docs, false).find((d) => d.rel === rel);
+  if (!doc) return { result: fail('NOT_FOUND', `no arc ${slug}`) };
+  return { doc, rel, before: await readBytes(store, rel) };
+}
+
+/**
+ * Change an arc's type, text fields or notes. `baseSha256` is required; a different file on disk is CONFLICT with `current`. `arc_type` and each field: a string
+ * sets it, `null` or '' removes the key (`arc_type` is one of positive, negative, flat, custom). `body` (optional, max 20000) replaces the body. The milestones,
+ * the file name and the slug are never changed here.
+ * @param {string} bookRoot @param {string} slug
+ * @param {{ arc_type?: string | null, fields?: Record<string, string | null>, body?: string, baseSha256: string, dryRun?: boolean }} args
+ */
+export function updateArc(bookRoot, slug, args = {}) {
+  return guarded(async () => {
+    const { arc_type: arcType, fields = {}, body, baseSha256, dryRun = false } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no arc ${slug}`);
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
+    if (!isMap(fields)) return fail('REFUSED_BAD_ARGS', 'fields must be an object');
+    if (arcType !== undefined && arcType !== null && arcType !== '' && !ARC_TYPES.includes(arcType)) return fail('REFUSED_BAD_ARGS', `arc_type must be one of ${ARC_TYPES.join(', ')}`, { field: 'arc_type' });
+    for (const [key, value] of Object.entries(fields)) {
+      if (!ARC_TEXT_FIELDS.includes(key)) return fail('REFUSED_BAD_ARGS', `unknown arc field ${key}; the fields are ${ARC_TEXT_FIELDS.join(', ')}`, { field: key });
+      if (value !== null && !lineText(value)) return fail('REFUSED_BAD_ARGS', `${key} must be a single line of text without control characters (max 2000), or null to remove it`, { field: key });
+    }
+    if (body !== undefined && (typeof body !== 'string' || body.length > 20000 || BODY_BAD_RE.test(body))) return fail('REFUSED_BAD_ARGS', 'body must be text without control characters (max 20000 characters)', { field: 'body' });
+    if (arcType === undefined && Object.keys(fields).length === 0 && body === undefined) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const got = await liveArc(store, docs, slug);
+    if (got.result) return got.result;
+    const { doc, rel, before } = got;
+    const changed = stale(before, baseSha256, rel);
+    if (changed) return changed;
+
+    let buf = before;
+    const has = (key) => new RegExp(`^${key}:`, 'm').test(buf.toString('latin1'));
+    const edits = { ...(arcType === undefined ? {} : { arc_type: arcType }), ...fields };
+    for (const key of ARC_KEYS) {
+      if (!Object.hasOwn(edits, key)) continue;
+      const v = edits[key];
+      const r = v === null || v === '' ? (has(key) ? replaceFrontMatterBlock(buf, key, []) : { ok: true, buf }) : editFrontMatterLine(buf, key, v, { anchors: arcAnchors(key), plain: true });
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: key });
+      buf = r.buf;
+    }
+    if (body !== undefined) {
+      const parts = splitDocument(buf);
+      if (!parts) return fail('REFUSED_UNSIMPLE_FIELD', `${rel}: the file has no closed front matter`, { file: rel, field: 'body' });
+      const head = buf.subarray(0, parts.bodyStart);
+      buf = Buffer.concat([head, Buffer.from(bodyText(body, head.includes('\r\n') ? '\r\n' : '\n'), 'utf8')]);
+    }
+    const out = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'updateArc', args: { slug, arc_type: arcType, fields: Object.keys(fields), body: body === undefined ? undefined : `<${body.length} chars>` }, changes: out, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+  });
+}
+
+/**
+ * Replace the whole `milestones:` block of an arc. `milestones` is an array (max 200) of { scene, pressure?, choice?, belief_before?, belief_after?, cost? };
+ * `scene` must be a live scene of the book (REFUSED_UNKNOWN_SCENE with the item `index`), the texts single lines (max 2000; an empty text is left out).
+ * Written as a block of mappings through replaceFrontMatterBlock (inserted after the last arc field when absent, removed when the list is empty); a hand-edited
+ * block with a comment, anchor or alias is REFUSED_UNSIMPLE_FIELD. `baseSha256` is required; a different file on disk is CONFLICT with `current`.
+ * @param {string} bookRoot @param {string} slug
+ * @param {{ milestones: { scene: string, pressure?: string, choice?: string, belief_before?: string, belief_after?: string, cost?: string }[], baseSha256: string, dryRun?: boolean }} args
+ */
+export function setArcMilestones(bookRoot, slug, args = {}) {
+  return guarded(async () => {
+    const { milestones, baseSha256, dryRun = false } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no arc ${slug}`);
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
+    if (!Array.isArray(milestones) || milestones.length > 200) return fail('REFUSED_BAD_ARGS', 'milestones must be a list of up to 200 items', { field: 'milestones' });
+    for (const [i, m] of milestones.entries()) {
+      const at = (k) => `milestones[${i}].${k}`;
+      if (!isMap(m)) return fail('REFUSED_BAD_ARGS', `milestones[${i}] must be an object with a scene`, { field: `milestones[${i}]`, index: i });
+      if (typeof m.scene !== 'string' || m.scene === '' || m.scene.length > 100) return fail('REFUSED_BAD_ARGS', `${at('scene')} must be a scene id`, { field: at('scene'), index: i });
+      for (const [key, value] of Object.entries(m)) {
+        if (key === 'scene') continue;
+        if (!MILESTONE_FIELDS.includes(key)) return fail('REFUSED_BAD_ARGS', `unknown milestone field ${key}; the fields are scene, ${MILESTONE_FIELDS.join(', ')}`, { field: at(key), index: i });
+        if (value !== null && value !== undefined && !lineText(value)) return fail('REFUSED_BAD_ARGS', `${at(key)} must be a single line of text without control characters (max 2000)`, { field: at(key), index: i });
+      }
+    }
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const got = await liveArc(store, docs, slug);
+    if (got.result) return got.result;
+    const { doc, rel, before } = got;
+    const changed = stale(before, baseSha256, rel);
+    if (changed) return changed;
+    const scenes = liveScenes(lb);
+    for (const [i, m] of milestones.entries()) {
+      if (!scenes.has(m.scene)) return fail('REFUSED_UNKNOWN_SCENE', `no scene ${m.scene} in the book`, { field: `milestones[${i}].scene`, index: i });
+    }
+
+    const lines = milestones.length === 0 ? [] : ['milestones:'];
+    for (const m of milestones) {
+      lines.push(`  - scene: ${m.scene}`);
+      for (const key of MILESTONE_FIELDS) {
+        const v = m[key];
+        if (typeof v === 'string' && v !== '') lines.push(`    ${key}: ${formatYamlText(v)}`);
+      }
+    }
+    let buf = before;
+    if (lines.length > 0 || /^milestones:/m.test(buf.toString('latin1'))) {
+      const r = replaceFrontMatterBlock(buf, 'milestones', lines, { after: [...ARC_KEYS].reverse().concat('character') });
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: 'milestones' });
+      buf = r.buf;
+    }
+    const out = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'setArcMilestones', args: { slug, milestones: milestones.length }, changes: out, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+  });
+}
+
+/** Move an arc to archive/planning/arcs/. @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args */
+export function archiveArc(bookRoot, slug, args = {}) {
+  return moveArc(bookRoot, slug, args, false);
+}
+
+/**
+ * Move an archived arc back. A live file with that name: REFUSED_PATH_TAKEN; a live arc for the same character: REFUSED_DUPLICATE_ARC with `existing: { slug }`.
+ * @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args
+ */
+export function restoreArc(bookRoot, slug, args = {}) {
+  return moveArc(bookRoot, slug, args, true);
+}
+
+function moveArc(bookRoot, slug, args, restoring) {
+  return guarded(async () => {
+    const { dryRun = false, baseSha256 } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no arc ${slug}`);
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const live = arcPath(slug);
+    const from = restoring ? `archive/${live}` : live;
+    const to = restoring ? live : `archive/${live}`;
+    if (!(await store.exists(from))) return fail('NOT_FOUND', `no ${restoring ? 'archived ' : ''}arc ${slug}`);
+    const before = await readBytes(store, from);
+    const changed = stale(before, baseSha256, from);
+    if (changed) return changed;
+    if (restoring) {
+      if (await store.exists(live)) return fail('REFUSED_PATH_TAKEN', `an arc file ${live} already exists`, { path: live });
+      const doc = arcDocs(docs, true).find((d) => d.rel === from);
+      const twin = doc ? arcDocs(docs, false).find((d) => d.fm.character === doc.fm.character) : null;
+      if (twin) return fail('REFUSED_DUPLICATE_ARC', `${twin.rel} is already the arc of this character`, { existing: { slug: arcSlugOf(twin) } });
+    }
+    return finish({ bookRoot, store, lb, op: restoring ? 'restoreArc' : 'archiveArc', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
+  });
+}
