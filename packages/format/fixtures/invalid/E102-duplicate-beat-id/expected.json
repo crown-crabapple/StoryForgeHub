@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E102",
+      "file": "planning/structures/main-three-act.md",
+      "location": "beats[1].id"
+    }
+  ]
+}

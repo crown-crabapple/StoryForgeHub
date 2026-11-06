@@ -52,10 +52,10 @@ const FLOW = { nodes: NODES, edges: EDGES };
 const URLSTATE = (patch = {}) => ({ view: 'flow', node: null, link: null, mode: null, filter: null, ...patch });
 
 test('model: parsePlanSearch defaults, and planUrl round-trips every part', () => {
-  assert.deepEqual(m.model.parsePlanSearch(''), { view: 'overview', node: null, link: null, arc: null, mode: null, filter: null });
+  assert.deepEqual(m.model.parsePlanSearch(''), { view: 'overview', node: null, link: null, arc: null, structure: null, mode: null, filter: null });
   assert.equal(m.model.parsePlanSearch('?view=nonsense&mode=wat&filter=x').view, 'overview');
   assert.equal(m.model.parsePlanSearch('?mode=wat').mode, null);
-  const state = { view: 'flow', node: 'scene_01 A', link: 'key-ferry', arc: null, mode: 'list', filter: 'unlinked' };
+  const state = { view: 'flow', node: 'scene_01 A', link: 'key-ferry', arc: null, structure: null, mode: 'list', filter: 'unlinked' };
   const href = m.model.planUrl('book one', state);
   assert.equal(href, '/books/book%20one/plan?view=flow&link=key-ferry&node=scene_01%20A&mode=list&filter=unlinked');
   assert.deepEqual(m.model.parsePlanSearch(href.slice(href.indexOf('?'))), state);

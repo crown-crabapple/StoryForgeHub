@@ -187,3 +187,29 @@ New diagnostic codes chosen in M1: `E211` (link from a scene to itself), `W316` 
 - **Routes:** `GET /api/books/:b/arcs`, `GET /api/books/:b/arcs/:slug`, `POST /api/books/:b/arcs` (`planner-arc-create`), `POST /api/books/:b/arcs/:slug` (`planner-arc-update`, fields), `POST /api/books/:b/arcs/:slug/milestones` (`planner-arc-milestones`, the whole ordered list), `POST …/archive` and `…/restore`. Same rules as links: dry run, `base_sha256`, Undo, module `planner`, not in plugin API v1.
 - **Screens:** an **Arc** panel on a character's Codex page (create, edit fields, edit milestones); an **Arcs** view in the Plan tab (one lane per arc across the scenes in reading order, with a list equivalent); the scene inspector's Plan section lists the arc milestones set in that scene. Clicking a milestone opens its scene.
 - **Deferred:** relationship developments (spec S07 "Relationships", S08 relationship lanes) move to M5 with the other lanes, so M3 stays one coherent change.
+
+## M4 decisions (2026-11-06): structures and beat sheets
+
+- **Templates are built-in data, not files.** `STRUCTURE_TEMPLATES` in `packages/manuscript/src/structure-templates.mjs`: `three-act`, `five-act`, `heros-journey`, `seven-point`, `story-circle`, `mystery`, `romance` and `custom` (no beats). Each has an `id`, an integer `version`, a name, a one-line description and ordered beats (`name`, `purpose`, `question`, optional `position` such as "about 25%"). All wording is our own; method names are used only as references (spec D06). No proprietary worksheet text, and no branded templates such as Save the Cat. Importing user-made templates waits for an author to ask.
+- **A structure is one file**, `planning/structures/<slug>.md`, kind `structure` (`storyforge.structure/v1`). Its fields are `slug`, `name`, `template` and `template_version`, plus `beats`: an ordered list of mappings. Notes go in the body. A book can have any number of structures, or none.
+- **Applying a template copies its beats** into the new file, each with a fresh `note_` id. The file records `template` and `template_version` once and never follows the template again, so changing a template never changes a book.
+- **Each beat** has `id` (required), `name` (required), and the optional single-line `purpose`, `question` and `position`. `state` is `open`, `done` or `omitted`; if absent it means open. `scenes` is a flow list of scene ids (at most 50).
+  - One scene can sit in any number of beats and structures.
+  - The app writes the whole list at once, as for arc milestones.
+  - A malformed beat, or two beats with one id, is `E102`. An unknown scene is `E301`. There are no new codes.
+- **Beats stay inside the structure file**, not one file per beat. One file means one sha, one Undo and one archive per structure. Applying a 15-beat template is a single write. Removing a structure is archiving one file, and no scene is ever touched.
+  - The cost: a link cannot point at a beat yet. D02's "beats join in M4" moves to M5, which can resolve beat ids inside structures.
+- **Primary structure:** the story plan gets the field `primary_structure` (a structure id), set from the Overview or the Structure view. An archived primary gives `W303`, as other links do.
+- **Routes** (module `planner`, not in plugin API v1):
+  - `GET /api/books/:b/structure-templates`;
+  - `GET /api/books/:b/structures` and `GET /api/books/:b/structures/:slug`;
+  - `POST /api/books/:b/structures` (`planner-structure-create`, `{template, name}`);
+  - `POST …/structures/:slug` (`planner-structure-update`, name and body);
+  - `POST …/structures/:slug/beats` (`planner-structure-beats`, the whole ordered list; a beat without an `id` gets a new one);
+  - `…/archive` and `…/restore`.
+  - The rules match arcs: dry run, `base_sha256`, Undo.
+- **Screens:**
+  - **The Structure view in the Plan tab.** It has one tab per structure, with the primary one marked, and a New structure dialog that previews a template's beats before you apply it.
+  - **The beat sheet editor.** Edit, reorder, add, remove and mark beats as omitted. Assign scenes by search.
+  - **Elsewhere.** The scene inspector's Plan section lists "Beats in this scene". The Overview shows the structure count and the primary structure.
+  - Comparing structures side by side, and showing beats on the Board, Outline and Flow, come in M5.

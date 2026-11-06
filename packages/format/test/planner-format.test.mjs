@@ -131,6 +131,79 @@ test('W318: a story plan anywhere but planning/story.md; an archived one is igno
   assert.deepEqual(await added((root) => put(root, `archive/${STORY}`, story())), []);
 });
 
+// ---- M4: structures and beat sheets
+const STRUCT = 'planning/structures/main-three-act.md';
+const B1 = 'note_01S50000000000000000000B01';
+const B2 = 'note_01S50000000000000000000B02';
+const structure = ({ id = 'note_01S50000000000000000000B00', extra = '', beats = `beats:\n  - id: ${B1}\n    name: Opening image\n    purpose: Show the world before it changes.\n    question: What does normal look like?\n    position: about 1%\n    state: done\n    scenes: [${KEY}, ${FERRY}]\n  - id: ${B2}\n    name: Inciting event\n    scenes: [${KEY}]\n` } = {}) => `---
+schema: storyforge.structure/v1
+id: ${id}
+slug: main-three-act
+name: Main structure
+template: three-act
+template_version: 1
+${beats}${extra}---
+
+Notes.
+`;
+const beatsOf = (body) => ({ beats: `beats:\n${body}` });
+const sameFile = (list, file) => list.filter((k) => k.includes(`| ${file} |`));
+
+test('a well-formed structure adds no diagnostics, with or without beats', async () => {
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure())), []);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure({ beats: '' }))), []);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure({ beats: 'beats: []\n' }))), []);
+});
+
+test('structure: a stray key is I401, a non-list beats is E102, a bad template_version is E102', async () => {
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure({ extra: 'mood: tense\n' }))), [`I401 | ${STRUCT} | mood`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure({ beats: 'beats: text\n' }))), [`E102 | ${STRUCT} | beats`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure().replace('template_version: 1', 'template_version: one'))), [`E102 | ${STRUCT} | template_version`]);
+});
+
+test('beats: E102 at the item or its key, I401 for an unknown key', async () => {
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf('  - just text\n')))), [`E102 | ${STRUCT} | beats[0]`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n  - name: No id\n`)))), [`E102 | ${STRUCT} | beats[1].id`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf('  - id: B1\n    name: One\n')))), [`E102 | ${STRUCT} | beats[0].id`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n`)))), [`E102 | ${STRUCT} | beats[0].name`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n    purpose: [a, b]\n`)))), [`E102 | ${STRUCT} | beats[0].purpose`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n    state: finished\n`)))), [`E102 | ${STRUCT} | beats[0].state`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n    scenes: ${KEY}\n`)))), [`E102 | ${STRUCT} | beats[0].scenes`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n    scenes: [${KEY}, 7]\n`)))), [`E102 | ${STRUCT} | beats[0].scenes[1]`]);
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n    mood: tense\n`)))), [`I401 | ${STRUCT} | beats[0].mood`]);
+});
+
+test('beats: more than 50 scenes in one beat is E102', async () => {
+  const many = Array.from({ length: 51 }, () => KEY).join(', ');
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n    scenes: [${many}]\n`)))), [`E102 | ${STRUCT} | beats[0].scenes`]);
+});
+
+test('E102: a beat id used twice, in one file or across live structures; archived structures are ignored', async () => {
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n  - id: ${B1}\n    name: Two\n`)))), [`E102 | ${STRUCT} | beats[1].id`]);
+  const two = 'planning/structures/main-three-act-2.md';
+  const second = structure({ id: 'note_01S50000000000000000000B03' }).replace('slug: main-three-act', 'slug: main-three-act-2');
+  assert.deepEqual(await added((root) => { put(root, STRUCT, structure()); put(root, two, second); }), [`E102 | ${two} | beats[0].id`, `E102 | ${two} | beats[1].id`]);
+  assert.deepEqual(await added((root) => { put(root, STRUCT, structure()); put(root, `archive/${two}`, second); }), []);
+});
+
+test('E301: a beat scene that is not in the book; W303 for an archived scene', async () => {
+  const ghost = 'scene_01S5000000000000000000ZZZZ';
+  assert.deepEqual(await added((root) => put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n    scenes: [${KEY}, ${ghost}]\n`)))), [`E301 | ${STRUCT} | beats[0].scenes[1]`]);
+  const old = 'scene_01S50000000000000000000ARC';
+  const got = await added((root) => {
+    put(root, STRUCT, structure(beatsOf(`  - id: ${B1}\n    name: One\n    scenes: [${old}]\n`)));
+    put(root, 'archive/manuscript/act-01-one/ch-001-one/0090-old.md', `---\nschema: storyforge.scene/v1\nid: ${old}\ntitle: Old\nact: 1\nchapter: 1\nsequence: 90\nstatus: drafting\n---\nOld.\n`);
+  });
+  assert.deepEqual(sameFile(got, STRUCT), [`W303 | ${STRUCT} | beats[0].scenes[0]`]);
+});
+
+test('story plan primary_structure: a live structure is clean, missing is E301, archived is W303', async () => {
+  const withPrimary = (id) => story({ extra: `primary_structure: ${id}\n` });
+  assert.deepEqual(await added((root) => { put(root, STRUCT, structure()); put(root, STORY, withPrimary('note_01S50000000000000000000B00')); }), []);
+  assert.deepEqual(await added((root) => put(root, STORY, withPrimary('note_01S5000000000000000000ZZZZ'))), [`E301 | ${STORY} | primary_structure`]);
+  assert.deepEqual(await added((root) => { put(root, `archive/${STRUCT}`, structure()); put(root, STORY, withPrimary('note_01S50000000000000000000B00')); }), [`W303 | ${STORY} | primary_structure`]);
+});
+
 // ---- M3: character arcs
 const MAREN = 'entry_01S5000000000000000000000G';
 const ARC = 'planning/arcs/maren-hollis.md';

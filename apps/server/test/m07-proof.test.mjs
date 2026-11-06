@@ -157,6 +157,11 @@ const SAMPLES = {
   'planner-arc-milestones': ['POST', `${b}/arcs/maren-hollis/milestones`],
   'planner-arc-archive': ['POST', `${b}/arcs/maren-hollis/archive`],
   'planner-arc-restore': ['POST', `${b}/arcs/maren-hollis/restore`],
+  'planner-structure-create': ['POST', `${b}/structures`],
+  'planner-structure-update': ['POST', `${b}/structures/main-three-act`],
+  'planner-structure-beats': ['POST', `${b}/structures/main-three-act/beats`],
+  'planner-structure-archive': ['POST', `${b}/structures/main-three-act/archive`],
+  'planner-structure-restore': ['POST', `${b}/structures/main-three-act/restore`],
   'goal-set': ['POST', `${b}/goals`],
   'goal-remove': ['DELETE', `${b}/goals/goal_X`],
   'task-create': ['POST', `${b}/tasks`],
@@ -191,14 +196,14 @@ const GET_SAMPLES = {
     // private project data: members only, never a share (DECISIONS 12)
     `${b}/receipts`, `${b}/receipts/verify`, `${b}/suggestions`, `${b}/comments`, `${b}/notes`, `${b}/scene-notes`, `${S}/revisions`, `${b}/activity`,
     `${b}/raw?path=book.md`, `${b}/ai/status`, `${b}/presence`, `${b}/objects`,
-    `${b}/links`, `${b}/links/key-therefore-ferry`, `${b}/flow`, `${b}/scene-plans/${SCENE}`, `${b}/story-plan`, `${b}/plan-overview`, `${b}/arcs`, `${b}/arcs/maren-hollis`,
+    `${b}/links`, `${b}/links/key-therefore-ferry`, `${b}/flow`, `${b}/scene-plans/${SCENE}`, `${b}/story-plan`, `${b}/plan-overview`, `${b}/arcs`, `${b}/arcs/maren-hollis`, `${b}/structures`, `${b}/structures/main-three-act`, `${b}/structure-templates`,
     `/api/books/${OTHER_BOOK}`, `/api/books/${OTHER_BOOK}/scenes/${SCENE}`,
   ],
   export: [`${b}/export?format=markdown`, `/api/books/${OTHER_BOOK}/export?format=markdown`],
   admin: ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/plugins', '/api/webhooks', '/api/ai/profiles', '/api/recover/last', '/api/library/recent', `${b}/backup`, `${b}/repair/plan`],
   auth: ['/api/auth/me'],
 };
-const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview', 'arcs'].map((x) => `${b}/${x}`);
+const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview', 'arcs', 'structures'].map((x) => `${b}/${x}`);
 
 const PRINCIPALS = ['owner', 'editor', 'reviewer', 'viewer', 'share', 'exportShare', 'anonymous'];
 /** The principal object allowed() takes for each caller kind of the sweep. */

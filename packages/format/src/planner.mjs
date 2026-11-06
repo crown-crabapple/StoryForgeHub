@@ -5,6 +5,13 @@
 
 const STORY_PLAN_PATH = 'planning/story.md';
 const MILESTONE_TEXT_KEYS = ['pressure', 'choice', 'belief_before', 'belief_after', 'cost'];
+// Structures (M4): every structure's `beats` list is checked (E102 shape, I401 unknown key, E301 unknown scene, W303 archived scene); a beat id used twice among the live structures is E102 on the later one.
+const BEAT_TEXT_KEYS = ['purpose', 'question', 'position'];
+const BEAT_KEYS = ['id', 'name', ...BEAT_TEXT_KEYS, 'state', 'scenes'];
+const BEAT_STATES = ['open', 'done', 'omitted'];
+const BEAT_ID_RE = /^note_[0-9A-HJKMNP-TV-Z]{26}$/;
+const MAX_BEAT_SCENES = 50;
+const oneLine = (v) => typeof v === 'string' && !/[\x00-\x1f\x7f\x85\u2028\u2029]/.test(v);
 const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** Milestone items of one arc: E102 / I401 on the shape, E301 / W303 on the scene. */
@@ -31,6 +38,47 @@ function checkMilestones(d, scenes, add) {
   });
 }
 
+/** Beat items of one structure: E102 / I401 on the shape, E301 / W303 on the scenes; `seen` (a Set of beat ids) is given for live structures to find duplicate ids. */
+function checkBeats(d, scenes, add, seen) {
+  if (!Array.isArray(d.fm.beats)) return; // a non-list is reported by the field table
+  d.fm.beats.forEach((b, i) => {
+    const at = (k) => `beats[${i}].${k}`;
+    if (!isMap(b)) {
+      add('E102', d.file, `beats[${i}]`, 'beat must be a mapping with an id, a name and optional purpose, question, position, state and scenes');
+      return;
+    }
+    if (typeof b.id !== 'string' || !BEAT_ID_RE.test(b.id)) add('E102', d.file, at('id'), 'beat id must be note_ followed by a 26-character ULID');
+    else if (seen) {
+      if (seen.has(b.id)) add('E102', d.file, at('id'), `beat id ${b.id} is already used by another beat`);
+      seen.add(b.id);
+    }
+    if (!oneLine(b.name) || b.name === '') add('E102', d.file, at('name'), 'beat name must be a single line of text');
+    for (const k of BEAT_TEXT_KEYS) {
+      if (Object.hasOwn(b, k) && !oneLine(b[k])) add('E102', d.file, at(k), `${k} must be a single line of text`);
+    }
+    if (Object.hasOwn(b, 'state') && !BEAT_STATES.includes(b.state)) add('E102', d.file, at('state'), `state must be one of ${BEAT_STATES.join(', ')}`);
+    if (Object.hasOwn(b, 'scenes')) {
+      if (!Array.isArray(b.scenes)) add('E102', d.file, at('scenes'), 'scenes must be a list of scene ids');
+      else {
+        if (b.scenes.length > MAX_BEAT_SCENES) add('E102', d.file, at('scenes'), `a beat can hold at most ${MAX_BEAT_SCENES} scenes`);
+        b.scenes.forEach((s, j) => {
+          const loc = `${at('scenes')}[${j}]`;
+          if (typeof s !== 'string' || s === '') {
+            add('E102', d.file, loc, 'scene must be a scene id');
+            return;
+          }
+          const hit = scenes.get(s);
+          if (!hit) add('E301', d.file, loc, `cannot resolve ${s}`);
+          else if (hit.archived) add('W303', d.file, loc, `${s} points into archive/`);
+        });
+      }
+    }
+    for (const k of Object.keys(b)) {
+      if (!BEAT_KEYS.includes(k)) add('I401', d.file, at(k), 'unknown field');
+    }
+  });
+}
+
 /**
  * @param {import('./load.mjs').Doc[]} docs typed documents of one book
  * @param {(code:string,file:string,loc:string,msg:string)=>void} add
@@ -50,6 +98,11 @@ export function checkPlanner(docs, add) {
   const scenes = new Map();
   for (const d of docs) if (d.kind === 'scene' && typeof d.fm.id === 'string' && (!scenes.has(d.fm.id) || scenes.get(d.fm.id).archived)) scenes.set(d.fm.id, d);
   for (const d of docs) if (d.kind === 'arc') checkMilestones(d, scenes, add);
+  const seenBeats = new Set();
+  const stemOf = (d) => d.file.replace(/[.]md$/, '');
+  // live structures first, by name, so a duplicate beat id is reported on the later file
+  const structures = docs.filter((d) => d.kind === 'structure').sort((a, b) => Number(a.archived) - Number(b.archived) || (stemOf(a) < stemOf(b) ? -1 : stemOf(a) > stemOf(b) ? 1 : 0));
+  for (const d of structures) checkBeats(d, scenes, add, d.archived ? null : seenBeats);
   for (const d of docs) {
     if (d.archived) continue;
     const { fm } = d;

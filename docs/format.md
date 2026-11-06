@@ -17,7 +17,7 @@ my-library/                  any folder; holds one or more books
           0010-arrival.md    one scene per file
           0020-the-key.md
     codex/                   characters, locations, factions, objects, lore (one file each)
-    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/ and arcs/ hold Story Planner files, and story.md is the story plan
+    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/, arcs/ and structures/ hold Story Planner files, and story.md is the story plan
     research/                research notes and sources
     assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
     activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
@@ -51,7 +51,7 @@ Scenes marked as an alternate version of another scene (`variant_of`) are kept b
 | --- | --- |
 | Scenes in `manuscript/` | `research/` notes (canon only if a note says `canon: true`) |
 | `codex/` entries | `suggestions/` until you accept them |
-| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/` and `planning/story.md` |
+| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/`, `planning/structures/` and `planning/story.md` |
 | `book.md`, `act.md`, `chapter.md` | `archive/` (left out of order, counts and export) |
 | `assets/` the book uses | `legacy/` (see below) |
 
@@ -59,7 +59,7 @@ Notes in a scene written as `<!-- note: ... -->` stay in the file, show in the n
 
 ## Story Planner files
 
-Four kinds of file hold planning data. None is story text or canon, and none changes a scene file.
+Five kinds of file hold planning data. None is story text or canon, and none changes a scene file.
 
 ### A causal link: `planning/links/key-therefore-ferry.md`
 
@@ -125,13 +125,15 @@ central_conflict: The guild wants the key back; Maren wants to know what it open
 protagonist_goal: Learn what the key opens.
 stakes: Her place in the town.
 protagonist: maren-hollis
+primary_structure: note_01S50000000000000000000017
 ---
 Free story notes.
 ```
 
 - One story plan per book, and it must be at `planning/story.md`. The body is free notes.
-- Nothing is required. Optional: `premise`, `logline`, `theme_question`, `central_conflict`, `protagonist_goal`, `stakes` (each a one-line string; StoryForge writes at most 2,000 characters) and `protagonist` (an entry slug).
+- Nothing is required. Optional: `premise`, `logline`, `theme_question`, `central_conflict`, `protagonist_goal`, `stakes` (each a one-line string; StoryForge writes at most 2,000 characters), `protagonist` (an entry slug) and `primary_structure` (the id of a structure, see below).
 - `protagonist` must resolve: a miss is `E301`.
+- `primary_structure` must resolve to a structure: a miss is `E301`. A structure that is archived is `W303`.
 - A live story plan at any other path gives `W318` (at `schema`), on every such file. Archived story plans are not counted.
 
 ### A character arc: `planning/arcs/maren-hollis.md`
@@ -173,6 +175,46 @@ Free arc notes.
 - StoryForge names the file after the character's slug (`-2`, `-3` … when the name is taken by a live or archived file).
 - Archive moves the file to `archive/planning/arcs/`. Restore moves it back.
 
+### A structure: `planning/structures/main-three-act.md`
+
+```yaml
+---
+schema: storyforge.structure/v1
+id: note_01S50000000000000000000017
+slug: main-three-act
+name: Main structure
+template: three-act
+template_version: 1
+beats:
+  - id: note_01S50000000000000000000018
+    name: Opening image
+    purpose: Show the world before it changes.
+    question: What does normal look like?
+    position: about 1%
+    state: done
+    scenes: [scene_01S50000000000000000000003, scene_01S50000000000000000000005]
+  - id: note_01S50000000000000000000019
+    name: Inciting event
+    purpose: Something knocks the hero off the usual path.
+    scenes: [scene_01S50000000000000000000003]
+  - id: note_01S5000000000000000000001A
+    name: Final choice
+    state: omitted
+---
+Free structure notes.
+```
+
+- A structure is a beat sheet. A book can have any number of them, or none. The body is free notes.
+- Required: `slug`, `name`. Optional: `template` (a template id), `template_version` (an integer) and `beats`.
+- `beats` is an ordered list of mappings. Each has an `id` (`note_` and a 26-character ULID) and a `name` (one line). Optional: one-line `purpose`, `question` and `position` (such as "about 25%"), `state` and `scenes`.
+- `state` is `open`, `done` or `omitted`. A beat with no `state` is open.
+- `scenes` is a list of scene ids, at most 50 per beat. One scene can be in any number of beats and structures. Moving a scene never changes a beat, because it names the scene by id.
+- A beat that is not a mapping, has no valid `id`, has no one-line `name`, has a `purpose`, `question` or `position` that is not one line, has an unknown `state`, or has `scenes` that is not a list of scene ids (or has more than 50) is `E102` (at `beats[i]` or `beats[i].<key>`). A beat id used by two beats among the live structures is `E102` on the later one, by file name. Archived structures are not counted. A key other than the seven above is `I401`. A scene that does not resolve is `E301`; one that is archived is `W303`.
+- Templates are built in to StoryForge. They are not files in the book. Applying one copies its beats into the new structure, each with a new id, and writes `template` and `template_version` once. The file never follows the template again, so changing a template never changes a book. The ids are `three-act` (Three acts), `five-act` (Five acts), `heros-journey` (Hero's journey), `seven-point` (Seven points), `story-circle` (Story circle), `mystery` (Mystery), `romance` (Romance) and `custom` (Custom, with no beats).
+- StoryForge writes `beats` as one block of plain mappings. If you edit the block by hand and add a comment, anchor or alias, StoryForge refuses to change it from the app (`REFUSED_UNSIMPLE_FIELD`) until you fix the file.
+- StoryForge names the file after the structure's name (`-2`, `-3` … when the name is taken by a live or archived file).
+- Archive moves the file to `archive/planning/structures/`. Restore moves it back. No scene is changed.
+
 ### Diagnostics
 
 | Code | Severity | Meaning |
@@ -184,6 +226,8 @@ Free arc notes.
 | `W319` | warning | Two live arcs name the same character |
 
 Arc milestones also use the general codes `E102` (malformed milestone), `I401` (unknown milestone key), `E301` (unknown scene) and `W303` (archived scene).
+
+Structure beats use the same codes: `E102` (malformed beat, or a beat id used twice), `I401` (unknown beat key), `E301` (unknown scene) and `W303` (archived scene). A story plan's `primary_structure` uses `E301` and `W303`.
 
 ## `.storyforge/` is disposable
 

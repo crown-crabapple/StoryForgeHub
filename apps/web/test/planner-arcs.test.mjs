@@ -89,7 +89,7 @@ test('ARC_TYPES carry their words; the field and milestone labels are the agreed
 
 test('model: the Arcs view round-trips through the URL', () => {
   assert.equal(m.model.parsePlanSearch('?view=arcs&arc=maren&mode=list').view, 'arcs');
-  const state = { view: 'arcs', node: null, link: null, arc: 'maren', mode: 'list', filter: null };
+  const state = { view: 'arcs', node: null, link: null, arc: 'maren', structure: null, mode: 'list', filter: null };
   const href = m.model.planUrl('b1', state);
   assert.equal(href, '/books/b1/plan?view=arcs&mode=list&arc=maren');
   assert.deepEqual(m.model.parsePlanSearch(href.slice(href.indexOf('?'))), state);

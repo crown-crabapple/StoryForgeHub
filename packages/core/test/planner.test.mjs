@@ -238,7 +238,7 @@ test('getStoryPlan: unknown book, none yet, then saveStoryPlan creates and edits
   const { root, repo } = await setup();
   try {
     assert.equal(await repo.getStoryPlan('book_nope'), null);
-    const none = { premise: null, logline: null, theme_question: null, central_conflict: null, protagonist_goal: null, stakes: null, protagonist: null };
+    const none = { premise: null, logline: null, theme_question: null, central_conflict: null, protagonist_goal: null, stakes: null, protagonist: null, primary_structure: null };
     assert.deepEqual(await repo.getStoryPlan(BOOK), { path: null, sha256: null, fields: none, body: '' });
 
     assert.equal((await repo.saveStoryPlan(BOOK, { fields: { mood: 'x' } })).code, 'REFUSED_BAD_ARGS');
@@ -283,7 +283,7 @@ test('planOverview: counts on salt-orchard with two links and one scene plan, an
     const empty = await repo.planOverview(BOOK);
     assert.deepEqual(empty.story, await repo.getStoryPlan(BOOK));
     assert.equal(empty.counts.scenes, flow0.nodes.length);
-    assert.deepEqual({ ...empty.counts, scenes: 0, threads: 0 }, { scenes: 0, planned_scenes: 0, links: 0, linked_scenes: 0, unlinked_scenes: flow0.nodes.length, broken_links: 0, archived_links: 0, threads: 0, arcs: 0 });
+    assert.deepEqual({ ...empty.counts, scenes: 0, threads: 0 }, { scenes: 0, planned_scenes: 0, links: 0, linked_scenes: 0, unlinked_scenes: flow0.nodes.length, broken_links: 0, archived_links: 0, threads: 0, arcs: 0, structures: 0 });
     assert.deepEqual(empty.unlinked, flow0.nodes.slice(0, 50).map((n) => ({ id: n.id, title: n.title })));
 
     const a = await repo.createLink(BOOK, { from: KEY, to: FERRY, relation: 'therefore' });
@@ -295,7 +295,7 @@ test('planOverview: counts on salt-orchard with two links and one scene plan, an
 
     const o = await repo.planOverview(BOOK);
     const total = flow0.nodes.length;
-    assert.deepEqual(o.counts, { scenes: total, planned_scenes: 1, links: 2, linked_scenes: 3, unlinked_scenes: total - 3, broken_links: 0, archived_links: 1, threads: empty.counts.threads, arcs: 0 });
+    assert.deepEqual(o.counts, { scenes: total, planned_scenes: 1, links: 2, linked_scenes: 3, unlinked_scenes: total - 3, broken_links: 0, archived_links: 1, threads: empty.counts.threads, arcs: 0, structures: 0 });
     assert.deepEqual(o.unlinked, flow0.nodes.filter((n) => ![KEY, FERRY, ARRIVAL].includes(n.id)).slice(0, 50).map((n) => ({ id: n.id, title: n.title })));
     assert.deepEqual(o.story, await repo.getStoryPlan(BOOK));
     assert.deepEqual(await errorsOf(root), []);

@@ -1,10 +1,10 @@
-// FsRepository Story Planner reads (ADR 0003, M1; character arcs M3): causal links (planning/links/<slug>.md), scene plan sidecars (planning/scene-plans/<scene>.md) and the
+// FsRepository Story Planner reads (ADR 0003, M1; character arcs M3; structures M4): causal links (planning/links/<slug>.md), scene plan sidecars (planning/scene-plans/<scene>.md) and the
 // flow projection (scenes in reading order + live links), the book-level story plan (planning/story.md) and the plan overview. Reads come from the validated documents on every call (nothing is kept in the index), so a file edited
 // outside the app shows up on the next read. Writes are in fs-writes.mjs (through @storyforge/manuscript and the store).
 // No filesystem access here: file bytes (for sha256) come from the `readFileAt` function fs-repository.mjs passes in.
 import { createHash } from 'node:crypto';
 import { extractDocs, extractShared, validate } from '@storyforge/format';
-import { ARC_TEXT_FIELDS, MILESTONE_FIELDS, PLAN_FIELDS, STORY_FIELDS, STORY_PATH } from '@storyforge/manuscript';
+import { ARC_TEXT_FIELDS, MILESTONE_FIELDS, PLAN_FIELDS, STORY_FIELDS, STORY_PATH, STRUCTURE_TEMPLATES } from '@storyforge/manuscript';
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const text = (v) => (typeof v === 'string' ? v : null);
@@ -110,6 +110,46 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
     };
   };
 
+  const structureDocs = (ctx, archived) => ctx.docs.filter((d) => d.kind === 'structure' && d.archived === archived).sort(byRel);
+
+  /** The id the book's live story plan names as its primary structure (null when there is none). */
+  const primaryIdOf = (ctx) => {
+    const d = ctx.docs.find((x) => x.kind === 'story-plan' && !x.archived && x.rel === STORY_PATH);
+    return d && typeof d.fm.primary_structure === 'string' && d.fm.primary_structure !== '' ? d.fm.primary_structure : null;
+  };
+
+  const structureOf = (ctx, d, sha256, primaryId) => {
+    const beats = (Array.isArray(d.fm.beats) ? d.fm.beats : []).map((b) => {
+      const item = b !== null && typeof b === 'object' && !Array.isArray(b) ? b : {};
+      const scenes = (Array.isArray(item.scenes) ? item.scenes : []).filter((s) => typeof s === 'string').map((id) => {
+        const live = ctx.scenes.get(id);
+        return { id, title: live ? (live.title ?? null) : null, chapter: live && Number.isInteger(live.chapter) ? live.chapter : null, sequence: live && Number.isInteger(live.sequence) ? live.sequence : null };
+      });
+      return {
+        id: text(item.id),
+        name: text(item.name),
+        purpose: text(item.purpose) || null,
+        question: text(item.question) || null,
+        position: text(item.position) || null,
+        state: item.state === 'done' || item.state === 'omitted' ? item.state : 'open',
+        scenes,
+      };
+    });
+    const id = text(d.fm.id);
+    return {
+      id,
+      slug: text(d.fm.slug) ?? stem(d.rel).split('/').pop(),
+      name: text(d.fm.name),
+      template: text(d.fm.template),
+      template_version: Number.isInteger(d.fm.template_version) ? d.fm.template_version : null,
+      primary: id !== null && id === primaryId,
+      sha256,
+      body: tidy(d.body),
+      beats,
+      counts: { beats: beats.length, assigned: beats.filter((b) => b.scenes.length > 0).length, omitted: beats.filter((b) => b.state === 'omitted').length },
+    };
+  };
+
   /** Flow projection of a loaded book (see flowGraph). */
   async function flow(ctx) {
     const sceneDocs = new Map(ctx.docs.filter((d) => d.kind === 'scene' && !d.archived).map((d) => [d.fm.id, d]));
@@ -207,6 +247,45 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
       return null;
     },
 
+    /** GET /api/books/:b/structure-templates: the built-in templates (STRUCTURE_TEMPLATES), the same for every book. */
+    listStructureTemplates() {
+      return STRUCTURE_TEMPLATES;
+    },
+
+    /**
+     * GET /api/books/:b/structures: { structures, archived } (planning/structures/*.md). Structure = { id, slug, name, template, template_version, primary, sha256, body,
+     * beats: [{ id, name, purpose, question, position, state, scenes: [{ id, title, chapter, sequence }] }], counts: { beats, assigned, omitted } }. `primary` is true when the story
+     * plan's primary_structure is its id; `state` is open, done or omitted (absent = open); a scene that is not live has null title, chapter and sequence; assigned = beats with at
+     * least one scene. Live structures are sorted primary first, then by name, then slug. archived = [{ slug, name }]. Null when there is no such book.
+     */
+    async listStructures(bookId) {
+      const ctx = await load(bookId);
+      if (!ctx) return null;
+      const live = structureDocs(ctx, false);
+      const arch = structureDocs(ctx, true);
+      const sums = await hashes(ctx, live.map((d) => d.rel));
+      const primaryId = primaryIdOf(ctx);
+      const structures = live.map((d) => structureOf(ctx, d, sums.get(d.rel) ?? null, primaryId));
+      const key = (s) => (s.name ?? '').toLowerCase();
+      structures.sort((a, b) => Number(b.primary) - Number(a.primary) || (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+      return { structures, archived: arch.map((d) => ({ slug: text(d.fm.slug) ?? stem(d.rel).split('/').pop(), name: text(d.fm.name) })) };
+    },
+
+    /** GET /api/books/:b/structures/:slug: the live structure (shape as in listStructures), else the archived one, with `archived`. Null when there is no such book or structure. */
+    async getStructure(bookId, slug) {
+      if (typeof slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
+      const ctx = await load(bookId);
+      if (!ctx) return null;
+      for (const archived of [false, true]) {
+        const rel = `${archived ? 'archive/' : ''}planning/structures/${slug}.md`;
+        const d = structureDocs(ctx, archived).find((x) => x.rel === rel);
+        if (!d) continue;
+        const f = await readFileAt(`${ctx.prefix}${rel}`);
+        return { ...structureOf(ctx, d, f ? sha(f.bytes) : null, primaryIdOf(ctx)), archived };
+      }
+      return null;
+    },
+
     /**
      * GET /api/books/:b/flow: nodes are the live scenes in reading order, edges the live links. An edge with an end that is not a live scene is still returned, `broken: true`.
      * Null when there is no such book.
@@ -217,7 +296,7 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
     },
 
     /**
-     * GET /api/books/:b/story: planning/story.md. `{ path, sha256, fields: { premise, logline, theme_question, central_conflict, protagonist_goal, stakes, protagonist }, body }`;
+     * GET /api/books/:b/story: planning/story.md. `{ path, sha256, fields: { premise, logline, theme_question, central_conflict, protagonist_goal, stakes, protagonist, primary_structure }, body }`;
      * no file: path and sha256 null, every field null, body ''. Null when there is no such book.
      */
     async getStoryPlan(bookId) {
@@ -226,8 +305,9 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
     },
 
     /**
-     * The Overview read: `{ story, counts, unlinked }`. scenes = the flow nodes; linked_scenes = scenes at an end of a live link; unlinked = the other scenes in reading
-     * order (max 50); broken_links = live links with an end that is not a live scene; threads = live plot threads. Null when there is no such book.
+     * The Overview read: `{ story, counts, primary_structure, unlinked }`. scenes = the flow nodes; linked_scenes = scenes at an end of a live link; unlinked = the other scenes in reading
+     * order (max 50); broken_links = live links with an end that is not a live scene; threads = live plot threads; arcs = live arcs; structures = live structures.
+     * `primary_structure` is `{ id, slug, name }` of the live structure the story plan names, else null. Null when there is no such book.
      */
     async planOverview(bookId) {
       const ctx = await load(bookId);
@@ -235,6 +315,8 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
       const { nodes, edges } = await flow(ctx);
       const ends = new Set(edges.flatMap((e) => [e.from, e.to]));
       const unlinked = nodes.filter((n) => !ends.has(n.id));
+      const primaryId = primaryIdOf(ctx);
+      const primary = primaryId ? structureDocs(ctx, false).find((d) => d.fm.id === primaryId) : null;
       return {
         story: await story(ctx),
         counts: {
@@ -247,7 +329,9 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
           archived_links: linkDocs(ctx, true).length,
           threads: ctx.docs.filter((d) => d.kind === 'thread' && !d.archived).length,
           arcs: arcDocs(ctx, false).length,
+          structures: structureDocs(ctx, false).length,
         },
+        primary_structure: primary ? { id: primaryId, slug: text(primary.fm.slug) ?? stem(primary.rel).split('/').pop(), name: text(primary.fm.name) } : null,
         unlinked: unlinked.slice(0, 50).map((n) => ({ id: n.id, title: n.title })),
       };
     },

@@ -15,7 +15,7 @@ const u = (...p) => `/api/books/${BOOK}/${p.join('/')}`;
 const post = (port, url, body) => send(port, 'POST', url, { body });
 const get = (port, url) => send(port, 'GET', url);
 const undo = (port, opId) => post(port, u('ops', encodeURIComponent(opId), 'restore'), {});
-const FIELD_KEYS = ['premise', 'logline', 'theme_question', 'central_conflict', 'protagonist_goal', 'stakes', 'protagonist'];
+const FIELD_KEYS = ['premise', 'logline', 'theme_question', 'central_conflict', 'protagonist_goal', 'stakes', 'protagonist', 'primary_structure']; // primary_structure: Story Planner M4
 
 /** Every file except planning/ (book.md, manuscript/, codex ...): relative path -> Buffer. */
 async function nonPlanning(root) {

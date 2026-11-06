@@ -146,6 +146,20 @@ export function OverviewView({ bookId, overview, characters = [], message = null
                 <Link to={planHref(bookId, { view: 'arcs' })}>{plural(counts.arcs, 'character arc', 'character arcs')}</Link>
               </li>
             )}
+            {typeof counts.structures === 'number' && (
+              <li>
+                <Link to={planHref(bookId, { view: 'structure' })}>{plural(counts.structures, 'structure', 'structures')}</Link>
+              </li>
+            )}
+            {typeof counts.structures === 'number' && (
+              <li>
+                {overview.primary_structure ? (
+                  <Link to={planHref(bookId, { view: 'structure', structure: overview.primary_structure.slug })}>{`Primary: ${overview.primary_structure.name}`}</Link>
+                ) : (
+                  <Link to={planHref(bookId, { view: 'structure' })}>No primary structure</Link>
+                )}
+              </li>
+            )}
             <li>
               <Link to={viewHref(bookId, 'threads')}>{plural(counts.threads, 'plot thread', 'plot threads')}</Link>
             </li>

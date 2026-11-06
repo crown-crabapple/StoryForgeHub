@@ -5476,3 +5476,121 @@ kbd {
     display: none;
   }
 }
+
+/* Story structures and beat sheets (M4): the Structure view, the beat sheet editor and the New structure dialog. */
+.st-view,
+.st-sheet,
+.st-beats,
+.st-beat-list,
+.st-beat,
+.st-scenes {
+  display: grid;
+  gap: var(--s3);
+  min-width: 0;
+}
+.st-tabs,
+.st-beat-list,
+.st-chips {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.st-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.st-name,
+.st-notes,
+.st-field {
+  display: grid;
+  gap: var(--s1);
+}
+.st-name label,
+.st-notes label,
+.st-field label,
+.st-scenes-label {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-13);
+}
+.st-name input,
+.st-notes textarea,
+.st-field input,
+.st-field select {
+  width: 100%;
+  max-width: 100%;
+  min-height: 36px;
+  padding: var(--s1) var(--s3);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--r-input);
+  font: inherit;
+}
+.st-notes textarea {
+  resize: vertical;
+}
+.st-template-line,
+.st-primary-note {
+  margin: 0;
+}
+.st-primary-note {
+  font-weight: 600;
+}
+.st-actions,
+.st-beat-actions,
+.st-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.st-beat {
+  padding: var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+.st-beat h4 {
+  margin: 0;
+  font-size: var(--fs-13);
+}
+.st-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.st-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+.st-dirty {
+  font-weight: 600;
+}
+.st-templates {
+  display: grid;
+  gap: var(--s2);
+  margin: 0 0 var(--s3);
+  padding: 0;
+  border: 0;
+}
+.st-template {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+.st-template-name {
+  font-weight: 600;
+}
+.st-preview {
+  margin: 0 0 var(--s3);
+}
+.st-preview ol {
+  margin: 0;
+  padding-left: 1.5rem;
+}

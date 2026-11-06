@@ -158,7 +158,7 @@ export const KINDS = {
   'story-plan': {
     prefix: 'note',
     required: [],
-    fields: { premise: 'str', logline: 'str', theme_question: 'str', central_conflict: 'str', protagonist_goal: 'str', stakes: 'str', protagonist: 'str' },
+    fields: { premise: 'str', logline: 'str', theme_question: 'str', central_conflict: 'str', protagonist_goal: 'str', stakes: 'str', protagonist: 'str', primary_structure: 'str' },
   },
   // Added 2026-11-06, Story Planner M3 (ADR 0003, additive within v1): the arc of one character in one book, under planning/arcs/. `character` is an entry id. Never story text or canon.
   arc: {
@@ -168,6 +168,12 @@ export const KINDS = {
       slug: 'slug', character: 'str', arc_type: ['positive', 'negative', 'flat', 'custom'],
       want: 'str', need: 'str', false_belief: 'str', fear: 'str', wound: 'str', start_state: 'str', end_state: 'str', milestones: 'list',
     },
+  },
+  // Added 2026-11-06, Story Planner M4 (ADR 0003, additive within v1): a story structure with its beat sheet, under planning/structures/. Never story text or canon.
+  structure: {
+    prefix: 'note',
+    required: ['slug', 'name'],
+    fields: { slug: 'slug', name: 'str', template: 'str', template_version: 'int', beats: 'list' },
   },
   doc: {
     prefix: 'note',
