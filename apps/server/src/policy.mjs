@@ -42,6 +42,7 @@ export const WRITE_CLASSES = Object.freeze({
   'planner-arc-create': 'write', 'planner-arc-update': 'write', 'planner-arc-milestones': 'write', 'planner-arc-archive': 'write', 'planner-arc-restore': 'write',
   'planner-structure-create': 'write', 'planner-structure-update': 'write', 'planner-structure-beats': 'write', 'planner-structure-archive': 'write', 'planner-structure-restore': 'write',
   'planner-relationship-create': 'write', 'planner-relationship-update': 'write', 'planner-relationship-developments': 'write', 'planner-relationship-archive': 'write', 'planner-relationship-restore': 'write',
+  'planner-clue-create': 'write', 'planner-clue-update': 'write', 'planner-clue-knowers': 'write', 'planner-clue-archive': 'write', 'planner-clue-restore': 'write',
   'planner-synopsis-create': 'write', 'planner-synopsis-update': 'write', 'planner-synopsis-archive': 'write', 'planner-synopsis-restore': 'write',
   // M07-J02 goals and revision tasks (book files; never prose)
   'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
@@ -78,6 +79,8 @@ export function classifyRead(pathname) {
   if (a === 'books') {
     if (b === undefined) return { cls: 'read' };
     if (c === 'backup' || (c === 'repair' && d === 'plan')) return { cls: 'admin', book: b };
+    // Story Planner M8: the planning export is private project data (members only, never a share link), like the planner reads
+    if (c === 'export' && d === 'planning') return { cls: 'read', book: b, shareable: false };
     if (c === 'export') return { cls: 'export', book: b };
     if (c === 'ai' && d === 'stream') return { cls: 'ai', book: b }; // M08-J03: a reply in progress is AI use (editor, and only when the owner allows AI for members)
     // what a share link may read of its book: the book, a scene's text, the cover. Notes, receipts, suggestions, comments, revisions, raw

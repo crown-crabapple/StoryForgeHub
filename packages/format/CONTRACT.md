@@ -112,7 +112,7 @@ A byte copy of `storyforge-v2-production-plan/spec/examples/salt-orchard-mini/`.
 
 ### `fixtures/valid/planner/`
 
-A copy of salt-orchard plus one causal link (`planning/links/`), one scene plan (`planning/scene-plans/`), the story plan (`planning/story.md`) and one character arc with two milestones (`planning/arcs/`) and one structure with three beats (`planning/structures/main-three-act.md`, one beat holds two scenes, one scene sits in two beats, the story plan names it as `primary_structure`), one relationship with two developments (`planning/relationships/maren-hollis-and-pell.md`) and one link whose `to` is a beat id of that structure, and one one-page synopsis (`planning/synopses/one-page.md`, with a `target_words`), from ADR 0003 (Story Planner M1, M2, M3, M4, M5, M7). Same diagnostics as salt-orchard.
+A copy of salt-orchard plus one causal link (`planning/links/`), one scene plan (`planning/scene-plans/`), the story plan (`planning/story.md`) and one character arc with two milestones (`planning/arcs/`) and one structure with three beats (`planning/structures/main-three-act.md`, one beat holds two scenes, one scene sits in two beats, the story plan names it as `primary_structure`), one relationship with two developments (`planning/relationships/maren-hollis-and-pell.md`) and one link whose `to` is a beat id of that structure, one one-page synopsis (`planning/synopses/one-page.md`, with a `target_words`) and one clue (`planning/clues/sea-gate-key.md`, planted in two scenes, revealed in a later one, with a reader knower and a character knower with `reliable: false`), from ADR 0003 (Story Planner M1, M2, M3, M4, M5, M7, M8). Same diagnostics as salt-orchard.
 
 ### `fixtures/invalid/<code>-<short-name>/`
 
@@ -165,13 +165,15 @@ The validator output (code, file, location) must equal this list exactly, as a s
 | `E102-plugin-permission` | a plugin manifest with an unknown permission, at `permissions[i]` (M08-J02) |
 | `E102-suggestion-hunk` | a suggestion whose hunk `lines` disagrees with its diff block (M05-J06) |
 | `E211-self-link` | a `planning/links/` link whose `from` and `to` are the same scene (Story Planner M1) |
-| `W316-duplicate-link` | two live links with the same `from`, `to` and `relation` (Story Planner M1) |
+| `W316-duplicate-link` | two live links with the same `from`, `to`, `relation` and `branch` (an absent branch counts as empty) (Story Planner M1, M8) |
 | `W317-duplicate-scene-plan` | two live `planning/scene-plans/` files naming the same scene (Story Planner M1) |
 | `W318-story-plan-path` | a live `storyforge.story-plan/v1` file that is not `planning/story.md`; the rule flags every live story plan at any other path (a second plan can only be elsewhere), archived ones are ignored (Story Planner M2) |
 | `E102-duplicate-beat-id` | two beats with the same `id` in the live `planning/structures/` files, reported at `beats[i].id` of the later beat (Story Planner M4) |
 | `W319-duplicate-arc` | two live `planning/arcs/` files naming the same `character` (Story Planner M3); reported on the later file by name |
 | `E212-relationship-self` | a `planning/relationships/` file whose `a` and `b` are the same entry, reported at `b` (Story Planner M5) |
 | `E102-synopsis-type` | a `planning/synopses/` file whose `type` is not one of the eight synopsis types, reported at `type` (Story Planner M7) |
+| `E102-clue-kind` | a `planning/clues/` file whose `kind` is not `clue`, `reveal` or `secret`, reported at `kind` (Story Planner M8) |
+| `E301-clue-knower-scene` | a clue knower whose `scene` resolves to nothing, reported at `knowers[i].scene` (Story Planner M8) |
 | `E102-synopsis-basis` | a `planning/synopses/` file whose `basis` is not 64 lower-case hex characters, reported at `basis` (Story Planner M7) |
 | `W320-duplicate-relationship` | two live `planning/relationships/` files for the same pair of entries, in either order; reported on the later file by name, at `b` (Story Planner M5) |
 | `W302-paid-no-payoff` | thread `status: paid`, `payoff: []` |

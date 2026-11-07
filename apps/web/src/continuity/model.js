@@ -19,13 +19,15 @@ export const RULE_INFO = {
   PL2: { name: 'Transition not documented', description: 'Two scenes next to each other each have links, but no link between them. The transition is not documented in the plan.' },
   PL3: { name: 'Beat with no scenes', description: 'A beat in a story structure has no scenes listed. The beat is not documented in the plan yet.' },
   PL4: { name: 'Payoff with no setup', description: 'A plot thread lists scenes where it pays off but none where it is set up. The setup is not documented in the plan.' },
+  PL5: { name: 'Clue never revealed', description: 'A clue is planted in some scenes, but no scene where the truth comes out is documented in the plan. Mark it a red herring if that is the point.' },
+  PL6: { name: 'Revealed before planted', description: 'The plan reveals a clue in a scene that comes before the first scene where it is planted, in reading order.' },
 };
 export const RULE_IDS = Object.keys(RULE_INFO);
 
 /** The two families of rules the queue can be narrowed to: facts the story states, and what the plan documents. */
 export const RULE_FAMILIES = {
   facts: { label: 'Story facts', rules: ['CF1', 'TL1', 'KN1', 'ST1', 'TH1'] },
-  plan: { label: 'Plan', rules: ['PL1', 'PL2', 'PL3', 'PL4'] },
+  plan: { label: 'Plan', rules: ['PL1', 'PL2', 'PL3', 'PL4', 'PL5', 'PL6'] },
 };
 /** The family key ('facts' | 'plan') of a rule id (a sub-rule such as TH1a counts as its rule); null when unknown. @param {string} rule @returns {'facts' | 'plan' | null} */
 export function familyOf(rule) {
@@ -168,6 +170,8 @@ export function sourceHref(bookId, source, bodyLine = null) {
       return viewHref(bookId, 'threads', { thread: source.id });
     case 'structure':
       return structureHref(bookId, source.slug ?? structureSlugOf(source.file));
+    case 'clue':
+      return clueHref(bookId, source.slug ?? structureSlugOf(source.file));
     case 'research':
       return notesHref(bookId, { section: 'research', note: source.id });
     default:
@@ -177,6 +181,8 @@ export function sourceHref(bookId, source, bodyLine = null) {
 
 /** The Plan tab's structure view for a structure slug (the structure list when there is no slug). @param {string} bookId @param {string | null | undefined} slug */
 export const structureHref = (bookId, slug) => planHref(bookId, { view: 'structure', structure: slug ?? null });
+/** The Plan tab's Clues view, on one clue when the slug is known (M8). @param {string} bookId @param {string | null | undefined} slug */
+export const clueHref = (bookId, slug) => `${planHref(bookId, { view: 'clues' })}${slug ? `&clue=${enc(slug)}` : ''}`;
 
 /** The slug of a structure from its file ("planning/structures/three-act.md" -> "three-act"); null when the path is not one. @param {string | null | undefined} file */
 export const structureSlugOf = (file) => /([^/\\]+)\.md$/i.exec(String(file ?? ''))?.[1] ?? null;

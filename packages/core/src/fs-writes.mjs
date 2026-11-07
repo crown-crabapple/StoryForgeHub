@@ -10,6 +10,7 @@ import {
   archiveLink,
   archiveNote,
   archiveRelationship,
+  archiveClue,
   archiveSynopsis,
   archiveStructure,
   changeEntrySlug,
@@ -21,6 +22,7 @@ import {
   createEvent,
   createLink,
   createNote,
+  createClue,
   createRelationship,
   createSynopsis,
   createStructure,
@@ -36,6 +38,7 @@ import {
   restoreLink,
   restoreNote,
   restoreRelationship,
+  restoreClue,
   restoreSynopsis,
   restoreStructure,
   restoreOp,
@@ -57,6 +60,8 @@ import {
   updateArc,
   updateLink,
   updateRelationship,
+  setClueKnowers,
+  updateClue,
   updateSynopsis,
   updateStructure,
   uploadAttachment,
@@ -572,6 +577,13 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     updateSynopsis: (bookId, slug, args = {}) => structure(bookId, (b) => updateSynopsis(b, slug, args ?? {}), PLANNER_CODES),
     archiveSynopsis: (bookId, slug, args = {}) => structure(bookId, (b) => archiveSynopsis(b, slug, args ?? {}), PLANNER_CODES),
     restoreSynopsis: (bookId, slug, args = {}) => structure(bookId, (b) => restoreSynopsis(b, slug, args ?? {}), PLANNER_CODES),
+
+    // ---- Story Planner M8: clues (planning/clues). REFUSED_UNKNOWN_SCENE / REFUSED_UNKNOWN_ENTRY are kept (with `field` and the item `index`); REFUSED_BAD_ARGS carries `field`; CONFLICT carries `current`; creation is undoable.
+    createClue: (bookId, args = {}) => structure(bookId, (b) => createClue(b, args ?? {}), PLANNER_CODES),
+    updateClue: (bookId, slug, args = {}) => structure(bookId, (b) => updateClue(b, slug, args ?? {}), PLANNER_CODES),
+    setClueKnowers: (bookId, slug, args = {}) => structure(bookId, (b) => setClueKnowers(b, slug, args ?? {}), PLANNER_CODES),
+    archiveClue: (bookId, slug, args = {}) => structure(bookId, (b) => archiveClue(b, slug, args ?? {}), PLANNER_CODES),
+    restoreClue: (bookId, slug, args = {}) => structure(bookId, (b) => restoreClue(b, slug, args ?? {}), PLANNER_CODES),
 
     // ---- Story Planner M4: structures and beat sheets (planning/structures). REFUSED_UNKNOWN_SCENE is kept (with the beat `index`).
     createStructure: (bookId, args = {}) => structure(bookId, (b) => createStructure(b, args ?? {}), PLANNER_CODES),

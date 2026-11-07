@@ -44,10 +44,11 @@ export const relationLabel = (relation) => String(relation ?? '').replace(/_/g, 
 /**
  * Where the Plan tab shows something: `/books/:id/plan?view=flow&link=<slug>`. Only the given parts are put in the query (`mode` is `list` or `graph`, `filter` is `unlinked`).
  * @param {string} bookId
- * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null, structure?: string | null, relationship?: string | null, synopsis?: string | null }} [target]
+ * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null, structure?: string | null, relationship?: string | null, synopsis?: string | null, clue?: string | null, branch?: string | null }} [target]
+ *   `clue` is a clue slug (view=clues); `branch` is a what-if branch slug, or `*` for every branch (Flow's Branch filter; no `branch` means the main plan).
  */
-export function planHref(bookId, { view, link, node, mode, filter, arc, structure, relationship, synopsis } = {}) {
-  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc], ['structure', structure], ['relationship', relationship], ['synopsis', synopsis]]
+export function planHref(bookId, { view, link, node, mode, filter, arc, structure, relationship, synopsis, clue, branch } = {}) {
+  const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc], ['structure', structure], ['relationship', relationship], ['synopsis', synopsis], ['clue', clue], ['branch', branch]]
     .filter(([, v]) => typeof v === 'string' && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
   return `/books/${encodeURIComponent(bookId)}/plan${q.length ? `?${q.join('&')}` : ''}`;
@@ -108,12 +109,12 @@ export function storyPlanBody({ fields = {}, body, sha = null, dryRun }) {
   return { fields, ...(body !== undefined ? { body } : {}), base_sha256: typeof sha === 'string' ? sha : null, ...(dryRun ? { dryRun: true } : {}) };
 }
 
-/** The request that creates a link; an empty rationale is left out. @param {string} bookId @param {{ from: string, to: string, relation: string, rationale?: string }} v */
-export function createLinkRequest(bookId, { from, to, relation, rationale = '' }) {
-  return { url: linksUrl(bookId), body: { from, to, relation, ...(rationale.trim() !== '' ? { rationale: rationale.trim() } : {}) } };
+/** The request that creates a link; an empty rationale and an empty branch (the main plan) are left out. @param {string} bookId @param {{ from: string, to: string, relation: string, rationale?: string, branch?: string | null }} v */
+export function createLinkRequest(bookId, { from, to, relation, rationale = '', branch = null }) {
+  return { url: linksUrl(bookId), body: { from, to, relation, ...(rationale.trim() !== '' ? { rationale: rationale.trim() } : {}), ...(typeof branch === 'string' && branch.trim() !== '' ? { branch: branch.trim() } : {}) } };
 }
 
-/** The body that changes a link: the given parts plus the sha256 last read. @param {{ sha256: string }} link @param {{ relation?: string, from?: string, to?: string, rationale?: string }} patch */
+/** The body that changes a link: the given parts plus the sha256 last read. @param {{ sha256: string }} link @param {{ relation?: string, from?: string, to?: string, rationale?: string, branch?: string | null }} patch `branch: null` moves the link back to the main plan. */
 export const updateLinkBody = (link, patch) => ({ ...patch, base_sha256: link.sha256 });
 
 /** The body that turns a link around. @param {{ from: string, to: string, sha256: string }} link */

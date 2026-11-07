@@ -73,6 +73,15 @@ All answers are JSON. Line breaks in text are `\n`. A `sha256` is the hash of th
 | `GET /api/v1/books/:b/search?q=&limit=` | `{ query, hits: [{ id, kind, title, path, snippet }] }` (`q` 1 to 200 characters, `limit` 1 to 100, default 20) |
 | `GET /api/v1/books/:b/graph` | `{ nodes: [{ id, kind, type, name }], edges: [{ from, to, kind, rel }] }` |
 | `GET /api/v1/books/:b/diagnostics` | `{ diagnostics: [{ code, severity, file, location, message }] }` |
+| `GET /api/v1/books/:b/plan` | `{ story: { fields, body }, counts, primary_structure }`: the story plan and the planner counts (see `plan-overview` below), without `path` and `sha256` |
+| `GET /api/v1/books/:b/plan/links` | `{ links: [Link], archived: [Link] }` |
+| `GET /api/v1/books/:b/plan/arcs` | `{ arcs: [Arc], archived: [Arc] }` |
+| `GET /api/v1/books/:b/plan/structures` | `{ structures: [Structure], archived: [{ slug, name }] }` |
+| `GET /api/v1/books/:b/plan/relationships` | `{ relationships: [Relationship], archived: [{ slug, name }] }` |
+| `GET /api/v1/books/:b/plan/synopses` | `{ synopses: [Synopsis], archived: [Synopsis] }` |
+| `GET /api/v1/books/:b/plan/clues` | `{ clues: [Clue], archived: [{ slug, fact }] }` |
+
+The `plan` routes return the same objects as the app's own planner reads ([Story Planner routes](#story-planner-routes-the-apps-own-not-api-v1)), with every `path`, `sha256`, `base_sha256`, `file` and `rel` key left out. They need the `read` permission and a granted book, and answer `403 MODULE_OFF` when the `planner` module is off for the book. Planner data is read-only for plugins: there is no planner write route in API v1, and the app's own `/api/books/:b/` planner routes stay `403 PLUGIN_SCOPE` for a token.
 
 ## Proposals (permission `propose`)
 
@@ -118,9 +127,9 @@ A canvas is a JSON Canvas file, `planning/canvases/<slug>.canvas`. A canvas slug
 
 ## Story Planner routes (the app's own, not API v1)
 
-These routes store causal links between scenes, per-scene planning fields, the book's story plan, character arcs, story structures with their beat sheets, relationships between Codex entries, and synopses (see [format.md](format.md), "Story Planner files"). They sit under `/api/books/:b/`, are **not part of plugin API v1**, and a bearer token is refused (`403 PLUGIN_SCOPE`). They are for the StoryForge app itself.
+These routes store causal links between scenes, per-scene planning fields, the book's story plan, character arcs, story structures with their beat sheets, relationships between Codex entries, synopses, and clues (see [format.md](format.md), "Story Planner files"). They sit under `/api/books/:b/`, are **not part of plugin API v1**, and a bearer token is refused (`403 PLUGIN_SCOPE`). They are for the StoryForge app itself.
 
-A link, an arc, a structure, a relationship or a synopsis is named by its `slug`. A scene plan is named by its scene's id. The story plan is one file per book and has no name in the route. Reads are not gated by a module.
+A link, an arc, a structure, a relationship, a synopsis or a clue is named by its `slug`. A scene plan is named by its scene's id. The story plan is one file per book and has no name in the route. Reads are not gated by a module.
 
 ### Reads
 
@@ -143,12 +152,16 @@ A link, an arc, a structure, a relationship or a synopsis is named by its `slug`
 | `GET /api/books/:b/synopses/:slug` | `Synopsis` plus `body` and `archived` (true when only the archived file exists); `404` if neither exists |
 | `GET /api/books/:b/synopses/:slug/extract` | `{ text, basis, skipped }`, below; `404` for an unknown book or synopsis. Offline; writes nothing |
 | `GET /api/books/:b/plan-badges` | `{ scenes, arcs, structures }`, below; `404` for an unknown book |
+| `GET /api/books/:b/clues` | `{ clues: [Clue], archived: [{ slug, fact }] }`; `404` for an unknown book |
+| `GET /api/books/:b/clues/:slug` | `Clue` plus `archived` (true when only the archived file exists); `404` if neither exists |
+| `GET /api/books/:b/series-plan` | `{ series, books, characters, hidden }`, below; `404` for an unknown book. Offline; writes nothing |
+| `GET /api/books/:b/export/planning` | A zip of Markdown files, below. Not a share-link read |
 
-`Link` is `{ id, slug, path, from, to, relation, rationale, created, sha256, from_title, to_title, from_kind, to_kind, problems: [{ code, message }] }`. `rationale` is the body. `from_title` and `to_title` are `null` when the end does not resolve; for a beat the title is `<structure name>: <beat name>`. `from_kind` and `to_kind` are `scene` or `beat` (an end that does not resolve is `scene`). `problems` are the diagnostics on that file.
+`Link` is `{ id, slug, path, from, to, relation, rationale, branch, created, sha256, from_title, to_title, from_kind, to_kind, problems: [{ code, message }] }`. `rationale` is the body. `branch` is the what-if branch slug, or `null` for a link of the main plan. `from_title` and `to_title` are `null` when the end does not resolve; for a beat the title is `<structure name>: <beat name>`. `from_kind` and `to_kind` are `scene` or `beat` (an end that does not resolve is `scene`). `problems` are the diagnostics on that file.
 
 A scene plan's `fields` has all ten keys (`goal`, `opposition`, `conflict`, `turn`, `outcome`, `consequence`, `stakes`, `emotional_start`, `emotional_end`, `purpose`), each a string or `null`. A scene with no plan answers `path: null`, `sha256: null`, all fields `null`, `characters: []`, `body: ""`.
 
-`flow`: `nodes` are the live scenes in reading order, `{ id, kind: "scene", title, summary, status, pov, act, chapter, sequence, plan }` (`plan` is true when the scene has a plan). `edges` are the live links, `{ id, slug, from, to, relation, rationale, sha256, broken }`; `broken` is true when an end is neither a live scene nor a beat of a live structure. After the scenes, `nodes` also has one beat node, `{ id, kind: "beat", title, structure: { slug, name }, chapter: null, sequence: null }`, for each beat of a live structure that is an end of a live link. `title` is the beat's name.
+`flow`: the answer is `{ nodes, edges, branches }`. `nodes` are the live scenes in reading order, `{ id, kind: "scene", title, summary, status, pov, act, chapter, sequence, plan }` (`plan` is true when the scene has a plan). `edges` are the live links, `{ id, slug, from, to, relation, branch, rationale, sha256, broken }`; `broken` is true when an end is neither a live scene nor a beat of a live structure. After the scenes, `nodes` also has one beat node, `{ id, kind: "beat", title, structure: { slug, name }, chapter: null, sequence: null }`, for each beat of a live structure that is an end of a live link. `title` is the beat's name. `branches` is the sorted list of the distinct non-null `branch` values of the live links.
 
 A story plan's `fields` has all eight keys (`premise`, `logline`, `theme_question`, `central_conflict`, `protagonist_goal`, `stakes`, `protagonist`, `primary_structure`), each a string or `null`. A book with no story plan answers `path: null`, `sha256: null`, all fields `null`, `body: ""`. Only a live file at `planning/story.md` counts.
 
@@ -176,14 +189,32 @@ A story plan's `fields` has all eight keys (`premise`, `logline`, `theme_questio
 - `arcs` is `[{ slug, name }]`: the live arcs, sorted as in `GET /arcs`.
 - `structures` is `[{ slug, name, primary, beats: [{ id, name, state, scenes: [sceneId] }] }]`: the live structures, primary first. `scenes` lists the beat's live scenes.
 
+`Clue` is `{ id, slug, path, fact, kind, planted, revealed, red_herring, knowers, sha256, body, problems: [{ code, message }] }`. `kind` is `clue`, `reveal` or `secret` (`clue` when the file has none). `planted` is `[{ id, title, position }]` in file order and `revealed` is one `{ id, title, position }` or `null`; `position` is the scene's 1-based number in reading order, and `title` and `position` are `null` when the scene is not live. `red_herring` is a boolean (`false` when absent). `knowers` is `[{ who, scene, how, reliable }]` in file order: `who` is `{ id: "reader", name: null, reader: true }` for the reader, else `{ id, name, reader: false, shared }` (`name` is `null` when the id names no entry; `shared` is true for an entry of the series' shared world); `scene` is `{ id, title, position }`; `how` is a string or `null`; `reliable` is `false` only when the file says so. `body` is the free notes. `clues` is sorted by fact, then slug.
+
+`series-plan`: for a book that is in no series the answer is `{ series: null }`. Otherwise it is `{ series: { slug, title }, books, characters, hidden }`.
+- `books` has every book of the series, in `series_number` order (then title): `{ id, slug, title, series_number, logline, premise, synopsis, arcs }`. `logline` and `premise` come from the book's story plan (`null` when empty). `synopsis` is `{ type, name, body }` for the first live synopsis of type `one-page` (by name, then slug), else of type `short`, else `null`. `arcs` is `[{ character: { id, name, shared: true }, start, end, milestones }]`: the book's live arcs whose character is a series-shared entry, sorted by character name; `start` and `end` are the arc's `start_state` and `end_state` (or `null`), `milestones` is how many it has.
+- `characters` is `[{ id, name, books: [{ id, title, arc_slug }] }]`: each series-shared entry that has an arc in at least one book, sorted by name, with the books in book order.
+- `hidden` is the number of books left out because the requester may not read them: `0` unless a member of a shared server has access to only some books of the series. A member then sees only their own books in `books` and in each character's `books` (a character left with no book is dropped).
+
+`export/planning`: a zip named `<book-slug>-planning.zip`, with every file inside a folder `<book-slug>-planning/`, built from the planner reads and written nowhere. It is separate from `export` (Markdown, DOCX, EPUB and PDF), which never includes planning. The policy class is `read`, not `export`, and a share link cannot use it. The files:
+- `story-plan.md`: the story plan fields and notes.
+- `outline.md`: the live scenes by act and chapter, each with its summary and plan fields.
+- `characters.md`: the arcs with their milestones, then the relationships with their developments.
+- `structure.md`: the beat sheet of the primary structure (`No primary structure.` when there is none).
+- `synopses/<slug>.md`: one per live synopsis.
+- `clues.md`: each live clue with its kind, where it is planted and revealed, whether it is a red herring and who learns it.
+- `links.md`: the live links as `from → relation → to`, grouped as `Main plan` and one `Branch: <slug>` group per branch.
+
+An empty section reads `Nothing planned yet.`
+
 ### Writes
 
 All are `POST` with a JSON body. The module is `planner`: with it off, every write is `403 MODULE_OFF` (`module: "planner"`) and nothing is written. Every write accepts `"dryRun": true` and then returns `{ ok: true, dryRun: true, changes, … }` without writing. A real write answers with `opId` and `undo`. `base_sha256` is the `sha256` you read; if the file has changed, the answer is `409 { error: "conflict", current: { sha256, text } }` (the file as it is now) and nothing is written.
 
 | Route | Body | Answer |
 |---|---|---|
-| `POST /api/books/:b/links` | `{ from, to, relation, rationale? }` (scene ids or beat ids; `relation` as in [format.md](format.md)) | `201`, with `id`, `slug`, `path` |
-| `POST /api/books/:b/links/:slug` | `{ base_sha256, relation?, from?, to?, rationale? }`, at least one of the four | `200`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/links` | `{ from, to, relation, rationale?, branch? }` (scene ids or beat ids; `relation` as in [format.md](format.md)) | `201`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/links/:slug` | `{ base_sha256, relation?, from?, to?, rationale?, branch? }`, at least one of the five | `200`, with `id`, `slug`, `path` |
 | `POST /api/books/:b/links/:slug/archive` | optional `{ base_sha256 }` | `200`, with `slug`, `path` (now under `archive/`) |
 | `POST /api/books/:b/links/:slug/restore` | optional `{ base_sha256 }` | `200`, with `slug`, `path` |
 | `POST /api/books/:b/scene-plans/:sceneId` | `{ fields?, characters?, base_sha256? }` | `200`, with `id`, `scene_id`, `path`, `created` |
@@ -207,9 +238,14 @@ All are `POST` with a JSON body. The module is `planner`: with it off, every wri
 | `POST /api/books/:b/synopses/:slug` | `{ base_sha256, name?, target_words?, body?, basis?, dryRun? }`, at least one of the four | `200`, with `id`, `slug`, `path` |
 | `POST /api/books/:b/synopses/:slug/archive` | optional `{ base_sha256 }` | `200`, with `slug`, `path` (now under `archive/`) |
 | `POST /api/books/:b/synopses/:slug/restore` | optional `{ base_sha256 }` | `200`, with `slug`, `path` |
+| `POST /api/books/:b/clues` | `{ fact, kind?, fields? }` | `201`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/clues/:slug` | `{ base_sha256, fields?, body? }`, at least one of the two | `200`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/clues/:slug/knowers` | `{ base_sha256, knowers }` | `200`, with `id`, `slug`, `path` |
+| `POST /api/books/:b/clues/:slug/archive` | optional `{ base_sha256 }` | `200`, with `slug`, `path` (now under `archive/`) |
+| `POST /api/books/:b/clues/:slug/restore` | optional `{ base_sha256 }` | `200`, with `slug`, `path` |
 
 - A dry run answers `200` where a real write would answer `201`.
-- `rationale` is up to 20,000 characters. The file name and slug of a link never change on update. The body is replaced only when `rationale` is sent.
+- `rationale` is up to 20,000 characters. `branch` is a slug (`a-z`, `0-9`, single hyphens, at most 40 characters) that marks a what-if link; `null` or `""` on update removes it, and a link with no branch is part of the main plan. `branch` must be a string or `null` (else `400 BAD_ARGS`) and a bad slug is `REFUSED_BAD_ARGS`. The file name and slug of a link never change on update. The body is replaced only when `rationale` is sent.
 - `fields` holds any of the ten planning keys. A string sets the key; `null` or `""` removes it. A value is one line, up to 2,000 characters, without control characters. `characters` is a list of up to 100 entry slugs; `[]` removes the key.
 - A scene with no plan: send no `base_sha256` (or `null`); the file `planning/scene-plans/<scene-slug>.md` is created, and `created` is `true`. If every value is empty nothing is created (`REFUSED_BAD_ARGS`). A scene with a plan: `base_sha256` is required.
 - `POST .../story-plan`: `fields` holds any of the seven story keys, with the same rules as a scene plan's (a string sets, `null` or `""` removes, one line, up to 2,000 characters). `protagonist` must be the slug of a live entry. `body` is up to 20,000 characters, may have several lines, and replaces the body only when sent. At least one of `fields` and `body` is needed.
@@ -232,26 +268,30 @@ All are `POST` with a JSON body. The module is `planner`: with it off, every wri
 - Synopsis update: `base_sha256` is required. `name` set to `null` or `""` removes it, `target_words` set to `null` removes it, `basis` is 64 lowercase hex characters or `null` to remove it. `body` replaces the text only when sent; with only `basis` or `target_words` the body bytes are untouched. Update never changes the type, file name or slug. Nothing to change is `REFUSED_BAD_ARGS`.
 - Synopsis `basis`: the sha256 of the extracted text the author last reviewed (the `basis` of an `extract` answer). Saving a reviewed proposal stores its `basis` with the new `body`; sending only a new `basis` ("Keep my text") marks the sources as reviewed without touching the text.
 - Restoring a synopsis: `REFUSED_PATH_TAKEN` if a live file has that name.
+- Clues: `fact` is required: one line of text without control characters, up to 2,000 characters. `kind` (also accepted inside `fields`) is `clue`, `reveal` or `secret`. `fields` holds `planted` (a list of up to 100 scene ids), `revealed` (a scene id) and `red_herring` (`true` or `false`); a key other than those and `kind` is `REFUSED_BAD_ARGS` (`field` names it), and a bad value is `REFUSED_BAD_ARGS` with `field`. Every scene must be a live scene (`REFUSED_UNKNOWN_SCENE`, `field: "planted[i]"` or `"revealed"`). The file `planning/clues/<fact-slug>.md` is created (the slug is cut to 56 characters; `-2`, `-3` … when a live or archived file has the name), with no body and no knowers. Any number of clues may share a fact.
+- Clue update: `base_sha256` is required. `fields` may hold `fact` (cannot be removed), `kind`, `planted`, `revealed` and `red_herring`; a value sets the key and `null` removes it (`planted: []` removes it too). `body` (up to 20,000 characters) replaces the notes only when sent. Update never changes the knowers, the file name or the slug. Nothing to change is `REFUSED_BAD_ARGS`.
+- Clue knowers: `knowers` is the whole ordered list, up to 200 items, each `{ who, scene, how?, reliable? }`. `who` is the word `reader` or the id of a live entry of any type, in the book or its series (`REFUSED_UNKNOWN_ENTRY`, `field: "knowers[i].who"`, with `index` and `entry`). `scene` must be a live scene (`REFUSED_UNKNOWN_SCENE`, `field: "knowers[i].scene"`, with `index`). `how` is one line (an empty one is left out); `reliable` is a boolean, and `false` marks misinformation the character believes. A key other than those four is `REFUSED_BAD_ARGS`. Values must be strings, booleans or `null`, else `400 BAD_ARGS`. `[]` removes the `knowers` block. If the block in the file has a comment, anchor or alias, the write is `400 REFUSED_UNSIMPLE_FIELD` (`field: "knowers"`) and nothing is written. Knowers are kept apart from a scene's `knows` and `learns` on the timeline, which no clue write touches.
+- Restoring a clue: `REFUSED_PATH_TAKEN` if a live file has that name. A missing clue is `404` (`NOT_FOUND`).
 - Restoring a structure: `REFUSED_PATH_TAKEN` if a live file has that name. Archiving or restoring never changes a scene or the story plan; a story plan that names an archived structure shows `W303`.
 - Scene files, `book.md` and the story text are never read for writing or changed.
-- Undo: `POST /api/books/:b/ops/:opId/restore`. Undo may remove a link, scene plan, story plan, arc, structure, relationship or synopsis that the write created.
+- Undo: `POST /api/books/:b/ops/:opId/restore`. Undo may remove a link, scene plan, story plan, arc, structure, relationship, synopsis or clue that the write created.
 
 Errors:
 
 | Status | Code | When |
 |---|---|---|
 | `400` | `BAD_ARGS` | The body is malformed (wrong type, a `body` that is not a string, missing `from` / `to` / `relation`, missing `base_sha256` on an update). |
-| `400` | `REFUSED_BAD_ARGS` | A value is out of range (unknown `relation`, unknown planning key, over-long text or body, nothing to change, `base_sha256` where none is allowed or missing where required). |
-| `400` | `REFUSED_UNKNOWN_SCENE` | A link's `from` or `to` is neither a live scene nor a beat of a live structure, or a milestone's, beat's or development's scene is not a live scene (`field` says which). |
-| `400` | `REFUSED_UNKNOWN_ENTRY` | A `characters` slug, the story plan's `protagonist`, an arc's `character`, or a relationship's `a` or `b` is not an entry (`entry` names it). |
-| `400` | `REFUSED_UNSIMPLE_FIELD` | An arc's, structure's or relationship's front matter cannot be read as plain YAML, or its `milestones`, `beats` or `developments` block has a comment, anchor or alias (`field` names the key). |
+| `400` | `REFUSED_BAD_ARGS` | A value is out of range (unknown `relation`, a bad `branch`, unknown planning key, over-long text or body, nothing to change, `base_sha256` where none is allowed or missing where required). |
+| `400` | `REFUSED_UNKNOWN_SCENE` | A link's `from` or `to` is neither a live scene nor a beat of a live structure, or a milestone's, beat's, development's, clue's or knower's scene is not a live scene (`field` says which). |
+| `400` | `REFUSED_UNKNOWN_ENTRY` | A `characters` slug, the story plan's `protagonist`, an arc's `character`, a relationship's `a` or `b`, or a clue knower's `who` (other than `reader`) is not an entry (`entry` names it). |
+| `400` | `REFUSED_UNSIMPLE_FIELD` | An arc's, structure's, relationship's or clue's front matter cannot be read as plain YAML, or its `milestones`, `beats`, `developments` or `knowers` block has a comment, anchor or alias (`field` names the key). |
 | `400` | `REFUSED_SELF_LINK` | `from` and `to` are the same scene or beat. |
 | `400` | `REFUSED_BEAT_LINKED` | A beats save removes a beat that is the `from` or `to` of a link. The answer carries `links` and `archived_links` (slugs). |
-| `404` | | No such book, link, arc, structure, relationship, synopsis, or live scene. |
-| `409` | `REFUSED_DUPLICATE_LINK` | A live link already has the same `from`, `to` and `relation` (also on restore). The answer carries `existing: { slug }`. |
+| `404` | | No such book, link, arc, structure, relationship, synopsis, clue, or live scene. |
+| `409` | `REFUSED_DUPLICATE_LINK` | A live link already has the same `from`, `to`, `relation` and `branch` (also on restore). The answer carries `existing: { slug }`. |
 | `409` | `REFUSED_DUPLICATE_ARC` | A live arc already names the same `character` (also on restore). The answer carries `existing: { slug }`. |
 | `409` | `REFUSED_DUPLICATE_RELATIONSHIP` | A live relationship already names the same pair of entries, in either order (also on restore). The answer carries `existing: { slug }`. |
-| `409` | `REFUSED_PATH_TAKEN` | A restore would overwrite a live link, arc, structure, relationship or synopsis file, or `planning/story.md` exists but is not a story plan. |
+| `409` | `REFUSED_PATH_TAKEN` | A restore would overwrite a live link, arc, structure, relationship, synopsis or clue file, or `planning/story.md` exists but is not a story plan. |
 | `409` | `CONFLICT` | The file changed since `base_sha256`. |
 | `403` | `MODULE_OFF` | The `planner` module is off. |
 
@@ -267,6 +307,10 @@ A write that would add a validation error to the book is refused and nothing is 
 | `PL2` | info | Two scenes next to each other in reading order, each with a live link, and no direct live link between them. The message says "not documented in the planner". |
 | `PL3` | info | A beat in a live structure with no scenes. A beat whose `state` is `omitted` is skipped. |
 | `PL4` | warning | A plot thread with `payoff` scenes and no `setup` scenes. |
+| `PL5` | info | A live clue of kind `clue` (or with no kind) with planted scenes, no `revealed` scene and `red_herring` not `true`. Fingerprint detail: `unrevealed|<clue id>`. |
+| `PL6` | warning | A clue whose `revealed` scene comes before its first planted scene in reading order. Fingerprint detail: `order|<clue id>`; the revealed scene and the first planted scene are the two scenes. |
+
+`PL1` and `PL2` read only the main plan: a link with a `branch` is left out, so a what-if branch never adds a finding. PL5 and PL6 read the clue's own `planted` and `revealed` fields, not the timeline's `knows` and `learns`; a `reader` knower never changes either.
 
 `POST /api/books/:b/continuity/exceptions` accepts `{ fingerprint, rationale, title?, intentional?, dryRun? }`. `intentional` is optional and must be a boolean, else `400`. `true` writes `intentional: true` in the exception file ("This is on purpose"); `false` or no value writes no flag ("Acknowledged"). Both suppress the finding the same way. See [format.md](format.md), "Continuity exceptions".
 

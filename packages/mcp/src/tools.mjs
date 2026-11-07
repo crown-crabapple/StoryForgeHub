@@ -316,6 +316,36 @@ export const TOOLS = [
       return result({ canvases, archived });
     },
   },
+  // Story Planner M8 (ADR 0003): read-only planner tools over GET /api/v1/books/:b/plan[/<what>]; there are no planner write tools
+  {
+    name: 'codex_get_plan',
+    title: 'Read the story plan',
+    description: `Reads a book's story plan (premise, logline, theme question, central conflict, protagonist goal, stakes, protagonist, primary structure, notes) and the planner counts. Read only. ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg }, ['book']),
+    annotations: READ,
+    async run(args, api) {
+      return result(await api.get(`${bookPath(args.book)}/plan`));
+    },
+  },
+  ...[
+    ['codex_list_plan_links', 'links', 'List planner links', 'Lists the causal links between scenes (and beats) of the planner: from, to, relation (therefore, but, enables…), the optional what-if branch and rationale.'],
+    ['codex_list_arcs', 'arcs', 'List character arcs', 'Lists the character arcs: the character, arc type, start and end state, and the milestones with their scenes.'],
+    ['codex_list_structures', 'structures', 'List story structures', 'Lists the story structures (three-act, hero\'s journey…) with their beats and the scenes assigned to each beat; one may be primary.'],
+    ['codex_list_relationships', 'relationships', 'List relationships', 'Lists the relationships between two entries: baseline, end state and the developments scene by scene.'],
+    ['codex_list_synopses', 'synopses', 'List synopses', 'Lists the synopses (premise, logline, one-page…): type, name, word count and target, and whether their plan sources changed.'],
+    ['codex_list_clues', 'clues', 'List clues', 'Lists the clues and reveals: the fact, where it is planted and revealed, red herrings, and who learns it in which scene (the reader or a character, reliably or not).'],
+  ].map(([name, what, title, text]) => ({
+    name,
+    title,
+    description: `${text} Read only. ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg }, ['book']),
+    annotations: READ,
+    async run(/** @type {any} */ args, /** @type {any} */ api) {
+      return result(await api.get(`${bookPath(args.book)}/plan/${what}`));
+    },
+  })),
   {
     name: 'codex_get_canvas',
     title: 'Read a canvas',

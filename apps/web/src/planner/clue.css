@@ -1,0 +1,134 @@
+/* The Clues view of the Plan tab (cl- prefix) and the what-if branch styles of the Flow graph. */
+.cl-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.cl-list {
+  margin: 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+.cl-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.cl-badge {
+  margin-left: var(--s1);
+}
+.cl-new,
+.cl-form,
+.cl-editor,
+.cl-knowers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.cl-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.cl-field textarea {
+  width: 100%;
+}
+.cl-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.cl-dirty {
+  color: var(--text-3);
+  font-size: var(--fs-12);
+}
+.cl-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.cl-chips {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.cl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-input);
+  background: var(--surface);
+}
+.cl-problems {
+  margin: 0;
+  padding-left: var(--s4);
+  color: var(--text);
+}
+.cl-grid-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.cl-grid,
+.cl-knowers-table {
+  border-collapse: collapse;
+}
+.cl-grid th,
+.cl-grid td,
+.cl-knowers-table th,
+.cl-knowers-table td {
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--divider);
+  text-align: left;
+  vertical-align: middle;
+}
+.cl-grid thead th {
+  white-space: nowrap;
+  font-size: var(--fs-12);
+}
+.cl-grid tbody th {
+  min-width: 14em;
+  max-width: 22em;
+  font-weight: 500;
+}
+.cl-grid td {
+  min-width: 3.5em;
+  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.cl-grid td[data-marked='true'] {
+  background: var(--surface);
+}
+.cl-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* Flow: what-if branches are dotted, whatever their relation */
+.flow-edge.flow-edge-branch {
+  stroke-dasharray: 2 4;
+}
+.flow-edge-label[data-branch] {
+  font-style: italic;
+}
+.flow-branch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}

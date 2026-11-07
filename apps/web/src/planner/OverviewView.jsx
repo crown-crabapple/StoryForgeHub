@@ -7,6 +7,7 @@ import { Link } from '../router.jsx';
 import { viewHref } from '../planning/model.js';
 import { STORY_FIELDS, fieldValue, planHref } from './requests.js';
 import { sceneName } from './model.js';
+import { SeriesSection } from './SeriesSection.jsx';
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -200,6 +201,8 @@ export function OverviewView({ bookId, overview, characters = [], message = null
       </section>
 
       <ReviewCard bookId={bookId} />
+
+      <SeriesSection bookId={bookId} />
 
       {!noScenes && (
         <section aria-labelledby="plan-unlinked-h" className="plan-block">

@@ -38,6 +38,8 @@ const CONTRACT_CASES = [
   'E102-duplicate-beat-id',
   // Story Planner M7: synopses
   'E102-synopsis-type', 'E102-synopsis-basis',
+  // Story Planner M8: clues
+  'E102-clue-kind', 'E301-clue-knower-scene',
 ];
 
 test('invalid fixture set matches the contract case table', () => {

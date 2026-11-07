@@ -13,7 +13,7 @@ const UNREADABLE = new Set(['E006', 'E100', 'E101']);
 const clip = (s) => (s.length <= 160 ? s : `${s.slice(0, 159)}…`);
 
 /**
- * @typedef {{ role: 'canon'|'text'|'event'|'thread'|'note'|'plan', kind: 'entry'|'scene'|'event'|'thread'|'research'|'structure', id: string,
+ * @typedef {{ role: 'canon'|'text'|'event'|'thread'|'note'|'plan', kind: 'entry'|'scene'|'event'|'thread'|'research'|'structure'|'clue', id: string,
  *   file: string, heading: string, location: string, line: number, range: {from:number,to:number}|null, excerpt: string }} Source
  */
 
@@ -189,6 +189,7 @@ export async function loadModel(bookRoot) {
     threads: live.filter((d) => d.kind === 'thread' && typeof d.fm.id === 'string'),
     links: live.filter((d) => d.kind === 'link'),
     structures: live.filter((d) => d.kind === 'structure' && typeof d.fm.id === 'string'),
+    clues: live.filter((d) => d.kind === 'clue' && typeof d.fm.id === 'string'),
     research: live.filter((d) => d.kind === 'research' && d.fm.canon === true && typeof d.fm.id === 'string'),
     exceptions: live.filter((d) => d.kind === 'continuity-exception' && typeof d.fm.fingerprint === 'string').sort((a, b) => cmp(a.file, b.file)),
     codexTypes: live.filter((d) => d.kind === 'codex-type'),

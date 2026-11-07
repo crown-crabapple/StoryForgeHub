@@ -666,6 +666,22 @@ bookCase('E102-synopsis-basis', (b, ids) => {
   return [D('E102', p, 'basis')];
 });
 
+// Story Planner M8: E102 on a clue kind, E301 on a knower's scene
+const clueDoc = (ids, slug, o = {}) => ({
+  fm: { schema: 'storyforge.clue/v1', id: ids('note'), slug, fact: 'The key opens the sea gate.', kind: 'clue', created: '2026-11-06', ...o },
+  body: 'Free clue notes.\n',
+});
+bookCase('E102-clue-kind', (b, ids) => {
+  const p = 'planning/clues/sea-gate-key.md';
+  b.files.set(p, clueDoc(ids, 'sea-gate-key', { kind: 'hint' }));
+  return [D('E102', p, 'kind')];
+});
+bookCase('E301-clue-knower-scene', (b, ids) => {
+  const p = 'planning/clues/sea-gate-key.md';
+  b.files.set(p, clueDoc(ids, 'sea-gate-key', { knowers: { block: ['  - who: reader', '    scene: scene_01S5ZZZZZZZZZZZZZZZZZZZZZZ'] } }));
+  return [D('E301', p, 'knowers[0].scene')];
+});
+
 // Story Planner M4: E102 for a beat id used twice
 bookCase('E102-duplicate-beat-id', (b, ids) => {
   const p = 'planning/structures/main-three-act.md';
@@ -1330,6 +1346,7 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
   const { files, expected, ids } = buildSaltOrchard();
   const KEY = 'scene_01S50000000000000000000003';
   const FERRY = 'scene_01S50000000000000000000005';
+  const SECOND_SCENE = 'scene_01S50000000000000000000002';
   files.set('planning/links/key-therefore-ferry.md', {
     fm: { schema: 'storyforge.link/v1', id: ids('note'), slug: 'key-therefore-ferry', from: KEY, to: FERRY, relation: 'therefore', created: '2026-11-05' },
     body: 'The key failing forces Maren onto the ferry.\n',
@@ -1447,6 +1464,26 @@ fs.writeFileSync(path.join(SALT, 'expected-continuity.json'), json({ findings: s
   });
   // Story Planner M7: one one-page synopsis with a target
   files.set('planning/synopses/one-page.md', synopsisDoc(ids, 'one-page'));
+  // Story Planner M8: one clue planted in two scenes and revealed later, known to the reader and (wrongly) to Maren
+  files.set('planning/clues/sea-gate-key.md', {
+    fm: {
+      schema: 'storyforge.clue/v1', id: ids('note'), slug: 'sea-gate-key', fact: 'The harbour key opens the sea gate.',
+      kind: 'clue', planted: [SECOND_SCENE, KEY], revealed: FERRY, red_herring: false,
+      knowers: {
+        block: [
+          '  - who: reader',
+          `    scene: ${FERRY}`,
+          '    how: The ferryman shows the gate.',
+          `  - who: ${files.get('codex/characters/maren-hollis.md').fm.id}`,
+          `    scene: ${KEY}`,
+          '    how: She believes the key opens the guild door.',
+          '    reliable: false',
+        ],
+      },
+      created: '2026-11-06',
+    },
+    body: 'Free clue notes.\n',
+  });
   checkIds(files);
   const dir = path.join(FIXTURES, 'valid', 'planner');
   writeTree(dir, files);

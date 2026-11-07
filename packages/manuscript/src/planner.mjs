@@ -52,7 +52,10 @@ async function freeName(store, base, pathOf) {
 
 const liveScenes = (lb) => new Map(lb.book.order.map((s) => [s.id, s]));
 const linkDocs = (docs, archived) => docs.filter((d) => d.kind === 'link' && d.archived === archived);
-const sameTriple = (d, from, to, relation) => d.fm.from === from && d.fm.to === to && d.fm.relation === relation;
+const sameTriple = (d, from, to, relation, branch = '') => d.fm.from === from && d.fm.to === to && d.fm.relation === relation && (typeof d.fm.branch === 'string' ? d.fm.branch : '') === branch;
+const MAX_BRANCH = 40;
+const hasBranch = (v) => v !== undefined && v !== null && v !== '';
+const branchOf = (d) => (typeof d.fm.branch === 'string' ? d.fm.branch : '');
 /** Beats of the live structures, by id: Map(id -> { name, structure: slug }). A beat id is a valid link end only while its structure is live (M5). */
 function liveBeats(docs) {
   /** @type {Map<string, { name: string, structure: string }>} */
@@ -73,7 +76,8 @@ function bodyText(rationale, eol) {
 }
 
 /** Check from / to / relation shape; a message or null. */
-function badLinkArgs({ from, to, relation, rationale }, { partial }) {
+function badLinkArgs({ from, to, relation, rationale, branch }, { partial }) {
+  if (hasBranch(branch) && !(okSlug(branch) && branch.length <= MAX_BRANCH)) return `branch must be a slug (a-z, 0-9, single hyphens, at most ${MAX_BRANCH} characters), or null for the main plan`;
   if (from !== undefined || !partial) if (typeof from !== 'string' || from === '' || from.length > 100) return 'from must be a scene id';
   if (to !== undefined || !partial) if (typeof to !== 'string' || to === '' || to.length > 100) return 'to must be a scene id';
   if ((relation !== undefined || !partial) && !LINK_RELATIONS.includes(relation)) return `relation must be one of ${LINK_RELATIONS.join(', ')}`;
@@ -85,14 +89,14 @@ function badLinkArgs({ from, to, relation, rationale }, { partial }) {
 
 /**
  * New link file planning/links/<slug>.md: schema, id, slug, from, to, relation, created; the rationale is the body. `from` and `to` must be live scenes or beat ids inside a live structure
- * (REFUSED_UNKNOWN_SCENE, with `field`), not the same scene (REFUSED_SELF_LINK), and no live link may already have the same from, to and relation
- * (REFUSED_DUPLICATE_LINK, with `existing: { slug }`).
- * @param {string} bookRoot @param {{ from: string, to: string, relation: string, rationale?: string, dryRun?: boolean }} args
+ * (REFUSED_UNKNOWN_SCENE, with `field`), not the same scene (REFUSED_SELF_LINK), and no live link may already have the same from, to, relation and branch
+ * (REFUSED_DUPLICATE_LINK, with `existing: { slug }`). `branch` (optional, a slug of at most 40 characters; null or '' for none) marks a what-if link; it is written after `relation`.
+ * @param {string} bookRoot @param {{ from: string, to: string, relation: string, rationale?: string, branch?: string | null, dryRun?: boolean }} args
  */
 export function createLink(bookRoot, args = {}) {
   return guarded(async () => {
-    const { from, to, relation, rationale = '', dryRun = false } = args ?? {};
-    const bad = badLinkArgs({ from, to, relation, rationale }, { partial: false });
+    const { from, to, relation, rationale = '', branch, dryRun = false } = args ?? {};
+    const bad = badLinkArgs({ from, to, relation, rationale, branch }, { partial: false });
     if (bad) return fail('REFUSED_BAD_ARGS', bad);
     const prep = await prepareCodex(bookRoot);
     if (prep.result) return prep.result;
@@ -103,17 +107,18 @@ export function createLink(bookRoot, args = {}) {
       if (!scenes.has(id) && !beats.has(id)) return fail('REFUSED_UNKNOWN_SCENE', `${field} ${id} is not a scene or beat of this book`, { field });
     }
     if (from === to) return fail('REFUSED_SELF_LINK', 'a link cannot point from a scene to itself', { field: 'to' });
-    const twin = linkDocs(docs, false).find((d) => sameTriple(d, from, to, relation));
-    if (twin) return fail('REFUSED_DUPLICATE_LINK', `${twin.rel} already links these scenes with ${relation}`, { existing: { slug: slugOfDoc(twin) } });
+    const branchName = hasBranch(branch) ? branch : '';
+    const twin = linkDocs(docs, false).find((d) => sameTriple(d, from, to, relation, branchName));
+    if (twin) return fail('REFUSED_DUPLICATE_LINK', `${twin.rel} already links these scenes with ${relation}${branchName ? ` on branch ${branchName}` : ''}`, { existing: { slug: slugOfDoc(twin) } });
 
     const name = (id) => (scenes.has(id) ? slugify(sceneSlugOf(scenes.get(id).path)) || slugify(scenes.get(id).title ?? '') || 'scene' : slugify(beats.get(id).name) || 'beat');
     const slug = await freeName(store, `${name(from)}-${relation.replace(/_/g, '-')}-${name(to)}`, linkPath);
     const id = `note_${ulid()}`;
     const rel = linkPath(slug);
-    const head = `---\nschema: storyforge.link/v1\nid: ${id}\nslug: ${slug}\nfrom: ${from}\nto: ${to}\nrelation: ${relation}\ncreated: ${today()}\n---\n`;
+    const head = `---\nschema: storyforge.link/v1\nid: ${id}\nslug: ${slug}\nfrom: ${from}\nto: ${to}\nrelation: ${relation}\n${branchName ? `branch: ${branchName}\n` : ''}created: ${today()}\n---\n`;
     const content = Buffer.from(head + bodyText(rationale, '\n'), 'utf8');
     const changes = [{ from: null, to: rel, content, before: null }];
-    return finish({ bookRoot, store, lb, op: 'createLink', args: { from, to, relation, rationale: `<${rationale.length} chars>`, file: rel }, changes, dryRun, withDiff: true, extra: { id, slug, path: rel } });
+    return finish({ bookRoot, store, lb, op: 'createLink', args: { from, to, relation, branch: branchName || undefined, rationale: `<${rationale.length} chars>`, file: rel }, changes, dryRun, withDiff: true, extra: { id, slug, path: rel } });
   });
 }
 
@@ -122,17 +127,18 @@ export function createLink(bookRoot, args = {}) {
 /**
  * Change a link's relation, ends or rationale. `baseSha256` (the file the author last saw) is required; another version on disk is CONFLICT and nothing is
  * written. The file name and slug never change. The body is replaced only when `rationale` is given; the front matter bytes are otherwise kept.
- * `from` / `to` are checked as live scenes or beats of a live structure only when they change; the self-link and duplicate checks run when from, to or relation change.
+ * `from` / `to` are checked as live scenes or beats of a live structure only when they change; the self-link and duplicate checks run when from, to, relation or branch change.
+ * `branch`: a slug (max 40) sets it, `null` or '' removes the key (the link joins the main plan).
  * @param {string} bookRoot @param {string} slug
- * @param {{ relation?: string, from?: string, to?: string, rationale?: string, baseSha256: string, dryRun?: boolean }} args
+ * @param {{ relation?: string, from?: string, to?: string, rationale?: string, branch?: string | null, baseSha256: string, dryRun?: boolean }} args
  */
 export function updateLink(bookRoot, slug, args = {}) {
   return guarded(async () => {
-    const { relation, from, to, rationale, baseSha256, dryRun = false } = args ?? {};
+    const { relation, from, to, rationale, branch, baseSha256, dryRun = false } = args ?? {};
     if (!okSlug(slug)) return fail('NOT_FOUND', `no link ${slug}`);
     if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
-    if ([relation, from, to, rationale].every((v) => v === undefined)) return fail('REFUSED_BAD_ARGS', 'nothing to change');
-    const bad = badLinkArgs({ from, to, relation, rationale }, { partial: true });
+    if ([relation, from, to, rationale, branch].every((v) => v === undefined)) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+    const bad = badLinkArgs({ from, to, relation, rationale, branch }, { partial: true });
     if (bad) return fail('REFUSED_BAD_ARGS', bad);
     const prep = await prepareCodex(bookRoot);
     if (prep.result) return prep.result;
@@ -144,17 +150,17 @@ export function updateLink(bookRoot, slug, args = {}) {
     const changed = stale(before, baseSha256, rel);
     if (changed) return changed;
 
-    const next = { from: from ?? doc.fm.from, to: to ?? doc.fm.to, relation: relation ?? doc.fm.relation };
+    const next = { from: from ?? doc.fm.from, to: to ?? doc.fm.to, relation: relation ?? doc.fm.relation, branch: branch === undefined ? branchOf(doc) : hasBranch(branch) ? branch : '' };
     const scenes = liveScenes(lb);
     const beats = liveBeats(docs);
     for (const [field, id] of [['from', from], ['to', to]]) {
       if (id !== undefined && !scenes.has(id) && !beats.has(id)) return fail('REFUSED_UNKNOWN_SCENE', `${field} ${id} is not a scene or beat of this book`, { field });
     }
-    const endsChanged = next.from !== doc.fm.from || next.to !== doc.fm.to || next.relation !== doc.fm.relation;
+    const endsChanged = next.from !== doc.fm.from || next.to !== doc.fm.to || next.relation !== doc.fm.relation || next.branch !== branchOf(doc);
     if (endsChanged) {
       if (next.from === next.to) return fail('REFUSED_SELF_LINK', 'a link cannot point from a scene to itself', { field: 'to' });
-      const twin = linkDocs(docs, false).find((d) => d !== doc && sameTriple(d, next.from, next.to, next.relation));
-      if (twin) return fail('REFUSED_DUPLICATE_LINK', `${twin.rel} already links these scenes with ${next.relation}`, { existing: { slug: slugOfDoc(twin) } });
+      const twin = linkDocs(docs, false).find((d) => d !== doc && sameTriple(d, next.from, next.to, next.relation, next.branch));
+      if (twin) return fail('REFUSED_DUPLICATE_LINK', `${twin.rel} already links these scenes with ${next.relation}${next.branch ? ` on branch ${next.branch}` : ''}`, { existing: { slug: slugOfDoc(twin) } });
     }
 
     let buf = before;
@@ -165,6 +171,12 @@ export function updateLink(bookRoot, slug, args = {}) {
       if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: r.field });
       buf = r.buf;
     }
+    if (branch !== undefined) {
+      const has = /^branch:/m.test(buf.toString('latin1'));
+      const r = hasBranch(branch) ? editFrontMatterLine(buf, 'branch', branch, { anchors: ['relation', 'to', 'from', 'slug', 'id'], plain: true }) : has ? replaceFrontMatterBlock(buf, 'branch', []) : { ok: true, buf };
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: 'branch' });
+      buf = r.buf;
+    }
     if (rationale !== undefined) {
       const parts = splitDocument(buf);
       if (!parts) return fail('REFUSED_UNSIMPLE_FIELD', `${rel}: the file has no closed front matter`, { file: rel, field: 'body' });
@@ -172,7 +184,7 @@ export function updateLink(bookRoot, slug, args = {}) {
       buf = Buffer.concat([head, Buffer.from(bodyText(rationale, head.includes('\r\n') ? '\r\n' : '\n'), 'utf8')]);
     }
     const changes = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
-    return finish({ bookRoot, store, lb, op: 'updateLink', args: { slug, relation, from, to, rationale: rationale === undefined ? undefined : `<${rationale.length} chars>` }, changes, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+    return finish({ bookRoot, store, lb, op: 'updateLink', args: { slug, relation, from, to, branch, rationale: rationale === undefined ? undefined : `<${rationale.length} chars>` }, changes, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
   });
 }
 
@@ -208,7 +220,7 @@ function moveLink(bookRoot, slug, args, restoring) {
     if (restoring) {
       if (await store.exists(live)) return fail('REFUSED_PATH_TAKEN', `a link file ${live} already exists`, { path: live });
       const doc = linkDocs(docs, true).find((d) => d.rel === from);
-      const twin = doc ? linkDocs(docs, false).find((d) => sameTriple(d, doc.fm.from, doc.fm.to, doc.fm.relation)) : null;
+      const twin = doc ? linkDocs(docs, false).find((d) => sameTriple(d, doc.fm.from, doc.fm.to, doc.fm.relation, branchOf(doc))) : null;
       if (twin) return fail('REFUSED_DUPLICATE_LINK', `${twin.rel} already links the same scenes with ${doc.fm.relation}`, { existing: { slug: slugOfDoc(twin) } });
     }
     return finish({ bookRoot, store, lb, op: restoring ? 'restoreLink' : 'archiveLink', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
@@ -1179,5 +1191,246 @@ function moveSynopsis(bookRoot, slug, args, restoring) {
     if (changed) return changed;
     if (restoring && (await store.exists(live))) return fail('REFUSED_PATH_TAKEN', `a synopsis file ${live} already exists`, { path: live });
     return finish({ bookRoot, store, lb, op: restoring ? 'restoreSynopsis' : 'archiveSynopsis', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
+  });
+}
+
+// ------------------------------------------------------------------ clues (ADR 0003 M8)
+
+export const CLUE_DIR = 'planning/clues';
+export const CLUE_KINDS = ['clue', 'reveal', 'secret'];
+/** The keys `updateClue` may change, in the order they are written (after slug and fact). */
+export const CLUE_FIELDS = ['fact', 'kind', 'planted', 'revealed', 'red_herring'];
+/** The keys of a knower besides `who` and `scene`. */
+export const KNOWER_FIELDS = ['how', 'reliable'];
+const MAX_CLUE_SLUG = 56;
+const MAX_PLANTED = 100;
+const MAX_KNOWERS = 200;
+
+/** Book-relative path of a live clue. @param {string} slug */
+export const cluePath = (slug) => `${CLUE_DIR}/${slug}.md`;
+const clueDocs = (docs, archived) => docs.filter((d) => d.kind === 'clue' && d.archived === archived);
+/** Anchors for inserting a clue key: the keys before it, nearest first, then fact, slug and id. */
+const clueAnchors = (key) => [...CLUE_FIELDS.slice(0, CLUE_FIELDS.indexOf(key)).reverse(), 'fact', 'slug', 'id'];
+const sceneId = (v) => typeof v === 'string' && v !== '' && v.length <= 100;
+
+/** A message when a clue field is badly shaped (null is fine only when `nullable`), else null. */
+function badClueField(key, value, nullable) {
+  if (value === null && nullable && key !== 'fact') return null;
+  switch (key) {
+    case 'fact': return typeof value === 'string' && value.trim() !== '' && lineText(value) ? null : 'fact must be a single line of text without control characters (max 2000)';
+    case 'kind': return CLUE_KINDS.includes(value) ? null : `kind must be one of ${CLUE_KINDS.join(', ')}${nullable ? ', or null to remove it' : ''}`;
+    case 'planted': return Array.isArray(value) && value.length <= MAX_PLANTED && value.every(sceneId) ? null : `planted must be a list of up to ${MAX_PLANTED} scene ids${nullable ? ', or null to remove it' : ''}`;
+    case 'revealed': return sceneId(value) ? null : `revealed must be a scene id${nullable ? ', or null to remove it' : ''}`;
+    case 'red_herring': return typeof value === 'boolean' ? null : `red_herring must be true or false${nullable ? ', or null to remove it' : ''}`;
+    default: return `unknown clue field ${key}; the fields are ${CLUE_FIELDS.join(', ')}`;
+  }
+}
+
+/** The front-matter lines of one clue field (value already checked), without the key's neighbours. */
+function clueFieldLines(key, value) {
+  if (key === 'planted') return flowList('planted', value);
+  if (key === 'fact') return [`fact: ${formatYamlText(value)}`];
+  return [`${key}: ${typeof value === 'string' ? formatYamlText(value) : String(value)}`];
+}
+
+/** A REFUSED_UNKNOWN_SCENE result for the first planted / revealed scene that is not a live scene, else null. */
+function unknownClueScene(scenes, planted, revealed) {
+  if (planted !== undefined && planted !== null) {
+    for (const [i, id] of planted.entries()) if (!scenes.has(id)) return fail('REFUSED_UNKNOWN_SCENE', `no scene ${id} in the book`, { field: `planted[${i}]`, index: i });
+  }
+  if (revealed !== undefined && revealed !== null && !scenes.has(revealed)) return fail('REFUSED_UNKNOWN_SCENE', `no scene ${revealed} in the book`, { field: 'revealed' });
+  return null;
+}
+
+/**
+ * New clue file planning/clues/<slug>.md: schema, id (note_<ulid>), slug, fact, then kind, planted, revealed and red_herring when given, then created; no body, no knowers.
+ * The slug comes from the fact (at most 56 characters); -2, -3 on a clash with a live or archived file name. `kind` (top level, or in `fields`) is one of CLUE_KINDS;
+ * `fields` may hold planted (list of scene ids), revealed (a scene id) and red_herring (boolean), each null to leave it out. Scenes must be live scenes of the book
+ * (REFUSED_UNKNOWN_SCENE, with `field`); bad args are REFUSED_BAD_ARGS with `field`.
+ * @param {string} bookRoot
+ * @param {{ fact: string, kind?: string | null, fields?: { kind?: string | null, planted?: string[] | null, revealed?: string | null, red_herring?: boolean | null }, dryRun?: boolean }} args
+ */
+export function createClue(bookRoot, args = {}) {
+  return guarded(async () => {
+    const { fact, kind, fields = {}, dryRun = false } = args ?? {};
+    const badFact = badClueField('fact', fact, false);
+    if (badFact) return fail('REFUSED_BAD_ARGS', badFact, { field: 'fact' });
+    if (!isMap(fields)) return fail('REFUSED_BAD_ARGS', 'fields must be an object');
+    const values = {};
+    for (const [key, value] of Object.entries(fields)) {
+      if (!CLUE_FIELDS.includes(key) || key === 'fact') return fail('REFUSED_BAD_ARGS', `unknown clue field ${key}; the fields are ${CLUE_FIELDS.slice(1).join(', ')}`, { field: key });
+      if (value !== null && value !== undefined) values[key] = value;
+    }
+    if (kind !== undefined && kind !== null) values.kind = kind;
+    for (const [key, value] of Object.entries(values)) {
+      const bad = badClueField(key, value, false);
+      if (bad) return fail('REFUSED_BAD_ARGS', bad, { field: key });
+    }
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store } = prep;
+    const unknown = unknownClueScene(liveScenes(lb), values.planted, values.revealed);
+    if (unknown) return unknown;
+
+    const slug = await freeName(store, cutSlug(slugify(fact) || 'clue', MAX_CLUE_SLUG), cluePath);
+    const id = `note_${ulid()}`;
+    const rel = cluePath(slug);
+    const lines = ['---', 'schema: storyforge.clue/v1', `id: ${id}`, `slug: ${slug}`, ...clueFieldLines('fact', fact)];
+    for (const key of CLUE_FIELDS.slice(1)) if (Object.hasOwn(values, key) && !(key === 'planted' && values.planted.length === 0)) lines.push(...clueFieldLines(key, values[key]));
+    lines.push(`created: ${today()}`, '---', '');
+    const changes = [{ from: null, to: rel, content: Buffer.from(lines.join('\n'), 'utf8'), before: null }];
+    return finish({ bookRoot, store, lb, op: 'createClue', args: { fact, fields: Object.keys(values), file: rel }, changes, dryRun, withDiff: true, extra: { id, slug, path: rel } });
+  });
+}
+
+/** The live clue `slug` of a prepared book, read for writing: { doc, rel, before } or { result }. */
+async function liveClue(store, docs, slug) {
+  const rel = cluePath(slug);
+  const doc = clueDocs(docs, false).find((d) => d.rel === rel);
+  if (!doc) return { result: fail('NOT_FOUND', `no clue ${slug}`) };
+  return { doc, rel, before: await readBytes(store, rel) };
+}
+
+/**
+ * Change a clue's fact, kind, planted scenes, revealed scene, red-herring flag or notes. `baseSha256` is required; a different file on disk is CONFLICT with `current`.
+ * `fields`: fact is a single line and cannot be removed; kind (CLUE_KINDS), planted (list of live scene ids, [] removes the key), revealed (a live scene id) and red_herring
+ * (boolean) are set by a value and removed by `null`. `body` (optional, max 20000) replaces the body. The knowers, file name and slug never change here (see setClueKnowers).
+ * Scenes must be live scenes of the book (REFUSED_UNKNOWN_SCENE, with `field`).
+ * @param {string} bookRoot @param {string} slug
+ * @param {{ fields?: { fact?: string, kind?: string | null, planted?: string[] | null, revealed?: string | null, red_herring?: boolean | null }, body?: string, baseSha256: string, dryRun?: boolean }} args
+ */
+export function updateClue(bookRoot, slug, args = {}) {
+  return guarded(async () => {
+    const { fields = {}, body, baseSha256, dryRun = false } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no clue ${slug}`);
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
+    if (!isMap(fields)) return fail('REFUSED_BAD_ARGS', 'fields must be an object');
+    for (const [key, value] of Object.entries(fields)) {
+      if (!CLUE_FIELDS.includes(key)) return fail('REFUSED_BAD_ARGS', `unknown clue field ${key}; the fields are ${CLUE_FIELDS.join(', ')}`, { field: key });
+      if (value === undefined) return fail('REFUSED_BAD_ARGS', `${key} must be a value, or null to remove it`, { field: key });
+      const bad = badClueField(key, value, true);
+      if (bad) return fail('REFUSED_BAD_ARGS', bad, { field: key });
+    }
+    if (body !== undefined && (typeof body !== 'string' || body.length > 20000 || BODY_BAD_RE.test(body))) return fail('REFUSED_BAD_ARGS', 'body must be text without control characters (max 20000 characters)', { field: 'body' });
+    if (Object.keys(fields).length === 0 && body === undefined) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const got = await liveClue(store, docs, slug);
+    if (got.result) return got.result;
+    const { doc, rel, before } = got;
+    const changed = stale(before, baseSha256, rel);
+    if (changed) return changed;
+    const unknown = unknownClueScene(liveScenes(lb), fields.planted, fields.revealed);
+    if (unknown) return unknown;
+
+    let buf = before;
+    for (const key of CLUE_FIELDS) {
+      if (!Object.hasOwn(fields, key)) continue;
+      const v = fields[key];
+      const remove = v === null || (key === 'planted' && v.length === 0);
+      const lines = remove ? [] : clueFieldLines(key, v);
+      const r = replaceFrontMatterBlock(buf, key, lines, { after: clueAnchors(key) });
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: key });
+      buf = r.buf;
+    }
+    if (body !== undefined) {
+      const parts = splitDocument(buf);
+      if (!parts) return fail('REFUSED_UNSIMPLE_FIELD', `${rel}: the file has no closed front matter`, { file: rel, field: 'body' });
+      const head = buf.subarray(0, parts.bodyStart);
+      buf = Buffer.concat([head, Buffer.from(bodyText(body, head.includes('\r\n') ? '\r\n' : '\n'), 'utf8')]);
+    }
+    const out = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'updateClue', args: { slug, fields: Object.keys(fields), body: body === undefined ? undefined : `<${body.length} chars>` }, changes: out, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+  });
+}
+
+/**
+ * Replace the whole `knowers:` block of a clue. `knowers` is an array (max 200) of { who, scene, how?, reliable? }: `who` is the word `reader` or the id of a live entry in the
+ * book or its series (REFUSED_UNKNOWN_ENTRY with the item `index`); `scene` is a live scene of the book (REFUSED_UNKNOWN_SCENE with `index`); `how` is an optional single line
+ * (max 2000; an empty one is left out); `reliable` is an optional boolean (false marks misinformation the character believes). Written as a block of mappings through
+ * replaceFrontMatterBlock (inserted after the last clue field when absent, removed when the list is empty); a hand-edited block with a comment, anchor or alias is
+ * REFUSED_UNSIMPLE_FIELD. `baseSha256` is required; a different file on disk is CONFLICT with `current`.
+ * @param {string} bookRoot @param {string} slug
+ * @param {{ knowers: { who: string, scene: string, how?: string, reliable?: boolean }[], baseSha256: string, dryRun?: boolean }} args
+ */
+export function setClueKnowers(bookRoot, slug, args = {}) {
+  return guarded(async () => {
+    const { knowers, baseSha256, dryRun = false } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no clue ${slug}`);
+    if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('REFUSED_BAD_ARGS', 'base_sha256 is required');
+    if (!Array.isArray(knowers) || knowers.length > MAX_KNOWERS) return fail('REFUSED_BAD_ARGS', `knowers must be a list of up to ${MAX_KNOWERS} items`, { field: 'knowers' });
+    for (const [i, m] of knowers.entries()) {
+      const at = (k) => `knowers[${i}].${k}`;
+      if (!isMap(m)) return fail('REFUSED_BAD_ARGS', `knowers[${i}] must be an object with who and scene`, { field: `knowers[${i}]`, index: i });
+      if (typeof m.who !== 'string' || m.who === '' || m.who.length > 100) return fail('REFUSED_BAD_ARGS', `${at('who')} must be an entry id or reader`, { field: at('who'), index: i });
+      if (!sceneId(m.scene)) return fail('REFUSED_BAD_ARGS', `${at('scene')} must be a scene id`, { field: at('scene'), index: i });
+      for (const [key, value] of Object.entries(m)) {
+        if (key === 'who' || key === 'scene') continue;
+        if (!KNOWER_FIELDS.includes(key)) return fail('REFUSED_BAD_ARGS', `unknown knower field ${key}; the fields are who, scene, ${KNOWER_FIELDS.join(', ')}`, { field: at(key), index: i });
+        if (value === null || value === undefined) continue;
+        if (key === 'how' && !lineText(value)) return fail('REFUSED_BAD_ARGS', `${at('how')} must be a single line of text without control characters (max 2000)`, { field: at('how'), index: i });
+        if (key === 'reliable' && typeof value !== 'boolean') return fail('REFUSED_BAD_ARGS', `${at('reliable')} must be true or false`, { field: at('reliable'), index: i });
+      }
+    }
+
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store, docs } = prep;
+    const got = await liveClue(store, docs, slug);
+    if (got.result) return got.result;
+    const { doc, rel, before } = got;
+    const changed = stale(before, baseSha256, rel);
+    if (changed) return changed;
+    const scenes = liveScenes(lb);
+    for (const [i, m] of knowers.entries()) {
+      if (m.who !== 'reader' && !liveEntry(docs, lb, m.who)) return fail('REFUSED_UNKNOWN_ENTRY', `no entry ${m.who}`, { field: `knowers[${i}].who`, index: i, entry: m.who });
+      if (!scenes.has(m.scene)) return fail('REFUSED_UNKNOWN_SCENE', `no scene ${m.scene} in the book`, { field: `knowers[${i}].scene`, index: i });
+    }
+
+    const lines = knowers.length === 0 ? [] : ['knowers:'];
+    for (const m of knowers) {
+      lines.push(`  - who: ${m.who}`, `    scene: ${m.scene}`);
+      if (typeof m.how === 'string' && m.how !== '') lines.push(`    how: ${formatYamlText(m.how)}`);
+      if (typeof m.reliable === 'boolean') lines.push(`    reliable: ${m.reliable}`);
+    }
+    let buf = before;
+    if (lines.length > 0 || /^knowers:/m.test(buf.toString('latin1'))) {
+      const r = replaceFrontMatterBlock(buf, 'knowers', lines, { after: [...CLUE_FIELDS].reverse().concat('slug', 'id') });
+      if (!r.ok) return fail(r.code, `${rel}: ${r.message}`, { file: rel, field: 'knowers' });
+      buf = r.buf;
+    }
+    const out = buf.equals(before) ? [] : [{ from: rel, to: rel, content: buf, before }];
+    return finish({ bookRoot, store, lb, op: 'setClueKnowers', args: { slug, knowers: knowers.length }, changes: out, dryRun, withDiff: true, extra: { id: doc.fm.id, slug, path: rel } });
+  });
+}
+
+/** Move a clue to archive/planning/clues/. @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args */
+export function archiveClue(bookRoot, slug, args = {}) {
+  return moveClue(bookRoot, slug, args, false);
+}
+
+/** Move an archived clue back. A live file with that name: REFUSED_PATH_TAKEN. @param {string} bookRoot @param {string} slug @param {{ dryRun?: boolean, baseSha256?: string }} args */
+export function restoreClue(bookRoot, slug, args = {}) {
+  return moveClue(bookRoot, slug, args, true);
+}
+
+function moveClue(bookRoot, slug, args, restoring) {
+  return guarded(async () => {
+    const { dryRun = false, baseSha256 } = args ?? {};
+    if (!okSlug(slug)) return fail('NOT_FOUND', `no clue ${slug}`);
+    const prep = await prepareCodex(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store } = prep;
+    const live = cluePath(slug);
+    const from = restoring ? `archive/${live}` : live;
+    const to = restoring ? live : `archive/${live}`;
+    if (!(await store.exists(from))) return fail('NOT_FOUND', `no ${restoring ? 'archived ' : ''}clue ${slug}`);
+    const before = await readBytes(store, from);
+    const changed = stale(before, baseSha256, from);
+    if (changed) return changed;
+    if (restoring && (await store.exists(live))) return fail('REFUSED_PATH_TAKEN', `a clue file ${live} already exists`, { path: live });
+    return finish({ bookRoot, store, lb, op: restoring ? 'restoreClue' : 'archiveClue', args: { slug }, changes: [{ from, to, content: before, before }], dryRun, withDiff: false, extra: { slug, path: to } });
   });
 }

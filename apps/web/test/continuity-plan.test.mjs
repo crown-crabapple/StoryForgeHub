@@ -33,7 +33,7 @@ test('familyOf', () => {
   assert.equal(m.familyOf('pl4'), 'plan');
   assert.equal(m.familyOf('XX9'), null);
   assert.equal(m.familyOf(''), null);
-  assert.deepEqual(m.RULE_FAMILIES.plan.rules, ['PL1', 'PL2', 'PL3', 'PL4']);
+  assert.deepEqual(m.RULE_FAMILIES.plan.rules, ['PL1', 'PL2', 'PL3', 'PL4', 'PL5', 'PL6']);
 });
 
 test('queueModel narrows by family and composes with the other filters', () => {
@@ -41,7 +41,7 @@ test('queueModel narrows by family and composes with the other filters', () => {
   assert.equal(all.rows.length, 4);
   const plan = m.queueModel(result, { family: 'plan' });
   assert.deepEqual(plan.rows.map((f) => f.rule), ['PL1', 'PL3', 'PL4']);
-  assert.deepEqual(plan.rules.map((r) => r.id), ['PL1', 'PL2', 'PL3', 'PL4']);
+  assert.deepEqual(plan.rules.map((r) => r.id), ['PL1', 'PL2', 'PL3', 'PL4', 'PL5', 'PL6']);
   assert.equal(plan.counts.all, 3);
   assert.equal(m.queueModel(result, { family: 'facts' }).rows.length, 1);
   assert.deepEqual(m.queueModel(result, { family: 'plan', status: 'warning' }).rows.map((f) => f.rule), ['PL4']);

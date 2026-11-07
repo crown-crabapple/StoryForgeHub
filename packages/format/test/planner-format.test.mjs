@@ -392,3 +392,70 @@ test('synopsis: a missing type is E102 and a stray key is I401', async () => {
   assert.deepEqual(await added((root) => put(root, SYN, synopsis().replace('type: one-page\n', ''))), [`E102 | ${SYN} | type`]);
   assert.deepEqual(await added((root) => put(root, SYN, synopsis({ extra: 'mood: tense\n' }))), [`I401 | ${SYN} | mood`]);
 });
+
+// ---- M8: clues
+const CLUE = 'planning/clues/sea-gate-key.md';
+const SECOND = 'scene_01S50000000000000000000002';
+const clue = ({ id = 'note_01S50000000000000000000C01', extra = '', head = 'kind: clue\n', planted = `planted: [${SECOND}, ${KEY}]\n`, revealed = `revealed: ${FERRY}\n`, knowers = `knowers:\n  - who: reader\n    scene: ${FERRY}\n    how: The ferryman shows the gate.\n  - who: ${MAREN}\n    scene: ${KEY}\n    reliable: false\n` } = {}) => `---
+schema: storyforge.clue/v1
+id: ${id}
+slug: sea-gate-key
+fact: The harbour key opens the sea gate.
+${head}${planted}${revealed}${knowers}${extra}---
+
+Notes.
+`;
+const kn = (body) => ({ knowers: `knowers:\n${body}` });
+
+test('a well-formed clue adds no diagnostics, with or without optional fields', async () => {
+  assert.deepEqual(await added((root) => put(root, CLUE, clue())), []);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ head: '', planted: '', revealed: '', knowers: '' }))), []);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ head: 'kind: secret\nred_herring: true\n', knowers: 'knowers: []\n' }))), []);
+});
+
+test('clue: a bad kind, fact, red_herring, planted or revealed is E102; a stray key is I401', async () => {
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ head: 'kind: hint\n' }))), [`E102 | ${CLUE} | kind`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ head: 'red_herring: maybe\n' }))), [`E102 | ${CLUE} | red_herring`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ planted: 'planted: x\n' }))), [`E102 | ${CLUE} | planted`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ planted: 'planted: [1]\n' }))), [`E102 | ${CLUE} | planted[0]`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ revealed: 'revealed: [a]\n' }))), [`E102 | ${CLUE} | revealed`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ extra: 'mood: tense\n' }))), [`I401 | ${CLUE} | mood`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue().replace('fact: The harbour key opens the sea gate.', 'fact: "two\\nlines"'))), [`E102 | ${CLUE} | fact`]);
+});
+
+test('clue: a planted or revealed scene that is unknown is E301, archived is W303', async () => {
+  const ghost = 'scene_01S5000000000000000000ZZZZ';
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ planted: `planted: [${ghost}]\n` }))), [`E301 | ${CLUE} | planted[0]`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue({ revealed: `revealed: ${ghost}\n` }))), [`E301 | ${CLUE} | revealed`]);
+  const old = 'scene_01S50000000000000000000ARD';
+  const got = await added((root) => {
+    put(root, CLUE, clue({ revealed: `revealed: ${old}\n` }));
+    put(root, 'archive/manuscript/act-01-one/ch-001-one/0091-old.md', `---\nschema: storyforge.scene/v1\nid: ${old}\ntitle: Old\nact: 1\nchapter: 1\nsequence: 91\nstatus: drafting\n---\nOld.\n`);
+  });
+  assert.deepEqual(only(got, CLUE), [`W303 | ${CLUE} | revealed`]);
+});
+
+test('clue knowers: E102 shape, E301 unknown scene or entry, I401 unknown key', async () => {
+  const ghost = 'scene_01S5000000000000000000ZZZZ';
+  assert.deepEqual(await added((root) => put(root, CLUE, clue(kn('  - just text\n')))), [`E102 | ${CLUE} | knowers[0]`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue(kn(`  - scene: ${KEY}\n`)))), [`E102 | ${CLUE} | knowers[0].who`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue(kn('  - who: reader\n')))), [`E102 | ${CLUE} | knowers[0].scene`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue(kn(`  - who: reader\n    scene: ${ghost}\n`)))), [`E301 | ${CLUE} | knowers[0].scene`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue(kn(`  - who: entry_01S5000000000000000000ZZZZ\n    scene: ${KEY}\n`)))), [`E301 | ${CLUE} | knowers[0].who`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue(kn(`  - who: reader\n    scene: ${KEY}\n    how: [a]\n`)))), [`E102 | ${CLUE} | knowers[0].how`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue(kn(`  - who: reader\n    scene: ${KEY}\n    reliable: nope\n`)))), [`E102 | ${CLUE} | knowers[0].reliable`]);
+  assert.deepEqual(await added((root) => put(root, CLUE, clue(kn(`  - who: reader\n    scene: ${KEY}\n    mood: tense\n`)))), [`I401 | ${CLUE} | knowers[0].mood`]);
+});
+
+// ---- M8: link branch
+test('a link may carry a branch slug; a bad one is E102; W316 counts the branch', async () => {
+  const withBranch = (o, branch) => link(o).replace('relation: therefore\n', `relation: therefore\nbranch: ${branch}\n`);
+  assert.deepEqual(await added((root) => put(root, LINK, withBranch({}, 'ferry-sinks'))), []);
+  assert.deepEqual(await added((root) => put(root, LINK, withBranch({}, 'Ferry Sinks'))), [`E102 | ${LINK} | branch`]);
+  assert.deepEqual(await added((root) => put(root, LINK, withBranch({}, 'a'.repeat(41)))), [`E102 | ${LINK} | branch`]);
+  const two = 'planning/links/key-therefore-ferry-2.md';
+  const second = { id: 'note_01S50000000000000000000K02', slug: 'key-therefore-ferry-2' };
+  assert.deepEqual(await added((root) => { put(root, LINK, link()); put(root, two, withBranch(second, 'ferry-sinks')); }), []);
+  assert.deepEqual(await added((root) => { put(root, LINK, withBranch({}, 'ferry-sinks')); put(root, two, withBranch(second, 'other-way')); }), []);
+  assert.deepEqual(await added((root) => { put(root, LINK, withBranch({}, 'ferry-sinks')); put(root, two, withBranch(second, 'ferry-sinks')); }), [`W316 | ${two} | relation`]);
+});

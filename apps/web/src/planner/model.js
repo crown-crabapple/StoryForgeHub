@@ -10,25 +10,27 @@ export const PLAN_VIEWS = [
   { key: 'structure', label: 'Structure' },
   { key: 'arcs', label: 'Lanes' },
   { key: 'synopsis', label: 'Synopsis' },
+  { key: 'clues', label: 'Clues' },
 ];
 
 /**
  * What /books/:id/plan?… asks for: `view` (overview unless `view=flow`), `node` (a scene id), `link` (a link slug), `arc` (an arc slug, with view=arcs), `relationship` (a relationship slug, with view=arcs), `structure` (a structure slug, with view=structure), `mode` ('list', 'graph' (lanes in the Arcs view),
  * or null for "the default of the screen width") and `filter` ('unlinked' or null).
+ * `clue` and `branch` are read apart from this (see clueFromSearch and branchFromSearch), so the result for an empty query stays as it was; planUrl carries them when the state has them.
  * @param {string} [search]
- * @returns {{ view: 'overview' | 'flow' | 'structure' | 'arcs' | 'synopsis', node: string | null, link: string | null, arc: string | null, relationship: string | null, structure: string | null, mode: 'list' | 'graph' | null, filter: 'unlinked' | null }}
+ * @returns {{ view: 'overview' | 'flow' | 'structure' | 'arcs' | 'synopsis' | 'clues', node: string | null, link: string | null, arc: string | null, relationship: string | null, structure: string | null, mode: 'list' | 'graph' | 'relationships' | null, filter: 'unlinked' | null }}
  */
 export function parsePlanSearch(search = '') {
   const p = new URLSearchParams(search);
   const mode = p.get('mode');
   return {
-    view: p.get('view') === 'flow' ? 'flow' : p.get('view') === 'arcs' ? 'arcs' : p.get('view') === 'structure' ? 'structure' : p.get('view') === 'synopsis' ? 'synopsis' : 'overview',
+    view: p.get('view') === 'flow' ? 'flow' : p.get('view') === 'arcs' ? 'arcs' : p.get('view') === 'structure' ? 'structure' : p.get('view') === 'synopsis' ? 'synopsis' : p.get('view') === 'clues' ? 'clues' : 'overview',
     node: p.get('node') || null,
     link: p.get('link') || null,
     arc: p.get('arc') || null,
     relationship: p.get('relationship') || null,
     structure: p.get('structure') || null,
-    mode: mode === 'list' || mode === 'graph' ? mode : null,
+    mode: mode === 'list' || mode === 'graph' || mode === 'relationships' ? mode : null,
     filter: p.get('filter') === 'unlinked' ? 'unlinked' : null,
   };
 }
@@ -41,10 +43,58 @@ export function parsePlanSearch(search = '') {
  */
 export const planUrl = (bookId, state, patch = {}) => {
   const next = { ...state, ...patch };
-  return planHref(bookId, { view: next.view === 'flow' || next.view === 'arcs' || next.view === 'structure' || next.view === 'synopsis' ? next.view : null, node: next.node, link: next.link, mode: next.mode, filter: next.filter, arc: next.arc, structure: next.structure, relationship: next.relationship });
+  return planHref(bookId, { view: next.view === 'flow' || next.view === 'arcs' || next.view === 'structure' || next.view === 'synopsis' || next.view === 'clues' ? next.view : null, node: next.node, link: next.link, mode: next.mode, filter: next.filter, arc: next.arc, structure: next.structure, relationship: next.relationship, clue: next.clue, branch: next.branch });
 };
 
 export const sceneName = (title) => title || 'Untitled scene';
+
+/** The clue slug the URL asks for (`?clue=`), or null. @param {string} [search] */
+export const clueFromSearch = (search = '') => new URLSearchParams(search).get('clue') || null;
+
+// ---------------------------------------------------------------- what-if branches (M8)
+
+/** The `branch` value of the Flow filter that shows every branch together (not a slug, so it can never be a branch name). */
+export const ALL_BRANCHES = '*';
+/** The longest branch name. */
+export const BRANCH_MAX = 40;
+/** The rule a branch name follows, in words (shown next to the field). */
+export const BRANCH_RULE = `Use lowercase letters, digits and hyphens, up to ${BRANCH_MAX} characters (for example ferry-sinks).`;
+const BRANCH_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * What the author typed in a Branch field: empty means the main plan (`value: null`); otherwise a slug of lowercase letters, digits and single hyphens, at most 40 characters.
+ * @param {string | null | undefined} text
+ * @returns {{ value: string | null, error: string | null }}
+ */
+export function validateBranch(text) {
+  const t = String(text ?? '').trim();
+  if (t === '') return { value: null, error: null };
+  if (t.length > BRANCH_MAX || !BRANCH_RE.test(t)) return { value: null, error: BRANCH_RULE };
+  return { value: t, error: null };
+}
+
+/** The Flow branch filter the URL asks for: null (the main plan), a branch slug, or ALL_BRANCHES. Anything else is the main plan. @param {string} [search] */
+export function branchFromSearch(search = '') {
+  const b = new URLSearchParams(search).get('branch');
+  return b === ALL_BRANCHES || (b !== null && BRANCH_RE.test(b) && b.length <= BRANCH_MAX) ? b : null;
+}
+
+/** The edges (or links) a branch filter shows: `null` the main plan (no branch), ALL_BRANCHES everything, else that branch only. @template {{ branch?: string | null }} T @param {T[]} edges @param {string | null | undefined} filter */
+export function edgesForBranch(edges, filter) {
+  if (filter === ALL_BRANCHES) return edges;
+  if (typeof filter === 'string' && filter !== '') return edges.filter((e) => e.branch === filter);
+  return edges.filter((e) => !e.branch);
+}
+
+/** The branch names in use, sorted: GET /flow `branches` when given, plus the branch of every edge and link. @param {string[] | null | undefined} named @param {...{ branch?: string | null }[]} lists */
+export function branchNames(named, ...lists) {
+  const all = new Set((named ?? []).filter((b) => typeof b === 'string' && b !== ''));
+  for (const list of lists) for (const e of list ?? []) if (typeof e?.branch === 'string' && e.branch !== '') all.add(e.branch);
+  return [...all].sort();
+}
+
+/** "[ferry-sinks] " for a branch link, else "". @param {{ branch?: string | null }} link */
+export const branchPrefix = (link) => (link?.branch ? `[${link.branch}] ` : '');
 
 // ---------------------------------------------------------------- relations as lines
 
@@ -110,7 +160,8 @@ export function describeLink(link, nodeById = null) {
   const b = end(link.to, link.to_title);
   const broken = a.missing || b.missing;
   const words = relationLabel(link.relation);
-  return { from: a.name, to: b.name, broken, sentence: `${a.name} — ${words} → ${b.name}${broken ? ' (missing scene)' : ''}`, name: `${a.name} ${words} ${b.name}` };
+  const tag = branchPrefix(link);
+  return { from: a.name, to: b.name, broken, sentence: `${tag}${a.name} — ${words} → ${b.name}${broken ? ' (missing scene)' : ''}`, name: `${tag}${a.name} ${words} ${b.name}` };
 }
 
 // ---------------------------------------------------------------- graph layout

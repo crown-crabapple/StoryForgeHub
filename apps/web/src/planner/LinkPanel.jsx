@@ -1,23 +1,26 @@
 import { useState } from 'react';
 import { Dialog } from '../shell/Dialog.jsx';
-import { describeLink } from './model.js';
+import { BRANCH_RULE, describeLink, validateBranch } from './model.js';
 import { RELATIONS, relationLabel } from './requests.js';
 
 /**
  * The side panel for one selected link: its two scenes (buttons that select them), the relation and the rationale to edit, and Reverse direction and Archive.
  * Presentational: `link` is one of GET /links `links`; `nodeById` the live scenes of GET /flow. The container gives it a `key` that changes with the link's sha256, so a
  * reload starts it from what is on disk.
- * @param {{ link: any, nodeById?: Map<string, any> | null, busy?: boolean, message?: string | null, error?: string | null,
- *   handlers?: { onSelectNode?: (id: string) => void, onSave?: (link: any, patch: { relation?: string, rationale?: string }) => void, onReverse?: (link: any) => void, onArchive?: (link: any) => void } }} props
+ * @param {{ link: any, nodeById?: Map<string, any> | null, branches?: string[], busy?: boolean, message?: string | null, error?: string | null,
+ *   handlers?: { onSelectNode?: (id: string) => void, onSave?: (link: any, patch: { relation?: string, rationale?: string, branch?: string | null }) => void, onReverse?: (link: any) => void, onArchive?: (link: any) => void } }} props
  */
-export function LinkPanel({ link, nodeById = null, busy = false, message = null, error = null, handlers = {} }) {
+export function LinkPanel({ link, nodeById = null, branches = [], busy = false, message = null, error = null, handlers = {} }) {
   const [relation, setRelation] = useState(link.relation);
   const [rationale, setRationale] = useState(link.rationale ?? '');
+  const [branch, setBranch] = useState(link.branch ?? '');
   const [confirming, setConfirming] = useState(false);
+  const branchCheck = validateBranch(branch);
   const d = describeLink(link, nodeById);
   const patch = {
     ...(relation !== link.relation ? { relation } : {}),
     ...(rationale !== (link.rationale ?? '') ? { rationale } : {}),
+    ...(branchCheck.error === null && branchCheck.value !== (link.branch ?? null) ? { branch: branchCheck.value } : {}),
   };
   const changed = Object.keys(patch).length > 0;
   return (
@@ -42,7 +45,7 @@ export function LinkPanel({ link, nodeById = null, busy = false, message = null,
         className="flow-form"
         onSubmit={(e) => {
           e.preventDefault();
-          if (changed) handlers.onSave?.(link, patch);
+          if (changed && branchCheck.error === null) handlers.onSave?.(link, patch);
         }}
       >
         <div className="form-row">
@@ -60,6 +63,16 @@ export function LinkPanel({ link, nodeById = null, busy = false, message = null,
           <label htmlFor="link-rationale">Rationale</label>
           <textarea id="link-rationale" rows={4} value={rationale} onChange={(e) => setRationale(e.target.value)} />
         </div>
+        <div className="form-row">
+          <label htmlFor="link-branch">Branch (what-if)</label>
+          <input id="link-branch" type="text" value={branch} list="link-branch-list" autoComplete="off" aria-describedby="link-branch-hint" aria-invalid={branchCheck.error !== null} onChange={(e) => setBranch(e.target.value)} />
+          <datalist id="link-branch-list">
+            {branches.map((x) => (
+              <option key={x} value={x} />
+            ))}
+          </datalist>
+          <p id="link-branch-hint" className={branchCheck.error ? 'error form-hint' : 'muted form-hint'}>{`Leave empty for the main plan. ${BRANCH_RULE}`}</p>
+        </div>
         {message && (
           <p className="muted" role="status">
             {message}
@@ -71,7 +84,7 @@ export function LinkPanel({ link, nodeById = null, busy = false, message = null,
           </p>
         )}
         <div className="flow-actions">
-          <button type="submit" className="btn btn-primary" disabled={!changed || busy}>
+          <button type="submit" className="btn btn-primary" disabled={!changed || busy || branchCheck.error !== null}>
             Save
           </button>
           <button type="button" className="btn" disabled={busy} onClick={() => setConfirming(true)}>

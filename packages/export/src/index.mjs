@@ -15,6 +15,7 @@ export { verifyExport } from './verify.mjs';
 export { ExportError, ExportVerificationError } from './text.mjs';
 export { DEFAULT_RESTORE_LIMITS, RestoreError, createBackup, restoreBackup, restoreBackupFile, writeOutput } from './backup.mjs';
 export { writeZip, unzip } from './zip.mjs';
+export { planningFiles, planningZip } from './planning.mjs';
 export { INCLUDE_MODES, NOT_LEGAL_ADVICE, lineageSteps, readReceipts } from './provenance.mjs';
 
 export const FORMATS = Object.freeze({

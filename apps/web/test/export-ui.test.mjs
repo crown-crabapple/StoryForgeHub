@@ -263,3 +263,10 @@ test('Library screen: the Restore action is also there for an empty library', ()
   const html = text(render(h(Page, { books: [], error: null, loading: false })));
   assert.ok(buttons(html).some((x) => /^restore from backup/i.test(x.label)));
 });
+
+test('planningExportUrl is the book-relative planning export route', async () => {
+  const { planningExportUrl, PLANNING_EXPORT_HINT } = await import('../src/export/requests.js');
+  assert.equal(planningExportUrl('book-1'), '/api/books/book-1/export/planning');
+  assert.equal(planningExportUrl('a b/c'), '/api/books/a%20b%2Fc/export/planning');
+  assert.match(PLANNING_EXPORT_HINT, /Not part of the manuscript\.$/);
+});

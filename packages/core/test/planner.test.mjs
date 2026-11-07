@@ -40,7 +40,7 @@ test('listLinks / getLink: empty, then a created link with titles, sha256 and no
     const list = await repo.listLinks(BOOK);
     assert.equal(list.links.length, 1);
     const l = list.links[0];
-    assert.deepEqual(Object.keys(l).sort(), ['created', 'from', 'from_kind', 'from_title', 'id', 'path', 'problems', 'rationale', 'relation', 'sha256', 'slug', 'to', 'to_kind', 'to_title'].sort());
+    assert.deepEqual(Object.keys(l).sort(), ['branch', 'created', 'from', 'from_kind', 'from_title', 'id', 'path', 'problems', 'rationale', 'relation', 'sha256', 'slug', 'to', 'to_kind', 'to_title'].sort());
     assert.equal(l.id, r.id);
     assert.equal(l.path, 'planning/links/the-key-therefore-ferry.md');
     assert.equal(l.from, KEY);
@@ -194,7 +194,8 @@ test('flowGraph: nodes in reading order with plan flags, edges with broken ends 
     assert.equal(arrival.sequence, 10);
     assert.equal(g.edges.length, 1);
     const l = await repo.getLink(BOOK, link.slug);
-    assert.deepEqual(g.edges[0], { id: link.id, slug: link.slug, from: ARRIVAL, to: FERRY, relation: 'enables', rationale: 'because', sha256: l.sha256, broken: false });
+    assert.deepEqual(g.edges[0], { id: link.id, slug: link.slug, from: ARRIVAL, to: FERRY, relation: 'enables', branch: null, rationale: 'because', sha256: l.sha256, broken: false });
+    assert.deepEqual(g.branches, []);
     await repo.close();
 
     // the Ferry scene is archived by hand (a move to archive/): the edge stays, flagged broken

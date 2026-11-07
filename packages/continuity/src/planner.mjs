@@ -1,4 +1,4 @@
-// PL1-PL4: planner checks. They read only explicit structured records (links, structures, threads), never prose.
+// PL1-PL6: planner checks. They read only explicit structured records (links, structures, threads, clues), never prose.
 import { fingerprintOf } from './rules.mjs';
 
 /**
@@ -11,13 +11,14 @@ export async function plannerFindings(model) {
   const at = (s) => model.fmSource(s.doc, 'text', 'scene', 'title', ['title']);
   const nameOf = (s) => String(s.doc.fm.title ?? s.doc.fm.slug ?? s.doc.fm.id);
 
-  // PL1 / PL2: only in a book that uses the flow
-  if (model.links.length > 0) {
+  // PL1 / PL2: only in a book that uses the flow. Only the main plan counts: a link with a branch (a what-if) is left out, so exploring a branch never creates notes.
+  const mainLinks = model.links.filter((l) => !(typeof l.fm.branch === 'string' && l.fm.branch !== ''));
+  if (mainLinks.length > 0) {
     /** @type {Set<string>} */
     const linked = new Set();
     /** @type {Set<string>} */
     const pairs = new Set();
-    for (const l of model.links) {
+    for (const l of mainLinks) {
       const { from, to } = l.fm;
       if (typeof from === 'string') linked.add(from);
       if (typeof to === 'string') linked.add(to);
@@ -89,6 +90,46 @@ export async function plannerFindings(model) {
       subject: { kind: 'thread', id: thread.fm.id, slug: thread.fm.slug, name: title },
       sources: [await model.fmSource(thread, 'thread', 'thread', 'payoff', ['payoff'])],
     });
+  }
+
+  // PL5 / PL6: clues (a clue with no kind is a clue)
+  const sceneById = new Map(model.scenes.map((s) => [s.doc.fm.id, s]));
+  for (const clue of model.clues) {
+    const fact = String(clue.fm.fact ?? clue.fm.slug);
+    const subject = { kind: 'clue', id: clue.fm.id, slug: clue.fm.slug, name: fact };
+    const planted = (Array.isArray(clue.fm.planted) ? clue.fm.planted : []).filter((s) => typeof s === 'string').map((id) => sceneById.get(id)).filter(Boolean);
+    const revealed = typeof clue.fm.revealed === 'string' ? sceneById.get(clue.fm.revealed) : undefined;
+
+    // PL5 clue never revealed
+    const hasPlanted = Array.isArray(clue.fm.planted) && clue.fm.planted.some((s) => typeof s === 'string' && s !== '');
+    const hasRevealed = typeof clue.fm.revealed === 'string' && clue.fm.revealed !== '';
+    if ((clue.fm.kind ?? 'clue') === 'clue' && hasPlanted && !hasRevealed && clue.fm.red_herring !== true) {
+      findings.push({
+        fingerprint: fingerprintOf('PL5', clue.fm.id, [clue.fm.id], `unrevealed|${clue.fm.id}`),
+        rule: 'PL5', rule_version: 1, severity: 'info',
+        title: `"${fact}" is planted but never revealed`,
+        message: `The clue "${fact}" is planted in the planner but no scene reveals it. Add the scene where the truth comes out, or mark it as a red herring if that is intended.`,
+        subject,
+        sources: [await model.fmSource(clue, 'plan', 'clue', 'planted', ['planted'])],
+      });
+    }
+
+    // PL6 revealed before it is planted
+    if (revealed && planted.length > 0) {
+      const first = planted.reduce((a, b) => (b.position < a.position ? b : a));
+      if (revealed.position < first.position) {
+        const rId = revealed.doc.fm.id;
+        const pId = first.doc.fm.id;
+        findings.push({
+          fingerprint: fingerprintOf('PL6', clue.fm.id, [rId, pId], `order|${clue.fm.id}`),
+          rule: 'PL6', rule_version: 1, severity: 'warning',
+          title: `"${fact}" is revealed before it is planted`,
+          message: `The clue "${fact}" is revealed in "${nameOf(revealed)}" (scene ${revealed.position}), which comes before the first scene that plants it, "${nameOf(first)}" (scene ${first.position}).`,
+          subject,
+          sources: [await model.fmSource(clue, 'plan', 'clue', 'revealed', ['revealed']), await model.fmSource(clue, 'plan', 'clue', 'planted', ['planted']), await at(revealed), await at(first)],
+        });
+      }
+    }
   }
   return findings;
 }

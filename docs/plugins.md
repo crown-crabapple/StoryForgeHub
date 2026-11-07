@@ -43,6 +43,8 @@ It lists the book (`GET /api/v1/books`), reads its outline, reads every scene, a
 const res = await fetch(`${base}/api/v1${path}`, { headers: { authorization: `Bearer ${token}` } });
 ```
 
+A `read` token can also read the book's story plan: `GET /api/v1/books/:b/plan` and `/plan/links`, `/plan/arcs`, `/plan/structures`, `/plan/relationships`, `/plan/synopses` and `/plan/clues` (the field lists are in [api.md](api.md)). They return no file paths or hashes, and answer `403 MODULE_OFF` when the **Story Planner** module is off for the book. Planner data is read-only: to suggest a change, propose one to a scene.
+
 Ask only for what you need: a `read` token is enough to read; a token with only `read` that tries to propose gets `403 PLUGIN_SCOPE`.
 
 ## 4. Propose a change

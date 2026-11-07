@@ -53,6 +53,12 @@ export function exportUrl(bookId, { format, sceneTitles = false, excludeStatuses
   return `/api/books/${enc(bookId)}/export?${q.join('&')}`;
 }
 
+/** The planning notes (Markdown zip) of a book. @param {string} bookId */
+export const planningExportUrl = (bookId) => `/api/books/${enc(bookId)}/export/planning`;
+
+/** Shown with the planning notes choice. */
+export const PLANNING_EXPORT_HINT = 'Your plan, characters, beats, synopses, clues and links as Markdown files. Not part of the manuscript.';
+
 /** @param {string} bookId @param {{ provenance?: boolean }} [o] */
 export const backupUrl = (bookId, { provenance = false } = {}) => `/api/books/${enc(bookId)}/backup?provenance=${provenance ? 1 : 0}`;
 

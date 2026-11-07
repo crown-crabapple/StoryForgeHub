@@ -4,6 +4,7 @@ import { sceneHref, viewHref } from '../planning/model.js';
 import { Dialog } from '../shell/Dialog.jsx';
 import { LANE_COL_W, LANE_HEAD, LANE_KINDS, LANE_LABEL_W, LANE_MARK, LANE_PAD, LANE_ROW_H, THREAD_ROLES, arcName, layoutLanes, loadLaneKinds, milestoneSummary, relationshipName, saveLaneKinds, sceneName, threadMarkerName, threadSceneIds } from './model.js';
 import { ARC_TYPES, MILESTONE_FIELDS } from './requests.js';
+import { RelationshipGraph } from './RelationshipGraph.jsx';
 
 /** "<choice> / <pressure>" for the list rows: whichever of the two are written. */
 const rowSummary = (m) => [m.choice, m.pressure].filter(Boolean).join(' / ');
@@ -356,17 +357,18 @@ function ThreadDetails({ bookId, thread, selected, nodeById }) {
 /**
  * The Lanes view of the Plan tab (URL `?view=arcs`): lanes (wide screens) or a list of character arcs, relationships and plot threads, a checkbox per kind (remembered in this browser),
  * and the side panel for the selected arc (`panel`, the ArcEditor), relationship (`relationshipPanel`, the RelationshipEditor), milestone, development or thread marker. Presentational.
- * @param {{ bookId: string, arcs: { arcs: any[], archived?: any[] } | null, relationships?: { relationships: any[], archived?: any[] } | null, threads?: { threads: any[] } | null,
+ * @param {{ bookId: string, bookSlug?: string | null, arcs: { arcs: any[], archived?: any[] } | null, relationships?: { relationships: any[], archived?: any[] } | null, threads?: { threads: any[] } | null,
  *   flow: { nodes: any[] } | null, url: ReturnType<typeof import('./model.js').parsePlanSearch>, wide?: boolean, initialKinds?: Record<string, boolean>,
  *   selectedMilestone?: { slug: string, index: number } | null, selectedDevelopment?: { slug: string, index: number } | null, selectedThread?: { slug: string, role: string, scene: string } | null,
  *   panel?: import('react').ReactNode, relationshipPanel?: import('react').ReactNode, canCreate?: boolean,
- *   handlers?: { onMode?: (mode: 'list' | 'graph') => void, onNewArc?: () => void, onNewRelationship?: () => void, onSelectArc?: (slug: string) => void, onSelectMilestone?: (slug: string, index: number) => void,
+ *   handlers?: { onMode?: (mode: 'list' | 'graph' | 'relationships') => void, onNewArc?: () => void, onNewRelationship?: () => void, onSelectArc?: (slug: string) => void, onSelectMilestone?: (slug: string, index: number) => void,
  *     onSelectRelationship?: (slug: string) => void, onSelectDevelopment?: (slug: string, index: number) => void, onSelectThread?: (sel: { slug: string, role: string, scene: string }) => void,
  *     onRestoreArc?: (arc: any) => void, onRestoreRelationship?: (rel: any) => void } }} props
- *   `wide` is true from 768 px up: below that only the list is shown. Without `url.mode` the lanes are the default on wide screens (`mode=graph`).
+ *   `wide` is true from 768 px up: below that only the list is shown. Without `url.mode` the lanes are the default on wide screens (`mode=graph`); `mode=relationships` shows the relationship graph.
  */
 export function ArcsView({
   bookId,
+  bookSlug = null,
   arcs,
   relationships = null,
   threads = null,
@@ -395,6 +397,7 @@ export function ArcsView({
   const liveRelationships = relationships?.relationships ?? [];
   const liveThreads = threads?.threads ?? [];
   const mode = wide ? (url.mode ?? 'graph') : 'list';
+  const graphOfRelationships = mode === 'relationships';
   const arc = url.arc ? live.find((a) => a.slug === url.arc) : null;
   const relationship = !arc && url.relationship ? liveRelationships.find((r) => r.slug === url.relationship) : null;
   const milestone = arc && selectedMilestone?.slug === arc.slug ? selectedMilestone : null;
@@ -424,6 +427,9 @@ export function ArcsView({
           <button type="button" className="btn" aria-pressed={mode === 'graph'} disabled={!wide} onClick={() => handlers.onMode?.('graph')}>
             Lanes
           </button>
+          <button type="button" className="btn" aria-pressed={graphOfRelationships} disabled={!wide} onClick={() => handlers.onMode?.('relationships')}>
+            Graph
+          </button>
         </div>
         <fieldset className="ln-kinds">
           <legend>Show</legend>
@@ -446,6 +452,12 @@ export function ArcsView({
         <div className="flow-main">
           {arcs === null || flow === null ? (
             <p className="muted">Loading…</p>
+          ) : graphOfRelationships ? (
+            relationships === null ? (
+              <p className="muted">Loading…</p>
+            ) : (
+              <RelationshipGraph bookId={bookId} relationships={liveRelationships} selectedSlug={url.relationship ?? null} bookSlug={bookSlug} onSelect={(slug) => handlers.onSelectRelationship?.(slug)} />
+            )
           ) : nothing ? (
             <p>No arcs yet. Start one from a character&apos;s Codex page or with New arc.</p>
           ) : shownNone ? (

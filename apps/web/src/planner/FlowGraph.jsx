@@ -1,14 +1,17 @@
 import { useMemo, useRef, useState } from 'react';
 import { clampZoom, edgeGeometry } from '../canvas/model.js';
-import { PAD, beatLabel, describeLink, fitScale, layoutGraph, relationStroke, sceneName, strokeLegend } from './model.js';
+import { PAD, beatLabel, branchPrefix, describeLink, fitScale, layoutGraph, relationStroke, sceneName, strokeLegend } from './model.js';
 import { relationLabel } from './requests.js';
+import './clue.css';
+
+import { BRANCH_DASH } from './svg-export.js';
 
 const ZOOM_STEP = 1.25;
 
 /**
  * The Flow graph: one column per chapter, scenes stacked by sequence, links as arrows. A second view of the same links as the list: every scene is a button, and every
  * line has a text label that is a button too, so the graph can be walked by keyboard. Lines are drawn dashed, dotted and so on by relation, and always named in words.
- * Beat nodes of a live link (M5) sit in their own top row labelled "Beats"; a beat is a button too, and opens its structure. The links to a scene that is not in the book are not drawn (they stay in the list). Positions come only from the manuscript order (see layoutGraph); nothing moves.
+ * Beat nodes of a live link (M5) sit in their own top row labelled "Beats"; a beat is a button too, and opens its structure. The links to a scene that is not in the book are not drawn (they stay in the list). A link of a what-if branch (M8) is drawn dotted and its label starts "[branch]". Positions come only from the manuscript order (see layoutGraph); nothing moves.
  * @param {{ nodes: any[], edges: any[], nodeById?: Map<string, any>, selectedNode?: string | null, selectedLink?: string | null, scale?: number,
  *   onSelectNode?: (id: string) => void, onSelectEdge?: (slug: string) => void, onOpenBeat?: (node: any) => void }} props
  *   `nodes` are the scenes to draw (GET /flow nodes, filtered), `edges` the live links (GET /flow edges); an edge is drawn when both ends are among `nodes`.
@@ -56,12 +59,13 @@ export function FlowGraph({ nodes, edges, nodeById, selectedNode = null, selecte
               {drawn.map(({ edge, geo, stroke }) => (
                 <path
                   key={edge.id}
-                  className="flow-edge"
+                  className={edge.branch ? 'flow-edge flow-edge-branch' : 'flow-edge'}
                   data-style={stroke.group}
+                  data-branch={edge.branch ?? undefined}
                   data-selected={edge.slug === selectedLink ? 'true' : undefined}
                   d={geo.d}
                   fill="none"
-                  strokeDasharray={stroke.dasharray ?? undefined}
+                  strokeDasharray={edge.branch ? BRANCH_DASH : (stroke.dasharray ?? undefined)}
                   markerEnd="url(#flow-arrow)"
                 />
               ))}
@@ -107,12 +111,13 @@ export function FlowGraph({ nodes, edges, nodeById, selectedNode = null, selecte
                 type="button"
                 className="flow-edge-label"
                 data-style={stroke.group}
+                data-branch={edge.branch ?? undefined}
                 style={{ left: geo.mid.x, top: geo.mid.y }}
                 aria-label={name}
                 aria-pressed={edge.slug === selectedLink}
                 onClick={() => onSelectEdge?.(edge.slug)}
               >
-                {relationLabel(edge.relation)}
+                {`${branchPrefix(edge)}${relationLabel(edge.relation)}`}
               </button>
             ))}
           </div>

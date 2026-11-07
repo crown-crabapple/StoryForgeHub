@@ -38,6 +38,7 @@ export function v1RouteOf(method, pathname) {
   if (c === 'entries') return d === undefined ? 'entries' : 'entry';
   if (['threads', 'events', 'search', 'graph', 'diagnostics'].includes(c)) return c;
   if (c === 'proposals') return 'proposals';
+  if (c === 'plan') return d === undefined ? 'plan' : `plan-${d}`;
   if (c === 'canvases') {
     if (d === undefined) return method === 'GET' ? 'canvases' : method === 'POST' ? 'canvas-create' : 'other';
     if (parts[6] === undefined) return method === 'GET' ? 'canvas' : method === 'PUT' ? 'canvas-save' : 'other';
@@ -52,6 +53,17 @@ const bookOut = (b) => ({ id: b.id, slug: b.slug, title: b.title, status: b.stat
 /** @param {any} s a scene summary */
 const sceneRow = (s) => ({ id: s.id, title: s.title, order: s.position, act: s.act, chapter: s.chapter, sequence: s.sequence, status: s.status, pov: s.pov ?? null, words: s.word_count ?? 0, path: s.path });
 const lf = (/** @type {string} */ s) => s.replace(/\r\n/g, '\n');
+/** Story Planner M8: a planner read as plugins see it: the same data without file paths, sha256 values or other file internals. @param {unknown} v @returns {unknown} */
+function planOut(v) {
+  if (Array.isArray(v)) return v.map(planOut);
+  if (v === null || typeof v !== 'object') return typeof v === 'string' ? lf(v) : v;
+  /** @type {Record<string, unknown>} */
+  const o = {};
+  for (const [k, x] of Object.entries(v)) if (!['path', 'sha256', 'base_sha256', 'file', 'rel'].includes(k)) o[k] = planOut(x);
+  return o;
+}
+/** The repository read behind each GET /api/v1/books/:b/plan/<what>. */
+const PLAN_READS = { links: 'listLinks', arcs: 'listArcs', structures: 'listStructures', relationships: 'listRelationships', synopses: 'listSynopses', clues: 'listClues' };
 
 /**
  * Handle one plugin request.
@@ -163,6 +175,20 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       if (!(await moduleOn(repository, state, 'board', { bookId: bk.id }))) return done(moduleOff('board'));
       const r = await canvasRoute(bk, d2, parts[6] ?? undefined);
       return done(r.res, r.target ?? target);
+    }
+    if (c === 'plan') {
+      // Story Planner M8 (ADR 0003): read only; refused with the planner module off
+      if (!(await moduleOn(repository, state, 'planner', { bookId: bk.id }))) return done(moduleOff('planner'));
+      if (d2 === undefined) {
+        const o = await repository.planOverview(bk.id);
+        if (!o) return done(NOT_FOUND);
+        return done({ status: 200, body: planOut({ story: { fields: o.story.fields, body: o.story.body }, counts: o.counts, primary_structure: o.primary_structure }) });
+      }
+      const read = PLAN_READS[/** @type {keyof typeof PLAN_READS} */ (d2)];
+      if (!read || typeof repository[read] !== 'function') return done(NOT_FOUND);
+      const r = await repository[read](bk.id);
+      if (!r) return done(NOT_FOUND);
+      return done({ status: 200, body: planOut(r) }, `${target}/${d2}`);
     }
     if (c === 'proposals') {
       const r = await propose(bk);

@@ -60,7 +60,7 @@ export async function loadBook({ rootDir, bookPath, series, add }) {
   checkExceptions(typed, add);
   checkSuggestions(typed, add);
   checkComments(typed, add);
-  checkPlanner(typed, add);
+  checkPlanner(typed, add, shared);
   checkActivity(typed, add);
   const bookDoc = typed.find((d) => d.kind === 'book' && d.rel === 'book.md');
   checkShadows(typed, shared, add);

@@ -335,5 +335,5 @@ test('only planning/ changes: scene, Codex and book.md bytes are identical after
   assert.equal((await post(port, u('relationships', REL, 'archive'), {})).status, 200);
   assertSame(before, await nonPlanning(root), 'non-planning files');
   const end = await readAll(root);
-  assert.ok([...end.keys()].filter((p) => p.startsWith('planning/')).every((p) => /^planning\/(links|relationships|structures|synopses|arcs|threads|timeline|scene-plans|archive)\/|^planning\/(plan|story)\.md$/.test(p)));
+  assert.ok([...end.keys()].filter((p) => p.startsWith('planning/')).every((p) => /^planning\/(links|relationships|structures|synopses|clues|arcs|threads|timeline|scene-plans|archive)\/|^planning\/(plan|story)\.md$/.test(p)));
 });
