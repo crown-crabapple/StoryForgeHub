@@ -51,6 +51,20 @@ export function scopeRead(principal, pathname, params) {
     // the link picker lists the other books' entries: only the member's books
     return { ok: true, narrow: (body) => (body && Array.isArray(body.books) ? { ...body, books: body.books.filter((/** @type {any} */ b) => has(principal, b?.id)) } : body) };
   }
+  if (/^\/api\/books\/[^/]+\/series-plan$/.test(pathname)) {
+    // Story Planner M8: the series view reads every book of the series: only the member's books, and how many were left out
+    return {
+      ok: true,
+      narrow: (body) => {
+        if (!body || !Array.isArray(body.books)) return body;
+        const books = body.books.filter((/** @type {any} */ b) => has(principal, b?.id));
+        const characters = (body.characters ?? [])
+          .map((/** @type {any} */ c) => ({ ...c, books: (c?.books ?? []).filter((/** @type {any} */ b) => has(principal, b?.id)) }))
+          .filter((/** @type {any} */ c) => c.books.length > 0);
+        return { ...body, books, characters, hidden: (body.hidden ?? 0) + (body.books.length - books.length) };
+      },
+    };
+  }
   if (pathname.startsWith('/api/books/')) return { ok: true, narrow: null }; // about one book: policy.mjs checked the role on it
   if (!Object.hasOwn(NARROW, pathname)) return { ok: false, ...FORBIDDEN }; // an unlisted read about no book: refused for a limited member
   const fn = NARROW[/** @type {keyof typeof NARROW} */ (pathname)];

@@ -34,6 +34,7 @@ function fake() {
       const e = ENTRIES.find((x) => x.id === d || x.slug === d);
       return e ? { status: 200, body: { ...e, status: 'ok', path: 'p', sha256: SHA, fields: {}, body: 'Entry body' } } : { status: 404, body: { error: 'not_found' } };
     }
+    if (c === 'plan') return { status: 200, body: { what: d ?? 'plan' } };
     if (c === 'threads') return { status: 200, body: { threads: [{ id: 'thread_1' }] } };
     if (c === 'events') return { status: 200, body: { events: [{ id: 'event_1' }] } };
     if (c === 'diagnostics') return { status: 200, body: { diagnostics: [] } };
@@ -71,17 +72,38 @@ test('ping answers with an empty result', async () => {
   assert.deepEqual((await setup().rpc('ping')).result, {});
 });
 
-test('tools/list shows 16 tools with read+propose, 21 with canvas too, and 13 read-only tools without', async () => {
+test('tools/list shows 23 tools with read+propose, 28 with canvas too, and 20 read-only tools without', async () => {
   const all = (await setup().rpc('tools/list')).result.tools;
-  assert.equal(all.length, 16);
+  assert.equal(all.length, 23);
   assert.deepEqual(Object.keys(all[0]).sort(), ['annotations', 'description', 'inputSchema', 'name', 'title']);
   const ro = (await setup(['read']).rpc('tools/list')).result.tools;
-  assert.equal(ro.length, 13);
-  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 21);
-  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 18);
+  assert.equal(ro.length, 20);
+  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 28);
+  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 25);
   assert.ok(ro.every((t) => t.annotations.readOnlyHint === true));
   assert.equal(TOOLS.filter((t) => t.need === 'propose').length, 3);
   assert.equal(TOOLS.filter((t) => t.need === 'canvas').length, 5);
+});
+
+const PLAN_TOOLS = ['codex_get_plan', 'codex_list_plan_links', 'codex_list_arcs', 'codex_list_structures', 'codex_list_relationships', 'codex_list_synopses', 'codex_list_clues'];
+
+test('Story Planner M8: a read token is offered the seven planner tools, all read only; they need no write permission and no planner write tool exists', async () => {
+  const ro = (await setup(['read']).rpc('tools/list')).result.tools;
+  for (const name of PLAN_TOOLS) {
+    const t = ro.find((x) => x.name === name);
+    assert.ok(t, `${name} is offered to a read token`);
+    assert.equal(t.annotations.readOnlyHint, true, `${name} is read only`);
+    assert.equal(TOOLS.find((x) => x.name === name).need, 'read', `${name} needs only read`);
+  }
+  const { calls, tool } = setup(['read']);
+  for (const [name, what] of [['codex_get_plan', undefined], ['codex_list_plan_links', 'links'], ['codex_list_arcs', 'arcs'], ['codex_list_structures', 'structures'], ['codex_list_relationships', 'relationships'], ['codex_list_synopses', 'synopses'], ['codex_list_clues', 'clues']]) {
+    calls.length = 0;
+    const r = await tool(name, { book: 'salt-orchard' });
+    assert.ok(!r.isError, `${name}: ${JSON.stringify(r)}`);
+    assert.equal(r.structuredContent.what, what ?? 'plan', name);
+    assert.deepEqual(calls.map((c) => [c.method, c.path]), [['GET', `/api/v1/books/salt-orchard/plan${what ? `/${what}` : ''}`]], `${name} makes one read`);
+  }
+  assert.ok(!TOOLS.some((t) => /plan|_arcs?(_|$)|structure|relationship|synops|clue/.test(t.name) && t.need !== 'read'), 'no planner write tool');
 });
 
 test('read tools', async () => {

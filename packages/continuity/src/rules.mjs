@@ -25,6 +25,10 @@ export const RULES = Object.freeze([
     description: 'A beat in a live structure lists no scenes. Fingerprint: PL3, the structure, the beat, "beat|structure id|beat id".' },
   { id: 'PL4', version: 1, title: 'Payoff with no setup', severity: 'warning',
     description: 'A thread lists payoff scenes but no setup scenes. Fingerprint: PL4, the thread, the thread, "nosetup|thread id".' },
+  { id: 'PL5', version: 1, title: 'Clue never revealed', severity: 'info',
+    description: 'A clue (kind clue) has planted scenes, no revealed scene and is not a red herring. Fingerprint: PL5, the clue, the clue, "unrevealed|clue id".' },
+  { id: 'PL6', version: 1, title: 'Revealed before it is planted', severity: 'warning',
+    description: 'The revealed scene of a clue comes before its first planted scene in reading order. Fingerprint: PL6, the clue, the revealed scene and the first planted scene, "order|clue id".' },
 ]);
 
 /**

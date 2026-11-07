@@ -5,7 +5,7 @@ import { PLAN_VIEWS, planUrl } from './model.js';
 
 /**
  * The page of the Plan tab: the heading, the Overview · Flow · Structure · Arcs switch, plain links to the Board and Outline of the manuscript, and the view (`children`). Presentational.
- * @param {{ bookId: string, view: 'overview' | 'flow' | 'structure' | 'arcs' | 'synopsis', children?: import('react').ReactNode }} props
+ * @param {{ bookId: string, view: 'overview' | 'flow' | 'structure' | 'arcs' | 'synopsis' | 'clues', children?: import('react').ReactNode }} props
  */
 export function PlanPage({ bookId, view, children }) {
   const prefs = usePrefs(); // the Board follows its module

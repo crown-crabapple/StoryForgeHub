@@ -1,6 +1,6 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
-import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, restoreBackup } from '@storyforge/export';
+import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, planningZip, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
 import { handleIntegrationsRead, handleIntegrationsWrite } from './plugin-admin.mjs';
@@ -43,7 +43,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   const [api, a, b, c, d, e, f, ...rest] = /** @type {string[]} */ (parts);
   if (api !== 'api' || rest.length > 0) return NOT_FOUND;
   // only the revisions routes (scenes/:s/revisions[/:file]), an entry image and a synopsis extract (synopses/:slug/extract) are longer than five segments
-  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image') || (c === 'synopses' && d !== undefined && e === 'extract' && f === undefined)))) return NOT_FOUND;
+  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image') || (c === 'synopses' && d !== undefined && e === 'extract' && f === undefined) || (c === 'export' && d === 'planning' && e === undefined)))) return NOT_FOUND;
 
   if (a === 'health' && b === undefined) {
     const info = await repository.libraryInfo();
@@ -94,6 +94,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     }
     if (c === 'cover' && d === undefined) return handleCover(repository, b, params);
     if (c === 'export' && d === undefined) return handleExport(repository, b, params);
+    if (c === 'export' && d === 'planning' && e === undefined) return handlePlanningExport(repository, b);
     if (c === 'backup' && d === undefined) return handleBackup(repository, b, params);
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
@@ -330,6 +331,19 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const ex = await repository.extractSynopsis(b, d);
       return ex ? { status: 200, body: ex } : NOT_FOUND;
     }
+    // Story Planner M8: clues (planning/clues/<slug>.md) and the read-only series view (book-scope.mjs narrows it to the member's books)
+    if (c === 'clues' && d === undefined) {
+      const list = await repository.listClues(b);
+      return list ? { status: 200, body: list } : NOT_FOUND;
+    }
+    if (c === 'clues' && d !== undefined && e === undefined) {
+      const clue = await repository.getClue(b, d);
+      return clue ? { status: 200, body: clue } : NOT_FOUND;
+    }
+    if (c === 'series-plan' && d === undefined) {
+      const plan = await repository.seriesPlan(b);
+      return plan ? { status: 200, body: { hidden: 0, ...plan } } : NOT_FOUND;
+    }
     if (c === 'plan-badges' && d === undefined) {
       const badges = await repository.planBadges(b);
       return badges ? { status: 200, body: badges } : NOT_FOUND;
@@ -433,6 +447,43 @@ async function handleBackup(repository, bookId, params) {
   const root = await repository.bookRoot(bookId);
   if (!root) return NOT_FOUND;
   const { bytes, filename } = await createBackup(root, { includeProvenance: provenance });
+  return download({ bytes, filename, mime: 'application/zip' });
+}
+
+/**
+ * GET /api/books/:b/export/planning (Story Planner M8): the plan as a zip of Markdown files. Separate from the manuscript exports, which never include planning.
+ * Read only; built from the planner reads, nothing written.
+ */
+async function handlePlanningExport(repository, bookId) {
+  const book = await repository.getBook(bookId);
+  if (!book) return NOT_FOUND;
+  const [story, flow, arcs, relationships, structures, synopses, clues, links] = await Promise.all([
+    repository.getStoryPlan(bookId), repository.flowGraph(bookId), repository.listArcs(bookId), repository.listRelationships(bookId),
+    repository.listStructures(bookId), repository.listSynopses(bookId), repository.listClues(bookId), repository.listLinks(bookId),
+  ]);
+  const primary = (structures?.structures ?? []).find((/** @type {any} */ x) => x.primary) ?? null;
+  const structure = primary ? await repository.getStructure(bookId, primary.slug) : null;
+  const fullSynopses = [];
+  for (const x of synopses?.synopses ?? []) {
+    const one = await repository.getSynopsis(bookId, x.slug);
+    if (one) fullSynopses.push({ slug: one.slug, type: one.type, name: one.name, body: one.body });
+  }
+  const sceneNodes = (flow?.nodes ?? []).filter((/** @type {any} */ n) => n.kind === 'scene');
+  const scenePlans = new Map();
+  for (const n of sceneNodes) if (n.plan) scenePlans.set(n.id, await repository.getScenePlan(bookId, n.id));
+  const titles = new Map(sceneNodes.map((/** @type {any} */ n) => [n.id, n.title]));
+  const data = {
+    book: { title: book.title, slug: book.slug },
+    story: story ?? { fields: {}, body: '' },
+    scenes: sceneNodes.map((/** @type {any} */ n) => ({ id: n.id, title: n.title, act: n.act, chapter: n.chapter, sequence: n.sequence, summary: n.summary ?? null, plan: scenePlans.get(n.id)?.fields ?? null })),
+    arcs: arcs?.arcs ?? [],
+    relationships: relationships?.relationships ?? [],
+    structure,
+    synopses: fullSynopses,
+    clues: clues?.clues ?? [],
+    links: (links?.links ?? []).map((/** @type {any} */ l) => ({ from_title: titles.get(l.from) ?? l.from, to_title: titles.get(l.to) ?? l.to, relation: l.relation, branch: l.branch ?? null, rationale: l.rationale ?? null })),
+  };
+  const { bytes, filename } = planningZip(data);
   return download({ bytes, filename, mime: 'application/zip' });
 }
 
@@ -701,6 +752,11 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'relationships' && d !== undefined && e === 'developments') return { route: 'planner-relationship-developments', bookId: b, slug: d };
   if (method === 'POST' && c === 'relationships' && d !== undefined && e === 'archive') return { route: 'planner-relationship-archive', bookId: b, slug: d };
   if (method === 'POST' && c === 'relationships' && d !== undefined && e === 'restore') return { route: 'planner-relationship-restore', bookId: b, slug: d };
+  if (method === 'POST' && c === 'clues' && d === undefined) return { route: 'planner-clue-create', bookId: b };
+  if (method === 'POST' && c === 'clues' && d !== undefined && e === undefined) return { route: 'planner-clue-update', bookId: b, slug: d };
+  if (method === 'POST' && c === 'clues' && d !== undefined && e === 'knowers') return { route: 'planner-clue-knowers', bookId: b, slug: d };
+  if (method === 'POST' && c === 'clues' && d !== undefined && e === 'archive') return { route: 'planner-clue-archive', bookId: b, slug: d };
+  if (method === 'POST' && c === 'clues' && d !== undefined && e === 'restore') return { route: 'planner-clue-restore', bookId: b, slug: d };
   if (method === 'POST' && c === 'synopses' && d === undefined) return { route: 'planner-synopsis-create', bookId: b };
   if (method === 'POST' && c === 'synopses' && d !== undefined && e === undefined) return { route: 'planner-synopsis-update', bookId: b, slug: d };
   if (method === 'POST' && c === 'synopses' && d !== undefined && e === 'archive') return { route: 'planner-synopsis-archive', bookId: b, slug: d };
@@ -1240,9 +1296,10 @@ async function handleStructure(repository, match, body) {
     case 'planner-link-update': {
       const creating = match.route === 'planner-link-create';
       for (const k of ['from', 'to', 'relation', 'rationale']) if (body[k] !== undefined && typeof body[k] !== 'string') return badRequest(`${k} must be a string`);
+      if (body.branch !== undefined && body.branch !== null && typeof body.branch !== 'string') return badRequest('branch must be a string or null');
       if (creating && (typeof body.from !== 'string' || typeof body.to !== 'string' || typeof body.relation !== 'string')) return badRequest('expected { from: sceneId, to: sceneId, relation: string, rationale?: string }');
       if (!creating && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
-      const args = { from: body.from, to: body.to, relation: body.relation, rationale: body.rationale, dryRun };
+      const args = { from: body.from, to: body.to, relation: body.relation, rationale: body.rationale, ...(body.branch !== undefined ? { branch: body.branch } : {}), dryRun };
       const r = creating
         ? await repository.createLink(bookId, args)
         : await repository.updateLink(bookId, /** @type {string} */ (match.slug), { ...args, baseSha256: body.base_sha256 });
@@ -1355,6 +1412,34 @@ async function handleStructure(repository, match, body) {
     case 'planner-relationship-restore': {
       if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
       const call = match.route === 'planner-relationship-archive' ? repository.archiveRelationship : repository.restoreRelationship;
+      const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
+      return respondPlanner(r, 200);
+    }
+    // ---- Story Planner M8: the only files these routes write are planning/clues/<slug>.md (archive/ when archived); never a scene, an entry or an event
+    case 'planner-clue-create': {
+      if (typeof body.fact !== 'string') return badRequest('expected { fact: string, kind?: string, fields?: object }');
+      if (body.kind !== undefined && typeof body.kind !== 'string') return badRequest('kind must be a string');
+      if (body.fields !== undefined && !isObject(body.fields)) return badRequest('fields must be an object');
+      const r = await repository.createClue(bookId, { fact: body.fact, kind: body.kind, fields: body.fields, dryRun });
+      return respondPlanner(r, created);
+    }
+    case 'planner-clue-update': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      if (body.fields !== undefined && !isObject(body.fields)) return badRequest('fields must be an object');
+      if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string');
+      const r = await repository.updateClue(bookId, /** @type {string} */ (match.slug), { fields: body.fields, body: body.body, baseSha256: body.base_sha256, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-clue-knowers': {
+      if (typeof body.base_sha256 !== 'string') return badRequest('base_sha256 is required');
+      if (!Array.isArray(body.knowers) || !body.knowers.every((k) => isObject(k) && Object.values(k).every((v) => v === null || typeof v === 'string' || typeof v === 'boolean'))) return badRequest('knowers must be a list of objects with string or boolean values');
+      const r = await repository.setClueKnowers(bookId, /** @type {string} */ (match.slug), { knowers: body.knowers, baseSha256: body.base_sha256, dryRun });
+      return respondPlanner(r, 200);
+    }
+    case 'planner-clue-archive':
+    case 'planner-clue-restore': {
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const call = match.route === 'planner-clue-archive' ? repository.archiveClue : repository.restoreClue;
       const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
       return respondPlanner(r, 200);
     }

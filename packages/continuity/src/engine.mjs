@@ -9,7 +9,7 @@ import { plannerFindings } from './planner.mjs';
 /**
  * @typedef {import('./model.mjs').Source} Source
  * @typedef {{ fingerprint: string, rule: string, rule_version: number, severity: 'error'|'warning'|'info', title: string, message: string,
- *   subject: { kind: 'entry'|'thread'|'event'|'scene'|'structure', id: string, slug?: string, name?: string }, sources: Source[] }} Finding
+ *   subject: { kind: 'entry'|'thread'|'event'|'scene'|'structure'|'clue', id: string, slug?: string, name?: string }, sources: Source[] }} Finding
  * @typedef {{ engine_version: 1, findings: Finding[], suppressed: { finding: Finding, exception: { file: string, slug: string, intentional: boolean } }[],
  *   stale_exceptions: { file: string, slug: string, fingerprint: string }[], skipped: string[] }} ContinuityResult
  */

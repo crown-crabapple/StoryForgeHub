@@ -142,7 +142,7 @@ export const KINDS = {
     fields: {
       slug: 'slug', from: 'str', to: 'str',
       relation: ['therefore', 'but', 'enables', 'reveals', 'motivates', 'prevents', 'foreshadows', 'pays_off', 'parallel', 'other'],
-      created: 'any',
+      branch: 'str', created: 'any',
     },
   },
   // Added 2026-11-05, Story Planner M1 (ADR 0003, additive within v1): the planning sidecar of one scene, under planning/scene-plans/. Never story text or canon.
@@ -188,6 +188,14 @@ export const KINDS = {
     fields: {
       slug: 'slug', type: ['premise', 'logline', 'elevator-pitch', 'short', 'one-page', 'long', 'chapter-treatment', 'custom'],
       name: 'str', target_words: 'int1', basis: 'str', created: 'any',
+    },
+  },
+  // Added 2026-11-06, Story Planner M8 (ADR 0003, additive within v1): one fact the reader or a character learns, under planning/clues/. `planted` and `revealed` are scene ids; `knowers` is a list of { who, scene, how?, reliable? }. Never canon.
+  clue: {
+    prefix: 'note',
+    required: ['slug', 'fact'],
+    fields: {
+      slug: 'slug', fact: 'str', kind: ['clue', 'reveal', 'secret'], planted: 'list', revealed: 'str', red_herring: 'bool', knowers: 'list', created: 'any',
     },
   },
   doc: {
@@ -591,6 +599,9 @@ export function checkFields(doc, ctx, add) {
 
   if (doc.kind === 'link' && typeof fm.from === 'string' && fm.from === fm.to) add('E211', file, 'to', 'a link cannot point from a scene or beat to itself');
   if (doc.kind === 'relationship' && typeof fm.a === 'string' && fm.a === fm.b) add('E212', file, 'b', 'a relationship needs two different entries');
+
+  if (doc.kind === 'link' && typeof fm.branch === 'string' && (fm.branch.length > 40 || !isValidSlug(fm.branch))) add('E102', file, 'branch', 'branch must be a slug (a-z, 0-9, single hyphens, at most 40 chars)');
+  if (doc.kind === 'clue' && typeof fm.fact === 'string' && /[\x00-\x1f\x7f\x85\u2028\u2029]/.test(fm.fact)) add('E102', file, 'fact', 'fact must be a single line');
 
   if (doc.kind === 'synopsis') {
     if (typeof fm.name === 'string' && /[\r\n]/.test(fm.name)) add('E102', file, 'name', 'name must be a single line');

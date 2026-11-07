@@ -142,16 +142,18 @@ A `knows` assertion for (character, fact) with no `learns` for that pair at a **
 - **TH1a payoff before setup (error):** the earliest payoff scene comes before the earliest setup scene in book order. Sources: [setup scene, payoff scene]. key = `order|<thread id>`.
 - **TH1b never resolved (info):** status `planted`/`developed`/`open` and the last scene of the book is past all its scenes (i.e. the book has a final scene) — reported once. Sources: [thread file `status`]. key = `open|<thread id>`. Threads with `unresolved` or `dropped` are intentional → no finding.
 
-### 3.6 `PL1`-`PL4` planner rules (Story Planner M6, ADR 0003; all version 1, structured records only, never prose)
+### 3.6 `PL1`-`PL6` planner rules (Story Planner M6 and M8, ADR 0003; all version 1, structured records only, never prose)
 
 | Rule | Severity | Finds | Fingerprint key |
 |---|---|---|---|
-| `PL1` scene not in the flow | info | A scene with no live link in or out. Runs only when the book has at least one live link. Sources: [scene `title`]. | `unlinked|<scene id>` |
-| `PL2` transition not documented | info | Two scenes next to each other in reading order, each with a live link, and no direct live link between them in either direction. Subject: the earlier scene. Sources: [both scenes' `title`]. | `transition|<sorted scene ids>` |
+| `PL1` scene not in the flow | info | A scene with no live main-plan link in or out (a link with a `branch` is not main plan and is ignored). Runs only when the book has at least one live main-plan link. Sources: [scene `title`]. | `unlinked|<scene id>` |
+| `PL2` transition not documented | info | Two scenes next to each other in reading order, each with a live main-plan link, and no direct live main-plan link between them in either direction. Subject: the earlier scene. Sources: [both scenes' `title`]. | `transition|<sorted scene ids>` |
 | `PL3` beat with no scenes | info | A beat (with an `id`) in a live structure whose `scenes` is missing or empty. Subject: the structure. Sources: [structure `beats`]. | `beat|<structure id>|<beat id>` |
 | `PL4` payoff with no setup | warning | A thread with `payoff` scenes and no `setup` scenes. Sources: [thread `payoff`]. | `nosetup|<thread id>` |
+| `PL5` clue never revealed | info | A live clue of kind `clue` (an absent kind counts as `clue`) with planted scenes, no `revealed` scene, and `red_herring` not true. Subject: the clue (`subject.kind` `clue`, name = the fact). Sources: [clue `planted`]. | `unrevealed|<clue id>` |
+| `PL6` revealed before it is planted | warning | A live clue whose revealed scene comes before its first planted scene in reading order (both scenes live; planted in the same scene is not a finding). Subject: the clue. Sources: [clue `revealed`, clue `planted`, revealed scene `title`, first planted scene `title`]. | `order|<clue id>` |
 
-Fingerprint subjects and source ids: PL1 (scene; scene), PL2 (earlier scene; both scenes), PL3 (structure; beat), PL4 (thread; thread). Archived links and structures are not live. `Source` gains role `plan` and kind `structure`; `subject.kind` gains `structure`.
+Fingerprint subjects and source ids: PL1 (scene; scene), PL2 (earlier scene; both scenes), PL3 (structure; beat), PL4 (thread; thread), PL5 (clue; clue), PL6 (clue; revealed scene and first planted scene). Archived links, structures and clues are not live. `Source` gains role `plan` and kinds `structure` and `clue`; `subject.kind` gains `structure` and `clue`.
 
 ## 4. Repository and API
 

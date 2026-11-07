@@ -1,0 +1,9 @@
+{
+  "diagnostics": [
+    {
+      "code": "E102",
+      "file": "planning/clues/sea-gate-key.md",
+      "location": "kind"
+    }
+  ]
+}

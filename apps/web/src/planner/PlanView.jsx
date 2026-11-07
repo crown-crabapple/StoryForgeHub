@@ -7,11 +7,13 @@ import { explainFailure, send } from '../structure/helpers.js';
 import { useStructure } from '../structure/useStructure.jsx';
 import { ArcEditor } from './ArcEditor.jsx';
 import { ArcsView, NewArcDialog } from './ArcsView.jsx';
+import { ClueView } from './ClueView.jsx';
 import { ConnectDialog } from './ConnectDialog.jsx';
 import { NewStructureDialog } from './NewStructureDialog.jsx';
 import { NewRelationshipDialog, RelationshipEditor } from './RelationshipEditor.jsx';
 import { StructureView } from './StructureView.jsx';
 import { SynopsisView } from './SynopsisView.jsx';
+import { clueUrl, cluesUrl } from './clues.js';
 import { synopsesUrl, synopsisUrl } from './synopsis.js';
 import { useStructureWrites } from './useStructureWrites.js';
 import { FlowView } from './FlowView.jsx';
@@ -20,7 +22,7 @@ import { PlanPage } from './PlanPage.jsx';
 import { ScenePlanSection } from './ScenePlanSection.jsx';
 import { useArcWrites } from './useArcWrites.js';
 import { useRelationshipWrites } from './useRelationshipWrites.js';
-import { beatLabel, parsePlanSearch, planUrl, sceneName } from './model.js';
+import { ALL_BRANCHES, beatLabel, branchFromSearch, branchNames, clueFromSearch, parsePlanSearch, planUrl, sceneName } from './model.js';
 import {
   arcUrl,
   arcsUrl,
@@ -59,7 +61,7 @@ const isOk = (status) => status === 200 || status === 201;
 
 /**
  * /books/:id/plan: the Overview and the Flow view of the Story Planner. Fetches, keeps the view, the open scene or link and the display mode in the URL
- * (?view=, ?node=, ?link=, ?mode=, ?filter=), and runs the writes (each with Undo, or with the dry-run preview for a new link).
+ * (?view=, ?node=, ?link=, ?mode=, ?filter=, ?branch=, ?clue=), and runs the writes (each with Undo, or with the dry-run preview for a new link).
  * @param {{ bookId: string, search?: string }} props `search` is the query string of the URL
  */
 export function PlanView({ bookId, search = '' }) {
@@ -70,12 +72,12 @@ export function PlanView({ bookId, search = '' }) {
   const [bump, setBump] = useState(0);
   const version = `${bookVersion(status, bookId)}|${bump}`;
   const refresh = useCallback(() => setBump((n) => n + 1), []);
-  const url = parsePlanSearch(search);
+  const url = { ...parsePlanSearch(search), branch: branchFromSearch(search) };
   const book = useMemo(() => ({ id: bookId }), [bookId]);
   const structure = useStructure({ book, activeId: null, onChanged: refresh });
 
   const overview = useApi(url.view === 'overview' || url.view === 'structure' || url.view === 'synopsis' ? planOverviewUrl(bookId) : null, version);
-  const entries = useApi(url.view === 'overview' || url.view === 'arcs' ? entriesUrl(bookId) : null, version);
+  const entries = useApi(url.view === 'overview' || url.view === 'arcs' || url.view === 'clues' ? entriesUrl(bookId) : null, version);
   const arcs = useApi(url.view === 'arcs' ? arcsUrl(bookId) : null, version);
   const relationships = useApi(url.view === 'arcs' ? relationshipsUrl(bookId) : null, version);
   const threads = useApi(url.view === 'arcs' ? threadsUrl(bookId) : null, version);
@@ -83,6 +85,10 @@ export function PlanView({ bookId, search = '' }) {
   const synopses = useApi(url.view === 'synopsis' ? synopsesUrl(bookId) : null, version);
   const synopsisSlug = new URLSearchParams(search).get('synopsis') || null;
   const synopsisDetail = useApi(url.view === 'synopsis' && synopsisSlug ? synopsisUrl(bookId, synopsisSlug) : null, version);
+  const clueSlug = clueFromSearch(search);
+  const clues = useApi(url.view === 'clues' ? cluesUrl(bookId) : null, version);
+  const clueDetail = useApi(url.view === 'clues' && clueSlug ? clueUrl(bookId, clueSlug) : null, version);
+  const library = useApi(url.view === 'flow' || url.view === 'arcs' ? '/api/books' : null, 0);
   const flow = useApi(flowUrl(bookId), version);
   const links = useApi(linksUrl(bookId), version);
 
@@ -103,7 +109,8 @@ export function PlanView({ bookId, search = '' }) {
   const relationshipWrites = useRelationshipWrites({ bookId, structure, refresh });
   const structureWrites = useStructureWrites({ bookId, structure, refresh });
   const go = (patch) => navigate(planUrl(bookId, url, patch));
-  const toLink = (slug) => planHref(bookId, { view: 'flow', link: slug, mode: url.mode });
+  const bookSlug = (Array.isArray(library.data) ? library.data.find((b) => b.id === bookId)?.slug : null) ?? bookId;
+  const toLink = (slug, branch = url.branch) => planHref(bookId, { view: 'flow', link: slug, mode: url.mode, branch });
   const characters = (entries.data ?? []).filter((o) => o.kind === 'entry' && o.type === 'character' && typeof o.slug === 'string').map((o) => ({ id: o.id, slug: o.slug, title: o.title }));
   const allEntries = (entries.data ?? []).filter((o) => o.kind === 'entry' && typeof o.slug === 'string').map((o) => ({ id: o.id, slug: o.slug, title: o.title, type: o.type }));
   const beats = beatOptions(connectStructures.data);
@@ -177,7 +184,7 @@ export function PlanView({ bookId, search = '' }) {
         undoable: true,
         after: (json) => {
           setConnect(null);
-          if (json?.slug) navigate(toLink(json.slug));
+          if (json?.slug) navigate(toLink(json.slug, v.branch ?? (url.branch === ALL_BRANCHES ? ALL_BRANCHES : null)));
         },
       },
       { stayInForm: true },
@@ -187,6 +194,7 @@ export function PlanView({ bookId, search = '' }) {
   const handlers = {
     onQuery: setQuery,
     onMode: (mode) => go({ mode }),
+    onBranch: (branch) => go({ branch }),
     onConnect: (from) => setConnect({ from: from ?? null }),
     onSelectNode: (id) => go({ view: 'flow', node: id, link: null, arc: null, relationship: null }),
     onSelectLink: (slug) => go({ view: 'flow', link: slug, node: null, arc: null, relationship: null }),
@@ -259,6 +267,7 @@ export function PlanView({ bookId, search = '' }) {
       body = (
         <ArcsView
           bookId={bookId}
+          bookSlug={bookSlug}
           arcs={arcs.data}
           relationships={relationships.error ? { relationships: [], archived: [] } : relationships.data}
           threads={threads.error ? { threads: [] } : threads.data}
@@ -352,6 +361,25 @@ export function PlanView({ bookId, search = '' }) {
         />
       );
     }
+  } else if (url.view === 'clues') {
+    if (clues.error || flow.error) body = <p className="error">{clues.error ?? flow.error}</p>;
+    else if (!clues.loading && !clues.data) body = <NotFound />;
+    else {
+      body = (
+        <ClueView
+          bookId={bookId}
+          list={clues.data}
+          detail={clueDetail.data}
+          detailLoading={clueDetail.loading}
+          selected={clueSlug}
+          scenes={(flow.data?.nodes ?? []).filter((n) => n.kind !== 'beat')}
+          characters={characters}
+          structure={structure}
+          refresh={refresh}
+          onSelect={(slug) => navigate(planHref(bookId, { view: 'clues', clue: slug }))}
+        />
+      );
+    }
   } else if (flow.error || links.error) body = <p className="error">{flow.error ?? links.error}</p>;
   else if (!flow.loading && !flow.data) body = <NotFound />;
   else {
@@ -364,6 +392,7 @@ export function PlanView({ bookId, search = '' }) {
         url={url}
         wide={wide}
         query={query}
+        fileBase={bookSlug}
         linkState={linkState.slug === url.link ? linkState : {}}
         scenePlan={selected ? <ScenePlanSection key={selected} book={book} sceneId={selected} onChanged={refresh} /> : null}
         handlers={handlers}
@@ -381,6 +410,8 @@ export function PlanView({ bookId, search = '' }) {
           scenes={(flow.data?.nodes ?? []).filter((n) => n.kind !== 'beat')}
           beats={beats}
           links={links.data?.links ?? []}
+          branches={branchNames(flow.data?.branches, links.data?.links)}
+          initialBranch={url.branch !== null && url.branch !== ALL_BRANCHES ? url.branch : null}
           initialFrom={connect.from}
           onPreview={previewConnect}
           onOpenExisting={(slug) => {

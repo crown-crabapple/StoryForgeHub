@@ -4,7 +4,7 @@
 // No filesystem access here: file bytes (for sha256) come from the `readFileAt` function fs-repository.mjs passes in.
 import { createHash } from 'node:crypto';
 import { extractDocs, extractShared, validate } from '@storyforge/format';
-import { ARC_TEXT_FIELDS, MILESTONE_FIELDS, PLAN_FIELDS, STORY_FIELDS, STORY_PATH, STRUCTURE_TEMPLATES, SYNOPSIS_LABELS, SYNOPSIS_TYPES } from '@storyforge/manuscript';
+import { ARC_TEXT_FIELDS, CLUE_KINDS, MILESTONE_FIELDS, PLAN_FIELDS, STORY_FIELDS, STORY_PATH, STRUCTURE_TEMPLATES, SYNOPSIS_LABELS, SYNOPSIS_TYPES } from '@storyforge/manuscript';
 import { basisOf, extractText } from './synopsis-extract.mjs';
 import { countWords } from './word-count.mjs';
 
@@ -22,7 +22,11 @@ const CHUNK = 32;
  */
 export function createPlannerMethods({ root, readValidate = () => validate(root), readFileAt, readSceneSummaries = async (order) => order.map(() => null) }) {
   async function load(bookId) {
-    const result = await readValidate();
+    return loadFrom(await readValidate(), bookId);
+  }
+
+  /** The context of one book of an already validated library. */
+  function loadFrom(result, bookId) {
     const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
     if (!book) return null;
     const prefix = book.path ? `${book.path}/` : '';
@@ -92,6 +96,7 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
       to,
       relation: text(d.fm.relation),
       rationale: tidy(d.body),
+      branch: text(d.fm.branch) || null,
       created: d.fm.created === undefined || d.fm.created === null ? null : String(d.fm.created),
       sha256,
       from_title: fromEnd.title,
@@ -251,7 +256,7 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
     const resolves = (id) => Boolean(id) && (ctx.scenes.has(id) || beats.get(id)?.structure.archived === false);
     const edges = live.map((d) => {
       const l = linkOf(ctx, d, sums.get(d.rel) ?? null);
-      return { id: l.id, slug: l.slug, from: l.from, to: l.to, relation: l.relation, rationale: l.rationale, sha256: l.sha256, broken: !(resolves(l.from) && resolves(l.to)) };
+      return { id: l.id, slug: l.slug, from: l.from, to: l.to, relation: l.relation, branch: l.branch, rationale: l.rationale, sha256: l.sha256, broken: !(resolves(l.from) && resolves(l.to)) };
     });
     // a beat is a node only when a live link uses it
     const used = new Set(edges.flatMap((e) => [e.from, e.to]));
@@ -259,7 +264,8 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
       if (!used.has(id) || beat.structure.archived) continue;
       nodes.push({ id, kind: 'beat', title: beat.name, structure: { slug: beat.structure.slug, name: beat.structure.name }, chapter: null, sequence: null });
     }
-    return { nodes, edges };
+    const branches = [...new Set(edges.map((e) => e.branch).filter((b) => b !== null))].sort();
+    return { nodes, edges, branches };
   }
 
   /** The story plan of a loaded book (see getStoryPlan). Only a live file at planning/story.md counts; a story plan anywhere else gets W318 and is ignored here. */
@@ -310,6 +316,64 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
       return memo.get(type);
     };
   };
+
+  // ---- M8: clues (planning/clues) and the series plan
+  const clueDocs = (ctx, archived) => ctx.docs.filter((d) => d.kind === 'clue' && d.archived === archived).sort(byRel);
+
+  /** A scene as a clue shows it: { id, title, position } (position = 1-based reading-order number; title and position null when the scene is not live). */
+  function sceneRef(ctx, id) {
+    if (!ctx.positions) ctx.positions = new Map(ctx.book.order.map((/** @type {any} */ s, i) => [s.id, i + 1]));
+    const live = ctx.scenes.get(id);
+    return { id, title: live ? (live.title ?? null) : null, position: ctx.positions.get(id) ?? null };
+  }
+
+  const isMapValue = (m) => m !== null && typeof m === 'object' && !Array.isArray(m);
+
+  const clueOf = (ctx, d, sha256) => {
+    const planted = (Array.isArray(d.fm.planted) ? d.fm.planted : []).filter((s) => typeof s === 'string' && s !== '').map((s) => sceneRef(ctx, s));
+    const revealed = typeof d.fm.revealed === 'string' && d.fm.revealed !== '' ? sceneRef(ctx, d.fm.revealed) : null;
+    const knowers = (Array.isArray(d.fm.knowers) ? d.fm.knowers : []).filter(isMapValue).map((m) => {
+      const who = typeof m.who === 'string' ? m.who : '';
+      const entry = who === 'reader' ? null : characterOf(ctx, who);
+      return {
+        who: who === 'reader' ? { id: 'reader', name: null, reader: true } : { id: who, name: entry?.name ?? null, reader: false, shared: entry?.shared === true },
+        scene: sceneRef(ctx, typeof m.scene === 'string' ? m.scene : ''),
+        how: text(m.how) || null,
+        reliable: m.reliable !== false,
+      };
+    });
+    return {
+      id: text(d.fm.id),
+      slug: text(d.fm.slug) ?? stem(d.rel).split('/').pop(),
+      path: d.rel,
+      fact: text(d.fm.fact) ?? '',
+      kind: CLUE_KINDS.includes(d.fm.kind) ? d.fm.kind : 'clue',
+      planted,
+      revealed,
+      red_herring: d.fm.red_herring === true,
+      knowers,
+      sha256,
+      body: tidy(d.body),
+      problems: ctx.problems.get(d.file) ?? [],
+    };
+  };
+
+  /** Live clues sorted by fact, then slug. */
+  const sortedClues = (list) => list.sort((x, y) => { const kx = x.fact.toLowerCase(); const ky = y.fact.toLowerCase(); return kx < ky ? -1 : kx > ky ? 1 : x.slug < y.slug ? -1 : x.slug > y.slug ? 1 : 0; });
+
+  /** The overview synopsis of a book: the first live synopsis of type one-page, else short, else null. "First" = by name, then slug. */
+  function overviewSynopsis(ctx) {
+    const live = synopsisDocs(ctx, false);
+    for (const type of ['one-page', 'short']) {
+      const hit = live.filter((d) => d.fm.type === type).sort((a, b) => {
+        const ka = (text(a.fm.name) || SYNOPSIS_LABELS[type]).toLowerCase();
+        const kb = (text(b.fm.name) || SYNOPSIS_LABELS[type]).toLowerCase();
+        return ka < kb ? -1 : ka > kb ? 1 : byRel(a, b);
+      })[0];
+      if (hit) return { type, name: text(hit.fm.name) || SYNOPSIS_LABELS[type], body: tidy(hit.body) };
+    }
+    return null;
+  }
 
   return {
     /** GET /api/books/:b/links: { links, archived }. Null when there is no such book. */
@@ -596,6 +660,89 @@ export function createPlannerMethods({ root, readValidate = () => validate(root)
         return { ...synopsisOf(d, f ? sha(f.bytes) : null, archived, extracted), body: tidy(d.body), archived };
       }
       return null;
+    },
+
+    /**
+     * GET /api/books/:b/clues: { clues, archived } (planning/clues/*.md). Item = { id, slug, path, fact, kind ('clue' | 'reveal' | 'secret'; 'clue' when absent), planted: [{ id, title, position }],
+     * revealed: { id, title, position } | null, red_herring: boolean, knowers: [{ who: { id, name: string | null, reader: boolean, shared?: boolean }, scene: { id, title, position }, how: string | null,
+     * reliable: boolean (false only when the file says so) }], sha256, body, problems: [{ code, message }] }. position = the scene's reading-order number (1-based), null with a null title for a scene that is not live.
+     * who = { id: 'reader', name: null, reader: true } for the reader; for an entry (the book's own, then the series' shared) { id, name (null when not found), reader: false, shared }.
+     * Live clues are sorted by fact, then slug. archived = [{ slug, fact }]. Null when there is no such book.
+     */
+    async listClues(bookId) {
+      const ctx = await load(bookId);
+      if (!ctx) return null;
+      const live = clueDocs(ctx, false);
+      const arch = clueDocs(ctx, true);
+      const sums = await hashes(ctx, live.map((d) => d.rel));
+      const clues = sortedClues(live.map((d) => clueOf(ctx, d, sums.get(d.rel) ?? null)));
+      return { clues, archived: arch.map((d) => { const c = clueOf(ctx, d, null); return { slug: c.slug, fact: c.fact }; }) };
+    },
+
+    /** GET /api/books/:b/clues/:slug: the live clue (the Item of listClues), else the archived one, with `archived`. Null when there is no such book or clue. */
+    async getClue(bookId, slug) {
+      if (typeof slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) return null;
+      const ctx = await load(bookId);
+      if (!ctx) return null;
+      for (const archived of [false, true]) {
+        const rel = `${archived ? 'archive/' : ''}planning/clues/${slug}.md`;
+        const d = clueDocs(ctx, archived).find((x) => x.rel === rel);
+        if (!d) continue;
+        const f = await readFileAt(`${ctx.prefix}${rel}`);
+        return { ...clueOf(ctx, d, f ? sha(f.bytes) : null), archived };
+      }
+      return null;
+    },
+
+    /**
+     * GET /api/books/:b/series-plan (read-only, nothing is written): null when there is no such book; `{ series: null }` when the book is not in a series; else
+     * { series: { slug, title }, books: [{ id, slug, title, series_number, logline: string | null, premise: string | null, synopsis: { type, name, body } | null,
+     * arcs: [{ character: { id, name, shared: true }, start: string | null, end: string | null, milestones: number }] }], characters: [{ id, name, books: [{ id, title, arc_slug }] }] }.
+     * books = every book of the series in series_number order (then title); logline / premise come from the book's story plan; synopsis = the first live synopsis of type one-page, else short, else null;
+     * arcs = the live arcs of characters that are series-shared entries (start = start_state, end = end_state, milestones = how many are set), by character name;
+     * characters = the series-shared entries that have an arc in at least one book, by name, with the books (in book order) and the arc slug. Access filtering is the caller's job.
+     */
+    async seriesPlan(bookId) {
+      const result = await readValidate();
+      const own = loadFrom(result, bookId);
+      if (!own) return null;
+      const series = own.shared?.series ?? null;
+      if (!series) return { series: null };
+      const inSeries = result.books.filter((/** @type {any} */ b) => b.series === series.slug && typeof b.id === 'string');
+      const rows = [];
+      for (const b of inSeries) {
+        const ctx = loadFrom(result, b.id);
+        const bookDoc = ctx.docs.find((d) => d.kind === 'book');
+        const plan = await story(ctx);
+        const arcs = arcDocs(ctx, false).map((d) => arcOf(ctx, d, null)).filter((a) => a.character?.shared === true);
+        arcs.sort((x, y) => { const kx = (x.character.name ?? '').toLowerCase(); const ky = (y.character.name ?? '').toLowerCase(); return kx < ky ? -1 : kx > ky ? 1 : x.slug < y.slug ? -1 : x.slug > y.slug ? 1 : 0; });
+        rows.push({
+          id: b.id,
+          slug: b.slug ?? null,
+          title: b.title ?? null,
+          series_number: Number.isInteger(bookDoc?.fm.series_number) ? bookDoc.fm.series_number : null,
+          logline: plan.fields.logline,
+          premise: plan.fields.premise,
+          synopsis: overviewSynopsis(ctx),
+          arcs: arcs.map((a) => ({ character: { id: a.character.id, name: a.character.name, shared: true }, start: a.fields.start_state, end: a.fields.end_state, milestones: a.milestones.length })),
+          arcSlugs: arcs.map((a) => a.slug),
+        });
+      }
+      const titleKey = (r) => (r.title ?? '').toLowerCase();
+      rows.sort((x, y) => { const nx = x.series_number ?? Infinity; const ny = y.series_number ?? Infinity; return nx !== ny ? (nx < ny ? -1 : 1) : titleKey(x) < titleKey(y) ? -1 : titleKey(x) > titleKey(y) ? 1 : 0; });
+      const byCharacter = new Map();
+      for (const row of rows) {
+        row.arcs.forEach((a, i) => {
+          if (!byCharacter.has(a.character.id)) byCharacter.set(a.character.id, { id: a.character.id, name: a.character.name, books: [] });
+          byCharacter.get(a.character.id).books.push({ id: row.id, title: row.title, arc_slug: row.arcSlugs[i] });
+        });
+      }
+      const characters = [...byCharacter.values()].sort((x, y) => { const kx = (x.name ?? '').toLowerCase(); const ky = (y.name ?? '').toLowerCase(); return kx < ky ? -1 : kx > ky ? 1 : x.id < y.id ? -1 : x.id > y.id ? 1 : 0; });
+      return {
+        series: { slug: series.slug, title: series.title },
+        books: rows.map((row) => ({ id: row.id, slug: row.slug, title: row.title, series_number: row.series_number, logline: row.logline, premise: row.premise, synopsis: row.synopsis, arcs: row.arcs })),
+        characters,
+      };
     },
 
     /**

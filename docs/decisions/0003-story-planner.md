@@ -278,3 +278,58 @@ New diagnostic codes chosen in M1: `E211` (link from a scene to itself), `W316` 
 - **AI (optional).** There is no new AI route and no new network code. The "Ask AI" button uses the existing workshop (`POST /ai/context` with `task: 'chat'`, then `POST /ai/send`), so the author sees exactly what will be sent and confirms cloud providers as today. The files sent are the synopsis file and `planning/story.md`; the instruction is prefilled and editable. The reply is never saved: "Use as proposal" puts it into the same hunk review. The button shows only when the `ai` module is on and a provider is set. With AI off, nothing leaves the machine.
 - **Routes.** `GET /synopses`, `GET /synopses/:slug`, `GET /synopses/:slug/extract`. `POST /synopses` (`planner-synopsis-create`). `POST /synopses/:slug` (`planner-synopsis-update`). `POST /synopses/:slug/archive` and `/restore`. Creation is undoable.
 - **Plan tab.** A new "Synopsis" view (`?view=synopsis`) lists the synopses with type, word count against target, and stale state, plus the editor and review. No export includes a synopsis unless the author chooses it. The existing exports are unchanged.
+
+## M8 decisions (advanced and series features)
+
+- **Clues and knowledge.** These are planner records, separate from the timeline's `knows`/`learns` (which KN1 keeps checking).
+  - **Storage.** One file per fact: `planning/clues/<slug>.md`, kind `clue` (`storyforge.clue/v1`, id prefix `note`). The fields:
+    - `fact`: one line, required.
+    - `kind`: `clue`, `reveal` or `secret`. The default is `clue`.
+    - `planted`: scene ids where the reader can notice it.
+    - `revealed`: the scene id where the truth comes out.
+    - `red_herring`: `true` for deliberate misdirection.
+    - `knowers`: a list of `{ who, scene, how?, reliable? }`. `who` is an entry id or `reader`. `reliable: false` marks misinformation the character believes.
+  - **Format codes.** `E102` for a bad shape, `E301`/`W303` for unknown or archived scenes and entries, and `I401` for an unknown key in a knower.
+  - **One scene, two audiences.** A scene can reveal a fact to the reader and not to the protagonist: add a `reader` knower there and leave the character out. Chronology is never touched, so a scene placed before its chronological predecessor is not an error.
+  - **Rules.**
+    - `PL5` (info), *clue never revealed*: a `clue` with planted scenes, no `revealed` and not a red herring. Fingerprint: `unrevealed|<id>`.
+    - `PL6` (warning), *revealed before it is planted*: the revealed scene comes before the first planted scene in reading order. Fingerprint: `order|<id>`, plus the two scenes.
+  - **Routes.** `GET /clues`, `GET /clues/:slug`. `POST /clues`, `/clues/:slug`, `/clues/:slug/knowers`, `/archive` and `/restore` (`planner-clue-*`). Creation is undoable.
+  - **Plan tab.** A "Clues" view with a list, an editor, and a clue-by-scene grid that marks P (planted), R (revealed) and K (someone learns it).
+- **What-if branches.** A link gains an optional `branch` (a short slug such as `ferry-sinks`). With no branch, the link is part of the main plan.
+  - **Duplicates.** The check (`W316`) uses (from, to, relation, branch).
+  - **Flow.** It gets a Branch filter (Main, each branch, All). Branch links are drawn dotted.
+  - **Rules.** `PL1`/`PL2` read main links only, so exploring a branch never creates review notes.
+  - **What a branch is not.** It is a label on links, not a copy of the book. Scene variants (`variant_of`) stay as they are.
+- **Relationship graph.** The Lanes view gets a "Graph" mode for relationships: entries as nodes on a circle, relationships as edges labelled with their end state. The lanes list stays the non-graph alternative.
+- **Graph image export.** Flow and the relationship graph get "Download SVG". The SVG is built from the same pure layout functions (`layoutGraph`, `edgeGeometry`) as a standalone file with nodes, labels and edges, and nothing leaves the machine. PNG is not offered.
+- **Series view (read-only).**
+  - **The route.** `GET /api/books/:b/series-plan`. For a book in a series, it returns each book of the series in `series_number` order with:
+    - its story plan logline and premise;
+    - its chosen overview synopsis (the first live synopsis of type `one-page`, else `short`);
+    - its arcs for series-shared characters.
+    It also returns a characters list that joins the arcs of one shared character across books.
+  - **Scope.** It writes nothing and adds no series-level files. Every book in it must be one the requester may read; in shared mode, books the member cannot read are left out and counted. A standalone book gets `{ series: null }`.
+  - **Plan Overview.** It shows a "Series" section when the book is in a series. This also covers the deferred series overview from M7.
+- **Planning export.** `GET /api/books/:b/export/planning` (class `read`, `shareable: false`: members only, never a share link, because planning is private project data) returns a zip of Markdown files:
+  - `story-plan.md`
+  - `outline.md`: acts, chapters and scenes with summaries and plan fields
+  - `characters.md`: arcs with milestones, and relationships
+  - `structure.md`: the beat sheet of the primary structure
+  - `synopses/<slug>.md`
+  - `clues.md`
+  - `links.md`
+  - **Separate from the manuscript.** The manuscript exports (Markdown, DOCX, EPUB, PDF) are unchanged and never include planning. The Export dialog gets a separate "Planning notes (Markdown zip)" choice.
+- **Plugin API v1 and MCP: read only.**
+  - **New v1 routes**, all `need: 'read'` and checked against the token's book grant:
+    - `GET /api/v1/books/:b/plan` (story plan fields and counts)
+    - `/plan/links`
+    - `/plan/arcs`
+    - `/plan/structures`
+    - `/plan/relationships`
+    - `/plan/synopses`
+    - `/plan/clues`
+  - **Module gate.** They return `403 MODULE_OFF` when the planner module is off.
+  - **Projections.** They are stable projections, without sha256 or file paths.
+  - **MCP tools.** New read tools call these routes: `codex_get_plan`, `codex_list_plan_links`, `codex_list_arcs`, `codex_list_structures`, `codex_list_relationships`, `codex_list_synopses`, `codex_list_clues`.
+  - **No writes.** There are no planner writes through plugins or MCP. The app's own `/api/books/:b/*` planner routes stay `403 PLUGIN_SCOPE` for plugin tokens.

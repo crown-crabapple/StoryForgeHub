@@ -8,7 +8,7 @@ Open Settings, then **Connect Claude**. Give the connection a name, pick the boo
 
 You can also make a token by hand: Settings, then Plugins, then **Grant access to another plugin** (see [plugins.md](plugins.md)).
 
-- `read` allows the 13 read tools.
+- `read` allows the 20 read tools.
 - `propose` allows the 3 propose tools.
 - `canvas` allows the 5 canvas write tools. It changes only canvas files (`planning/canvases/*.canvas`), never prose.
 
@@ -98,6 +98,13 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 | `codex_list_threads` | The plot threads of a book. | read |
 | `codex_get_timeline` | The timeline events of a book. | read |
 | `codex_list_canvases` | The canvases of a book (and the archived ones): slug, title, counts, sha256. | read |
+| `codex_get_plan` | A book's story plan fields and notes, and the planner counts. | read |
+| `codex_list_plan_links` | The causal links between scenes (and beats): from, to, relation, optional what-if `branch`, rationale. | read |
+| `codex_list_arcs` | The character arcs, with their milestones. | read |
+| `codex_list_structures` | The story structures, with their beats and the scenes assigned to each. | read |
+| `codex_list_relationships` | The relationships between two entries, with their developments. | read |
+| `codex_list_synopses` | The synopses: type, name, word count, target, and whether the plan sources changed. | read |
+| `codex_list_clues` | The clues: fact, kind, where planted and revealed, red herrings, and who learns it where. | read |
 | `codex_get_canvas` | One canvas (`canvas` is its slug): the JSON Canvas, sha256, `refs` and `targets` (what a story card can link to). | read |
 | `codex_save_chapter` | Propose the whole new body of one scene (`scene`, `markdown`). | propose |
 | `codex_save_entry` | Propose the whole new body of one codex entry (`entry`, `markdown`). | propose |
@@ -111,6 +118,8 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 The propose tools also take `rationale` (shown in the review) and `base_sha256`. Pass the sha256 you read: if the file changed since, the suggestion is marked stale instead of landing on the wrong text. A propose tool answers with the suggestion and a note that nothing was changed. The suggestion appears in the normal review with `source: plugin`.
 
 The canvas tools change the canvas file directly (there is no review step) and answer with a note saying so. Story cards are nodes of type `file` with `storyforge.ref` set to a scene, entry, thread or event id from `targets`. The **Board** module must be on for the book.
+
+The seven planner tools (`codex_get_plan` and the `codex_list_*` tools for links, arcs, structures, relationships, synopses and clues) only read. They need the **Story Planner** module on for the book, and are refused when it is off. There is no tool that writes planner data.
 
 ### Not offered
 

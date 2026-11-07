@@ -108,7 +108,7 @@ test('model: the Structure view round-trips through the URL and old params keep 
   const href = m.model.planUrl('b1', state);
   assert.equal(href, '/books/b1/plan?view=structure&structure=mystery');
   assert.deepEqual(m.model.parsePlanSearch(href.slice(href.indexOf('?'))), state);
-  assert.deepEqual(m.model.PLAN_VIEWS.map((v) => v.label), ['Overview', 'Flow', 'Structure', 'Lanes', 'Synopsis']);
+  assert.deepEqual(m.model.PLAN_VIEWS.map((v) => v.label), ['Overview', 'Flow', 'Structure', 'Lanes', 'Synopsis', 'Clues']);
 });
 
 test('Plan subnav has Structure between Flow and Arcs', () => {

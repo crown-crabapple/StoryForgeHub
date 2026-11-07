@@ -13,6 +13,9 @@ const V1 = [
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/entries\/[^/]+$/, need: 'read', book: true },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/(search|graph|diagnostics)$/, need: 'read', book: true },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/proposals$/, need: 'propose', book: true },
+  // Story Planner M8: read-only planner projections (no writes, no file paths, no sha256); the planner module must be on
+  { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan$/, need: 'read', book: true },
+  { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|synopses|clues)$/, need: 'read', book: true },
   // canvases: reading needs 'read'; changing one needs 'canvas', the only permission that writes a file, and only planning/canvases/<slug>.canvas (never prose)
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/canvases$/, need: 'read', book: true },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/canvases\/[a-z0-9-]{1,60}$/, need: 'read', book: true },

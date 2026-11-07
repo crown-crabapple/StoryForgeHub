@@ -1,9 +1,12 @@
+import { saveBlob } from '../export/requests.js';
 import { Link } from '../router.jsx';
 import { sceneHref } from '../planning/model.js';
 import { FlowGraph } from './FlowGraph.jsx';
 import { LinkPanel } from './LinkPanel.jsx';
-import { beatLabel, describeLink, filterNodes, planUrl, sceneName, unlinkedNodes } from './model.js';
+import { ALL_BRANCHES, beatLabel, branchNames, describeLink, edgesForBranch, filterNodes, layoutGraph, planUrl, sceneName, unlinkedNodes } from './model.js';
 import { linksForScene, relationLabel } from './requests.js';
+import { flowSvg } from './svg-export.js';
+import './clue.css';
 
 /**
  * The link rows of the list: "<from> — <relation> → <to>", the rationale under it, and Edit and Archive (Restore for an archived one). Real buttons, in reading order.
@@ -42,7 +45,7 @@ function LinkRows({ links, nodeById, selected, archived = false, handlers }) {
 }
 
 /** The side panel: help, the selected scene (with its Plan section in `scenePlan`), or the selected link. */
-function FlowSide({ bookId, url, nodeById, links, linkState, scenePlan, handlers }) {
+function FlowSide({ bookId, url, nodeById, links, linkState, scenePlan, branches, handlers }) {
   const live = links?.links ?? [];
   const found = url.node ? nodeById.get(url.node) : null;
   const node = found && found.kind !== 'beat' ? found : null;
@@ -50,7 +53,7 @@ function FlowSide({ bookId, url, nodeById, links, linkState, scenePlan, handlers
   const archivedLink = url.link && !link ? (links?.archived ?? []).find((l) => l.slug === url.link) : null;
   if (url.link && links === null) return <p className="muted">Loading…</p>;
   if (link) {
-    return <LinkPanel key={`${link.slug}:${link.sha256}`} link={link} nodeById={nodeById} busy={linkState.busy} message={linkState.message} error={linkState.error} handlers={handlers} />;
+    return <LinkPanel key={`${link.slug}:${link.sha256}`} link={link} nodeById={nodeById} busy={linkState.busy} message={linkState.message} error={linkState.error} branches={branches} handlers={handlers} />;
   }
   if (archivedLink) {
     const d = describeLink(archivedLink, null);
@@ -128,19 +131,24 @@ function FlowSide({ bookId, url, nodeById, links, linkState, scenePlan, handlers
 
 /**
  * The Flow view of the Plan tab: scenes and their causal links as an accessible list and as a graph, with the side panel. Presentational.
- * @param {{ bookId: string, flow: { nodes: any[], edges: any[] } | null, links: { links: any[], archived: any[] } | null, url: ReturnType<typeof import('./model.js').parsePlanSearch>,
- *   wide?: boolean, query?: string, scenePlan?: import('react').ReactNode, linkState?: { busy?: boolean, message?: string | null, error?: string | null },
- *   handlers?: { onQuery?: (q: string) => void, onMode?: (mode: 'list' | 'graph') => void, onConnect?: (from?: string | null) => void, onSelectNode?: (id: string) => void,
+ * @param {{ bookId: string, flow: { nodes: any[], edges: any[], branches?: string[] } | null, links: { links: any[], archived: any[] } | null, url: ReturnType<typeof import('./model.js').parsePlanSearch>,
+ *   wide?: boolean, query?: string, fileBase?: string, scenePlan?: import('react').ReactNode, linkState?: { busy?: boolean, message?: string | null, error?: string | null },
+ *   handlers?: { onQuery?: (q: string) => void, onBranch?: (branch: string | null) => void, onMode?: (mode: 'list' | 'graph') => void, onConnect?: (from?: string | null) => void, onSelectNode?: (id: string) => void,
  *     onSelectLink?: (slug: string) => void, onOpenBeat?: (node: any) => void, onSave?: Function, onReverse?: Function, onArchive?: Function, onRestore?: Function, onClearFilter?: () => void } }} props
  *   `wide` is true from 768 px up: below that only the list is shown. Without `url.mode` the graph is the default on wide screens.
+ *   `url.branch` is the Branch filter (null = the main plan, a branch name, or "*" for all); the links and the graph show only what it names. "Download SVG" saves `<fileBase>-flow.svg` of what the graph shows.
  */
-export function FlowView({ bookId, flow, links, url, wide = true, query = '', scenePlan = null, linkState = {}, handlers = {} }) {
+export function FlowView({ bookId, flow, links, url, wide = true, query = '', fileBase = '', scenePlan = null, linkState = {}, handlers = {} }) {
   const allNodes = flow?.nodes ?? [];
   const nodes = allNodes.filter((n) => n.kind !== 'beat');
   const beats = allNodes.filter((n) => n.kind === 'beat');
-  const edges = flow?.edges ?? [];
+  const branch = url.branch ?? null;
+  const allEdges = flow?.edges ?? [];
+  const edges = edgesForBranch(allEdges, branch);
+  const branches = branchNames(flow?.branches, allEdges, links?.links, links?.archived);
   const nodeById = new Map(allNodes.map((n) => [n.id, n]));
   const live = links?.links ?? [];
+  const liveShown = edgesForBranch(live, branch);
   const mode = wide ? (url.mode ?? 'graph') : 'list';
   const unlinkedOnly = url.filter === 'unlinked';
   const unlinked = unlinkedNodes(nodes, live);
@@ -154,10 +162,16 @@ export function FlowView({ bookId, flow, links, url, wide = true, query = '', sc
     const d = describeLink(l, nodeById);
     return filterNodes([{ title: d.from }, { title: d.to }], query).length > 0;
   };
-  const rows = live.filter(matchesLink);
-  const archivedRows = (links?.archived ?? []).filter(matchesLink);
+  const rows = liveShown.filter(matchesLink);
+  const archivedRows = edgesForBranch(links?.archived ?? [], branch).filter(matchesLink);
   const notLinked = filterNodes(unlinked, query);
   const sceneCount = nodes.length;
+  const graphNodes = [...shownBeats, ...shown];
+  const graphEdges = edges.filter((e) => e.broken || (shownIds.has(e.from) && shownIds.has(e.to)));
+  const downloadSvg = () => {
+    const svg = flowSvg({ nodes: graphNodes, edges: graphEdges, layout: layoutGraph(graphNodes) });
+    saveBlob(new Blob([svg], { type: 'image/svg+xml' }), `${fileBase || bookId}-flow.svg`);
+  };
 
   return (
     <div className="plan-flow">
@@ -174,6 +188,22 @@ export function FlowView({ bookId, flow, links, url, wide = true, query = '', sc
           <label htmlFor="flow-search">Find a scene by title</label>
           <input id="flow-search" type="search" value={query} onChange={(e) => handlers.onQuery?.(e.target.value)} autoComplete="off" />
         </div>
+        <div className="flow-branch">
+          <label htmlFor="flow-branch">Branch</label>
+          <select id="flow-branch" value={branch ?? ''} onChange={(e) => handlers.onBranch?.(e.target.value === '' ? null : e.target.value)}>
+            <option value="">Main plan</option>
+            {branches.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+            {branch !== null && branch !== ALL_BRANCHES && !branches.includes(branch) && <option value={branch}>{branch}</option>}
+            <option value={ALL_BRANCHES}>All</option>
+          </select>
+        </div>
+        <button type="button" className="btn" onClick={downloadSvg} disabled={sceneCount === 0 || flow === null}>
+          Download SVG
+        </button>
         <button type="button" className="btn btn-primary" onClick={() => handlers.onConnect?.(url.node)} disabled={sceneCount < 2}>
           Connect scenes…
         </button>
@@ -197,8 +227,8 @@ export function FlowView({ bookId, flow, links, url, wide = true, query = '', sc
             </p>
           ) : mode === 'graph' ? (
             <FlowGraph
-              nodes={[...shownBeats, ...shown]}
-              edges={edges.filter((e) => e.broken || (shownIds.has(e.from) && shownIds.has(e.to)))}
+              nodes={graphNodes}
+              edges={graphEdges}
               nodeById={nodeById}
               selectedNode={url.node}
               selectedLink={url.link}
@@ -261,7 +291,7 @@ export function FlowView({ bookId, flow, links, url, wide = true, query = '', sc
           )}
         </div>
         <aside className="flow-side" aria-label="Selected item">
-          <FlowSide bookId={bookId} url={url} nodeById={nodeById} links={links} linkState={linkState} scenePlan={scenePlan} handlers={handlers} />
+          <FlowSide bookId={bookId} url={url} nodeById={nodeById} links={links} linkState={linkState} scenePlan={scenePlan} branches={branches} handlers={handlers} />
         </aside>
       </div>
     </div>

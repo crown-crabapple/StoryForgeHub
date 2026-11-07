@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Dialog } from '../shell/Dialog.jsx';
-import { EVIDENCE_WARNING, EXPORT_FORMATS, INCLUDE_OPTIONS, PAGE_SIZES, exportUrl, fetchDownload, saveBlob, statusesOf } from './requests.js';
+import { EVIDENCE_WARNING, EXPORT_FORMATS, INCLUDE_OPTIONS, PAGE_SIZES, PLANNING_EXPORT_HINT, exportUrl, fetchDownload, planningExportUrl, saveBlob, statusesOf } from './requests.js';
 
 const EXTENSION = { markdown: 'md', docx: 'docx', epub: 'epub', pdf: 'pdf' };
 
@@ -20,12 +20,11 @@ export function ExportDialog({ book, onClose, fetchImpl }) {
   const [problem, setProblem] = useState(null);
   const statuses = statusesOf(book);
 
-  async function submit(e) {
-    e.preventDefault();
+  async function download(url, fallbackName) {
     if (busy) return;
     setBusy(true);
     setProblem(null);
-    const r = await fetchDownload(exportUrl(book.id, { format, sceneTitles, excludeStatuses: leaveOut, page, include }), include === 'evidence' ? `${book.slug ?? 'manuscript'}-evidence.zip` : `${book.slug ?? 'manuscript'}.${EXTENSION[format]}`, fetchImpl);
+    const r = await fetchDownload(url, fallbackName, fetchImpl);
     setBusy(false);
     if (!r.ok) {
       setProblem(r.message);
@@ -33,6 +32,11 @@ export function ExportDialog({ book, onClose, fetchImpl }) {
     }
     saveBlob(r.blob, r.filename);
     onClose();
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    return download(exportUrl(book.id, { format, sceneTitles, excludeStatuses: leaveOut, page, include }), include === 'evidence' ? `${book.slug ?? 'manuscript'}-evidence.zip` : `${book.slug ?? 'manuscript'}.${EXTENSION[format]}`);
   }
 
   return (
@@ -102,6 +106,16 @@ export function ExportDialog({ book, onClose, fetchImpl }) {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="field export-planning">
+          <h3>Planning notes</h3>
+          <p className="secondary field-hint" id="export-planning-hint">
+            {PLANNING_EXPORT_HINT}
+          </p>
+          <button type="button" className="btn" aria-describedby="export-planning-hint" disabled={busy} onClick={() => download(planningExportUrl(book.id), `${book.slug ?? 'book'}-planning.zip`)}>
+            Planning notes (Markdown zip)
+          </button>
         </div>
 
         {problem && (

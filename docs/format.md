@@ -17,7 +17,7 @@ my-library/                  any folder; holds one or more books
           0010-arrival.md    one scene per file
           0020-the-key.md
     codex/                   characters, locations, factions, objects, lore (one file each)
-    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/, arcs/, structures/, relationships/ and synopses/ hold Story Planner files, and story.md is the story plan
+    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/, arcs/, structures/, relationships/, synopses/ and clues/ hold Story Planner files, and story.md is the story plan
     research/                research notes and sources
     assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
     activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
@@ -51,7 +51,7 @@ Scenes marked as an alternate version of another scene (`variant_of`) are kept b
 | --- | --- |
 | Scenes in `manuscript/` | `research/` notes (canon only if a note says `canon: true`) |
 | `codex/` entries | `suggestions/` until you accept them |
-| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/`, `planning/structures/`, `planning/relationships/`, `planning/synopses/` and `planning/story.md` |
+| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/`, `planning/structures/`, `planning/relationships/`, `planning/synopses/`, `planning/clues/` and `planning/story.md` |
 | `book.md`, `act.md`, `chapter.md` | `archive/` (left out of order, counts and export) |
 | `assets/` the book uses | `legacy/` (see below) |
 
@@ -59,7 +59,7 @@ Notes in a scene written as `<!-- note: ... -->` stay in the file, show in the n
 
 ## Story Planner files
 
-Six kinds of file hold planning data. None is story text or canon, and none changes a scene file.
+Seven kinds of file hold planning data. None is story text or canon, and none changes a scene file.
 
 ### A causal link: `planning/links/key-therefore-ferry.md`
 
@@ -76,12 +76,15 @@ created: 2026-11-05
 The key failing forces Maren onto the ferry.
 ```
 
+A what-if link adds one line after `relation`: `branch: ferry-sinks`.
+
 - One link per file. The body is the rationale.
 - Required: `slug`, `from`, `to`, `relation`. `created` is optional.
+- `branch` is optional (Story Planner M8, additive within v1): a slug (`a-z`, `0-9`, single hyphens, at most 40 characters) that marks the link as part of a what-if branch. A link with no `branch` is part of the main plan. A `branch` that is not a slug is `E102` (at `branch`). A branch is only a label on links, not a copy of the book.
 - `relation` is one of `therefore`, `but`, `enables`, `reveals`, `motivates`, `prevents`, `foreshadows`, `pays_off`, `parallel`, `other`.
 - `from` and `to` are scene ids, or (Story Planner M5) the id of a beat inside a structure. A missing target is `E301`. A target that is archived, or a beat of an archived structure, is `W303`. Beat ids resolve here and nowhere else.
 - A link from a scene (or beat) to itself is `E211` (at `to`).
-- Two live links with the same `from`, `to` and `relation` give `W316` on the second (at `relation`). Archived links are not counted.
+- Two live links with the same `from`, `to`, `relation` and `branch` (no `branch` counts as its own value) give `W316` on the second (at `relation`). Archived links are not counted.
 - StoryForge names the file after the two scene slugs and the relation (up to 60 characters; `-2`, `-3` … when the name is taken).
 - Archive moves the file to `archive/planning/links/`. Restore moves it back.
 
@@ -267,13 +270,48 @@ Free synopsis text.
 - StoryForge names the file after the synopsis's name, else after the type's label (`-2`, `-3` … when the name is taken). It never writes the synopsis text from the plan on its own: the extracted text is only a proposal the author accepts.
 - Archive moves the file to `archive/planning/synopses/`. Restore moves it back.
 
+### A clue: `planning/clues/sea-gate-key.md`
+
+```yaml
+---
+schema: storyforge.clue/v1
+id: note_01S5000000000000000000001E
+slug: sea-gate-key
+fact: The harbour key opens the sea gate.
+kind: clue
+planted: [scene_01S50000000000000000000002, scene_01S50000000000000000000003]
+revealed: scene_01S50000000000000000000005
+red_herring: false
+knowers:
+  - who: reader
+    scene: scene_01S50000000000000000000005
+    how: The ferryman shows the gate.
+  - who: entry_01S5000000000000000000000G
+    scene: scene_01S50000000000000000000003
+    how: She believes the key opens the guild door.
+    reliable: false
+created: 2026-11-06
+---
+Free clue notes.
+```
+
+- One file per fact (Story Planner M8, additive within v1). The body is free notes. A clue is planner data, never canon, and is separate from a scene's `knows` and `learns`.
+- Required: `slug`, `fact` (one line). Optional: `kind`, `planted`, `revealed`, `red_herring`, `knowers` and `created`.
+- `kind` is `clue`, `reveal` or `secret`; a file with no `kind` is read as `clue`.
+- `planted` is a list of scene ids where the reader can notice the fact. `revealed` is the scene id where the truth comes out. `red_herring` is `true` for deliberate misdirection.
+- `knowers` is a list of mappings: `who` (an entry id, or the word `reader`), `scene` (a scene id), and optional one-line `how` and boolean `reliable`. `reliable: false` marks misinformation the character believes. To show a scene that tells the reader but not the protagonist, add a `reader` knower there and leave the character out.
+- A `fact` or `how` that is not one line, a `planted` that is not a list, a `knowers` item that is not a mapping, a missing or non-string `who` or `scene`, or a `reliable` that is not a boolean is `E102`. A `kind` that is not one of the three is `E102`. An unknown key in a knower is `I401`. A scene or entry that does not exist is `E301`; one that is archived is `W303`. `planted`, `revealed` and `knowers` are checked on archived clues too.
+- A clue never changes reading order or chronology: a `revealed` scene that comes before a `planted` one is not a format error (the continuity rule `PL6` reports it).
+- StoryForge names the file after the fact (up to 56 characters; `-2`, `-3` … when the name is taken) and writes `knowers` as one block of plain mappings, like arc milestones.
+- Archive moves the file to `archive/planning/clues/`. Restore moves it back.
+
 ### Diagnostics
 
 | Code | Severity | Meaning |
 | --- | --- | --- |
 | `E211` | error | A link's `from` and `to` are the same scene |
 | `E212` | error | A relationship's `a` and `b` are the same entry |
-| `W316` | warning | Two live links have the same `from`, `to` and `relation` |
+| `W316` | warning | Two live links have the same `from`, `to`, `relation` and `branch` |
 | `W317` | warning | Two live scene plans name the same scene |
 | `W318` | warning | A live story plan is not at `planning/story.md` |
 | `W319` | warning | Two live arcs name the same character |
@@ -284,6 +322,8 @@ Arc milestones also use the general codes `E102` (malformed milestone), `I401` (
 Relationship developments use the same codes: `E102` (malformed development, or a missing or multi-line `change`), `I401` (unknown development key), `E301` (unknown scene) and `W303` (archived scene). A relationship's `a` and `b` use `E301`, `E302` and `W303` like other entry references.
 
 Structure beats use the same codes: `E102` (malformed beat, or a beat id used twice), `I401` (unknown beat key), `E301` (unknown scene) and `W303` (archived scene). A story plan's `primary_structure` uses `E301` and `W303`.
+
+Clue fields use the same codes: `E102` (bad shape), `I401` (unknown knower key), `E301` (unknown scene, or unknown knower entry) and `W303` (archived scene or entry).
 
 ## Continuity exceptions: `planning/continuity/<slug>.md`
 

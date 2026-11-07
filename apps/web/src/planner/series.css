@@ -1,0 +1,48 @@
+.series-books {
+  width: 100%;
+  border-collapse: collapse;
+}
+.series-books th,
+.series-books td {
+  text-align: left;
+  vertical-align: top;
+  padding: 6px 8px;
+  border-bottom: 1px solid currentColor;
+}
+.series-books thead th {
+  font-weight: 600;
+}
+.series-books tbody th {
+  font-weight: 500;
+}
+.series-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.series-synopsis {
+  white-space: pre-wrap;
+  margin: 6px 0 0;
+}
+.series-characters ul {
+  margin: 2px 0 8px;
+}
+.rel-graph-svg {
+  max-width: 100%;
+  height: auto;
+}
+.rel-edge,
+.rel-node {
+  cursor: default;
+}
+.rel-edge {
+  cursor: pointer;
+}
+.rel-edge:focus-visible,
+.rel-node:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
