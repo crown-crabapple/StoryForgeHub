@@ -492,7 +492,7 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
       if (view.link.relation === relation) return;
       if ((await linkWrites.setRelation(view.link, relation)).ok) patchThis(id, (x) => withLink(x, view.slug, relation));
     } else {
-      const r = await linkWrites.create({ from: ends.from, to: ends.to, relation });
+      const r = await linkWrites.create({ from: ends.from, to: ends.to, relation, branch: branch ?? null }); // a link made while a what-if branch is shown belongs to it
       if (r.ok) patchThis(id, (x) => withLink(x, r.slug, relation));
     }
   }

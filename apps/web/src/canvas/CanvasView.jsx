@@ -421,7 +421,7 @@ function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = n
           </div>
         )}
         <SaveLine save={save} onRetry={() => flush(hist.present)} />
-        <button type="button" className="btn" onClick={onArchive}>
+        <button type="button" className="btn" onClick={onArchive} disabled={readOnly}>
           Archive
         </button>
       </header>

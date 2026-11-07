@@ -1,5 +1,7 @@
 # ADR 0003 — Story Planner: storage, API and UI foundations
 
+> Since M10 the Plan tab is a canvas, not the Overview, Flow, Structure, Lanes, Synopsis and Clues views named below; see [contracts/M10-plan-canvas.md](../contracts/M10-plan-canvas.md). The storage and API decisions here stand.
+
 **Status:** accepted 2026-11-05 (maintainer: "proceed with M1"). **Job:** Story Planner M0 / SP-001 ("Inspect current contracts and select data model"). Spec: `StoryForgeHub_Novel_Planning_Feature_Specification.md` (Draft 1.0, not in the repo).
 
 M0 makes no product change. It decides how the first Story Planner slice is stored and served, so M1 can build it without inventing patterns. It keeps four things apart: **manuscript order** (`act`, `chapter`, `sequence`), **chronology** (timeline events), **causality** (link records, below) and **view layout** (x/y). Nothing in this ADR lets one of them change another.

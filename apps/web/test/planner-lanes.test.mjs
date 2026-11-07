@@ -17,8 +17,6 @@ before(async () => {
   m.req = await vite.ssrLoadModule('/src/planner/requests.js');
   m.arcs = await vite.ssrLoadModule('/src/planner/ArcsView.jsx');
   m.editor = await vite.ssrLoadModule('/src/planner/RelationshipEditor.jsx');
-  m.connect = await vite.ssrLoadModule('/src/planner/ConnectDialog.jsx');
-  m.flow = await vite.ssrLoadModule('/src/planner/FlowView.jsx');
   m.section = await vite.ssrLoadModule('/src/planner/ScenePlanSection.jsx');
   m.overview = await vite.ssrLoadModule('/src/planner/OverviewView.jsx');
 });
@@ -217,43 +215,10 @@ test('New relationship dialog: characters first, then other types; the chosen en
   assert.match(html, />Start relationship<\/button>/);
 });
 
-test('ConnectDialog: both pickers have a Beats group of every live beat as "<structure>: <beat>"', () => {
-  const structures = { structures: [{ slug: 'three-act', name: 'Three acts', beats: [{ id: 'beat_1', name: 'Inciting incident' }, { id: 'beat_2', name: 'Midpoint' }] }, { slug: 'mystery', name: 'Mystery', beats: [{ id: 'beat_3', name: 'Reveal' }] }] };
-  const beats = m.req.beatOptions(structures);
-  assert.deepEqual(beats, [{ id: 'beat_1', label: 'Three acts: Inciting incident' }, { id: 'beat_2', label: 'Three acts: Midpoint' }, { id: 'beat_3', label: 'Mystery: Reveal' }]);
-  assert.deepEqual(m.req.beatOptions(null), []);
-  const html = render(h(m.connect.ConnectDialog, { scenes: NODES, beats, onPreview: () => {}, onClose: () => {} }));
-  assert.equal(html.match(/<optgroup label="Beats">/g).length, 2);
-  assert.equal(html.match(/<option value="beat_1">Three acts: Inciting incident<\/option>/g).length, 2);
-  assert.match(html, /<option value="beat_3">Mystery: Reveal<\/option>/);
-  assert.doesNotMatch(render(h(m.connect.ConnectDialog, { scenes: NODES, onPreview: () => {}, onClose: () => {} })), /optgroup/);
-});
-
 test('REFUSED_BEAT_LINKED says how many links hold the beat', () => {
   assert.equal(m.req.explainStructureFailure(400, { code: 'REFUSED_BEAT_LINKED', links: ['a', 'b'] }), 'This beat is linked in Flow (2 links). Re-point those links first.');
   assert.equal(m.req.explainStructureFailure(400, { code: 'REFUSED_BEAT_LINKED', links: ['a'] }), 'This beat is linked in Flow (1 link). Re-point those links first.');
   assert.equal(m.req.explainStructureFailure(400, { code: 'REFUSED_BEAT_LINKED', links: [], archived_links: ['c'] }), 'This beat is linked in Flow (1 link). Re-point those links first; an archived link must be restored to change it.');
-});
-
-test('Flow: beat nodes get their own top row labelled Beats, and are listed as "<structure>: <beat>"', () => {
-  const BEAT = { id: 'beat_1', kind: 'beat', title: 'Inciting incident', structure: { slug: 'three-act', name: 'Three acts' }, chapter: null, sequence: null };
-  const layout = m.model.layoutGraph([BEAT, ...NODES]);
-  assert.equal(layout.beatsRow.label, 'Beats');
-  const beat = layout.nodes.find((n) => n.id === 'beat_1');
-  const firstScene = layout.nodes.find((n) => n.id === 'S1');
-  assert.ok(beat.y < firstScene.y, 'the beats row is above the scene columns');
-  assert.equal(layout.columns.length, 2, 'a beat is not a chapter column');
-  assert.equal(m.model.layoutGraph(NODES).beatsRow ?? null, null);
-  assert.equal(m.model.beatLabel(BEAT), 'Three acts: Inciting incident');
-  const link = { id: 'note_l', slug: 'key-beat', from: 'S1', to: 'beat_1', relation: 'enables', rationale: '', sha256: 's', from_title: 'The Key', to_title: 'Three acts: Inciting incident', from_kind: 'scene', to_kind: 'beat' };
-  assert.equal(m.model.describeLink(link, new Map([...NODES, BEAT].map((n) => [n.id, n]))).sentence, 'The Key — enables → Three acts: Inciting incident');
-  const html = render(h(m.flow.FlowView, { bookId: 'b1', flow: { nodes: [BEAT, ...NODES], edges: [] }, links: { links: [link], archived: [] }, url: { view: 'flow', node: null, link: null, arc: null, relationship: null, structure: null, mode: 'list', filter: null }, wide: true }));
-  assert.match(html, /<h2 id="flow-beats-h">Beats<\/h2>/);
-  assert.match(html, /Three acts: Inciting incident<\/button>/);
-  assert.doesNotMatch(html, /Three acts: Inciting incident<\/button>[\s\S]*Scenes not linked yet[\s\S]*Three acts: Inciting incident<\/button>/, 'a beat is never listed as an unlinked scene');
-  const graph = render(h(m.flow.FlowView, { bookId: 'b1', flow: { nodes: [BEAT, ...NODES], edges: [] }, links: { links: [link], archived: [] }, url: { view: 'flow', node: null, link: null, arc: null, relationship: null, structure: null, mode: 'graph', filter: null }, wide: true }));
-  assert.match(graph, /class="flow-col-head"[^>]*>Beats<\/div>/);
-  assert.match(graph, /ln-beat-node/);
 });
 
 test('scene Plan section: lists the relationship changes in the scene and links them to the Lanes view', () => {

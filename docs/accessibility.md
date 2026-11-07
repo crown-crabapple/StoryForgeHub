@@ -38,6 +38,10 @@ A stylesheet rule must not force the page wider than a 360 px window. `responsiv
 
 unless the same selector is replaced in a media query of 767 px or wider, or the rule scrolls inside its own box (`overflow: auto`). This is a pragmatic check of the stylesheet. It cannot see an unbroken long word, a wide image or a component that sizes itself in JavaScript, so a person also checks 375 px and 768 px in a browser's device mode (below).
 
+### The Plan tab: List mode
+
+The Plan tab is a canvas. Its cards are focusable and named (see contract M09-J01), and a scene's beats can be set with the checkboxes in the Inspector, but the plan also has a view that is plain lists: **List** (the **Canvas | List** switch in the canvas bar). It shows the same plan as plain headed lists (Story plan, Scenes by beat, Clues, Arcs, Relationships, Synopses). Every item is a button reached with Tab and pressed with Enter or Space, the picked item has `aria-pressed`, and the Inspector shows it. It follows the layers, structure and branch chosen in the left rail, and the plan check list is in the rail too. List mode uses no custom widget role. A window under 720 px wide starts in List. Details: [contracts/M10-plan-canvas.md](contracts/M10-plan-canvas.md), section 11.
+
 ### Live regions
 
 Save state, toasts, the sprint timer, the Board's move announcements, the drawer open and close message and the offline bar are all polite status regions (`role="status"`, `aria-live="polite"`). Each one is on the page before it has anything to say, so a change is read out. Nothing uses `assertive`. The editor's text area is named "Scene text" and its status line is polite.

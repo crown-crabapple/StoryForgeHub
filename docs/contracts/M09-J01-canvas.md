@@ -56,9 +56,9 @@ Refused on save with `REFUSED_BAD_CANVAS` (400, `message` names the node or edge
 - `refs[nodeId].state`: `ok` | `archived` | `broken`. `kind`: `scene` | `entry` | `thread` | `event` | `research` | `doc` | `source` | `story-plan` | `structure` | `arc` | `relationship` | `synopsis` | `clue` | `beat`. A `beat` ref is the beat's own id (`fm.beats[].id` of a structure); it resolves to `state` `ok` (structure live) or `archived` (structure archived), with `kind: 'beat'`, `structure` (the structure id) and `path` = the structure file. An unknown id is `broken`.
 - `targets`: everything a story card may point at (scenes in book order, live entries, threads, events, research notes, then the Story Planner items: the story plan, structures each followed by its beats, arcs, relationships, synopses, clues): `{ ref, kind, title, subtitle, slug }`; a beat target also has `structure`.
 - Writes go through the store (single writer). Create, archive and restore are one batch with a dry run and never delete. The save is a whole-file write guarded by `base_sha256`.
-- Module: the canvas routes and tab belong to the `board` module (off → tab hidden, writes 403 `MODULE_OFF`).
+- Module: the canvas routes belong to the `board` module (off → writes 403 `MODULE_OFF`). Since M10 they are also on when the `planner` module is on, and the canvas is the Plan tab; see [M10-plan-canvas.md](M10-plan-canvas.md).
 
-## 3. UI — `/books/:id/canvas`
+## 3. UI — `/books/:id/plan` (the Plan tab since M10; `/canvas` redirects to it)
 
 - **Canvas list** (left): canvases with card counts, New canvas, Archive, archived canvases with Restore.
 - **Board:** infinite pan/zoom (the scroll wheel zooms around the pointer; drag empty space or Shift+wheel to pan; the zoom buttons; Fit), select (click, Shift+click), move (drag; arrow keys nudge by 8, Shift by 40),

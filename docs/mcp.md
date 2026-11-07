@@ -128,7 +128,7 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 
 The propose tools also take `rationale` (shown in the review) and `base_sha256`. Pass the sha256 you read: if the file changed since, the suggestion is marked stale instead of landing on the wrong text. A propose tool answers with the suggestion and a note that nothing was changed. The suggestion appears in the normal review with `source: plugin`.
 
-The canvas tools change the canvas file directly (there is no review step) and answer with a note saying so. Story cards are nodes of type `file` with `storyforge.ref` set to a scene, entry, thread or event id from `targets`. The **Board** module must be on for the book.
+The canvas tools change the canvas file directly (there is no review step) and answer with a note saying so. Story cards are nodes of type `file` with `storyforge.ref` set to an id from `targets` (a scene, entry, thread or event, or a planner item: story plan, structure, beat, arc, relationship, synopsis or clue). The **Board** or the **Story Planner** module must be on for the book.
 
 The seven planner tools (`codex_get_plan` and the `codex_list_*` tools for links, arcs, structures, relationships, synopses and clues) only read. They need the **Story Planner** module on for the book, and are refused when it is off. There is no tool that writes planner data.
 

@@ -1,9 +1,11 @@
-# Plan on the canvas (M10 draft, v2)
+# Plan on the canvas (M10, implemented)
+
+Implemented on branch `feature/m10-plan-canvas`. What the code does is in [docs/contracts/M10-plan-canvas.md](../contracts/M10-plan-canvas.md); the text below is the design as decided, with the deviations listed at the end. Where they differ, the contract wins.
 
 Goal: the canvas **is** the Plan tab. You plan by working on the canvas, as in the "Story canvas (plan on the canvas)" design artboard.
 The planner files stay the single source of truth. The canvas never holds a copy of plan data.
 
-## What exists today
+## What existed before M10
 
 - Canvas tab (`board` module): `planning/canvases/<slug>.canvas` (JSON Canvas 1.0 + `storyforge` extras). Story cards point at scenes by `storyforge.ref`. Edges between scene cards can be Flow links (`useCanvasLinks.js`).
 - Plan tab (`planner` module, route `/plan`): views Overview, Flow, Structure, Lanes, Synopsis, Clues, plus the relationship graph, in `apps/web/src/planner/`.
@@ -78,3 +80,15 @@ C11 only runs when every row of the "new home" table works. One PR into `v2`. De
 - List mode shows scenes, links and clues and can be used with a keyboard only.
 - Old `/plan/<view>` and Canvas tab links land on the canvas.
 - `npm run ci` passes.
+
+## Deviations from this design
+
+Found by reading the code on the branch.
+
+- **No "Arc lanes" layer.** The Arcs layer is arc cards plus an `Arc · <name>` badge on each scene card with a milestone. There are no lanes under the columns.
+- **No relationship graph, no SVG download.** The relationship card's drawer holds the relationship editor only (`RelationshipEditor`); `RelationshipGraph` and the Flow and graph "Download SVG" are not reachable from the Plan tab.
+- **The Synopsis, Clue, Overview and series sections are in drawers** (`PlanDrawer.jsx`, `SeriesDrawer.jsx`) as designed; the series plan is opened from a **Series plan** button in the rail and by `?view=series`.
+- **Old Plan views:** the unreachable ones are deleted; the editors the drawer reuses stay in `apps/web/src/planner/`.
+- **Legacy deep links:** `view=flow&node=`, the slug forms (`structure`, `clue`, `arc`, `relationship`, `synopsis`), `branch` and `view=series` map to a pick. Other old `view`, `link`, `mode` and `filter` values only open the canvas.
+- **Access:** read-only follows the session abilities (viewers, reviewers, share links) and an unreadable canvas file.
+- **Module gate:** canvas writes are allowed when `board` or `planner` is on, in the app routes and in the plugin API v1 canvas routes.
