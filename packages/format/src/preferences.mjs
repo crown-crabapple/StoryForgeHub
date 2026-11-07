@@ -2,10 +2,20 @@
 // Pure: no filesystem. Customization never changes what a book means; these values only say how the app looks and which features are on.
 
 /** Feature modules (contract section 5). `insights` and `tasks` belong to J02; they are gated by id here. */
-export const MODULE_IDS = ['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'planner', 'integrations'];
+export const MODULE_IDS = ['ai', 'continuity', 'receipts', 'suggestions', 'timeline', 'board', 'threads', 'insights', 'tasks', 'research', 'planner', 'integrations', 'workspace'];
+
+/**
+ * M12 AI level, lowest to highest: how much an AI connection (MCP or plugin token) may do in a book, whatever its token was granted.
+ * off: read only. advisor: + suggest edits, tasks, checks. planner: + plan, canvas, workspace docs, ledgers, state. cowriter: + create chapters and scenes.
+ */
+export const AI_LEVELS = ['off', 'advisor', 'planner', 'cowriter'];
+/** The level a book has when nothing sets one: what AI connections could already do before M12 (suggest, canvas, plan). */
+export const DEFAULT_AI_LEVEL = 'planner';
+/** Does `level` reach `min`? Unknown levels count as the default. @param {string} level @param {string} min */
+export const aiLevelReaches = (level, min) => AI_LEVELS.indexOf(AI_LEVELS.includes(level) ? level : DEFAULT_AI_LEVEL) >= AI_LEVELS.indexOf(min);
 
 /** Keys where the project outranks the person: built-in < profile < library < book. */
-export const PROJECT_KEYS = ['modules', 'labels', 'export'];
+export const PROJECT_KEYS = ['modules', 'labels', 'export', 'ai'];
 /** Keys where the person at the keyboard wins: built-in < library < book < profile. */
 export const APPEARANCE_KEYS = ['theme', 'typography', 'layout', 'shortcuts'];
 /** Every key a `preferences` map may hold. */
@@ -31,6 +41,7 @@ export const BUILTIN = Object.freeze({
   modules: Object.freeze(Object.fromEntries(MODULE_IDS.map((id) => [id, true]))),
   labels: Object.freeze({}),
   export: Object.freeze({}),
+  ai: Object.freeze({ level: DEFAULT_AI_LEVEL }),
   theme: 'dark',
   typography: Object.freeze({ family: 'serif', size: 18, lineHeight: 1.7, paragraphSpacing: 0, letterSpacing: 0, measure: 72 }),
   layout: Object.freeze({ name: 'Writing' }),
@@ -57,6 +68,14 @@ export function preferenceProblems(key, value) {
       for (const [id, v] of Object.entries(value)) {
         if (!MODULE_IDS.includes(id)) bad(`${key}.${id}`, `unknown module ${id} (modules: ${MODULE_IDS.join(', ')})`);
         else if (typeof v !== 'boolean') bad(`${key}.${id}`, `${id} must be true or false`);
+      }
+      return out;
+    case 'ai':
+      if (!isMap(value)) return [{ location: key, message: 'ai must be a mapping (level: off, advisor, planner or cowriter)' }];
+      for (const [k, v] of Object.entries(value)) {
+        if (k === 'level') {
+          if (!AI_LEVELS.includes(v)) bad(`${key}.${k}`, `level must be one of ${AI_LEVELS.join(', ')}`);
+        } else bad(`${key}.${k}`, `unknown ai setting ${k}`);
       }
       return out;
     case 'labels':

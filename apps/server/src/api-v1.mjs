@@ -3,10 +3,10 @@
 // check as the app, never a dry run): a proposal becomes a suggestion (source: plugin) that changes nothing until the author accepts a hunk in the normal
 // review. Reads are projections with stable field names (within API major 1 fields are only added). Who may call what is decided by plugin-policy.mjs first.
 import { checkWebhookUrl } from '@storyforge/integrations';
-import { loadPlugins } from '@storyforge/format';
+import { aiLevelReaches, loadPlugins } from '@storyforge/format';
 import pkg from '../package.json' with { type: 'json' };
 import { decidePlugin } from './plugin-policy.mjs';
-import { moduleOff, moduleOn } from './preferences.mjs';
+import { aiLevelOf, aiLevelRefused, moduleOff, moduleOn } from './preferences.mjs';
 import { handleWrite, matchWriteRoute } from './router.mjs';
 
 export const API_MAJOR = 1;
@@ -102,6 +102,14 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
   if (!(await moduleOn(repository, state, 'integrations', book ? { bookId: book.id } : {}))) {
     const off = moduleOff('integrations');
     return out(off.status, off.body, grant, target);
+  }
+  // M12: the book's AI level caps what any token may do in it, whatever the token was granted
+  if (book && d.level !== 'off') {
+    const level = await aiLevelOf(repository, state, { bookId: book.id });
+    if (!aiLevelReaches(level, d.level)) {
+      const refused = aiLevelRefused(level, d.level);
+      return out(refused.status, refused.body, grant, target);
+    }
   }
   const parts = pathname.split('/').filter(Boolean).map(decode);
   if (parts.some((x) => x === null)) return out(404, NOT_FOUND.body, grant, target);

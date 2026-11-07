@@ -147,6 +147,6 @@ hunks:
   assert.deepEqual(await withEdit(text('', 'robot')), [`E102 | ${SUGGESTION} | source`]);
 });
 
-test('the integrations module is a module id, last in the list', () => {
-  assert.equal(MODULE_IDS.at(-1), 'integrations');
+test('the integrations module is a module id; M12 adds workspace after it', () => {
+  assert.deepEqual(MODULE_IDS.slice(-2), ['integrations', 'workspace']);
 });

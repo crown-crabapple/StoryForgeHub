@@ -13,7 +13,7 @@ const V1 = [
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/(entries|threads|events)$/, need: 'read', book: true },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/entries\/[^/]+$/, need: 'read', book: true },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/(search|graph|diagnostics)$/, need: 'read', book: true },
-  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/proposals$/, need: 'propose', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/proposals$/, need: 'propose', book: true, level: 'advisor' },
   // Story Planner M8: read-only planner projections (no writes, no file paths, no sha256); the planner module must be on
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan$/, need: 'read', book: true },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|synopses|clues)$/, need: 'read', book: true },
@@ -21,18 +21,18 @@ const V1 = [
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan\/scene-plans\/[^/]{1,120}$/, need: 'read', book: true },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(check|templates)$/, need: 'read', book: true },
   // M11: planner writes need 'plan', which writes only the Story Planner files under planning/ (never prose, scenes or Codex entries), through the app's own planner routes
-  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/story$/, need: 'plan', book: true },
-  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/scene-plans\/[^/]{1,120}$/, need: 'plan', book: true },
-  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|clues|synopses)$/, need: 'plan', book: true },
-  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|clues|synopses)\/[a-z0-9-]{1,120}$/, need: 'plan', book: true },
-  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|clues|synopses)\/[a-z0-9-]{1,120}\/(archive|restore)$/, need: 'plan', book: true },
-  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(arcs\/[a-z0-9-]{1,120}\/milestones|structures\/[a-z0-9-]{1,120}\/beats|relationships\/[a-z0-9-]{1,120}\/developments|clues\/[a-z0-9-]{1,120}\/knowers)$/, need: 'plan', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/story$/, need: 'plan', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/scene-plans\/[^/]{1,120}$/, need: 'plan', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|clues|synopses)$/, need: 'plan', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|clues|synopses)\/[a-z0-9-]{1,120}$/, need: 'plan', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|clues|synopses)\/[a-z0-9-]{1,120}\/(archive|restore)$/, need: 'plan', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(arcs\/[a-z0-9-]{1,120}\/milestones|structures\/[a-z0-9-]{1,120}\/beats|relationships\/[a-z0-9-]{1,120}\/developments|clues\/[a-z0-9-]{1,120}\/knowers)$/, need: 'plan', book: true, level: 'planner' },
   // canvases: reading needs 'read'; changing one needs 'canvas', the only permission that writes a file, and only planning/canvases/<slug>.canvas (never prose)
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/canvases$/, need: 'read', book: true },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/canvases\/[a-z0-9-]{1,60}$/, need: 'read', book: true },
-  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/canvases$/, need: 'canvas', book: true },
-  { method: 'PUT', re: /^\/api\/v1\/books\/([^/]+)\/canvases\/[a-z0-9-]{1,60}$/, need: 'canvas', book: true },
-  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/canvases\/[a-z0-9-]{1,60}\/(archive|restore)$/, need: 'canvas', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/canvases$/, need: 'canvas', book: true, level: 'planner' },
+  { method: 'PUT', re: /^\/api\/v1\/books\/([^/]+)\/canvases\/[a-z0-9-]{1,60}$/, need: 'canvas', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/canvases\/[a-z0-9-]{1,60}\/(archive|restore)$/, need: 'canvas', book: true, level: 'planner' },
   { method: 'GET', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'POST', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'DELETE', re: /^\/api\/v1\/webhooks\/[^/]+$/, need: 'events', book: false },
@@ -51,7 +51,8 @@ export function bearerOf(req) {
  * @param {import('@storyforge/shared/src/plugin-tokens.mjs').PluginGrant | null} grant the live grant, or null (unknown or revoked token)
  * @param {string} method @param {string} pathname
  * @param {(bookIdOrSlug: string) => string | null} slugOf the slug of a book id (or the slug itself), null for an unknown book
- * @returns {{ ok: true, need: string, book: string | null } | { ok: false, status: number, body: unknown }}
+ * @returns {{ ok: true, need: string, book: string | null, level: string } | { ok: false, status: number, body: unknown }}
+ *   `level` (M12): the lowest book AI level the route needs ('off' = any); handlePluginRequest compares it with the book's level.
  */
 export function decidePlugin(grant, method, pathname, slugOf) {
   if (!grant) return { ok: false, status: 401, body: { error: 'unauthorized', code: 'TOKEN', message: 'the plugin token is not valid (unknown or revoked)' } };
@@ -59,7 +60,7 @@ export function decidePlugin(grant, method, pathname, slugOf) {
   const route = V1.find((r) => r.method === method && r.re.test(pathname));
   if (!route) return { ok: false, status: 403, body: { error: 'forbidden', code: 'PLUGIN_SCOPE', message: 'not a plugin API route' } };
   if (!grant.permissions.includes(route.need)) return { ok: false, status: 403, body: { error: 'forbidden', code: 'PLUGIN_SCOPE', message: `this token lacks the "${route.need}" permission` } };
-  if (!route.book) return { ok: true, need: route.need, book: null };
+  if (!route.book) return { ok: true, need: route.need, book: null, level: 'off' };
   let raw;
   try {
     raw = decodeURIComponent(/** @type {RegExpExecArray} */ (route.re.exec(pathname))[1]);
@@ -68,5 +69,5 @@ export function decidePlugin(grant, method, pathname, slugOf) {
   }
   const slug = slugOf(raw);
   if (slug === null || (grant.books !== 'all' && !grant.books.includes(slug))) return { ok: false, status: 403, body: { error: 'forbidden', code: 'PLUGIN_SCOPE', message: 'this token was not granted that book' } };
-  return { ok: true, need: route.need, book: slug };
+  return { ok: true, need: route.need, book: slug, level: route.level ?? 'off' };
 }
