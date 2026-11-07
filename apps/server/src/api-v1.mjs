@@ -233,9 +233,19 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
   async function planWrite(bk, rest) {
     const segment = PLAN_WRITE_SEGMENT[/** @type {keyof typeof PLAN_WRITE_SEGMENT} */ (rest[0])];
     if (!segment) return NOT_FOUND;
-    const memberPath = ['', 'api', 'books', bk.id, segment, ...rest.slice(1)].map((x) => (x === '' ? '' : encodeURIComponent(x))).join('/');
-    const match = matchWriteRoute('POST', memberPath);
-    if (!match || typeof match.route !== 'string' || !match.route.startsWith('planner-')) return NOT_FOUND;
+    return memberWrite(bk, 'POST', [segment, ...rest.slice(1)], ['planner-']);
+  }
+
+  /**
+   * M12: run one of the app's own write routes for a plugin request (the route the v1 path maps onto), with the same validation, sha checks, store, module gate and
+   * op journal (Undo) as the app. Only a route whose name starts with one of `allowed` is reachable this way; anything else is a 404 and nothing runs.
+   * plugin-policy.mjs has already checked the token's permission, book and the book's AI level for the v1 path.
+   * @param {any} bk @param {string} verb the member route's method @param {string[]} segments the member path after /api/books/:id @param {string[]} allowed route-name prefixes
+   */
+  async function memberWrite(bk, verb, segments, allowed) {
+    const memberPath = ['', 'api', 'books', bk.id, ...segments].map((x) => (x === '' ? '' : encodeURIComponent(x))).join('/');
+    const match = matchWriteRoute(verb, memberPath);
+    if (!match || typeof match.route !== 'string' || !allowed.some((p) => match.route.startsWith(p))) return NOT_FOUND;
     const read = await readJson();
     if (!read.ok) return { status: read.status, body: read.body };
     if (!isObject(read.value)) return badRequest('body must be a JSON object');
