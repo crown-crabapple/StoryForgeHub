@@ -9,7 +9,6 @@ export const PROJECT_TABS = [
   { key: 'continuity', label: 'Continuity', path: '/continuity' },
   { key: 'places', label: 'Places', path: '/places' },
   { key: 'notes', label: 'Notes', path: '/notes' },
-  { key: 'canvas', label: 'Canvas', path: '/canvas' },
 ];
 
 /** Further project pages (M07-J02), shown after the tabs above: the Insights dashboard and the revision Tasks. */
@@ -19,9 +18,36 @@ export const MORE_TABS = [
 ];
 
 /** The module a project tab belongs to (M07-J04): with the module off the tab disappears. `insights` and `tasks` are J02's pages, gated by id so they follow once they exist. */
-const TAB_MODULES = { plan: 'planner', timeline: 'timeline', continuity: 'continuity', notes: 'research', canvas: 'board', insights: 'insights', tasks: 'tasks' };
+const TAB_MODULES = { plan: 'planner', timeline: 'timeline', continuity: 'continuity', notes: 'research', insights: 'insights', tasks: 'tasks' };
 /** @param {string} tab a PROJECT_TABS key @returns {string | null} */
 export const tabModule = (tab) => TAB_MODULES[tab] ?? null;
+
+/** Tabs that stay while any one of several modules is on: the Plan tab is the canvas page, so the planner or the board module keeps it (M10). */
+const TAB_ANY_MODULES = { plan: ['planner', 'board'] };
+/**
+ * Is the tab shown? A tab with no module always is; a tab with several modules when any is on; otherwise when its one module is on.
+ * @param {string} tab a PROJECT_TABS key @param {(id: string) => boolean} moduleOn
+ */
+export function tabVisible(tab, moduleOn) {
+  const any = TAB_ANY_MODULES[tab];
+  if (any) return any.some((id) => moduleOn(id));
+  const id = tabModule(tab);
+  return id === null || moduleOn(id);
+}
+
+/** Old addresses that now show another tab (the Canvas tab became the Plan tab): their path segment -> the tab key. */
+const TAB_ALIASES = { canvas: 'plan' };
+
+/**
+ * Where an old address should be replaced by: `/books/:id/canvas?canvas=x` -> `/books/:id/plan?canvas=x` (the search is kept as it is). Null when the address is current.
+ * @param {string} pathname @param {string} [search] @returns {string | null}
+ */
+export function redirectFor(pathname, search = '') {
+  const m = /^\/books\/([^/]+)\/([^/]+)\/?$/.exec(pathname);
+  if (!m || !Object.hasOwn(TAB_ALIASES, m[2])) return null;
+  const t = PROJECT_TABS.find((x) => x.key === TAB_ALIASES[m[2]]);
+  return `/books/${m[1]}${t ? t.path : ''}${search}`;
+}
 
 const PLACEHOLDER_TABS = [...PROJECT_TABS.filter((t) => t.path !== ''), ...MORE_TABS].map((t) => t.key);
 
@@ -53,5 +79,6 @@ export function parseRoute(pathname, search = '') {
     return { name: 'book', bookId, sceneId: params.get('scene'), file: params.get('file') };
   }
   if (PLACEHOLDER_TABS.includes(m[2])) return { name: 'tab', bookId, tab: m[2] };
+  if (Object.hasOwn(TAB_ALIASES, m[2])) return { name: 'tab', bookId, tab: TAB_ALIASES[m[2]] }; // the old address; App replaces the URL (redirectFor)
   return { name: 'notfound' };
 }

@@ -213,7 +213,7 @@ describe('render', () => {
     const html = render(h(views.OutlineView, { bookId: BOOK, model: m(), badges: PROJECTION }));
     assert.match(html, /<th scope="col">Plan<\/th>/);
     assert.match(html, /Open in Plan/);
-    assert.match(html, new RegExp(`href="/books/${BOOK}/plan\\?view=flow&amp;node=a"|href="/books/${BOOK}/plan\\?view=flow&node=a"`));
+    assert.match(html, new RegExp(`href="/books/${BOOK}/plan\\?select=a"`));
     assert.match(html, /colSpan="8"|colspan="8"/i);
     assert.match(html, /Group by/);
     const plain = render(h(views.OutlineView, { bookId: BOOK, model: m() }));

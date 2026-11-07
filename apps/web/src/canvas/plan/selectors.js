@@ -172,3 +172,50 @@ export function groupTargets(targets) {
   const plan = PLAN_KINDS.filter((k) => groups.has(k));
   return [...own, ...plan].map((kind) => ({ kind, items: groups.get(kind) }));
 }
+
+// ---------------------------------------------------------------- what the page remembers per book (localStorage; a blocked store is ignored)
+
+/** @param {string} bookId */
+export const lastCanvasKey = (bookId) => `storyforge.canvas.last.${bookId}`;
+/** @param {string} bookId */
+export const viewModeKey = (bookId) => `storyforge.canvas.mode.${bookId}`;
+
+/** @param {string} key @returns {string | null} */
+function readKept(key) {
+  try {
+    return globalThis.localStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+/** @param {string} key @param {string} value */
+function keep(key, value) {
+  try {
+    globalThis.localStorage?.setItem(key, value);
+  } catch {
+    // not kept
+  }
+}
+
+/** The slug of the canvas opened last in this book, or null. @param {string} bookId */
+export const loadLastCanvas = (bookId) => readKept(lastCanvasKey(bookId)) || null;
+/** @param {string} bookId @param {string} slug */
+export const saveLastCanvas = (bookId, slug) => keep(lastCanvasKey(bookId), slug);
+
+/** Which canvas the page opens: the one the address asks for, else the one opened last, else the first. @param {{ slug: string }[]} canvases @param {string | null | undefined} wanted @param {string | null | undefined} last @returns {string | null} */
+export function chooseCanvas(canvases, wanted, last) {
+  for (const s of [wanted, last]) if (s && canvases.some((c) => c.slug === s)) return s;
+  return canvases[0]?.slug ?? null;
+}
+
+/** The narrow screens (under this many px) start in List mode. */
+export const NARROW_PX = 720;
+
+/** 'canvas' or 'list': the kept choice of this book, else List on a narrow screen and Canvas otherwise. @param {string} bookId @param {number | null} [width] the window width */
+export function loadViewMode(bookId, width = globalThis.window?.innerWidth ?? null) {
+  const kept = readKept(viewModeKey(bookId));
+  if (kept === 'canvas' || kept === 'list') return kept;
+  return typeof width === 'number' && width < NARROW_PX ? 'list' : 'canvas';
+}
+/** @param {string} bookId @param {'canvas' | 'list'} mode */
+export const saveViewMode = (bookId, mode) => keep(viewModeKey(bookId), mode);

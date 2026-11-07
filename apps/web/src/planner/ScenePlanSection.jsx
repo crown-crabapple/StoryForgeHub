@@ -105,7 +105,7 @@ export function ScenePlanView({ bookId, sceneId, plan, links, arcs = null, relat
         <>
           <p className="muted">Not linked to other scenes yet.</p>
           <p>
-            <Link to={planHref(bookId, { view: 'flow', node: sceneId })}>Connect in Flow</Link>
+            <Link to={planHref(bookId, { select: sceneId })}>Connect in Flow</Link>
           </p>
         </>
       ) : (

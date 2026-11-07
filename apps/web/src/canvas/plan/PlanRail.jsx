@@ -4,10 +4,11 @@ import { LAYERS, activeStructure, findingOnCanvas, planCounts } from './selector
 
 /**
  * @param {{ plan: any, layers: Record<string, boolean>, onLayers: (next: Record<string, boolean>) => void, structureId: string | null, onStructure: (id: string) => void,
- *   branch: string | null, onBranch: (branch: string | null) => void, onFinding: (finding: any) => void, onCanvas?: Set<string> | null }} props
- *   `branch` null is the main plan; `onCanvas` the ref ids of the cards on the open canvas (a finding with none of them says so).
+ *   branch: string | null, onBranch: (branch: string | null) => void, onFinding: (finding: any) => void, onCanvas?: Set<string> | null, inSeries?: boolean, onSeries?: () => void }} props
+ *   `branch` null is the main plan; `onCanvas` the ref ids of the cards on the open canvas (a finding with none of them says so);
+ *   `inSeries` (the book is in a series) adds the Series plan button, which calls `onSeries`.
  */
-export function PlanRail({ plan, layers, onLayers, structureId, onStructure, branch, onBranch, onFinding, onCanvas = null }) {
+export function PlanRail({ plan, layers, onLayers, structureId, onStructure, branch, onBranch, onFinding, onCanvas = null, inSeries = false, onSeries = () => {} }) {
   const counts = planCounts(plan, structureId);
   const structures = plan?.structures?.structures ?? [];
   const chosen = activeStructure(plan?.structures, structureId);
@@ -62,6 +63,17 @@ export function PlanRail({ plan, layers, onLayers, structureId, onStructure, bra
           ))}
         </div>
       </section>
+
+      {inSeries && (
+        <section aria-labelledby="cv-rail-series">
+          <h2 id="cv-rail-series" className="cv-rail-h">
+            Series
+          </h2>
+          <button type="button" className="btn" onClick={onSeries}>
+            Series plan
+          </button>
+        </section>
+      )}
 
       <section aria-labelledby="cv-rail-check">
         <h2 id="cv-rail-check" className="cv-rail-h">

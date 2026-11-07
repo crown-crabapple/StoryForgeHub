@@ -150,3 +150,88 @@
     border-top: 1px solid var(--divider);
   }
 }
+
+/* M10 C10: List mode (plain headed lists in place of the board) and the Canvas | List switch. Tokens only. */
+.cv-mode {
+  display: inline-flex;
+  gap: var(--s1);
+}
+.cv-mode .btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.cv-plist {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s3) var(--s4);
+}
+.cv-plist h2 {
+  font-size: 16px;
+  margin: var(--s4) 0 var(--s2);
+}
+.cv-plist h3 {
+  font-size: 14px;
+  margin: var(--s3) 0 var(--s1);
+}
+.cv-plist-items,
+.cv-plist-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cv-plist-items > li {
+  padding: var(--s1) 0;
+  border-bottom: 1px solid var(--divider);
+}
+.cv-plist-links {
+  padding-left: var(--s4);
+}
+.cv-plist-pick,
+.cv-plist-link {
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  padding: var(--s1) var(--s2);
+  text-align: left;
+  cursor: pointer;
+}
+.cv-plist-pick {
+  display: block;
+  width: 100%;
+}
+.cv-plist-link {
+  color: var(--accent);
+  padding: 0 var(--s1);
+}
+.cv-plist-pick:hover,
+.cv-plist-link:hover {
+  border-color: var(--border);
+}
+.cv-plist-pick[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.cv-plist-pick:focus-visible,
+.cv-plist-link:focus-visible {
+  outline: var(--focus);
+  outline-offset: 2px;
+}
+.cv-plist-title {
+  font-weight: 600;
+}
+.cv-plist-line,
+.cv-plist-warn {
+  margin: 0;
+  padding: 0 var(--s2);
+  font-size: 13px;
+}
+.cv-plan-build {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  align-items: center;
+}

@@ -6,8 +6,8 @@ import { explainFailure } from '../structure/helpers.js';
 
 const enc = encodeURIComponent;
 
-/** /books/:id/canvas with the optional ?canvas=<slug>. @param {string} bookId @param {string | null} [slug] */
-export const canvasHref = (bookId, slug = null) => `/books/${enc(bookId)}/canvas${slug ? `?canvas=${enc(slug)}` : ''}`;
+/** /books/:id/plan (the Plan tab is the canvas page) with the optional ?canvas=<slug>. @param {string} bookId @param {string | null} [slug] */
+export const canvasHref = (bookId, slug = null) => `/books/${enc(bookId)}/plan${slug ? `?canvas=${enc(slug)}` : ''}`;
 /** @param {string} search */
 export function parseCanvasSearch(search) {
   const p = new URLSearchParams(search);

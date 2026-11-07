@@ -137,7 +137,7 @@ test('workspace: rail nav, main and inspector aside in that order, with the Chap
   assert.match(html, /data-open="false"/);
 });
 
-test('project nav: eight real links, aria-current only on the active tab', () => {
+test('project nav: seven real links, aria-current only on the active tab', () => {
   for (const [tab, label] of [
     ['manuscript', 'Manuscript'],
     ['plan', 'Plan'],
@@ -146,15 +146,14 @@ test('project nav: eight real links, aria-current only on the active tab', () =>
     ['continuity', 'Continuity'],
     ['places', 'Places'],
     ['notes', 'Notes'],
-    ['canvas', 'Canvas'],
   ]) {
     const html = render(h(m.ProjectNav, { bookId: BOOK_ID, active: tab }));
-    assert.equal(count(html, /<a /g), 8);
+    assert.equal(count(html, /<a /g), 7);
     assert.equal(count(html, /aria-current="page"/g), 1);
     assert.match(html, new RegExp(`aria-current="page"[^>]*>${label}<|class="project-tab" aria-current="page">${label}<`));
   }
   const html = render(h(m.ProjectNav, { bookId: BOOK_ID, active: 'codex' }));
-  for (const href of ['', '/plan', '/codex', '/timeline', '/continuity', '/places', '/notes', '/canvas']) assert.ok(html.includes(`href="/books/${BOOK_ID}${href}"`), href);
+  for (const href of ['', '/plan', '/codex', '/timeline', '/continuity', '/places', '/notes']) assert.ok(html.includes(`href="/books/${BOOK_ID}${href}"`), href);
 });
 
 test('top bar: logo link, book switcher button, save status, search and no Share or avatar', () => {

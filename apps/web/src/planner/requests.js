@@ -42,12 +42,17 @@ export const fieldValue = (text) => (String(text).trim() === '' ? null : String(
 export const relationLabel = (relation) => String(relation ?? '').replace(/_/g, ' ');
 
 /**
- * Where the Plan tab shows something: `/books/:id/plan?view=flow&link=<slug>`. Only the given parts are put in the query (`mode` is `list` or `graph`, `filter` is `unlinked`).
+ * Where the Plan tab shows something: `/books/:id/plan?select=<id>` (the canvas opens with that card picked) when `select` is given, else the older `?view=flow&link=<slug>` forms, which the canvas
+ * maps through legacyPlanTarget. Only the given parts are put in the query (`mode` is `list` or `graph`, `filter` is `unlinked`).
  * @param {string} bookId
- * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null, structure?: string | null, relationship?: string | null, synopsis?: string | null, clue?: string | null, branch?: string | null }} [target]
- *   `clue` is a clue slug (view=clues); `branch` is a what-if branch slug, or `*` for every branch (Flow's Branch filter; no `branch` means the main plan).
+ * @param {{ view?: string | null, link?: string | null, node?: string | null, mode?: string | null, filter?: string | null, arc?: string | null, structure?: string | null, relationship?: string | null, synopsis?: string | null, clue?: string | null, branch?: string | null, select?: string | null }} [target]
+ *   `select` is the permanent id of the scene, clue, arc, relationship, synopsis, structure or beat to pick (it replaces `view` and the slug parts; `branch` still goes with it). `clue` is a clue slug (view=clues); `branch` is a what-if branch slug, or `*` for every branch (Flow's Branch filter; no `branch` means the main plan).
  */
-export function planHref(bookId, { view, link, node, mode, filter, arc, structure, relationship, synopsis, clue, branch } = {}) {
+export function planHref(bookId, { view, link, node, mode, filter, arc, structure, relationship, synopsis, clue, branch, select } = {}) {
+  if (typeof select === 'string' && select !== '') {
+    const q = [['select', select], ['branch', branch]].filter(([, v]) => typeof v === 'string' && v !== '').map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
+    return `/books/${encodeURIComponent(bookId)}/plan?${q.join('&')}`;
+  }
   const q = [['view', view], ['link', link], ['node', node], ['mode', mode], ['filter', filter], ['arc', arc], ['structure', structure], ['relationship', relationship], ['synopsis', synopsis], ['clue', clue], ['branch', branch]]
     .filter(([, v]) => typeof v === 'string' && v !== '')
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`);
