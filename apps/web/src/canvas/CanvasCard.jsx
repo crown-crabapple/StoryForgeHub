@@ -2,7 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { Link } from '../router.jsx';
 import { PlanCardBody } from './plan/PlanCards.jsx';
-import { isPlanKind } from './plan/selectors.js';
+import { isPlanKind, planItemFor } from './plan/selectors.js';
 import { REF_KIND_LABEL, assetUrl, cssColor, hexToRgb, hostOf, inkOn, markdownBlocks, nodeKind, safeUrl, storyHref, swatchText, taskCounts, toggleTask } from './model.js';
 
 /** Inline runs of a Markdown block. @param {{ runs: any[] }} props */
@@ -212,10 +212,32 @@ export function CardBody({ node, bookId, refInfo, editing, readOnly, onPatch, on
   return null;
 }
 
-/** The label strip of a group or column (editable in place). */
-export function ContainerHead({ node, editing, onPatch, onDone, count }) {
+const BEAT_STATE = { open: 'Open', done: 'Done', omitted: 'Omitted' };
+
+/**
+ * The label strip of a group or column (editable in place). A column of a beat (`refInfo.kind === 'beat'`) shows the beat's name, position, question and state instead (read from `plan`).
+ * @param {{ node: any, editing: boolean, onPatch: Function, onDone: () => void, count: number, refInfo?: any, plan?: any }} props
+ */
+export function ContainerHead({ node, editing, onPatch, onDone, count, refInfo = null, plan = null }) {
   const kind = nodeKind(node);
   const color = cssColor(node.color);
+  if (kind === 'column' && refInfo?.kind === 'beat') {
+    const item = planItemFor(plan, refInfo);
+    const state = item?.state ?? 'open';
+    const detail = [item?.position, item?.question].filter(Boolean).join(' · ');
+    return (
+      <div className="cv-head cv-head-beat" style={color ? { borderColor: color } : undefined} title={detail || undefined}>
+        <span className="cv-head-main">
+          <span className="cv-head-label">{item?.name ?? refInfo.title ?? node.label ?? 'Beat'}</span>
+          {detail && <span className="cv-head-sub">{detail}</span>}
+        </span>
+        <span className="cv-head-side">
+          <span className={`cv-chip cv-chip-${state}`}>{BEAT_STATE[state] ?? state}</span>
+          <span className="cv-meta">{count}</span>
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="cv-head" style={color ? { borderColor: color } : undefined}>
       {editing ? (

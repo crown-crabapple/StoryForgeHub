@@ -40,7 +40,8 @@ import {
   withoutLink,
   zoomAt,
 } from './model.js';
-import { groupTargets, nodesForRefIds } from './plan/selectors.js';
+import { beatMoves, beatsAfterMoves, planOverlay } from './plan/overlay.js';
+import { groupTargets, nodesForRefIds, planItemFor } from './plan/selectors.js';
 import { IMAGE_ACCEPT } from './requests.js';
 
 /** The toolbar, in order: [tool, label]. Each tool's key is the registry command canvas.<tool>. */
@@ -62,11 +63,14 @@ const TOOL_GLYPH = { note: 'Aa', todo: '☑', swatch: '◐', image: '▣', story
  *   onChange: (next: any, opts?: { commit?: boolean }) => void, onUndo: () => void, onRedo: () => void,
  *   onUploadImage: (file: File) => Promise<{ ok: true, path: string } | { ok: false, message: string }>, onProblem: (message: string | null) => void,
  *   links?: Map<string, any> | null, linkWrites?: ReturnType<typeof import('./useCanvasLinks.js').useCanvasLinks> | null,
- *   plan?: any, focusRefs?: { refIds: string[], seq: number } | null }} props
+ *   plan?: any, focusRefs?: { refIds: string[], seq: number } | null, layers?: Record<string, boolean> | null, branch?: string | null, findings?: any[] | null,
+ *   planWrites?: { structures: ReturnType<typeof import('../planner/useStructureWrites.js').useStructureWrites>, clues: ReturnType<typeof import('../planner/useClueWrites.js').useClueWrites> } | null }} props
  *   `links` are the live Flow links by slug (null until loaded); `linkWrites` makes a scene-to-scene connection a real Flow link.
  *   `plan` is the planner data (usePlanData) the plan cards read; `focusRefs` selects the cards that show those ref ids and pans to them (a new object each time).
+ *   `layers`, `branch` and `findings` (the plan check) decide the plan overlay drawn over the cards (never saved); `planWrites` are the planner writes of a card dropped in a beat column
+ *   and of a scene connected to a clue.
  */
-export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onChange, onUndo, onRedo, onUploadImage, onProblem, links = null, linkWrites = null, plan = null, focusRefs = null }) {
+export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onChange, onUndo, onRedo, onUploadImage, onProblem, links = null, linkWrites = null, plan = null, focusRefs = null, layers = null, branch = null, findings = null, planWrites = null }) {
   const shortcuts = useShortcuts(); // the canvas keys come from the shortcut registry (M07-J04), so they can be rebound
   const boardRef = useRef(null);
   const fileRef = useRef(null);
@@ -79,6 +83,7 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
   const [picker, setPicker] = useState(null); // story card picker: { at }
   const [linkAsk, setLinkAsk] = useState(null); // web link: { at }
   const [confirmDel, setConfirmDel] = useState(null); // deleting a linked connection: { id, link, from, to }
+  const [clueAsk, setClueAsk] = useState(null); // a scene connected to a clue: { sceneId, clueId, scene, clue }
   const plannerOn = useModule('planner');
   const gesture = useRef(null);
   const docRef = useRef(doc);
@@ -92,6 +97,16 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc.nodes]);
   const ordered = useMemo(() => readingOrder(doc.nodes), [doc.nodes]);
   const sceneRefs = useMemo(() => Object.fromEntries(doc.nodes.filter((n) => nodeKind(n) === 'story').map((n) => [n.id, refOf(n, refs, targets)])), [doc.nodes, refs, targets]);
+
+  const allRefs = useMemo(() => ({ ...refs, ...sceneRefs }), [refs, sceneRefs]);
+  const planWritable = !readOnly && plannerOn && plan !== null && planWrites !== null;
+  const overlay = useMemo(() => planOverlay({ nodes: doc.nodes, edges: doc.edges, refs: allRefs, plan, layers, branch, findings }), [doc.nodes, doc.edges, allRefs, plan, layers, branch, findings]);
+
+  // a refused planner write: the writes keep the words in their state; show them on the page's problem banner
+  const writeProblem = planWrites?.structures?.state?.message ?? planWrites?.structures?.state?.error ?? planWrites?.clues?.state?.error ?? null;
+  useEffect(() => {
+    if (writeProblem) onProblem(writeProblem);
+  }, [writeProblem, onProblem]);
 
   // fit the canvas into the board when another canvas opens
   useLayoutEffect(() => {
@@ -205,7 +220,11 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
     setEdgeSel(null);
     if (tool === 'connect' && !readOnly) {
       if (!pending) setPending(node.id);
-      else {
+      else if (planWritable && clueEnds(pending, node.id)) {
+        setClueAsk(clueEnds(pending, node.id));
+        setPending(null);
+        setTool('select');
+      } else {
         onChange(connect(docRef.current, pending, node.id));
         setPending(null);
         setTool('select');
@@ -228,6 +247,51 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
     }
     gesture.current = { kind: 'move', x0: e.clientX, y0: e.clientY, ids, origin: docRef.current, moved: false };
     boardRef.current.setPointerCapture?.(e.pointerId);
+  }
+
+  /** A scene card and a clue card (either order) of the plan: { sceneId, clueId, scene, clue }, else null. */
+  function clueEnds(aId, bId) {
+    const a = sceneRefs[aId];
+    const b = sceneRefs[bId];
+    const scene = a?.kind === 'scene' && a.state === 'ok' ? a : b?.kind === 'scene' && b.state === 'ok' ? b : null;
+    const clue = a?.kind === 'clue' && a.state === 'ok' ? a : b?.kind === 'clue' && b.state === 'ok' ? b : null;
+    return scene && clue && scene !== clue ? { sceneId: scene.id, clueId: clue.id, scene: scene.title || 'this scene', clue: clue.title || 'this clue' } : null;
+  }
+
+  /** Plants adds the scene to the clue's planted scenes; Reveals sets it as the scene that reveals the clue. */
+  async function answerClue(how) {
+    const ask = clueAsk;
+    setClueAsk(null);
+    if (!ask || how === null) return;
+    const item = planItemFor(plan, { kind: 'clue', id: ask.clueId });
+    if (!item) {
+      onProblem('That clue is not in the plan any more.');
+      return;
+    }
+    const planted = (item.planted ?? []).map((p) => (typeof p === 'string' ? p : p?.id)).filter(Boolean);
+    const patch = how === 'plants' ? { planted: planted.includes(ask.sceneId) ? planted : [...planted, ask.sceneId] } : { revealed: ask.sceneId };
+    await planWrites.clues.save(item, patch);
+  }
+
+  /** Beat assignment at the end of a drag: write the beats the moves change (one write per structure). True when every write was accepted. @param {ReturnType<typeof beatMoves>} moves */
+  async function assignBeats(moves) {
+    const byStructure = new Map();
+    for (const m of moves) {
+      for (const beatId of [m.add, m.remove].filter(Boolean)) {
+        const structure = planItemFor(plan, { kind: 'beat', id: beatId })?.structure;
+        if (!structure) {
+          onProblem('That beat is not in the plan any more.');
+          return false;
+        }
+        if (!byStructure.has(structure.id)) byStructure.set(structure.id, { structure, moves: [] });
+        if (!byStructure.get(structure.id).moves.includes(m)) byStructure.get(structure.id).moves.push(m);
+      }
+    }
+    for (const { structure, moves: mine } of byStructure.values()) {
+      const beats = beatsAfterMoves(structure.beats ?? [], mine);
+      if (beats && !(await planWrites.structures.handlersFor(structure).onSaveBeats(beats))) return false;
+    }
+    return true;
   }
 
   function onResizePointerDown(e, node) {
@@ -255,7 +319,19 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
     gesture.current = null;
     boardRef.current?.releasePointerCapture?.(e.pointerId);
     if (!g || !g.moved || g.kind === 'pan') return;
-    onChange(layoutColumns(docRef.current), { commit: true, base: g.origin });
+    const next = layoutColumns(docRef.current);
+    const moves = g.kind === 'move' && planWritable ? beatMoves(g.origin.nodes, next.nodes, allRefs) : [];
+    if (moves.length === 0) {
+      onChange(next, { commit: true, base: g.origin });
+      return;
+    }
+    // a card dropped into or out of a beat column: the beat is written first; a refused write puts the cards back
+    onChange(next, { commit: false });
+    assignBeats(moves).then((ok) => {
+      if (ok) onChange(next, { commit: true, base: g.origin });
+      else onChange(g.origin, { commit: true });
+      plan.refresh?.();
+    });
   }
 
   // ------------------------------------------------------------ keys
@@ -328,8 +404,8 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
     boardRef.current?.focus({ preventScroll: true });
   };
 
-  const containers = ordered.filter(isContainer);
-  const cards = ordered.filter((n) => !isContainer(n));
+  const containers = ordered.filter((n) => isContainer(n) && !overlay.hiddenNodeIds.has(n.id));
+  const cards = ordered.filter((n) => !isContainer(n) && !overlay.hiddenNodeIds.has(n.id));
   const world = { transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` };
   const edgeEditing = edgeSel ? doc.edges.find((x) => x.id === edgeSel) : null;
   const edgeMid = edgeEditing && byId.get(edgeEditing.fromNode) && byId.get(edgeEditing.toNode) ? edgeGeometry(edgeEditing, byId.get(edgeEditing.fromNode), byId.get(edgeEditing.toNode)).mid : null;
@@ -416,12 +492,23 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
     setEdgeSel(null);
   }
 
+  /** The beat a column stands for: the server's ref, else the beat the plan has under that id (a column just made). */
+  const columnRef = (n) => {
+    if (typeof n.storyforge?.ref !== 'string') return null;
+    const r = refOf(n, refs, targets);
+    if (r?.kind === 'beat') return r;
+    const item = planItemFor(plan, { kind: 'beat', id: n.storyforge.ref });
+    return item ? { state: 'ok', kind: 'beat', id: item.id, title: item.name ?? null, summary: null, path: null } : r;
+  };
+
   const renderNode = (n) => {
     const kind = nodeKind(n);
-    const refInfo = kind === 'story' ? refOf(n, refs, targets) : null;
+    const refInfo = kind === 'story' ? refOf(n, refs, targets) : kind === 'column' ? columnRef(n) : null;
+    const badges = overlay.badges.get(n.id) ?? [];
+    const marked = overlay.marks.get(n.id) ?? [];
     const isSel = selected.has(n.id);
     const color = cssColor(n.color);
-    const cls = ['cv-node', `cv-${kind}`, isSel ? 'is-selected' : '', pending === n.id ? 'is-pending' : '', editing === n.id ? 'is-editing' : ''].filter(Boolean).join(' ');
+    const cls = ['cv-node', `cv-${kind}`, isSel ? 'is-selected' : '', pending === n.id ? 'is-pending' : '', editing === n.id ? 'is-editing' : '', marked.length > 0 ? 'is-flagged' : ''].filter(Boolean).join(' ');
     const style = { left: n.x, top: n.y, width: n.width, height: n.height, ...(color && kind !== 'swatch' ? { '--cv-tint': color } : {}) };
     return (
       <div
@@ -433,6 +520,7 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
         aria-label={cardName(n, refInfo)}
         aria-roledescription={KIND_LABEL[kind].toLowerCase()}
         data-id={n.id}
+        title={marked.length > 0 ? `Plan check: ${marked.join('; ')}` : undefined}
         onPointerDown={(e) => onCardPointerDown(e, n)}
         onDoubleClick={(e) => {
           e.stopPropagation();
@@ -441,9 +529,26 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
         onFocus={() => onCardFocus(n)}
       >
         {isContainer(n) ? (
-          <ContainerHead node={n} editing={editing === n.id} onPatch={patch(n.id)} onDone={doneEditing} count={kind === 'column' ? columnMembers(doc.nodes, n).length : 0} />
+          <ContainerHead node={n} editing={editing === n.id} onPatch={patch(n.id)} onDone={doneEditing} count={kind === 'column' ? columnMembers(doc.nodes, n).length : 0} refInfo={refInfo} plan={plan} />
         ) : (
           <CardBody node={n} bookId={bookId} refInfo={refInfo} editing={editing === n.id} readOnly={readOnly} plan={plan} onPatch={patch(n.id)} onDone={doneEditing} />
+        )}
+        {badges.length > 0 && (
+          <ul className="cv-badges" aria-label="Plan">
+            {badges.map((b, i) => (
+              <li key={i} className={`cv-badge cv-badge-${b.tone}`}>
+                {b.label}
+              </li>
+            ))}
+          </ul>
+        )}
+        {marked.length > 0 && (
+          <>
+            <span className="cv-mark" aria-hidden="true">
+              !
+            </span>
+            <span className="sr-only">{`Plan check: ${marked.join('; ')}`}</span>
+          </>
         )}
         {isSel && !readOnly && selected.size === 1 && editing !== n.id && <span className="cv-resize" aria-hidden="true" onPointerDown={(e) => onResizePointerDown(e, n)} />}
       </div>
@@ -474,6 +579,7 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
               </marker>
             </defs>
             {doc.edges.map((ed) => {
+              if (overlay.hiddenEdgeIds.has(ed.id)) return null;
               const a = byId.get(ed.fromNode);
               const b = byId.get(ed.toNode);
               if (!a || !b) return null;
@@ -492,12 +598,26 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
                       boardRef.current?.focus({ preventScroll: true });
                     }}
                   />
-                  <path className="cv-edge-line" d={g.d} data-relation={view.link?.relation} data-style={view.group ?? undefined} strokeDasharray={view.dasharray ?? undefined} markerEnd={(ed.toEnd ?? 'arrow') === 'arrow' ? 'url(#cv-arrow)' : undefined} markerStart={ed.fromEnd === 'arrow' ? 'url(#cv-arrow)' : undefined} />
-                  {view.label && edgeSel !== ed.id && (
+                  <path className="cv-edge-line" d={g.d} data-relation={view.link?.relation} data-style={view.group ?? undefined} strokeDasharray={view.dasharray ?? (overlay.dashedEdgeIds.has(ed.id) ? '6 5' : undefined)} markerEnd={(ed.toEnd ?? 'arrow') === 'arrow' ? 'url(#cv-arrow)' : undefined} markerStart={ed.fromEnd === 'arrow' ? 'url(#cv-arrow)' : undefined} />
+                  {(overlay.edgeLabels.get(ed.id) ?? view.label) && edgeSel !== ed.id && (
                     <text className="cv-edge-label" x={g.mid.x} y={g.mid.y} textAnchor="middle" dominantBaseline="middle">
-                      {view.label}
+                      {overlay.edgeLabels.get(ed.id) ?? view.label}
                     </text>
                   )}
+                </g>
+              );
+            })}
+            {overlay.extraEdges.map((ed) => {
+              const a = byId.get(ed.from);
+              const b = byId.get(ed.to);
+              if (!a || !b || overlay.hiddenNodeIds.has(ed.from) || overlay.hiddenNodeIds.has(ed.to)) return null;
+              const g = edgeGeometry({}, a, b);
+              return (
+                <g key={ed.id} className={`cv-oedge cv-oedge-${ed.kind}${ed.warn ? ' is-warn' : ''}`} aria-hidden="true">
+                  <path className="cv-oedge-line" d={g.d} markerEnd="url(#cv-arrow)" />
+                  <text className="cv-edge-label cv-oedge-label" x={g.mid.x} y={g.mid.y} textAnchor="middle" dominantBaseline="middle">
+                    {ed.label}
+                  </text>
                 </g>
               );
             })}
@@ -627,6 +747,23 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
             </button>
             <button type="button" className="btn btn-primary" onClick={() => answerDelete(true)}>
               Archive link too
+            </button>
+          </div>
+        </Dialog>
+      )}
+      {clueAsk && (
+        <Dialog label="Connect a scene to a clue" onClose={() => answerClue(null)}>
+          <h2>Connect a scene to a clue</h2>
+          <p>{`Does “${clueAsk.scene}” plant or reveal “${clueAsk.clue}”?`}</p>
+          <div className="dialog-actions">
+            <button type="button" className="btn" onClick={() => answerClue(null)}>
+              Cancel
+            </button>
+            <button type="button" className="btn" onClick={() => answerClue('plants')}>
+              Plants
+            </button>
+            <button type="button" className="btn btn-primary" onClick={() => answerClue('reveals')}>
+              Reveals
             </button>
           </div>
         </Dialog>

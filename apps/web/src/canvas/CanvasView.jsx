@@ -7,6 +7,8 @@ import { Dialog } from '../shell/Dialog.jsx';
 import { Link, useNavigate } from '../router.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
+import { useClueWrites } from '../planner/useClueWrites.js';
+import { useStructureWrites } from '../planner/useStructureWrites.js';
 import { useStructure } from '../structure/useStructure.jsx';
 import { CanvasBoard } from './CanvasBoard.jsx';
 import { canvasHref, canvasUrl, history, parseCanvasSearch, record, redo, undo } from './model.js';
@@ -18,6 +20,7 @@ import { archiveCanvas, createCanvas, explainCanvasFailure, restoreCanvas, saveC
 
 const enc = encodeURIComponent;
 export const SAVE_DELAY_MS = 800;
+const noop = () => {};
 
 /** @param {{ bookId: string, search?: string }} props */
 export function CanvasView({ bookId, search = '' }) {
@@ -173,7 +176,7 @@ export function CanvasPage({ bookId, list, slug, problem = null, onDismiss = () 
       </aside>
       <section className="cv-main" aria-label={open ? `Canvas ${open.title}` : 'Canvas'}>
         {open ? (
-          <OpenCanvas key={open.slug} bookId={bookId} summary={open} onArchive={() => onArchive(open)} onSaved={onSaved} initial={initial} plan={plannerOn ? plan : null} focusRefs={focus} onRefIds={setRefIds} />
+          <OpenCanvas key={open.slug} bookId={bookId} summary={open} onArchive={() => onArchive(open)} onSaved={onSaved} initial={initial} plan={plannerOn ? plan : null} focusRefs={focus} onRefIds={setRefIds} layers={plannerOn ? layers : null} branch={plannerOn ? branch : null} />
         ) : (
           <div className="cv-none">
             <h2>Start a canvas</h2>
@@ -189,23 +192,30 @@ export function CanvasPage({ bookId, list, slug, problem = null, onDismiss = () 
 }
 
 /** One canvas: fetch, history, autosave, conflict banner. */
-function OpenCanvas({ bookId, summary, onArchive, onSaved, initial, plan, focusRefs, onRefIds }) {
+function OpenCanvas({ bookId, summary, onArchive, onSaved, initial, plan, focusRefs, onRefIds, layers, branch }) {
   const { data, error } = useApi(initial ? null : canvasUrl(bookId, summary.slug), '');
   const loaded = initial ?? data;
   if (error) return <p className="error">{error}</p>;
   if (!loaded) return <p className="muted cv-loading">Loading…</p>;
-  return <Editor key={loaded.sha256} bookId={bookId} loaded={loaded} onArchive={onArchive} onSaved={onSaved} plan={plan} focusRefs={focusRefs} onRefIds={onRefIds} />;
+  return <Editor key={loaded.sha256} bookId={bookId} loaded={loaded} onArchive={onArchive} onSaved={onSaved} plan={plan} focusRefs={focusRefs} onRefIds={onRefIds} layers={layers} branch={branch} />;
 }
 
-function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = null, onRefIds = () => {} }) {
+function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = null, onRefIds = () => {}, layers = null, branch = null }) {
   const { track } = useWrites();
   const { status } = useStatus();
   const book = useMemo(() => ({ id: bookId }), [bookId]);
   const reloadLinks = useRef(() => {});
-  const structure = useStructure({ book, activeId: null, onChanged: () => reloadLinks.current() }); // only for its toast (with Undo)
+  const refreshPlan = plan?.refresh ?? noop;
+  const reloadPlan = useRef(noop);
+  const structure = useStructure({ book, activeId: null, onChanged: () => {
+    reloadLinks.current();
+    reloadPlan.current();
+  } }); // for its toast (with Undo), also the one the planner writes use
+  const planWrites = { structures: useStructureWrites({ bookId, structure, refresh: refreshPlan }), clues: useClueWrites({ bookId, structure, refresh: refreshPlan }) };
   const linkWrites = useCanvasLinks({ bookId, version: bookVersion(status, bookId), showToast: structure.showToast });
   useEffect(() => {
     reloadLinks.current = linkWrites.reload;
+    reloadPlan.current = refreshPlan;
   });
   const [hist, setHist] = useState(() => history(loaded.canvas));
   const [live, setLive] = useState(null);
@@ -352,6 +362,10 @@ function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = n
         linkWrites={linkWrites}
         plan={plan}
         focusRefs={focusRefs}
+        layers={layers}
+        branch={branch}
+        findings={plan?.findings ?? null}
+        planWrites={planWrites}
       />
       {structure.ui}
     </div>

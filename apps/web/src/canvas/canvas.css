@@ -817,3 +817,121 @@
   padding: 0 var(--s3);
   font-size: 12px;
 }
+
+/* M10 C5 plan overlay: beat column heads, badges, finding marks and the overlay edges. Tokens only; the overlay is never saved. */
+.cv-head-beat {
+  padding-block: var(--s1);
+  overflow: hidden;
+}
+.cv-head-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cv-head-sub {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-head-side {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex-shrink: 0;
+}
+.cv-chip-done {
+  border-color: var(--ok);
+}
+.cv-chip-omitted {
+  color: var(--muted);
+  border-style: dashed;
+}
+.cv-badges {
+  position: absolute;
+  left: var(--s2);
+  right: var(--s2);
+  bottom: var(--s1);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  pointer-events: none;
+}
+.cv-badge {
+  max-width: 100%;
+  padding: 0 var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-badge-beat {
+  border-color: var(--warning);
+}
+.cv-badge-clue {
+  border-color: var(--accent);
+}
+.cv-badge-arc {
+  border-color: var(--ok);
+}
+.cv-badge-warn {
+  border-color: var(--warning);
+  color: var(--text);
+}
+.cv-node.is-flagged {
+  outline: 2px solid var(--warning);
+  outline-offset: 1px;
+}
+.cv-mark {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--warning);
+  pointer-events: none;
+}
+.cv-oedge {
+  --cv-oedge: var(--accent);
+  pointer-events: none;
+}
+.cv-oedge-plants {
+  --cv-oedge: var(--ok);
+}
+.cv-oedge-develops {
+  --cv-oedge: var(--text-2);
+}
+.cv-oedge.is-warn {
+  --cv-oedge: var(--warning);
+}
+.cv-oedge-line {
+  fill: none;
+  stroke: var(--cv-oedge);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.cv-oedge-develops .cv-oedge-line {
+  stroke-dasharray: 6 5;
+}
+.cv-oedge.is-warn .cv-oedge-line {
+  stroke-width: 3;
+}
+.cv-oedge-label {
+  pointer-events: none;
+}
