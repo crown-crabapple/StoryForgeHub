@@ -578,7 +578,7 @@ const keysAnywhere = (v, found = new Set()) => {
   return found;
 };
 
-test('plugin v1 plan routes: 200 for a read token with the book; JSON has no path or sha256 key at any depth', async () => {
+test('plugin v1 plan routes: 200 for a read token with the book; JSON has no path, file, rel or base_sha256 key at any depth (sha256 is kept since M11)', async () => {
   const t = await bootPersonal({ fixture: 'valid/planner' });
   const { token } = await t.grant({ plugin: 'planner-reader', permissions: ['read'], books: ['salt-orchard'] });
   const before = await readAll(t.root);
@@ -587,7 +587,7 @@ test('plugin v1 plan routes: 200 for a read token with the book; JSON has no pat
     assert.equal(r.status, 200, `plan${what}: ${r.text.slice(0, 200)}`);
     assert.ok(r.json && typeof r.json === 'object', what);
     const keys = keysAnywhere(r.json);
-    for (const banned of ['path', 'sha256', 'base_sha256']) assert.ok(!keys.has(banned), `plan${what} has a "${banned}" key`);
+    for (const banned of ['path', 'file', 'rel', 'base_sha256']) assert.ok(!keys.has(banned), `plan${what} has a "${banned}" key`);
     assert.ok(!/planning\/[a-z-]+\/[a-z-]+\.md/.test(r.text), `plan${what} names a planning file`);
   }
   const root = (await asPlugin(t.port, token, 'GET', `/api/v1/books/${BOOK}/plan`)).json;

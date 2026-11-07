@@ -5,7 +5,7 @@ import { NOT_OFFERED, TOOLS, ToolError } from './tools.mjs';
 
 export const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
-const INSTRUCTIONS = 'This server reads a StoryForge library: books, chapters, scenes and codex entries. The save and propose tools never change a scene or entry; they create a suggestion that the author accepts or rejects in StoryForge. The canvas tools (only with the canvas permission) change canvas files, which are planning boards, never prose. A book is given as its slug or its id.';
+const INSTRUCTIONS = 'This server reads a StoryForge library: books, chapters, scenes and codex entries. The save and propose tools never change a scene or entry; they create a suggestion that the author accepts or rejects in StoryForge. The canvas tools (only with the canvas permission) change canvas files, which are planning boards, never prose. The plan tools (only with the plan permission) change Story Planner files, which are planning material, never prose; the author can Undo each change. A book is given as its slug or its id.';
 
 const isObject = (/** @type {unknown} */ v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const rpcError = (/** @type {unknown} */ id, /** @type {number} */ code, /** @type {string} */ message) => ({ jsonrpc: '2.0', id, error: { code, message } });

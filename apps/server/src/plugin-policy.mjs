@@ -1,6 +1,7 @@
 // Plugin access policy (contract M08-J02 sections 2-3). A request with `Authorization: Bearer` is a plugin request: it may reach only /api/v1/*, only
 // what its grant's permissions allow, and only the books it was granted. It never reaches the member routes, writes, admin, AI, export, backup or receipts.
-// The one write: with the 'canvas' permission it may change a canvas (planning/canvases/*.canvas) of a granted book, through the same store and sha check as the app.
+// Writes: with 'canvas' it may change a canvas (planning/canvases/*.canvas) of a granted book; with 'plan' (M11) the Story Planner files of a granted book.
+// Both go through the same store, sha checks and module gates as the app. Nothing a token does can change prose, scenes or Codex entries.
 // Decided before (and instead of) the member policy; a bearer request never carries a member's cookie authority.
 
 /** The v1 routes and the permission each needs. Anything else under /api/v1 is refused. */
@@ -16,6 +17,16 @@ const V1 = [
   // Story Planner M8: read-only planner projections (no writes, no file paths, no sha256); the planner module must be on
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan$/, need: 'read', book: true },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|synopses|clues)$/, need: 'read', book: true },
+  // M11: more planner reads (one scene plan, the plan check, the structure templates)
+  { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan\/scene-plans\/[^/]{1,120}$/, need: 'read', book: true },
+  { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(check|templates)$/, need: 'read', book: true },
+  // M11: planner writes need 'plan', which writes only the Story Planner files under planning/ (never prose, scenes or Codex entries), through the app's own planner routes
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/story$/, need: 'plan', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/scene-plans\/[^/]{1,120}$/, need: 'plan', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|clues|synopses)$/, need: 'plan', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|clues|synopses)\/[a-z0-9-]{1,120}$/, need: 'plan', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(links|arcs|structures|relationships|clues|synopses)\/[a-z0-9-]{1,120}\/(archive|restore)$/, need: 'plan', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/plan\/(arcs\/[a-z0-9-]{1,120}\/milestones|structures\/[a-z0-9-]{1,120}\/beats|relationships\/[a-z0-9-]{1,120}\/developments|clues\/[a-z0-9-]{1,120}\/knowers)$/, need: 'plan', book: true },
   // canvases: reading needs 'read'; changing one needs 'canvas', the only permission that writes a file, and only planning/canvases/<slug>.canvas (never prose)
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/canvases$/, need: 'read', book: true },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/canvases\/[a-z0-9-]{1,60}$/, need: 'read', book: true },

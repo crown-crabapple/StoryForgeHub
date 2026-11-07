@@ -41,6 +41,8 @@ describe('Settings -> AI connections (MCP)', () => {
     assert.deepEqual(c.connectionPermissions(true, true), ['read', 'propose', 'canvas']);
     assert.deepEqual(c.connectionPermissions(false, true), ['read', 'canvas']);
     assert.deepEqual(c.connectionPermissions(false, false), ['read']);
+    assert.deepEqual(c.connectionPermissions(true, true, true), ['read', 'propose', 'canvas', 'plan']);
+    assert.deepEqual(c.connectionPermissions(false, false, true), ['read', 'plan']);
   });
 
   test('connectSnippets fills in the key and origin; Claude Desktop only outside shared mode', () => {

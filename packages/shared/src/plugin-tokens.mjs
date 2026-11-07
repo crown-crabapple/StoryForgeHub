@@ -1,11 +1,12 @@
 // Plugin access tokens (contract M08-J02 section 2). A token is granted by the author (the owner in shared mode) for one plugin, with the
 // permissions and books the author confirmed; only sha256(token) is stored, in plugin-tokens.json of the folder given (the user config folder in
-// personal mode, the shared-data folder in shared mode). A token never has a role and never writes a canonical file.
+// personal mode, the shared-data folder in shared mode). A token never has a role and never writes prose. Two permissions write files: 'canvas' (planning/canvases/*.canvas)
+// and, from M11, 'plan' (the Story Planner files under planning/: links, scene plans, story.md, structures, arcs, relationships, clues, synopses), each only when the author grants it.
 import { readSharedJson, writeSharedJson } from '@storyforge/store';
 import { SharedDataError } from './shared-data.mjs';
 import { hashToken, isTokenShape, newId, newToken } from './tokens.mjs';
 
-export const PLUGIN_PERMISSIONS = Object.freeze(['read', 'propose', 'events', 'canvas']);
+export const PLUGIN_PERMISSIONS = Object.freeze(['read', 'propose', 'events', 'canvas', 'plan']);
 const FILE = 'plugin-tokens.json';
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const TOK_RE = /^tok_[0-9A-HJKMNP-TV-Z]{26}$/;

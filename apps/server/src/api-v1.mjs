@@ -7,6 +7,7 @@ import { loadPlugins } from '@storyforge/format';
 import pkg from '../package.json' with { type: 'json' };
 import { decidePlugin } from './plugin-policy.mjs';
 import { moduleOff, moduleOn } from './preferences.mjs';
+import { handleWrite, matchWriteRoute } from './router.mjs';
 
 export const API_MAJOR = 1;
 const NOT_FOUND = { status: 404, body: { error: 'not_found' } };
@@ -38,7 +39,7 @@ export function v1RouteOf(method, pathname) {
   if (c === 'entries') return d === undefined ? 'entries' : 'entry';
   if (['threads', 'events', 'search', 'graph', 'diagnostics'].includes(c)) return c;
   if (c === 'proposals') return 'proposals';
-  if (c === 'plan') return d === undefined ? 'plan' : `plan-${d}`;
+  if (c === 'plan') return d === undefined ? 'plan' : method === 'POST' ? `plan-${d}-write` : `plan-${d}`;
   if (c === 'canvases') {
     if (d === undefined) return method === 'GET' ? 'canvases' : method === 'POST' ? 'canvas-create' : 'other';
     if (parts[6] === undefined) return method === 'GET' ? 'canvas' : method === 'PUT' ? 'canvas-save' : 'other';
@@ -53,15 +54,17 @@ const bookOut = (b) => ({ id: b.id, slug: b.slug, title: b.title, status: b.stat
 /** @param {any} s a scene summary */
 const sceneRow = (s) => ({ id: s.id, title: s.title, order: s.position, act: s.act, chapter: s.chapter, sequence: s.sequence, status: s.status, pov: s.pov ?? null, words: s.word_count ?? 0, path: s.path });
 const lf = (/** @type {string} */ s) => s.replace(/\r\n/g, '\n');
-/** Story Planner M8: a planner read as plugins see it: the same data without file paths, sha256 values or other file internals. @param {unknown} v @returns {unknown} */
+/** Story Planner M8: a planner read as plugins see it: the same data without file paths or other file internals. M11: sha256 is kept, as base_sha256 for a 'plan' write. @param {unknown} v @returns {unknown} */
 function planOut(v) {
   if (Array.isArray(v)) return v.map(planOut);
   if (v === null || typeof v !== 'object') return typeof v === 'string' ? lf(v) : v;
   /** @type {Record<string, unknown>} */
   const o = {};
-  for (const [k, x] of Object.entries(v)) if (!['path', 'sha256', 'base_sha256', 'file', 'rel'].includes(k)) o[k] = planOut(x);
+  for (const [k, x] of Object.entries(v)) if (!['path', 'base_sha256', 'file', 'rel'].includes(k)) o[k] = planOut(x);
   return o;
 }
+/** M11: the v1 plan collection name -> the app's planner route segment (POST /api/v1/books/:b/plan/<name>/... runs the app's own POST /api/books/:b/<segment>/...). */
+const PLAN_WRITE_SEGMENT = { story: 'story-plan', 'scene-plans': 'scene-plans', links: 'links', arcs: 'arcs', structures: 'structures', relationships: 'relationships', clues: 'clues', synopses: 'synopses' };
 /** The repository read behind each GET /api/v1/books/:b/plan/<what>. */
 const PLAN_READS = { links: 'listLinks', arcs: 'listArcs', structures: 'listStructures', relationships: 'listRelationships', synopses: 'listSynopses', clues: 'listClues' };
 
@@ -179,10 +182,24 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     if (c === 'plan') {
       // Story Planner M8 (ADR 0003): read only; refused with the planner module off
       if (!(await moduleOn(repository, state, 'planner', { bookId: bk.id }))) return done(moduleOff('planner'));
+      if (method === 'POST') return done(await planWrite(bk, /** @type {string[]} */ (parts).slice(5)), `${target}/plan/${parts.slice(5).join('/')}`);
+      if (d2 === 'scene-plans' && parts[6] !== undefined) {
+        const sp = await repository.getScenePlan(bk.id, parts[6]);
+        return done(sp ? { status: 200, body: planOut(sp) } : NOT_FOUND, `${target}/plan/scene-plans`);
+      }
+      if (d2 === 'check') {
+        // the plan check (continuity rules PL1-PL6): what the canvas plan-check rail shows
+        const all = await repository.getContinuity(bk.id);
+        if (!all) return done(NOT_FOUND);
+        const findings = (all.findings ?? []).filter((/** @type {any} */ f) => typeof f.rule === 'string' && f.rule.startsWith('PL'))
+          .map((/** @type {any} */ f) => ({ rule: f.rule, severity: f.severity, title: f.title, message: f.message, subject: f.subject, related: f.related ?? [] }));
+        return done({ status: 200, body: { findings } }, `${target}/plan/check`);
+      }
+      if (d2 === 'templates') return done({ status: 200, body: { templates: repository.listStructureTemplates() } }, `${target}/plan/templates`);
       if (d2 === undefined) {
         const o = await repository.planOverview(bk.id);
         if (!o) return done(NOT_FOUND);
-        return done({ status: 200, body: planOut({ story: { fields: o.story.fields, body: o.story.body }, counts: o.counts, primary_structure: o.primary_structure }) });
+        return done({ status: 200, body: planOut({ story: { fields: o.story.fields, body: o.story.body, sha256: o.story.sha256 ?? null }, counts: o.counts, primary_structure: o.primary_structure }) });
       }
       const read = PLAN_READS[/** @type {keyof typeof PLAN_READS} */ (d2)];
       if (!read || typeof repository[read] !== 'function') return done(NOT_FOUND);
@@ -197,6 +214,24 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     return out(404, NOT_FOUND.body, grant, target);
   } catch {
     return out(500, { error: 'internal' }, grant, target);
+  }
+
+  /**
+   * M11: a planner write (permission 'plan', checked by plugin-policy.mjs). The v1 path is mapped onto the app's own planner write route and run by the same
+   * handleWrite (validation, sha checks, the store, the op journal and its Undo), so a plugin can do exactly what the Plan tab does and nothing else: only routes
+   * named planner-* are reachable this way, which write only Story Planner files under planning/.
+   * @param {any} bk @param {string[]} rest the path after /plan, e.g. ['arcs', '<slug>', 'milestones']
+   */
+  async function planWrite(bk, rest) {
+    const segment = PLAN_WRITE_SEGMENT[/** @type {keyof typeof PLAN_WRITE_SEGMENT} */ (rest[0])];
+    if (!segment) return NOT_FOUND;
+    const memberPath = ['', 'api', 'books', bk.id, segment, ...rest.slice(1)].map((x) => (x === '' ? '' : encodeURIComponent(x))).join('/');
+    const match = matchWriteRoute('POST', memberPath);
+    if (!match || typeof match.route !== 'string' || !match.route.startsWith('planner-')) return NOT_FOUND;
+    const read = await readJson();
+    if (!read.ok) return { status: read.status, body: read.body };
+    if (!isObject(read.value)) return badRequest('body must be a JSON object');
+    return handleWrite(repository, match, read.value, state, { principal: { kind: 'plugin', id: grant.id, display_name: grant.plugin } });
   }
 
   /**

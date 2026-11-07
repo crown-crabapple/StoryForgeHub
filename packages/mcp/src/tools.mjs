@@ -1,7 +1,8 @@
-// The MCP tool table (M08 MCP service). Each tool is a name, a JSON Schema for its arguments, the permission it needs ('read', 'propose' or 'canvas') and a run() that talks to the
+// The MCP tool table (M08 MCP service). Each tool is a name, a JSON Schema for its arguments, the permission it needs ('read', 'propose', 'canvas' or 'plan') and a run() that talks to the
 // plugin API /api/v1 only, through the `api` helper the protocol layer builds over the server's `call`. Nothing here touches a file or the network, and no tool can change
 // prose or a canonical file: the propose tools create a suggestion the author accepts or rejects in StoryForge. The one exception is the canvas tools (permission 'canvas'),
-// which change only planning/canvases/*.canvas files. plugin-policy.mjs still decides every underlying request.
+// which change only planning/canvases/*.canvas files, and the plan tools (permission 'plan', M11), which write only Story Planner files under planning/ through the app's own
+// planner routes (the author can Undo each change). plugin-policy.mjs still decides every underlying request.
 
 /** A failure whose message is safe to show the model (becomes an isError tool result). */
 export class ToolError extends Error {
@@ -15,13 +16,14 @@ export class ToolError extends Error {
 /**
  * @typedef {{ get: (path: string, query?: Record<string, string>) => Promise<any>, post: (path: string, body?: unknown) => Promise<any>, put: (path: string, body?: unknown) => Promise<any>, origin: string }} Api
  * @typedef {{ content: { type: 'text', text: string }[], structuredContent: Record<string, unknown> }} ToolResult
- * @typedef {{ name: string, title: string, description: string, need: 'read' | 'propose' | 'canvas', inputSchema: Record<string, any>,
+ * @typedef {{ name: string, title: string, description: string, need: 'read' | 'propose' | 'canvas' | 'plan', inputSchema: Record<string, any>,
  *   annotations: { readOnlyHint: boolean, destructiveHint: false, idempotentHint: boolean, openWorldHint: false },
  *   run: (args: Record<string, any>, api: Api) => Promise<ToolResult> }} Tool
  */
 
 const BOOK_DOC = 'The book is its slug or its id (see codex_list_books).';
 const CANVAS_NOTE = 'This changed the canvas file directly; it is planning material, not prose.';
+const PLAN_NOTE = 'This changed the planning file directly (planning material, not prose); the author can Undo it in StoryForge.';
 const NOTE = 'Nothing was changed. The author reviews this suggestion in StoryForge and accepts or rejects it.';
 const seg = (/** @type {string} */ s) => encodeURIComponent(s);
 const bookPath = (/** @type {string} */ book) => `/api/v1/books/${seg(book)}`;
@@ -40,6 +42,7 @@ const shaArg = { type: 'string', minLength: 64, maxLength: 64, description: 'The
 const schema = (properties, required) => ({ type: 'object', properties, required, additionalProperties: false });
 const READ = { readOnlyHint: true, destructiveHint: /** @type {const} */ (false), idempotentHint: true, openWorldHint: /** @type {const} */ (false) };
 const CANVAS = { readOnlyHint: false, destructiveHint: /** @type {const} */ (false), idempotentHint: false, openWorldHint: /** @type {const} */ (false) };
+const PLAN = { readOnlyHint: false, destructiveHint: /** @type {const} */ (false), idempotentHint: false, openWorldHint: /** @type {const} */ (false) };
 const PROPOSE = { readOnlyHint: false, destructiveHint: /** @type {const} */ (false), idempotentHint: false, openWorldHint: /** @type {const} */ (false) };
 
 /** @param {Record<string, any>} args the optional proposal fields */
@@ -121,6 +124,251 @@ function recordText(x) {
 
 /** @param {any} book @returns {any[]} every chapter with its act */
 const chaptersOf = (book) => (book.acts ?? []).flatMap((/** @type {any} */ a) => (a.chapters ?? []).map((/** @type {any} */ c) => ({ ...c, act: a.act })));
+
+const CARD_W = 260;
+const CARD_H = 150;
+const CARD_GAP = 40;
+const CARD_COLUMNS = 4;
+
+// ---- M11 plan write tools (permission 'plan'): each posts to /api/v1/books/:b/plan/..., which runs the app's own planner route (same validation, sha check, op journal and Undo).
+const planSha = { type: 'string', minLength: 64, maxLength: 64, description: 'The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since.' };
+const planShaOpt = { type: 'string', minLength: 64, maxLength: 64, description: 'Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since.' };
+const slugArg = (/** @type {string} */ what) => ({ type: 'string', minLength: 1, maxLength: 200, description: `The slug of the ${what} (as the list tool shows it).` });
+const textOrNull = { type: ['string', 'null'] };
+const strMap = (/** @type {string[]} */ keys, /** @type {string} */ words) => ({ type: 'object', description: words, properties: Object.fromEntries(keys.map((k) => [k, textOrNull])), additionalProperties: false });
+const rowList = (/** @type {Record<string, any>} */ props, /** @type {string[]} */ required, /** @type {string} */ words) => ({ type: 'array', description: words, items: { type: 'object', properties: props, required, additionalProperties: false } });
+const sceneId = (/** @type {string} */ words) => ({ type: 'string', minLength: 1, maxLength: 200, description: words });
+const notesArg = (/** @type {string} */ words) => ({ type: 'string', description: words });
+const LINK_RELATION_ENUM = ['therefore', 'but', 'enables', 'reveals', 'motivates', 'prevents', 'foreshadows', 'pays_off', 'parallel', 'other'];
+const SYNOPSIS_TYPE_ENUM = ['premise', 'logline', 'elevator-pitch', 'short', 'one-page', 'long', 'chapter-treatment', 'custom'];
+const ARC_TYPE_ENUM = ['positive', 'negative', 'flat', 'custom'];
+const BEAT_STATE_ENUM = ['open', 'done', 'omitted'];
+const CLUE_KIND_ENUM = ['clue', 'reveal', 'secret'];
+const STORY_KEYS = ['premise', 'logline', 'theme_question', 'central_conflict', 'protagonist_goal', 'stakes', 'protagonist', 'primary_structure'];
+const SCENE_PLAN_KEYS = ['goal', 'opposition', 'conflict', 'turn', 'outcome', 'consequence', 'stakes', 'emotional_start', 'emotional_end', 'purpose'];
+const ARC_KEYS = ['want', 'need', 'false_belief', 'fear', 'wound', 'start_state', 'end_state'];
+
+/** The listed args that are given, as a body object; `rename` maps an arg to its body key. @param {Record<string, any>} args @param {string[]} keys @param {Record<string, string>} [rename] */
+const given = (args, keys, rename = {}) => Object.fromEntries(keys.filter((k) => args[k] !== undefined).map((k) => [rename[k] ?? k, args[k]]));
+
+/**
+ * One planner write tool: POST /api/v1/books/:b/plan/<path(args)> with body(args). The answer (with opId for Undo in the app) is returned with PLAN_NOTE.
+ * @param {{ name: string, title: string, text: string, props?: Record<string, any>, required?: string[], path: (args: Record<string, any>) => string, body: (args: Record<string, any>) => Record<string, unknown> }} d
+ * @returns {Tool}
+ */
+const planWrite = ({ name, title, text, props = {}, required = [], path, body }) => ({
+  name,
+  title,
+  description: `${text} ${PLAN_NOTE} ${BOOK_DOC}`,
+  need: 'plan',
+  inputSchema: schema({ book: bookArg, ...props }, ['book', ...required]),
+  annotations: PLAN,
+  async run(args, api) {
+    const r = await api.post(`${bookPath(args.book)}/plan/${path(args)}`, body(args));
+    return result({ ...r, note: PLAN_NOTE });
+  },
+});
+
+/** The archive and restore pair of one planner collection. @param {string} what the singular, e.g. 'link' @param {string} collection the v1 path part, e.g. 'links' @returns {Tool[]} */
+const archivePair = (what, collection) => [
+  ['archive', 'Archive', `Archives a ${what} (codex_restore_${what} brings it back).`],
+  ['restore', 'Restore', `Restores an archived ${what}.`],
+].map(([verb, Verb, text]) => planWrite({
+  name: `codex_${verb}_${what}`,
+  title: `${Verb} a ${what}`,
+  text,
+  props: { slug: slugArg(what), base_sha256: planShaOpt },
+  required: ['slug'],
+  path: (a) => `${collection}/${seg(a.slug)}/${verb}`,
+  body: (a) => given(a, ['base_sha256']),
+}));
+
+/** @type {Tool[]} */
+const PLAN_WRITE_TOOLS = [
+  planWrite({
+    name: 'codex_save_story_plan',
+    title: 'Save the story plan',
+    text: 'Saves some fields of the story plan (premise, logline, theme question, central conflict, protagonist goal, stakes, protagonist = a Codex entry id, primary structure) and/or its notes. Only the fields you give change; null empties one. Pass base_sha256 from codex_get_plan unless the story plan has no file yet.',
+    props: { fields: strMap(STORY_KEYS, 'Fields to set: a string, or null to empty it.'), notes: notesArg('The whole new notes text of the story plan.'), base_sha256: planShaOpt },
+    path: () => 'story',
+    body: (a) => ({ fields: a.fields ?? {}, ...given(a, ['notes'], { notes: 'body' }), base_sha256: a.base_sha256 ?? null }),
+  }),
+  planWrite({
+    name: 'codex_save_scene_plan',
+    title: 'Save a scene plan',
+    text: 'Saves some planning fields of one scene (goal, opposition, conflict, turn, outcome, consequence, stakes, emotional_start, emotional_end, purpose) and/or its characters (Codex entry slugs). Only the fields you give change; null empties one. Pass base_sha256 from codex_get_scene_plan; leave it out only when the scene has no plan yet.',
+    props: { scene: sceneId('The scene id (scene_...).'), fields: strMap(SCENE_PLAN_KEYS, 'Fields to set: a string, or null to empty it.'), characters: { type: 'array', items: { type: 'string' }, description: 'The whole list of Codex entry slugs in the scene.' }, base_sha256: planShaOpt },
+    required: ['scene'],
+    path: (a) => `scene-plans/${seg(a.scene)}`,
+    body: (a) => ({ fields: a.fields ?? {}, ...given(a, ['characters', 'base_sha256']) }),
+  }),
+  // links
+  planWrite({
+    name: 'codex_create_link',
+    title: 'Create a planner link',
+    text: 'Creates a causal link between two scenes (or beats): from leads to to, with a relation. Give branch (a what-if branch slug) to keep it out of the main plan.',
+    props: { from: sceneId('The scene (or beat) id the link starts from.'), to: sceneId('The scene (or beat) id it leads to.'), relation: { type: 'string', enum: LINK_RELATION_ENUM }, rationale: { type: 'string', description: 'Why the link holds.' }, branch: { type: 'string', description: 'What-if branch slug (leave out for the main plan).' } },
+    required: ['from', 'to', 'relation'],
+    path: () => 'links',
+    body: (a) => given(a, ['from', 'to', 'relation', 'rationale', 'branch']),
+  }),
+  planWrite({
+    name: 'codex_update_link',
+    title: 'Update a planner link',
+    text: 'Changes a link: any of from, to, relation, rationale, branch (null moves it back to the main plan). base_sha256 is required (from codex_list_plan_links).',
+    props: { slug: slugArg('link'), from: sceneId('New start scene id.'), to: sceneId('New end scene id.'), relation: { type: 'string', enum: LINK_RELATION_ENUM }, rationale: { type: 'string' }, branch: textOrNull, base_sha256: planSha },
+    required: ['slug', 'base_sha256'],
+    path: (a) => `links/${seg(a.slug)}`,
+    body: (a) => given(a, ['from', 'to', 'relation', 'rationale', 'branch', 'base_sha256']),
+  }),
+  ...archivePair('link', 'links'),
+  // structures
+  planWrite({
+    name: 'codex_create_structure',
+    title: 'Create a story structure',
+    text: 'Starts a story structure (beat sheet) from a template; codex_list_structure_templates shows the template ids.',
+    props: { template: { type: 'string', minLength: 1, maxLength: 100, description: 'A template id from codex_list_structure_templates.' }, name: { type: 'string', minLength: 1, maxLength: 200, description: 'The structure name.' } },
+    required: ['template', 'name'],
+    path: () => 'structures',
+    body: (a) => ({ template: a.template, name: String(a.name).trim() }),
+  }),
+  planWrite({
+    name: 'codex_update_structure',
+    title: 'Update a story structure',
+    text: "Changes a structure's name and/or notes (not its beats; see codex_set_beats). base_sha256 is required (from codex_list_structures).",
+    props: { slug: slugArg('structure'), name: { type: 'string', minLength: 1, maxLength: 200 }, notes: notesArg('The whole new notes text.'), base_sha256: planSha },
+    required: ['slug', 'base_sha256'],
+    path: (a) => `structures/${seg(a.slug)}`,
+    body: (a) => ({ ...given(a, ['name']), ...given(a, ['notes'], { notes: 'body' }), base_sha256: a.base_sha256 }),
+  }),
+  planWrite({
+    name: 'codex_set_beats',
+    title: 'Set the beats of a structure',
+    text: "Writes the WHOLE ordered beat list of a structure, including which scenes are in each beat. Keep the id of every existing beat (it is what links, canvas beat columns and cards refer to) and leave id out for a new beat; a beat you leave out is removed (refused while a link still ends at it). Each beat: name, optional purpose, question, position, state (open, done, omitted) and scenes (scene ids; an empty list clears them). To put a scene in a beat, add it to that beat's scenes here. base_sha256 is required (from codex_list_structures).",
+    props: {
+      slug: slugArg('structure'),
+      beats: rowList({ id: { type: 'string', description: 'The beat id; keep it for an existing beat, leave it out for a new one.' }, name: { type: 'string', minLength: 1 }, purpose: textOrNull, question: textOrNull, position: textOrNull, state: { type: 'string', enum: BEAT_STATE_ENUM }, scenes: { type: 'array', items: { type: 'string' }, description: 'Scene ids in this beat.' } }, ['name'], 'The complete beat list, in order.'),
+      base_sha256: planSha,
+    },
+    required: ['slug', 'beats', 'base_sha256'],
+    path: (a) => `structures/${seg(a.slug)}/beats`,
+    body: (a) => ({ beats: a.beats.map((/** @type {any} */ b) => ({ ...b, state: b.state ?? 'open', scenes: b.scenes ?? [] })), base_sha256: a.base_sha256 }),
+  }),
+  ...archivePair('structure', 'structures'),
+  // arcs
+  planWrite({
+    name: 'codex_create_arc',
+    title: 'Create a character arc',
+    text: 'Starts a character arc for a Codex entry (one arc per character).',
+    props: { character: { type: 'string', minLength: 1, maxLength: 200, description: 'The Codex entry id (entry_...) of the character.' }, arc_type: { type: 'string', enum: ARC_TYPE_ENUM }, fields: strMap(ARC_KEYS, 'Arc fields to set.') },
+    required: ['character'],
+    path: () => 'arcs',
+    body: (a) => given(a, ['character', 'arc_type', 'fields']),
+  }),
+  planWrite({
+    name: 'codex_update_arc',
+    title: 'Update a character arc',
+    text: 'Changes an arc: arc_type (null clears it), fields (want, need, false_belief, fear, wound, start_state, end_state; null empties one) and/or notes. base_sha256 is required (from codex_list_arcs).',
+    props: { slug: slugArg('arc'), arc_type: { type: ['string', 'null'], enum: [...ARC_TYPE_ENUM, null] }, fields: strMap(ARC_KEYS, 'Arc fields to set.'), notes: notesArg('The whole new notes text.'), base_sha256: planSha },
+    required: ['slug', 'base_sha256'],
+    path: (a) => `arcs/${seg(a.slug)}`,
+    body: (a) => ({ ...given(a, ['arc_type', 'fields']), ...given(a, ['notes'], { notes: 'body' }), base_sha256: a.base_sha256 }),
+  }),
+  planWrite({
+    name: 'codex_set_arc_milestones',
+    title: 'Set the milestones of an arc',
+    text: 'Writes the WHOLE ordered milestone list of an arc. Each milestone: scene (a scene id) and optional pressure, choice, belief_before, belief_after, cost (strings). base_sha256 is required (from codex_list_arcs).',
+    props: { slug: slugArg('arc'), milestones: rowList({ scene: sceneId('The scene id.'), pressure: { type: 'string' }, choice: { type: 'string' }, belief_before: { type: 'string' }, belief_after: { type: 'string' }, cost: { type: 'string' } }, ['scene'], 'The complete milestone list, in order.'), base_sha256: planSha },
+    required: ['slug', 'milestones', 'base_sha256'],
+    path: (a) => `arcs/${seg(a.slug)}/milestones`,
+    body: (a) => ({ milestones: a.milestones, base_sha256: a.base_sha256 }),
+  }),
+  ...archivePair('arc', 'arcs'),
+  // relationships
+  planWrite({
+    name: 'codex_create_relationship',
+    title: 'Create a relationship',
+    text: 'Starts a relationship between two Codex entries (one per pair).',
+    props: { a: { type: 'string', minLength: 1, maxLength: 200, description: 'The first Codex entry id (entry_...).' }, b: { type: 'string', minLength: 1, maxLength: 200, description: 'The second Codex entry id (entry_...).' }, fields: strMap(['baseline', 'end_state'], 'baseline and end_state texts.') },
+    required: ['a', 'b'],
+    path: () => 'relationships',
+    body: (a) => given(a, ['a', 'b', 'fields']),
+  }),
+  planWrite({
+    name: 'codex_update_relationship',
+    title: 'Update a relationship',
+    text: "Changes a relationship's fields (baseline, end_state; null empties one) and/or notes. base_sha256 is required (from codex_list_relationships).",
+    props: { slug: slugArg('relationship'), fields: strMap(['baseline', 'end_state'], 'baseline and end_state texts.'), notes: notesArg('The whole new notes text.'), base_sha256: planSha },
+    required: ['slug', 'base_sha256'],
+    path: (a) => `relationships/${seg(a.slug)}`,
+    body: (a) => ({ ...given(a, ['fields']), ...given(a, ['notes'], { notes: 'body' }), base_sha256: a.base_sha256 }),
+  }),
+  planWrite({
+    name: 'codex_set_relationship_developments',
+    title: 'Set the developments of a relationship',
+    text: 'Writes the WHOLE ordered development list of a relationship. Each development: scene (a scene id), change (what shifts between them) and optional a_view and b_view. base_sha256 is required (from codex_list_relationships).',
+    props: { slug: slugArg('relationship'), developments: rowList({ scene: sceneId('The scene id.'), change: { type: 'string' }, a_view: { type: 'string' }, b_view: { type: 'string' } }, ['scene', 'change'], 'The complete development list, in order.'), base_sha256: planSha },
+    required: ['slug', 'developments', 'base_sha256'],
+    path: (a) => `relationships/${seg(a.slug)}/developments`,
+    body: (a) => ({ developments: a.developments, base_sha256: a.base_sha256 }),
+  }),
+  ...archivePair('relationship', 'relationships'),
+  // clues
+  planWrite({
+    name: 'codex_create_clue',
+    title: 'Create a clue',
+    text: 'Starts a clue, reveal or secret: the fact, where it is planted (scene ids), the scene that reveals it and whether it is a red herring.',
+    props: { fact: { type: 'string', minLength: 1, description: 'The fact, in a sentence.' }, kind: { type: 'string', enum: CLUE_KIND_ENUM }, planted: { type: 'array', items: { type: 'string' }, description: 'Scene ids where it is planted.' }, revealed: { type: 'string', description: 'The scene id that reveals it.' }, red_herring: { type: 'boolean' } },
+    required: ['fact'],
+    path: () => 'clues',
+    body: (a) => {
+      const fields = given(a, ['planted', 'revealed', 'red_herring']);
+      return { fact: String(a.fact).trim(), ...given(a, ['kind']), ...(Object.keys(fields).length > 0 ? { fields } : {}) };
+    },
+  }),
+  planWrite({
+    name: 'codex_update_clue',
+    title: 'Update a clue',
+    text: 'Changes a clue: fact, kind, planted (the whole list of scene ids), revealed (a scene id; null clears it), red_herring and/or notes. base_sha256 is required (from codex_list_clues).',
+    props: { slug: slugArg('clue'), fact: { type: 'string', minLength: 1 }, kind: { type: 'string', enum: CLUE_KIND_ENUM }, planted: { type: 'array', items: { type: 'string' } }, revealed: textOrNull, red_herring: { type: 'boolean' }, notes: notesArg('The whole new notes text.'), base_sha256: planSha },
+    required: ['slug', 'base_sha256'],
+    path: (a) => `clues/${seg(a.slug)}`,
+    body: (a) => {
+      const fields = given(a, ['fact', 'kind', 'planted', 'revealed', 'red_herring']);
+      return { ...(Object.keys(fields).length > 0 ? { fields } : {}), ...given(a, ['notes'], { notes: 'body' }), base_sha256: a.base_sha256 };
+    },
+  }),
+  planWrite({
+    name: 'codex_set_clue_knowers',
+    title: 'Set who learns a clue',
+    text: 'Writes the WHOLE list of who learns a clue and where. Each row: who ("reader" or a Codex entry id), scene (a scene id), optional how, and reliable: false for someone who believes something false. base_sha256 is required (from codex_list_clues).',
+    props: { slug: slugArg('clue'), knowers: rowList({ who: { type: 'string', minLength: 1, description: '"reader" or a Codex entry id.' }, scene: sceneId('The scene id.'), how: { type: 'string' }, reliable: { type: 'boolean' } }, ['who', 'scene'], 'The complete knower list.'), base_sha256: planSha },
+    required: ['slug', 'knowers', 'base_sha256'],
+    path: (a) => `clues/${seg(a.slug)}/knowers`,
+    body: (a) => ({ knowers: a.knowers, base_sha256: a.base_sha256 }),
+  }),
+  ...archivePair('clue', 'clues'),
+  // synopses
+  planWrite({
+    name: 'codex_create_synopsis',
+    title: 'Create a synopsis',
+    text: 'Starts a synopsis of a type, optionally with a name, a target word count and its text.',
+    props: { type: { type: 'string', enum: SYNOPSIS_TYPE_ENUM }, name: { type: 'string' }, target_words: { type: 'integer', minimum: 1 }, body: notesArg('The synopsis text.') },
+    required: ['type'],
+    path: () => 'synopses',
+    body: (a) => given(a, ['type', 'name', 'target_words', 'body']),
+  }),
+  planWrite({
+    name: 'codex_update_synopsis',
+    title: 'Update a synopsis',
+    text: 'Changes a synopsis: name, target_words (null clears it), body (the whole synopsis text) and/or basis (null clears it). base_sha256 is required (from codex_list_synopses).',
+    props: { slug: slugArg('synopsis'), name: { type: 'string' }, target_words: { type: ['integer', 'null'], minimum: 1 }, body: notesArg('The whole new synopsis text.'), basis: textOrNull, base_sha256: planSha },
+    required: ['slug', 'base_sha256'],
+    path: (a) => `synopses/${seg(a.slug)}`,
+    body: (a) => given(a, ['name', 'target_words', 'body', 'basis', 'base_sha256']),
+  }),
+  ...archivePair('synopsis', 'synopses'),
+];
 
 /** @type {Tool[]} */
 export const TOOLS = [
@@ -411,6 +659,39 @@ export const TOOLS = [
       return result(await api.get(`${bookPath(args.book)}/plan`));
     },
   },
+  {
+    name: 'codex_get_scene_plan',
+    title: 'Read a scene plan',
+    description: `Reads the plan of one scene: its planning fields (goal, opposition, conflict, turn, outcome, consequence, stakes, emotional_start, emotional_end, purpose), characters, notes body and sha256 (pass it back as base_sha256 to codex_save_scene_plan). Read only. ${BOOK_DOC} The scene is its id (scene_...).`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg, scene: { type: 'string', minLength: 1, maxLength: 200, description: 'The scene id.' } }, ['book', 'scene']),
+    annotations: READ,
+    async run(args, api) {
+      return result(await api.get(`${bookPath(args.book)}/plan/scene-plans/${seg(args.scene)}`));
+    },
+  },
+  {
+    name: 'codex_get_plan_check',
+    title: 'Read the plan check',
+    description: `Reads the plan check, the same findings the Plan tab shows: rules PL1 to PL6 (for example a scene with no plan, a beat with no scene, a clue revealed before it is planted), each with rule, severity, title, message, subject and related ids. Read only. ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg }, ['book']),
+    annotations: READ,
+    async run(args, api) {
+      return result(await api.get(`${bookPath(args.book)}/plan/check`));
+    },
+  },
+  {
+    name: 'codex_list_structure_templates',
+    title: 'List structure templates',
+    description: `Lists the story structure templates (three-act, hero's journey and so on) that codex_create_structure can start from, with their beats. Read only. ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg }, ['book']),
+    annotations: READ,
+    async run(args, api) {
+      return result(await api.get(`${bookPath(args.book)}/plan/templates`));
+    },
+  },
   ...[
     ['codex_list_plan_links', 'links', 'List planner links', 'Lists the causal links between scenes (and beats) of the planner: from, to, relation (therefore, but, enables…), the optional what-if branch and rationale.'],
     ['codex_list_arcs', 'arcs', 'List character arcs', 'Lists the character arcs: the character, arc type, start and end state, and the milestones with their scenes.'],
@@ -432,7 +713,7 @@ export const TOOLS = [
   {
     name: 'codex_get_canvas',
     title: 'Read a canvas',
-    description: `Reads one canvas: the JSON Canvas (nodes and edges), its sha256 (pass it back as base_sha256 when saving), refs (what each story card points at) and targets (the scenes, entries, threads and events a story card can link to). ${BOOK_DOC}`,
+    description: `Reads one canvas: the JSON Canvas (nodes and edges), its sha256 (pass it back as base_sha256 when saving), refs (what each story card points at) and targets (the scenes, entries, threads, events and planner items - story plan, structures, beats, arcs, relationships, synopses, clues - a story card can link to). A beat column is a group node with storyforge.kind "column" and storyforge.ref = a beat id. ${BOOK_DOC}`,
     need: 'read',
     inputSchema: schema({ book: bookArg, canvas: canvasArg }, ['book', 'canvas']),
     annotations: READ,
@@ -456,7 +737,7 @@ export const TOOLS = [
   {
     name: 'codex_save_canvas',
     title: 'Save a whole canvas',
-    description: `Replaces the whole canvas with content, a JSON Canvas object { nodes, edges, storyforge? }. Nodes have id, type (text | file | link | group), x, y, width, height and an optional color ("1" to "6" or a #hex); text nodes have text, file nodes file, link nodes url, group nodes label. A story card is a node of type file with storyforge.ref set to a scene, entry, thread or event id from the targets codex_get_canvas returns. Edges have id, fromNode, toNode and optional label. base_sha256 is required: pass the sha256 from codex_get_canvas; if the canvas changed since, you get a conflict, so read it again and redo your change. For small changes prefer codex_edit_canvas. ${CANVAS_NOTE} ${BOOK_DOC}`,
+    description: `Replaces the whole canvas with content, a JSON Canvas object { nodes, edges, storyforge? }. Nodes have id, type (text | file | link | group), x, y, width, height and an optional color ("1" to "6" or a #hex); text nodes have text, file nodes file, link nodes url, group nodes label. A story card is a node of type file with storyforge.ref set to a scene, entry, thread, event, story-plan, structure, beat, arc, relationship, synopsis or clue id from the targets codex_get_canvas returns (planner cards show the live planner item; writing a canvas never changes the plan). A beat column is a group node { type: "group", label, storyforge: { kind: "column", ref: <beat id> } }; to put a scene in a beat use codex_set_beats, not the canvas. Edges have id, fromNode, toNode and optional label. base_sha256 is required: pass the sha256 from codex_get_canvas; if the canvas changed since, you get a conflict, so read it again and redo your change. For small changes prefer codex_edit_canvas. ${CANVAS_NOTE} ${BOOK_DOC}`,
     need: 'canvas',
     inputSchema: schema({ book: bookArg, canvas: canvasArg, content: { type: 'object', description: 'The whole JSON Canvas: { "nodes": [...], "edges": [...], "storyforge": {...} }.' }, base_sha256: canvasSha }, ['book', 'canvas', 'content', 'base_sha256']),
     annotations: CANVAS,
@@ -468,7 +749,7 @@ export const TOOLS = [
   {
     name: 'codex_edit_canvas',
     title: 'Edit a canvas',
-    description: `Changes a canvas by operations instead of resending all of it: add_nodes, update_nodes (each an object with id plus the fields to change), remove_nodes (ids; edges touching them are removed too), add_edges, remove_edges (ids). Give at least one. Node and edge shapes are as in codex_save_canvas. Pass base_sha256 (from codex_get_canvas) to refuse the edit if the canvas changed since you read it. ${CANVAS_NOTE} ${BOOK_DOC}`,
+    description: `Changes a canvas by operations instead of resending all of it: add_nodes, update_nodes (each an object with id plus the fields to change), remove_nodes (ids; edges touching them are removed too), add_edges, remove_edges (ids). Give at least one. Node and edge shapes are as in codex_save_canvas, including story cards for planner items (storyforge.ref = a scene, structure, beat, arc, relationship, synopsis, clue or story-plan id) and beat columns (group node, storyforge { kind: "column", ref: <beat id> }); codex_add_plan_cards adds story cards by id more easily. Pass base_sha256 (from codex_get_canvas) to refuse the edit if the canvas changed since you read it. ${CANVAS_NOTE} ${BOOK_DOC}`,
     need: 'canvas',
     inputSchema: schema({
       book: bookArg,
@@ -489,6 +770,35 @@ export const TOOLS = [
       const next = applyCanvasEdit(cur.canvas, args);
       const r = await api.put(path, { canvas: next, base_sha256: cur.sha256 });
       return result({ ...r, nodes: next.nodes.length, edges: next.edges.length, note: CANVAS_NOTE });
+    },
+  },
+  {
+    name: 'codex_add_plan_cards',
+    title: 'Add plan cards to a canvas',
+    description: `Adds a story card to a canvas for each ref (a scene, structure, beat, arc, relationship, synopsis, clue, story-plan, entry, thread or event id), placed in a simple grid below the existing nodes. Refs already on the canvas are skipped. The canvas is read and saved with its sha256, so a concurrent change gives a conflict. It only places cards; it never changes the plan. ${CANVAS_NOTE} ${BOOK_DOC}`,
+    need: 'canvas',
+    inputSchema: schema({ book: bookArg, canvas: canvasArg, refs: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 200 }, description: 'Ids to put on the canvas as story cards (see the targets of codex_get_canvas).' } }, ['book', 'canvas', 'refs']),
+    annotations: CANVAS,
+    async run(args, api) {
+      const path = canvasPathOf(args.book, args.canvas);
+      const cur = await api.get(path);
+      const nodes = [...(cur.canvas?.nodes ?? [])];
+      const onCanvas = new Set(nodes.map((n) => n?.storyforge?.ref).filter((r) => typeof r === 'string'));
+      const fresh = [...new Set(/** @type {string[]} */ (args.refs))].filter((r) => !onCanvas.has(r));
+      const skipped = args.refs.length - fresh.length;
+      if (fresh.length === 0) return result({ slug: cur.slug, added: 0, skipped, sha256: cur.sha256, note: 'Every ref is already on the canvas; nothing was changed.' });
+      const x0 = nodes.length > 0 ? Math.min(...nodes.map((n) => Number(n.x) || 0)) : 0;
+      const y0 = nodes.length > 0 ? Math.max(...nodes.map((n) => (Number(n.y) || 0) + (Number(n.height) || 0))) + CARD_GAP : 0;
+      const ids = new Set(nodes.map((n) => n.id));
+      const added = fresh.map((ref, i) => {
+        let id;
+        do id = Array.from({ length: 16 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+        while (ids.has(id));
+        ids.add(id);
+        return { id, type: 'file', file: 'unknown.md', x: x0 + (i % CARD_COLUMNS) * (CARD_W + CARD_GAP), y: y0 + Math.floor(i / CARD_COLUMNS) * (CARD_H + CARD_GAP), width: CARD_W, height: CARD_H, storyforge: { ref } };
+      });
+      const r = await api.put(path, { canvas: { ...cur.canvas, nodes: [...nodes, ...added] }, base_sha256: cur.sha256 });
+      return result({ ...r, added: added.length, skipped, nodes: nodes.length + added.length, note: CANVAS_NOTE });
     },
   },
   {
@@ -515,6 +825,7 @@ export const TOOLS = [
       return result({ ...r, note: CANVAS_NOTE });
     },
   },
+  ...PLAN_WRITE_TOOLS,
 ];
 
 /** Names an author of the original Codex MCP might ask for that v2 has no plugin route for. */
