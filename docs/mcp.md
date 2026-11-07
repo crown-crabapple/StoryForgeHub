@@ -1,18 +1,19 @@
 # Connecting Claude (MCP)
 
-StoryForge speaks the Model Context Protocol (MCP), so Claude Code and Claude Desktop can read your books and suggest changes. MCP is a front for the [plugin API](api.md): it uses the same access tokens, the same permissions and the same book grants. Nothing Claude does changes a file, with one exception: with the `canvas` permission it can create and edit canvases (planning boards, never your prose). Every other write is a suggestion you accept or decline in StoryForge.
+StoryForge speaks the Model Context Protocol (MCP), so Claude Code and Claude Desktop can read your books and suggest changes. MCP is a front for the [plugin API](api.md): it uses the same access tokens, the same permissions and the same book grants. Nothing Claude does changes a file, with two exceptions: with the `canvas` permission it can create and edit canvases (planning boards), and with the `plan` permission it can change your Story Plan (the Story Planner files under `planning/`). Neither ever touches your prose, scenes or Codex entries. Every other write is a suggestion you accept or decline in StoryForge.
 
 ## 1. Get a token
 
-Open Settings, then **AI connections (MCP)**. Pick the AI client (Claude Code, Claude Desktop on your own computer, or any other MCP client), give the connection a name, pick the books, and choose whether the AI may suggest changes and whether it may edit canvases (off by default). The token is shown once, with ready-to-copy setup for that client: the Claude Code command, the Claude Desktop config, or the address and `Authorization` header for any other client that speaks MCP over Streamable HTTP.
+Open Settings, then **AI connections (MCP)**. Pick the AI client (Claude Code, Claude Desktop on your own computer, or any other MCP client), give the connection a name, pick the books, and choose whether the AI may suggest changes, whether it may edit canvases and whether it may change the plan (the last two are off by default). The token is shown once, with ready-to-copy setup for that client: the Claude Code command, the Claude Desktop config, or the address and `Authorization` header for any other client that speaks MCP over Streamable HTTP.
 
 Make one connection per client or computer, as many as you like. Each has its own token, books and permissions, and the list shows when each was last used. Revoke cuts one off at once without affecting the others. Two live connections cannot share a name (the server answers 409 `NAME_TAKEN`); revoke the old one first to reuse its name. In shared mode only the owner sees this section.
 
 You can also make a token by hand: Settings, then Plugins, then **Grant access to another plugin** (see [plugins.md](plugins.md)).
 
-- `read` allows the 22 read tools (20 `codex_*` tools plus `search` and `fetch`).
+- `read` allows the 25 read tools (23 `codex_*` tools plus `search` and `fetch`).
 - `propose` allows the 3 propose tools.
-- `canvas` allows the 5 canvas write tools. It changes only canvas files (`planning/canvases/*.canvas`), never prose.
+- `canvas` allows the 6 canvas write tools. It changes only canvas files (`planning/canvases/*.canvas`), never prose.
+- `plan` allows the 30 plan write tools. It changes only Story Planner files under `planning/` (links, scene plans, the story plan, structures, arcs, relationships, clues, synopses), never prose, scenes or Codex entries. Each change can be undone in StoryForge. Off by default.
 
 The **Integrations** module must be on for the book. If it is off, every call is refused.
 
@@ -116,6 +117,9 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 | `codex_list_relationships` | The relationships between two entries, with their developments. | read |
 | `codex_list_synopses` | The synopses: type, name, word count, target, and whether the plan sources changed. | read |
 | `codex_list_clues` | The clues: fact, kind, where planted and revealed, red herrings, and who learns it where. | read |
+| `codex_get_scene_plan` | The plan of one scene (`scene` is its id): planning fields, characters, notes, sha256. | read |
+| `codex_get_plan_check` | The plan check, rules PL1 to PL6: rule, severity, title, message, subject, `related` ids. | read |
+| `codex_list_structure_templates` | The structure templates (three-act and so on) with their beats. | read |
 | `codex_get_canvas` | One canvas (`canvas` is its slug): the JSON Canvas, sha256, `refs` and `targets` (what a story card can link to). | read |
 | `codex_save_chapter` | Propose the whole new body of one scene (`scene`, `markdown`). | propose |
 | `codex_save_entry` | Propose the whole new body of one codex entry (`entry`, `markdown`). | propose |
@@ -123,14 +127,46 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 | `codex_create_canvas` | Create an empty canvas (`title`, optional `slug`). | canvas |
 | `codex_save_canvas` | Replace a whole canvas (`canvas`, `content`, `base_sha256` required). A stale `base_sha256` is a conflict: read it again. | canvas |
 | `codex_edit_canvas` | Change a canvas by operations: `add_nodes`, `update_nodes`, `remove_nodes` (edges touching them go too), `add_edges`, `remove_edges`; optional `base_sha256`. | canvas |
+| `codex_add_plan_cards` | Put a story card on a canvas for each id in `refs` (1 to 100) that is not on it yet, in a grid below the existing cards. Places cards only; never changes the plan. | canvas |
 | `codex_archive_canvas` | Move a canvas to the archive. | canvas |
 | `codex_restore_canvas` | Move an archived canvas back. | canvas |
+| `codex_save_story_plan` | Set some story plan fields and/or the notes. | plan |
+| `codex_save_scene_plan` | Set some planning fields and/or the characters of one scene. | plan |
+| `codex_create_link`, `codex_update_link` | Create or change a causal link between scenes or beats (`from`, `to`, `relation`, optional `branch`). | plan |
+| `codex_archive_link`, `codex_restore_link` | Archive a link or bring it back. | plan |
+| `codex_create_structure`, `codex_update_structure` | Start a structure from a template, or change its name and notes. | plan |
+| `codex_set_beats` | Write the whole beat list of a structure, including each beat's scenes. | plan |
+| `codex_archive_structure`, `codex_restore_structure` | Archive a structure or bring it back. | plan |
+| `codex_create_arc`, `codex_update_arc` | Start a character arc (`character` is an entry id), or change its type, fields and notes. | plan |
+| `codex_set_arc_milestones` | Write the whole milestone list of an arc. | plan |
+| `codex_archive_arc`, `codex_restore_arc` | Archive an arc or bring it back. | plan |
+| `codex_create_relationship`, `codex_update_relationship` | Start a relationship between two entries (`a`, `b`), or change its fields and notes. | plan |
+| `codex_set_relationship_developments` | Write the whole development list of a relationship. | plan |
+| `codex_archive_relationship`, `codex_restore_relationship` | Archive a relationship or bring it back. | plan |
+| `codex_create_clue`, `codex_update_clue` | Start a clue, reveal or secret, or change it. | plan |
+| `codex_set_clue_knowers` | Write the whole list of who learns a clue, and where. | plan |
+| `codex_archive_clue`, `codex_restore_clue` | Archive a clue or bring it back. | plan |
+| `codex_create_synopsis`, `codex_update_synopsis` | Start a synopsis of a type, or change its name, target and text. | plan |
+| `codex_archive_synopsis`, `codex_restore_synopsis` | Archive a synopsis or bring it back. | plan |
 
 The propose tools also take `rationale` (shown in the review) and `base_sha256`. Pass the sha256 you read: if the file changed since, the suggestion is marked stale instead of landing on the wrong text. A propose tool answers with the suggestion and a note that nothing was changed. The suggestion appears in the normal review with `source: plugin`.
 
 The canvas tools change the canvas file directly (there is no review step) and answer with a note saying so. Story cards are nodes of type `file` with `storyforge.ref` set to an id from `targets` (a scene, entry, thread or event, or a planner item: story plan, structure, beat, arc, relationship, synopsis or clue). The **Board** or the **Story Planner** module must be on for the book.
 
-The seven planner tools (`codex_get_plan` and the `codex_list_*` tools for links, arcs, structures, relationships, synopses and clues) only read. They need the **Story Planner** module on for the book, and are refused when it is off. There is no tool that writes planner data.
+The planner read tools (`codex_get_plan`, `codex_get_scene_plan`, `codex_get_plan_check`, `codex_list_structure_templates` and the `codex_list_*` tools for links, arcs, structures, relationships, synopses and clues) need the **Story Planner** module on for the book, and are refused when it is off. Their answers carry each item's `sha256` but no file paths.
+
+The plan write tools (permission `plan`) run the app's own planner routes, so they follow the same rules as the Plan tab: a stale `base_sha256` is a conflict (read the item again), and a refused value is refused with the app's words. Pass `base_sha256` from the get or list tool: it is required to change an existing item (the story plan and a scene plan need none while they have no file yet). The `set_*` tools (`codex_set_beats`, `codex_set_arc_milestones`, `codex_set_relationship_developments`, `codex_set_clue_knowers`) replace the whole list, so read it first and send it back with your change; keep each beat's `id`. The plan tools offer no dry run and no scene plan notes. They answer with the app's result (including `opId`) and a note that the author can Undo the change in StoryForge. They need the **Story Planner** module on too.
+
+### Example: a canvas for a character
+
+With the `read`, `canvas` and `plan` permissions, "make a canvas for a character" is:
+
+1. `codex_list_entries` (`book`, `type: "character"`) to find the character's entry id.
+2. `codex_create_canvas` (`book`, `title: "Protagonist"`) answers with the new `slug`.
+3. `codex_add_plan_cards` (`book`, `canvas`: that slug, `refs`: the entry id plus the scene, arc, relationship and clue ids to show) places a story card for each. `codex_get_canvas` lists the valid ids as `targets`.
+4. Arrange or label them with `codex_edit_canvas` (`add_nodes`, `update_nodes`, `add_edges`).
+
+Steps 2 to 4 need only `canvas`; `plan` is for changing the plan itself (for example `codex_create_arc` for that character first).
 
 ### Not offered
 

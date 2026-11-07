@@ -44,7 +44,7 @@ describe('Settings -> Plugins', () => {
     const out = html(h(m.PluginsView, { data: { manifests: [MANIFEST()], grants: [], books: BOOKS }, ask }));
     const t = text(out);
     assert.match(t, /Grant access to Word frequency/);
-    for (const p of ['read', 'propose', 'canvas', 'events']) assert.ok(t.includes(m.PERMISSION_TEXT[p]), p);
+    for (const p of ['read', 'propose', 'canvas', 'plan', 'events']) assert.ok(t.includes(m.PERMISSION_TEXT[p]), p);
     assert.match(t, /Nothing in your book changes until you accept a suggestion yourself/);
     assert.match(t, /can never ask for scene text/);
     assert.equal((out.match(/type="checkbox"[^>]*checked/g) ?? []).length >= 3, true, 'what was asked for is ticked: 2 permissions and the one book');

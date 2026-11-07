@@ -72,22 +72,22 @@ test('ping answers with an empty result', async () => {
   assert.deepEqual((await setup().rpc('ping')).result, {});
 });
 
-test('tools/list shows 25 tools with read+propose, 30 with canvas too, and 22 read-only tools without', async () => {
+test('tools/list shows 28 tools with read+propose, 34 with canvas too, and 25 read-only tools without', async () => {
   const all = (await setup().rpc('tools/list')).result.tools;
-  assert.equal(all.length, 25);
+  assert.equal(all.length, 28);
   assert.deepEqual(Object.keys(all[0]).sort(), ['annotations', 'description', 'inputSchema', 'name', 'title']);
   const ro = (await setup(['read']).rpc('tools/list')).result.tools;
-  assert.equal(ro.length, 22);
-  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 30);
-  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 27);
+  assert.equal(ro.length, 25);
+  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 34);
+  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 31);
   assert.ok(ro.every((t) => t.annotations.readOnlyHint === true));
   assert.equal(TOOLS.filter((t) => t.need === 'propose').length, 3);
-  assert.equal(TOOLS.filter((t) => t.need === 'canvas').length, 5);
+  assert.equal(TOOLS.filter((t) => t.need === 'canvas').length, 6);
 });
 
 const PLAN_TOOLS = ['codex_get_plan', 'codex_list_plan_links', 'codex_list_arcs', 'codex_list_structures', 'codex_list_relationships', 'codex_list_synopses', 'codex_list_clues'];
 
-test('Story Planner M8: a read token is offered the seven planner tools, all read only; they need no write permission and no planner write tool exists', async () => {
+test('Story Planner M8: a read token is offered the seven planner tools, all read only; they need no write permission', async () => {
   const ro = (await setup(['read']).rpc('tools/list')).result.tools;
   for (const name of PLAN_TOOLS) {
     const t = ro.find((x) => x.name === name);
@@ -103,7 +103,7 @@ test('Story Planner M8: a read token is offered the seven planner tools, all rea
     assert.equal(r.structuredContent.what, what ?? 'plan', name);
     assert.deepEqual(calls.map((c) => [c.method, c.path]), [['GET', `/api/v1/books/salt-orchard/plan${what ? `/${what}` : ''}`]], `${name} makes one read`);
   }
-  assert.ok(!TOOLS.some((t) => /plan|_arcs?(_|$)|structure|relationship|synops|clue/.test(t.name) && t.need !== 'read'), 'no planner write tool');
+  assert.ok(TOOLS.filter((t) => /plan|_arcs?(_|$)|structure|beats|relationship|synops|clue|_link/.test(t.name) && t.need !== 'read').every((t) => t.need === 'plan' || t.name === 'codex_add_plan_cards'), 'a planner write tool needs the plan permission');
 });
 
 test('read tools', async () => {

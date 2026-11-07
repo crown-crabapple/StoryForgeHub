@@ -45,6 +45,8 @@ What it does, in plain words.
 - `propose`: also `POST /api/v1/books/:b/proposals`.
 - `events`: also manage its own webhook subscriptions (§4).
 
+_Later additions:_ The `canvas` permission was added after this contract (it writes canvases under `planning/canvases/`). M11 adds a second writing permission, `plan`, which writes only the Story Planner files under `planning/` through the app's own planner routes, never prose, scenes or Codex entries; see [M11-ai-plan-tools.md](M11-ai-plan-tools.md). Where this contract says no token writes, read it with these two opt-in exceptions.
+
 **Anything else is refused** (`403 PLUGIN_SCOPE`): every existing `/api/*` route, every non-v1 route, every write, admin, AI, export, backup, and receipts.
 
 **Shared mode:** only the owner grants tokens. A plugin token is not a member and has no role. The policy is its own, decided before the member policy, and every call is audited (`plugin.<route>`, token id).

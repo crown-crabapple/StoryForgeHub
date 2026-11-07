@@ -9,6 +9,7 @@ export const PERMISSION_TEXT = {
   read: 'Read your books: the outline, scene text, the codex, threads, events, search and problems.',
   propose: 'Propose changes as suggestions. Nothing in your book changes until you accept a suggestion yourself.',
   canvas: 'Create, change, archive and restore canvases (planning boards). It never touches your prose.',
+  plan: 'Change the plan: read and write the Story Planner (scene plans, links, structures, arcs, relationships, clues, synopses). You can Undo each change. It never touches your prose.',
   events: 'Subscribe to webhooks for its own address (it can never ask for scene text).',
 };
 const PERMISSIONS = Object.keys(PERMISSION_TEXT);

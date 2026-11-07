@@ -67,10 +67,10 @@ export function setupBlocks(client, s) {
   ];
 }
 
-/** The permissions a connection gets: read always, propose and canvas when ticked, events never. @param {boolean} propose @param {boolean} [canvas] */
-export const connectionPermissions = (propose, canvas = false) => ['read', ...(propose ? ['propose'] : []), ...(canvas ? ['canvas'] : [])];
+/** The permissions a connection gets: read always, propose, canvas and plan when ticked, events never. @param {boolean} propose @param {boolean} [canvas] @param {boolean} [plan] */
+export const connectionPermissions = (propose, canvas = false, plan = false) => ['read', ...(propose ? ['propose'] : []), ...(canvas ? ['canvas'] : []), ...(plan ? ['plan'] : [])];
 
-const permissionWords = (/** @type {string[]} */ perms) => perms.map((p) => (p === 'read' ? 'read your books' : p === 'propose' ? 'suggest changes' : p === 'canvas' ? 'edit canvases' : p)).join(', ');
+const permissionWords = (/** @type {string[]} */ perms) => perms.map((p) => (p === 'read' ? 'read your books' : p === 'propose' ? 'suggest changes' : p === 'canvas' ? 'edit canvases' : p === 'plan' ? 'change the plan' : p)).join(', ');
 const booksText = (/** @type {'all' | string[]} */ books) => (books === 'all' ? 'All books' : books.join(', '));
 const day = (/** @type {number | null | undefined} */ ms) => (typeof ms === 'number' ? new Date(ms).toISOString().slice(0, 10) : null);
 
@@ -140,6 +140,7 @@ function ConnectForm({ books, taken, mode, busy, error, onCreate }) {
   const [client, setClient] = useState(clients[0].id);
   const [propose, setPropose] = useState(true);
   const [canvas, setCanvas] = useState(false);
+  const [plan, setPlan] = useState(false);
   const [scope, setScope] = useState('all');
   const [picked, setPicked] = useState(/** @type {Set<string>} */ (new Set()));
   const slug = connectionSlug(name, taken);
@@ -158,7 +159,7 @@ function ConnectForm({ books, taken, mode, busy, error, onCreate }) {
       onSubmit={(e) => {
         e.preventDefault();
         if (slug.ok && ready && !busy)
-          onCreate({ plugin: slug.slug, permissions: connectionPermissions(propose, canvas), books: scope === 'all' ? 'all' : books.map((b) => b.slug).filter((s) => picked.has(s)), client });
+          onCreate({ plugin: slug.slug, permissions: connectionPermissions(propose, canvas, plan), books: scope === 'all' ? 'all' : books.map((b) => b.slug).filter((s) => picked.has(s)), client });
       }}
     >
       <h3 id={`${id}-h`}>{taken.length === 0 ? 'New connection' : 'Add another connection'}</h3>
@@ -196,6 +197,10 @@ function ConnectForm({ books, taken, mode, busy, error, onCreate }) {
         <input type="checkbox" checked={canvas} onChange={() => setCanvas(!canvas)} />
         <span>The AI may edit canvases (planning boards only, never your prose)</span>
       </label>
+      <label className="choice">
+        <input type="checkbox" checked={plan} onChange={() => setPlan(!plan)} />
+        <span>Change the plan: the AI may write your Story Planner items (planning material, never your prose; you can Undo each change)</span>
+      </label>
       {error && (
         <p role="alert" className="field-error">
           {error}
@@ -224,7 +229,7 @@ export function ClaudeView({ data, loadError = null, moduleOff = false, mode = n
       <h2 id="claude-heading">AI connections (MCP)</h2>
       <p className="muted">
         Let {mode === 'shared' ? 'Claude Code' : 'Claude Code, Claude Desktop'} or another MCP client read your books. Make one key for each client or computer, as many as you need: each has its own books and permissions, and you can revoke one without affecting the
-        others. An AI never changes your prose: a suggestion changes nothing until you accept it. Only if you tick it below may it edit your canvases.
+        others. An AI never changes your prose: a suggestion changes nothing until you accept it. Only if you tick them below may it edit your canvases or change your plan.
       </p>
       {moduleOff && <p className="field-warning">The Integrations module is off, so no AI client can reach your books. Turn it on under Modules above.</p>}
       {loadError && (
