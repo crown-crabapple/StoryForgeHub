@@ -1,6 +1,5 @@
 // Structure commands (M03-J01): scene fields, chapters, acts, renumber chapters, archive chapter,
 // split, merge, undo. Every one has a dry run, refuses on a broken book and goes through the store.
-import { rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
   editFrontMatterLine,
@@ -471,10 +470,8 @@ export function moveChapter(bookRoot, chapter, args = {}) {
       withDiff: true,
       extra: { chapter: newOf(chapter), act, mapping: renumbered },
     });
-    // a folder the move emptied is removed (rmdir only removes an empty folder, so nothing else can go); undo recreates it
-    if (res.ok && !dryRun) {
-      for (const dir of movedDirs.keys()) await rmdir(path.join(path.resolve(bookRoot), ...dir.split('/'))).catch(() => {});
-    }
+    // a folder the move emptied is removed (only an empty one can be); undo recreates it
+    if (res.ok && !dryRun) for (const dir of movedDirs.keys()) await store.removeEmptyDir(dir);
     return res;
   });
 }

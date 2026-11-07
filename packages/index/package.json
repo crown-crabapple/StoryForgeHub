@@ -13,6 +13,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@storyforge/format": "0.1.0"
+    "@storyforge/format": "0.1.0",
+    "@storyforge/store": "0.1.0"
   }
 }

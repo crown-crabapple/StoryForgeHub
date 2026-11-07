@@ -327,6 +327,22 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
         return [];
       }
     },
+    /**
+     * Remove the folder at `rel` if it is empty (a folder an operation just moved every file out of). Never removes a file or a
+     * folder that still holds anything, the root, or anything under .storyforge/. @returns {Promise<boolean>} true when removed
+     */
+    async removeEmptyDir(rel) {
+      const r = normRel(rel);
+      if (!r || r === '.storyforge' || r.startsWith('.storyforge/') || (await escapesRoot(root, r))) return false;
+      return withRootLock(root, async () => {
+        try {
+          await rmdir(absOf(root, r));
+          return true;
+        } catch {
+          return false; // not empty, not a folder, or already gone
+        }
+      });
+    },
     /** Derived-data files under .storyforge/ (e.g. the disposable index); atomic, not journaled. */
     async readMeta(name) {
       if (!META_RE.test(name) || name.startsWith('.') || (await escapesRoot(root, `.storyforge/${name}`))) return null;

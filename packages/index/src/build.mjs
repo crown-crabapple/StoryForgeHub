@@ -1,11 +1,11 @@
 // Build index.sqlite in memory from the Markdown files. Nothing is written here: the caller gets bytes.
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { extractLinks, isFile, loadDoc, validate, walkMarkdown, walkSharedMarkdown } from '@storyforge/format';
+import { withScratchFile } from '@storyforge/store';
 import { bookFacts } from './book-facts.mjs';
 import { buildGraph, mentionRows } from './graph.mjs';
 import { DDL, FORMAT, OBJECT_KINDS, SCHEMA_VERSION, SEARCH_KINDS } from './schema.mjs';
@@ -172,14 +172,10 @@ export function dbBytes(db) {
     const u8 = d.serialize();
     return Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength);
   }
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'storyforge-index-'));
-  try {
-    const file = path.join(dir, `${randomBytes(8).toString('hex')}.sqlite`);
+  return withScratchFile('index.sqlite', (file) => {
     db.prepare('VACUUM INTO ?').run(file);
     return readFileSync(file);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  });
 }
 
 function keepProjection({ files, shared, diagnostics, seriesFm, libraryFm }, prev, { now, invalidPaths }) {
