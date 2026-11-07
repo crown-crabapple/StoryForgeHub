@@ -89,6 +89,41 @@ function readUpload(req, max) {
 }
 
 /**
+ * One line on stderr (the service journal) per POST /mcp request, to see how an MCP client talks to the server: the method, the answer code, whether a key and an
+ * Origin header came, the client's name and the JSON-RPC method. Never the key, the body, a book's content or the client's address.
+ * @param {import('node:http').IncomingMessage} req
+ * @param {string | null} bearer what bearerOf() found: null (no Authorization header), '' (not a Bearer token) or the token
+ */
+function mcpRequestLog(req, bearer) {
+  const clean = (/** @type {unknown} */ v, n = 120) => (typeof v === 'string' ? v.replace(/[^\x20-\x7e]/g, '?').slice(0, n) : undefined);
+  const seen = {
+    /** @type {unknown} */ rpc: undefined,
+    /** @type {any} */ reply: undefined,
+    /** @param {number} status */
+    write(status) {
+      const result = seen.reply?.result;
+      const line = {
+        method: req.method,
+        status,
+        auth: bearer === null ? 'none' : bearer === '' ? 'not-bearer' : 'bearer',
+        origin: clean(req.headers.origin) ?? null,
+        client: clean(req.headers['user-agent']) ?? null,
+        rpc: clean(seen.rpc, 40) ?? null,
+        ...(Array.isArray(result?.tools) ? { tools: result.tools.length } : {}),
+        ...(typeof result?.protocolVersion === 'string' ? { protocol: result.protocolVersion } : {}),
+        ...(typeof seen.reply?.error?.code === 'number' ? { rpc_error: seen.reply.error.code } : {}),
+        ...(typeof seen.reply?.code === 'string' ? { code: seen.reply.code } : {}),
+        content_type: clean(req.headers['content-type'], 60) ?? null,
+        accept: clean(req.headers.accept, 80) ?? null,
+        mcp_protocol: clean(req.headers['mcp-protocol-version'], 20) ?? null,
+      };
+      process.stderr.write(`storyforge: mcp request ${JSON.stringify(line)}\n`);
+    },
+  };
+  return seen;
+}
+
+/**
  * This server's address as the client reached it, for links in MCP tool results: https behind the TLS proxy (shared mode), http on this computer. The Host header
  * has already passed the host check in shared mode; anything that is not a plain host[:port] gives '' (no links).
  * @param {import('node:http').IncomingMessage} req
@@ -174,6 +209,8 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
       // MCP over Streamable HTTP (mcp-route.mjs): the same bearer token and the same /api/v1 policy, one JSON-RPC message per POST. MCP clients are not
       // web pages, so a request that carries an Origin header is refused (no browser page can drive the tools with a token it was given).
       if (pathname === '/mcp') {
+        const seen = mcpRequestLog(req, bearer);
+        res.on('finish', () => seen.write(res.statusCode));
         if (gate && !gate.hostOk(req, port)) return sendJson(res, 403, { error: 'forbidden' });
         if (req.method !== 'POST' || req.headers.origin !== undefined) {
           req.resume();
@@ -196,12 +233,14 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         } catch {
           return sendJson(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'parse error' } });
         }
+        seen.rpc = /** @type {any} */ (message)?.method;
         const r = await handleMcpRequest({
           bearer, message, repository: current(), state, service: state.integrations,
           audit: gate && shared?.audit ? shared.audit : null, ip: req.socket?.remoteAddress,
           afterProposal: (book, proposal, by) => void hookEvents.afterProposal(current(), book, proposal, by).catch(() => {}),
           origin: publicOrigin(req),
         });
+        seen.reply = /** @type {any} */ (r.body);
         if (r.status === 202) {
           res.writeHead(202, { 'cache-control': 'no-store', 'content-length': 0 });
           return res.end();
