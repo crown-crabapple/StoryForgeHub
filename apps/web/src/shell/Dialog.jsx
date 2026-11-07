@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
@@ -8,6 +9,10 @@ const open = [];
 /**
  * A modal dialog: moves focus in, keeps Tab inside, closes on Escape, and gives focus back to whatever
  * opened it. `label` is its accessible name.
+ *
+ * In the browser it renders into document.body, so a dialog opened from a panel (the outline, a rail) is never
+ * trapped in that panel's stacking context and painted under the manuscript. Without a document (server
+ * rendering, tests) it renders in place.
  */
 export function Dialog({ label, onClose, className = '', children }) {
   const ref = useRef(null);
@@ -58,11 +63,12 @@ export function Dialog({ label, onClose, className = '', children }) {
     };
   }, []);
 
-  return (
+  const ui = (
     <div className="dialog-backdrop">
       <section ref={ref} className={`dialog ${className}`.trim()} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1}>
         {children}
       </section>
     </div>
   );
+  return typeof document === 'undefined' ? ui : createPortal(ui, document.body);
 }
