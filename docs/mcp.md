@@ -10,11 +10,20 @@ Make one connection per client or computer, as many as you like. Each has its ow
 
 You can also make a token by hand: Settings, then Plugins, then **Grant access to another plugin** (see [plugins.md](plugins.md)).
 
-- `read` allows the 20 read tools.
+- `read` allows the 22 read tools (20 `codex_*` tools plus `search` and `fetch`).
 - `propose` allows the 3 propose tools.
 - `canvas` allows the 5 canvas write tools. It changes only canvas files (`planning/canvases/*.canvas`), never prose.
 
 The **Integrations** module must be on for the book. If it is off, every call is refused.
+
+### ChatGPT
+
+ChatGPT's regular connectors and deep research use only two tools, by these exact names: `search` and `fetch`. StoryForge offers both, read-only:
+
+- `search` takes `query` and looks in every book the token may read. It returns `{"results": [{"id", "title", "text", "url"}]}`, where `text` is a snippet and `url` opens the item in StoryForge. It returns scenes, codex entries, plot threads and timeline events.
+- `fetch` takes an `id` from `search` (`<book slug>/<item id>`). It returns `{"id", "title", "text", "url", "metadata"}`: the full text of a scene or entry, or the details of a thread or event.
+
+Add the connector with the address `https://<your domain>/mcp` and the header `Authorization: Bearer <token>`. In ChatGPT's developer mode every tool is offered, as for Claude.
 
 ## 2. Pick a way in
 

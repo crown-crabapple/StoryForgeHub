@@ -13,7 +13,7 @@ export class ToolError extends Error {
 }
 
 /**
- * @typedef {{ get: (path: string, query?: Record<string, string>) => Promise<any>, post: (path: string, body?: unknown) => Promise<any>, put: (path: string, body?: unknown) => Promise<any> }} Api
+ * @typedef {{ get: (path: string, query?: Record<string, string>) => Promise<any>, post: (path: string, body?: unknown) => Promise<any>, put: (path: string, body?: unknown) => Promise<any>, origin: string }} Api
  * @typedef {{ content: { type: 'text', text: string }[], structuredContent: Record<string, unknown> }} ToolResult
  * @typedef {{ name: string, title: string, description: string, need: 'read' | 'propose' | 'canvas', inputSchema: Record<string, any>,
  *   annotations: { readOnlyHint: boolean, destructiveHint: false, idempotentHint: boolean, openWorldHint: false },
@@ -90,6 +90,33 @@ function applyCanvasEdit(canvas, args) {
     edges = edges.filter((e) => e.id !== id);
   }
   return { ...canvas, nodes, edges };
+}
+
+// ---- `search` and `fetch`: the two tools ChatGPT's regular connectors and deep research look for (by these exact names). A result id is `<book slug>/<item id>`,
+// so fetch needs no other argument; url opens the item in StoryForge when the server knows its own address. Only kinds fetch can open are returned by search.
+const FETCHABLE = ['scene', 'entry', 'thread', 'event'];
+const SEARCH_LIMIT = 20;
+
+/** The StoryForge page for an item, or null without an origin. @param {string} origin @param {string} bookId @param {string} kind @param {string} id */
+function itemUrl(origin, bookId, kind, id) {
+  if (!origin) return null;
+  const b = `${origin}/books/${encodeURIComponent(bookId)}`;
+  if (kind === 'scene') return `${b}?scene=${encodeURIComponent(id)}`;
+  if (kind === 'entry') return `${b}/codex?entry=${encodeURIComponent(id)}`;
+  if (kind === 'thread') return `${b}/plan`;
+  if (kind === 'event') return `${b}/timeline`;
+  return b;
+}
+
+/** @param {string} id @returns {string} the kind an item id names by its prefix */
+const kindOf = (id) => (id.startsWith('scene_') ? 'scene' : id.startsWith('entry_') ? 'entry' : id.startsWith('thread_') ? 'thread' : id.startsWith('event_') ? 'event' : '');
+
+/** Readable text for a thread or an event (a list item of the plugin API). @param {Record<string, any>} x */
+function recordText(x) {
+  return Object.entries(x)
+    .filter(([k, v]) => !['id', 'path', 'sha256'].includes(k) && v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0) && v !== '')
+    .map(([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+    .join('\n');
 }
 
 /** @param {any} book @returns {any[]} every chapter with its act */
@@ -219,6 +246,62 @@ export const TOOLS = [
         for (const h of r.hits) hits.push({ ...h, book: b.slug });
       }
       return result({ query: args.query, hits: hits.slice(0, limit) });
+    },
+  },
+  {
+    name: 'search',
+    title: 'Search (ChatGPT connectors)',
+    description: 'Searches every book for scenes, codex entries, plot threads and timeline events matching the query. Returns results with an id, a title, a snippet and a link; pass an id to fetch to read the whole item. (The same search as codex_search, in the shape ChatGPT connectors and deep research expect.)',
+    need: 'read',
+    inputSchema: schema({ query: { type: 'string', minLength: 1, maxLength: 200, description: 'The text to look for.' } }, ['query']),
+    annotations: READ,
+    async run(args, api) {
+      const { books } = await api.get('/api/v1/books');
+      /** @type {{ id: string, title: string, text: string, url: string | null }[]} */
+      const results = [];
+      for (const b of books) {
+        if (results.length >= SEARCH_LIMIT) break;
+        const r = await api.get(`${bookPath(b.slug)}/search`, { q: args.query, limit: String(SEARCH_LIMIT) });
+        for (const h of r.hits) {
+          if (!FETCHABLE.includes(h.kind)) continue;
+          results.push({ id: `${b.slug}/${h.id}`, title: `${h.title || h.id} (${h.kind}, ${b.title || b.slug})`, text: h.snippet ?? '', url: itemUrl(api.origin, b.id, h.kind, h.id) });
+        }
+      }
+      const out = { results: results.slice(0, SEARCH_LIMIT).map((x) => (x.url ? x : { id: x.id, title: x.title, text: x.text })) };
+      return { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out };
+    },
+  },
+  {
+    name: 'fetch',
+    title: 'Fetch (ChatGPT connectors)',
+    description: 'Reads one item that search returned, by its id (book slug, a slash, then the item id, for example my-book/scene_01...): the full text of a scene or codex entry, or the details of a plot thread or timeline event.',
+    need: 'read',
+    inputSchema: schema({ id: { type: 'string', minLength: 3, maxLength: 300, description: 'An id from search.' } }, ['id']),
+    annotations: READ,
+    async run(args, api) {
+      const cut = args.id.indexOf('/');
+      const slug = cut > 0 ? args.id.slice(0, cut) : '';
+      const itemId = cut > 0 ? args.id.slice(cut + 1) : '';
+      const kind = kindOf(itemId);
+      if (!slug || !kind) throw new ToolError('id must be an id from search: the book slug, a slash, then a scene_, entry_, thread_ or event_ id');
+      const { books } = await api.get('/api/v1/books');
+      const book = books.find((/** @type {any} */ b) => b.slug === slug || b.id === slug);
+      if (!book) throw new ToolError(`no book "${slug}" is available to this connection`);
+      /** @type {{ title: string, text: string, metadata: Record<string, unknown> }} */
+      let doc;
+      if (kind === 'scene' || kind === 'entry') {
+        const full = await api.get(`${bookPath(book.slug)}/${kind === 'scene' ? 'scenes' : 'entries'}/${seg(itemId)}`);
+        const head = Object.fromEntries(Object.entries(full).filter(([k]) => !['body', 'sha256', 'path'].includes(k)));
+        doc = { title: String(full.title ?? full.name ?? itemId), text: String(full.body ?? ''), metadata: { kind, book: book.slug, ...head } };
+      } else {
+        const list = await api.get(`${bookPath(book.slug)}/${kind === 'thread' ? 'threads' : 'events'}`);
+        const item = (list[kind === 'thread' ? 'threads' : 'events'] ?? []).find((/** @type {any} */ x) => x.id === itemId);
+        if (!item) throw new ToolError(`no ${kind} ${itemId} in ${book.slug}`);
+        doc = { title: String(item.title ?? item.name ?? itemId), text: recordText(item), metadata: { kind, book: book.slug } };
+      }
+      const url = itemUrl(api.origin, book.id, kind, itemId);
+      const out = { id: `${book.slug}/${itemId}`, title: doc.title, text: doc.text, ...(url ? { url } : {}), metadata: doc.metadata };
+      return { content: [{ type: 'text', text: JSON.stringify(out) }], structuredContent: out };
     },
   },
   {

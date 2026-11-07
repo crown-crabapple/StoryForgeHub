@@ -39,7 +39,7 @@ function fake() {
     if (c === 'events') return { status: 200, body: { events: [{ id: 'event_1' }] } };
     if (c === 'diagnostics') return { status: 200, body: { diagnostics: [] } };
     if (c === 'search') {
-      const hits = book.slug === 'salt-orchard' ? [{ id: 'scene_1', kind: 'scene', title: 'Dock', path: 'p', snippet: 's' }, { id: 'scene_2', kind: 'scene', title: 'Road', path: 'p', snippet: 's' }] : [{ id: 'scene_x', kind: 'scene', title: 'X', path: 'p', snippet: 's' }];
+      const hits = book.slug === 'salt-orchard' ? [{ id: 'scene_1', kind: 'scene', title: 'Dock', path: 'p', snippet: 's' }, { id: 'scene_2', kind: 'scene', title: 'Road', path: 'p', snippet: 's' }] : [{ id: 'scene_x', kind: 'scene', title: 'X', path: 'p', snippet: 's' }, ...(req.query.q === 'x' ? [{ id: 'doc_1', kind: 'doc', title: 'D', path: 'p', snippet: 's' }] : [])];
       return { status: 200, body: { query: req.query.q, hits } };
     }
     if (c === 'proposals') return req.body.target === 'scene_bad' ? { status: 400, body: { error: 'bad_request', code: 'BAD_ARGS', message: 'nope' } } : { status: 201, body: { suggestion: { id: 'sug_1', path: 'p', target: req.body.target, status: 'open' } } };
@@ -48,9 +48,9 @@ function fake() {
   return { call, calls };
 }
 
-function setup(permissions = ['read', 'propose']) {
+function setup(permissions = ['read', 'propose'], origin) {
   const f = fake();
-  const server = createMcpServer({ call: f.call, permissions, serverInfo: { name: 'storyforge', version: '0.1.0' } });
+  const server = createMcpServer({ call: f.call, permissions, serverInfo: { name: 'storyforge', version: '0.1.0' }, ...(origin === undefined ? {} : { origin }) });
   let n = 0;
   const rpc = (method, params) => server.handle({ jsonrpc: '2.0', id: ++n, method, ...(params === undefined ? {} : { params }) });
   const tool = async (name, args) => (await rpc('tools/call', { name, arguments: args })).result;
@@ -72,14 +72,14 @@ test('ping answers with an empty result', async () => {
   assert.deepEqual((await setup().rpc('ping')).result, {});
 });
 
-test('tools/list shows 23 tools with read+propose, 28 with canvas too, and 20 read-only tools without', async () => {
+test('tools/list shows 25 tools with read+propose, 30 with canvas too, and 22 read-only tools without', async () => {
   const all = (await setup().rpc('tools/list')).result.tools;
-  assert.equal(all.length, 23);
+  assert.equal(all.length, 25);
   assert.deepEqual(Object.keys(all[0]).sort(), ['annotations', 'description', 'inputSchema', 'name', 'title']);
   const ro = (await setup(['read']).rpc('tools/list')).result.tools;
-  assert.equal(ro.length, 20);
-  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 28);
-  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 25);
+  assert.equal(ro.length, 22);
+  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 30);
+  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 27);
   assert.ok(ro.every((t) => t.annotations.readOnlyHint === true));
   assert.equal(TOOLS.filter((t) => t.need === 'propose').length, 3);
   assert.equal(TOOLS.filter((t) => t.need === 'canvas').length, 5);
@@ -265,4 +265,48 @@ test('propose tools post the right bodies', async () => {
   assert.match(both.content[0].text, /exactly one/);
   const neither = await tool('codex_propose_edit', { book: 'salt-orchard', target: 'scene_1' });
   assert.equal(neither.isError, true);
+});
+
+test('search and fetch: the ChatGPT connector shape, over every book, with links when the origin is known', async () => {
+  const { tool } = setup(['read'], 'https://sf.example');
+  const s = await tool('search', { query: 'dock' });
+  assert.equal(s.isError, undefined);
+  const parsed = JSON.parse(s.content[0].text);
+  assert.deepEqual(parsed, s.structuredContent);
+  const ids = parsed.results.map((r) => r.id);
+  assert.ok(ids.includes('salt-orchard/scene_1') && ids.includes('salt-orchard/scene_2'), ids.join());
+  const first = parsed.results.find((r) => r.id === 'salt-orchard/scene_1');
+  assert.deepEqual(Object.keys(first).sort(), ['id', 'text', 'title', 'url']);
+  assert.equal(first.url, 'https://sf.example/books/book_1?scene=scene_1');
+  assert.match(first.title, /Dock \(scene, Salt Orchard\)/);
+
+  const f = await tool('fetch', { id: 'salt-orchard/scene_1' });
+  const doc = JSON.parse(f.content[0].text);
+  assert.equal(doc.id, 'salt-orchard/scene_1');
+  assert.equal(doc.text, 'Dock body');
+  assert.equal(doc.url, 'https://sf.example/books/book_1?scene=scene_1');
+  assert.equal(doc.metadata.kind, 'scene');
+  assert.equal(doc.metadata.sha256, undefined, 'no file internals');
+  const e = JSON.parse((await tool('fetch', { id: 'salt-orchard/entry_9' })).content[0].text);
+  assert.equal(e.text, 'Entry body');
+  assert.equal(e.url, 'https://sf.example/books/book_1/codex?entry=entry_9');
+  const th = JSON.parse((await tool('fetch', { id: 'salt-orchard/thread_1' })).content[0].text);
+  assert.equal(th.metadata.kind, 'thread');
+  assert.equal(th.url, 'https://sf.example/books/book_1/plan');
+});
+
+test('search leaves out kinds fetch cannot open; fetch refuses a bad id or an unknown book; no links without an origin', async () => {
+  const { tool } = setup(['read']);
+  const parsed = JSON.parse((await tool('search', { query: 'x' })).content[0].text);
+  assert.ok(parsed.results.every((r) => r.url === undefined), 'no url without an origin');
+  assert.deepEqual(parsed.results.map((r) => r.id), ['salt-orchard/scene_1', 'salt-orchard/scene_2', 'tin-sea/scene_x'], 'the doc hit is left out');
+  for (const id of ['scene_1', 'salt-orchard/', 'salt-orchard/note_1', '/scene_1']) {
+    const r = await tool('fetch', { id });
+    assert.equal(r.isError, true, id);
+  }
+  const nb = await tool('fetch', { id: 'no-such-book/scene_1' });
+  assert.equal(nb.isError, true);
+  assert.match(nb.content[0].text, /no book "no-such-book"/);
+  const missing = await tool('fetch', { id: 'salt-orchard/thread_404' });
+  assert.equal(missing.isError, true);
 });

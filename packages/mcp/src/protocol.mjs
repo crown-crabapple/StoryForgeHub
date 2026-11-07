@@ -70,7 +70,7 @@ function validate(schema, value, name) {
  * Wrap the server's `call` as the tool helper: bodies on 2xx, ToolError otherwise.
  * @param {(req: { method: 'GET' | 'POST', path: string, query?: Record<string, string>, body?: unknown }) => Promise<{ status: number, body: any }>} call
  */
-function makeApi(call) {
+function makeApi(call, origin = '') {
   /** @param {{ status: number, body: any }} res */
   const unwrap = (res) => {
     if (res.status >= 200 && res.status < 300) return res.body;
@@ -81,17 +81,18 @@ function makeApi(call) {
     get: async (/** @type {string} */ path, /** @type {Record<string, string> | undefined} */ query) => unwrap(await call({ method: 'GET', path, ...(query ? { query } : {}) })),
     post: async (/** @type {string} */ path, /** @type {unknown} */ body) => unwrap(await call({ method: 'POST', path, body })),
     put: async (/** @type {string} */ path, /** @type {unknown} */ body) => unwrap(await call({ method: 'PUT', path, body })),
+    origin,
   };
 }
 
 /**
  * Create the MCP handler for one token.
  * @param {{ call: (req: { method: 'GET' | 'POST' | 'PUT', path: string, query?: Record<string, string>, body?: unknown }) => Promise<{ status: number, body: any }>,
- *   permissions: string[], serverInfo: { name: string, version: string } }} options
+ *   permissions: string[], serverInfo: { name: string, version: string }, origin?: string }} options  origin: this server's public address, for the links search and fetch return ('' when unknown)
  * @returns {{ handle: (message: unknown) => Promise<Record<string, unknown> | null> }}
  */
-export function createMcpServer({ call, permissions, serverInfo }) {
-  const api = makeApi(call);
+export function createMcpServer({ call, permissions, serverInfo, origin = '' }) {
+  const api = makeApi(call, origin);
   const offered = TOOLS.filter((t) => permissions.includes(t.need));
 
   /** @param {Record<string, any>} params */

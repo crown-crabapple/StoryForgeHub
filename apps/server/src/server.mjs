@@ -89,6 +89,18 @@ function readUpload(req, max) {
 }
 
 /**
+ * This server's address as the client reached it, for links in MCP tool results: https behind the TLS proxy (shared mode), http on this computer. The Host header
+ * has already passed the host check in shared mode; anything that is not a plain host[:port] gives '' (no links).
+ * @param {import('node:http').IncomingMessage} req
+ */
+function publicOrigin(req) {
+  const host = String(req.headers.host ?? '');
+  if (!/^[A-Za-z0-9.-]+(:[0-9]{1,5})?$/.test(host)) return '';
+  const https = /** @type {any} */ (req.socket)?.encrypted || String(req.headers['x-forwarded-proto'] ?? '').split(',')[0].trim() === 'https';
+  return `${https ? 'https' : 'http'}://${host}`;
+}
+
+/**
  * @param {{ repository?: import('@storyforge/core').FileRepository, host?: ReturnType<typeof createLibraryHost>, webRoot?: string,
  *           recoverReport?: unknown, instance?: { pid: number, started_at: string, lock: string }, maxRestoreBytes?: number }} options
  *   `host` owns the library being served and switches to another one (POST /api/library/open); without it the
@@ -188,6 +200,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
           bearer, message, repository: current(), state, service: state.integrations,
           audit: gate && shared?.audit ? shared.audit : null, ip: req.socket?.remoteAddress,
           afterProposal: (book, proposal, by) => void hookEvents.afterProposal(current(), book, proposal, by).catch(() => {}),
+          origin: publicOrigin(req),
         });
         if (r.status === 202) {
           res.writeHead(202, { 'cache-control': 'no-store', 'content-length': 0 });

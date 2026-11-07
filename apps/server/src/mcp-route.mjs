@@ -9,10 +9,11 @@ import { handlePluginRequest } from './api-v1.mjs';
 
 /**
  * @param {{ bearer: string, message: unknown, repository: any, state: any, service: ReturnType<typeof import('./plugin-service.mjs').createPluginService>,
- *   audit?: ((e: Record<string, unknown>) => Promise<void>) | null, ip?: string, afterProposal?: (book: any, proposal: any, by: any) => void }} p
+ *   audit?: ((e: Record<string, unknown>) => Promise<void>) | null, ip?: string, afterProposal?: (book: any, proposal: any, by: any) => void, origin?: string }} p
+ *   origin: this server's public address (scheme and host), for the links the search and fetch tools return
  * @returns {Promise<{ status: number, body?: unknown }>} status 202 has no body
  */
-export async function handleMcpRequest({ bearer, message, repository, state, service, audit = null, ip, afterProposal }) {
+export async function handleMcpRequest({ bearer, message, repository, state, service, audit = null, ip, afterProposal, origin = '' }) {
   const record = async (/** @type {Record<string, unknown>} */ e) => {
     if (audit) await audit(e).catch((err) => process.stderr.write(`storyforge: audit write failed: ${err?.message ?? err}\n`));
   };
@@ -41,7 +42,7 @@ export async function handleMcpRequest({ bearer, message, repository, state, ser
     return { status: r.status, body: r.body };
   };
 
-  const mcp = createMcpServer({ call, permissions: [...grant.permissions], serverInfo: { name: 'storyforge', version: pkg.version } });
+  const mcp = createMcpServer({ call, permissions: [...grant.permissions], serverInfo: { name: 'storyforge', version: pkg.version }, origin });
   const reply = await mcp.handle(message);
   return reply === null ? { status: 202 } : { status: 200, body: reply };
 }
