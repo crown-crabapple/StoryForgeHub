@@ -1,6 +1,8 @@
 // Build index.sqlite in memory from the Markdown files. Nothing is written here: the caller gets bytes.
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { extractLinks, isFile, loadDoc, validate, walkMarkdown, walkSharedMarkdown } from '@storyforge/format';
@@ -158,6 +160,28 @@ const KEPT = {
   fts: ['id', 'kind', 'title', 'body'],
 };
 
+/**
+ * The bytes of an in-memory database. DatabaseSync#serialize exists only in newer Node releases (not in Node 22, which the engines field allows), so without it
+ * the database is copied with VACUUM INTO to a private temporary file, read back and removed. Both give a complete, standalone SQLite file.
+ * @param {DatabaseSync} db
+ * @returns {Buffer}
+ */
+export function dbBytes(db) {
+  const d = /** @type {any} */ (db);
+  if (typeof d.serialize === 'function') {
+    const u8 = d.serialize();
+    return Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength);
+  }
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'storyforge-index-'));
+  try {
+    const file = path.join(dir, `${randomBytes(8).toString('hex')}.sqlite`);
+    db.prepare('VACUUM INTO ?').run(file);
+    return readFileSync(file);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 function keepProjection({ files, shared, diagnostics, seriesFm, libraryFm }, prev, { now, invalidPaths }) {
   const db = new DatabaseSync(':memory:');
   try {
@@ -190,8 +214,7 @@ function keepProjection({ files, shared, diagnostics, seriesFm, libraryFm }, pre
 
     db.exec('COMMIT');
     const counts = readCounts(db);
-    const u8 = db.serialize();
-    return { bytes: Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength), counts };
+    return { bytes: dbBytes(db), counts };
   } finally {
     db.close();
   }
@@ -280,8 +303,7 @@ async function project({ bookPath, files, shared, book, rel, diagnostics, result
 
     db.exec('COMMIT');
     const counts = readCounts(db);
-    const u8 = db.serialize();
-    return { bytes: Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength), counts };
+    return { bytes: dbBytes(db), counts };
   } finally {
     db.close();
   }
