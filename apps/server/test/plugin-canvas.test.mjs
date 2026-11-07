@@ -100,10 +100,19 @@ test('a token granted another book cannot reach this one; routes with a bad slug
   }
 });
 
-test('with the board module off, canvas routes are refused and nothing is written', async () => {
+test('M10: with the board module off but the planner on, canvases still work (the Plan tab is a canvas)', async () => {
+  const t = await bootPersonal({ profile: 'canvas-board-off-planner-on' });
+  const rw = (await t.grant({ permissions: ['read', 'canvas'] })).token;
+  assert.equal((await t.member('PUT', '/api/profile', { modules: { board: false, planner: true } })).status, 200);
+  const r = await t.plugin(rw, 'POST', base, { body: { title: 'Board' } });
+  assert.equal(r.status, 201, r.text);
+  assert.equal((await t.plugin(rw, 'GET', base)).status, 200);
+});
+
+test('with the board and planner modules off, canvas routes are refused and nothing is written', async () => {
   const t = await bootPersonal({ profile: 'canvas-board-off' });
   const rw = (await t.grant({ permissions: ['read', 'canvas'] })).token;
-  assert.equal((await t.member('PUT', '/api/profile', { modules: { board: false } })).status, 200);
+  assert.equal((await t.member('PUT', '/api/profile', { modules: { board: false, planner: false } })).status, 200);
   const r = await t.plugin(rw, 'POST', base, { body: { title: 'Board' } });
   assert.equal(r.status, 403, r.text);
   assert.equal(r.json.code, 'MODULE_OFF');

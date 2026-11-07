@@ -42,6 +42,7 @@ export function CanvasView({ bookId, search = '' }) {
   const { canvas: wanted } = parseCanvasSearch(search);
   const canvases = list?.canvases ?? [];
   const boardOn = useModule('board');
+  const plannerTabOn = useModule('planner'); // M10: the Plan page needs the board or the planner
   // the canvas the address asks for, else the one opened last in this book (kept in localStorage), else the first
   const slug = chooseCanvas(canvases, wanted, loadLastCanvas(bookId));
   const [creating, setCreating] = useState(false);
@@ -89,12 +90,12 @@ export function CanvasView({ bookId, search = '' }) {
       </main>
     );
   }
-  if (!boardOn) {
+  if (!boardOn && !plannerTabOn) {
     return (
       <main id="main" tabIndex={-1} className="page">
         <h1>Plan</h1>
         <p>
-          The Plan page is a canvas, and the board module is off for this profile or this project. Turn it on in <Link to="/settings">Settings</Link> (a project that requires it off must be changed in library.md or book.md).
+          The Plan page is a canvas, and both the board and planner modules are off for this profile or this project. Turn it on in <Link to="/settings">Settings</Link> (a project that requires it off must be changed in library.md or book.md).
         </p>
       </main>
     );
