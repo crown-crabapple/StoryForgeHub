@@ -88,6 +88,9 @@ function readUpload(req, max) {
   });
 }
 
+/** The only Origin values POST /mcp accepts: ChatGPT's connectors. Any other Origin is a browser page and is refused. */
+export const MCP_ORIGINS = Object.freeze(['https://chatgpt.com', 'https://chat.openai.com']);
+
 /**
  * One line on stderr (the service journal) per POST /mcp request, to see how an MCP client talks to the server: the method, the answer code, whether a key and an
  * Origin header came, the client's name and the JSON-RPC method. Never the key, the body, a book's content or the client's address.
@@ -207,12 +210,13 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
       // (a bearer request carries no cookies, so the Origin and write-header checks do not apply and cookies are never read), and /api/v1 is reached only this way.
       const bearer = bearerOf(req);
       // MCP over Streamable HTTP (mcp-route.mjs): the same bearer token and the same /api/v1 policy, one JSON-RPC message per POST. MCP clients are not
-      // web pages, so a request that carries an Origin header is refused (no browser page can drive the tools with a token it was given).
+      // web pages, so a request that carries an Origin header is refused (no browser page can drive the tools with a token it was given), except ChatGPT's own
+      // origins (MCP_ORIGINS): its connector servers may send one. The key is still required on every request.
       if (pathname === '/mcp') {
         const seen = mcpRequestLog(req, bearer);
         res.on('finish', () => seen.write(res.statusCode));
         if (gate && !gate.hostOk(req, port)) return sendJson(res, 403, { error: 'forbidden' });
-        if (req.method !== 'POST' || req.headers.origin !== undefined) {
+        if (req.method !== 'POST' || (req.headers.origin !== undefined && !MCP_ORIGINS.includes(req.headers.origin))) {
           req.resume();
           return req.method !== 'POST' ? sendJson(res, 405, { error: 'method_not_allowed', message: 'MCP here is POST only (no SSE stream, no session)' }) : sendJson(res, 403, { error: 'forbidden', code: 'ORIGIN' });
         }

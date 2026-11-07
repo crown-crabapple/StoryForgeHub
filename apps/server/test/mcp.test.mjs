@@ -321,7 +321,7 @@ test('a read-only token calling the canvas write tools gets a tool error naming 
 
 // ---------------------------------------------------------------- transport rules
 
-test('transport: revoked, missing and unknown tokens are 401; GET is 405; an Origin is 403; wrong content type 415; bad JSON 400; a notification 202 and empty', async () => {
+test('transport: revoked, missing and unknown tokens are 401; GET is 405; an Origin is 403 except ChatGPT origins; wrong content type 415; bad JSON 400; a notification 202 and empty', async () => {
   const t = await bootPersonal();
   const { token, grant } = await t.grant({ permissions: ['read'] });
   const body = { jsonrpc: '2.0', id: 1, method: 'ping' };
@@ -337,6 +337,13 @@ test('transport: revoked, missing and unknown tokens are 401; GET is 405; an Ori
   const origin = await t.plugin(token, 'POST', '/mcp', { body, headers: { origin: 'http://evil.example' } });
   assert.equal(origin.status, 403);
   assert.equal(origin.json.code, 'ORIGIN');
+  for (const o of ['https://chatgpt.com', 'https://chat.openai.com']) {
+    assert.equal((await t.plugin(token, 'POST', '/mcp', { body, headers: { origin: o } })).status, 200, `ChatGPT's origin ${o} is allowed`);
+    assert.equal((await raw(t.port, 'POST', '/mcp', { body, headers: { 'content-type': 'application/json', origin: o } })).status, 401, `${o} still needs the key`);
+  }
+  for (const o of ['https://chatgpt.com.evil.example', 'http://chatgpt.com', 'https://evil.chatgpt.com', 'null']) {
+    assert.equal((await t.plugin(token, 'POST', '/mcp', { body, headers: { origin: o } })).status, 403, `${o} is refused`);
+  }
   const plain = await raw(t.port, 'POST', '/mcp', { body: JSON.stringify(body), headers: { 'content-type': 'text/plain', authorization: `Bearer ${token}` } });
   assert.equal(plain.status, 415);
   const bad = await raw(t.port, 'POST', '/mcp', { body: '{nope', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` } });
