@@ -158,7 +158,7 @@ account.
 
 If the setup link ran out (30 minutes) before it was used, see "Re-issuing a setup link" below.
 
-To let Claude Code or Claude Desktop use the shared server, use **Connect Claude** in Settings and connect to `https://<your domain>/mcp`: see [mcp.md](mcp.md).
+To let Claude Code or another MCP client use the shared server, use **AI connections (MCP)** in Settings and connect to `https://<your domain>/mcp`: see [mcp.md](mcp.md).
 
 ## Upgrade
 

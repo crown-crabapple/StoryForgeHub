@@ -70,7 +70,12 @@ export async function handleIntegrationsWrite(repository, match, body, state) {
           const known = new Set((await repository.listBooks()).map((/** @type {any} */ b) => b.slug));
           if (Array.isArray(body.books) && body.books.some((/** @type {unknown} */ s) => !known.has(s))) return badRequest('books names a book that is not in this library', 'UNKNOWN_BOOK');
         }
-        const r = await (await service.tokens()).grant({ plugin: body.plugin, permissions: body.permissions, books: body.books });
+        const tokens = await service.tokens();
+        // Settings -> AI connections names each key mcp-<name>; two live keys with one name could not be told apart in the list, so the name must be free
+        if (typeof body.plugin === 'string' && body.plugin.startsWith('mcp-') && tokens.list().some((/** @type {any} */ g) => g.plugin === body.plugin && !g.revoked)) {
+          return { status: 409, body: { error: 'conflict', code: 'NAME_TAKEN', message: `a live connection is already named ${body.plugin.slice(4)}; pick another name or revoke it first` } };
+        }
+        const r = await tokens.grant({ plugin: body.plugin, permissions: body.permissions, books: body.books });
         return r.ok ? { status: 201, body: { token: r.token, grant: r.grant } } : badRequest(r.message, r.code);
       }
       case 'plugin-revoke': {

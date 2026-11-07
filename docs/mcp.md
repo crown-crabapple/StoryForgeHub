@@ -4,7 +4,9 @@ StoryForge speaks the Model Context Protocol (MCP), so Claude Code and Claude De
 
 ## 1. Get a token
 
-Open Settings, then **Connect Claude**. Give the connection a name, pick the books, and choose whether Claude may suggest changes and whether it may edit canvases (off by default). The token is shown once, with the address and ready-to-copy setup for Claude Code (and, on your own computer, Claude Desktop). The card lists your Claude connections; Revoke cuts one off at once. In shared mode only the owner sees it.
+Open Settings, then **AI connections (MCP)**. Pick the AI client (Claude Code, Claude Desktop on your own computer, or any other MCP client), give the connection a name, pick the books, and choose whether the AI may suggest changes and whether it may edit canvases (off by default). The token is shown once, with ready-to-copy setup for that client: the Claude Code command, the Claude Desktop config, or the address and `Authorization` header for any other client that speaks MCP over Streamable HTTP.
+
+Make one connection per client or computer, as many as you like. Each has its own token, books and permissions, and the list shows when each was last used. Revoke cuts one off at once without affecting the others. Two live connections cannot share a name (the server answers 409 `NAME_TAKEN`); revoke the old one first to reuse its name. In shared mode only the owner sees this section.
 
 You can also make a token by hand: Settings, then Plugins, then **Grant access to another plugin** (see [plugins.md](plugins.md)).
 

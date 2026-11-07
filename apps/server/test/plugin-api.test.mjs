@@ -50,6 +50,27 @@ test('grant: bad requests are refused (permissions, books, an unknown book); a r
   assert.equal(noHeader.status, 403, 'the member write guard still applies to grants');
 });
 
+test('grant: several MCP connection keys live side by side; a live mcp- name cannot be taken twice, and is free again once revoked', async () => {
+  const t = await bootPersonal();
+  const make = (plugin) => t.member('POST', '/api/plugins/grants', { plugin, permissions: ['read'], books: 'all' });
+  const a = await make('mcp-laptop');
+  const b = await make('mcp-desktop');
+  const c = await make('mcp-agent');
+  for (const r of [a, b, c]) assert.equal(r.status, 201, r.text);
+  assert.equal(new Set([a.json.token, b.json.token, c.json.token]).size, 3, 'each connection has its own key');
+  const dup = await make('mcp-laptop');
+  assert.equal(dup.status, 409);
+  assert.equal(dup.json.code, 'NAME_TAKEN');
+  assert.equal(dup.text.includes(a.json.token), false);
+  assert.equal((await t.member('DELETE', `/api/plugins/grants/${a.json.grant.id}`)).status, 200);
+  assert.equal((await make('mcp-laptop')).status, 201, 'the name is free once the old key is revoked');
+  // ordinary plugins keep the old rule: a plugin may hold more than one token
+  assert.equal((await make('word-frequency')).status, 201);
+  assert.equal((await make('word-frequency')).status, 201);
+  const live = (await t.member('GET', '/api/plugins')).json.grants.filter((g) => !g.revoked);
+  assert.deepEqual(live.map((g) => g.plugin).sort(), ['mcp-agent', 'mcp-desktop', 'mcp-laptop', 'word-frequency', 'word-frequency']);
+});
+
 // ---------------------------------------------------------------- the read routes
 
 test('read: root, books, book tree, scene, entries, threads, events, search, graph, diagnostics, with stable shapes', async () => {
