@@ -72,6 +72,7 @@ export const WIDGET_KEYS = [
   { file: 'insights/charts.jsx', keys: 'Arrow keys, Home, End', what: 'move between the cells of an Insights heat map' },
   { file: 'tasks/TasksPage.jsx', keys: 'Arrow Up, Arrow Down, Home, End', what: 'move between tasks in the list' },
   { file: 'shared/UserMenu.jsx', keys: 'Escape', what: 'close the account menu' },
+  { file: 'canvas/plan/PlanDrawer.jsx', keys: 'Escape', what: 'close the plan drawer on the canvas' },
   { file: 'shell/useDrawer.js', keys: 'Escape, Tab', what: 'close a side drawer (Chapters or Details) and keep Tab inside it while it is open' },
   { file: 'canvas/CanvasBoard.jsx', keys: 'Arrow keys (Shift for bigger steps), Backspace, Escape', what: 'move or delete the selected canvas cards; Escape clears the selection or stops connecting' },
   { file: 'canvas/CanvasCard.jsx', keys: 'Escape, Enter, Ctrl+Enter', what: 'finish editing a canvas card' },

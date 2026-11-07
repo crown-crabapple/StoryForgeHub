@@ -935,3 +935,20 @@
 .cv-oedge-label {
   pointer-events: none;
 }
+
+/* ---------------------------------------------------------------- plan tools (M10 C8) */
+
+.cv-tool-labeled {
+  width: auto;
+  gap: var(--s1);
+  padding: 0 var(--s2);
+}
+.cv-tool-label {
+  font-size: 13px;
+}
+.cv-tool-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px var(--s1);
+  background: var(--border);
+}

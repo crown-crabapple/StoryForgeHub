@@ -40,8 +40,10 @@ import {
   withoutLink,
   zoomAt,
 } from './model.js';
-import { beatMoves, beatsAfterMoves, planOverlay } from './plan/overlay.js';
-import { groupTargets, nodesForRefIds, planItemFor } from './plan/selectors.js';
+import { beatColumnNode, beatMoves, beatsAfterMoves, planOverlay } from './plan/overlay.js';
+import { tidyToPlan } from './plan/build.js';
+import { PlanTools } from './plan/PlanTools.jsx';
+import { activeStructure, groupTargets, nodesForRefIds, planItemFor } from './plan/selectors.js';
 import { IMAGE_ACCEPT } from './requests.js';
 
 /** The toolbar, in order: [tool, label]. Each tool's key is the registry command canvas.<tool>. */
@@ -64,13 +66,15 @@ const TOOL_GLYPH = { note: 'Aa', todo: '☑', swatch: '◐', image: '▣', story
  *   onUploadImage: (file: File) => Promise<{ ok: true, path: string } | { ok: false, message: string }>, onProblem: (message: string | null) => void,
  *   links?: Map<string, any> | null, linkWrites?: ReturnType<typeof import('./useCanvasLinks.js').useCanvasLinks> | null,
  *   plan?: any, focusRefs?: { refIds: string[], seq: number } | null, layers?: Record<string, boolean> | null, branch?: string | null, findings?: any[] | null,
- *   planWrites?: { structures: ReturnType<typeof import('../planner/useStructureWrites.js').useStructureWrites>, clues: ReturnType<typeof import('../planner/useClueWrites.js').useClueWrites> } | null }} props
+ *   planWrites?: { structures: ReturnType<typeof import('../planner/useStructureWrites.js').useStructureWrites>, clues: ReturnType<typeof import('../planner/useClueWrites.js').useClueWrites> } | null,
+ *   structureId?: string | null, onSelectionChange?: (nodeIds: string[]) => void }} props
  *   `links` are the live Flow links by slug (null until loaded); `linkWrites` makes a scene-to-scene connection a real Flow link.
  *   `plan` is the planner data (usePlanData) the plan cards read; `focusRefs` selects the cards that show those ref ids and pans to them (a new object each time).
  *   `layers`, `branch` and `findings` (the plan check) decide the plan overlay drawn over the cards (never saved); `planWrites` are the planner writes of a card dropped in a beat column
- *   and of a scene connected to a clue.
+ *   and of a scene connected to a clue. `structureId` is the structure the plan tools add beats to and Tidy to plan follows (default: the primary one); `onSelectionChange` hears the selected card ids
+ *   whenever the set changes.
  */
-export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onChange, onUndo, onRedo, onUploadImage, onProblem, links = null, linkWrites = null, plan = null, focusRefs = null, layers = null, branch = null, findings = null, planWrites = null }) {
+export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onChange, onUndo, onRedo, onUploadImage, onProblem, links = null, linkWrites = null, plan = null, focusRefs = null, layers = null, branch = null, findings = null, planWrites = null, structureId = null, onSelectionChange = null }) {
   const shortcuts = useShortcuts(); // the canvas keys come from the shortcut registry (M07-J04), so they can be rebound
   const boardRef = useRef(null);
   const fileRef = useRef(null);
@@ -93,6 +97,16 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
     docRef.current = doc;
     viewRef.current = view;
   });
+
+  // report the selection when the set of cards changes (not on every render)
+  const reported = useRef('');
+  useEffect(() => {
+    const ids = [...selected];
+    const key = ids.join('|');
+    if (key === reported.current) return;
+    reported.current = key;
+    onSelectionChange?.(ids);
+  }, [selected, onSelectionChange]);
 
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc.nodes]);
   const ordered = useMemo(() => readingOrder(doc.nodes), [doc.nodes]);
@@ -173,6 +187,23 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
     setSelected(new Set([node.id]));
     setEdgeSel(null);
     if (edit) setEditing(node.id);
+  };
+
+  /** A plan tool made its item: a card for it at the drop point, or a column for a beat. */
+  const addPlanCardNow = (kind, id) => {
+    const at = dropPoint();
+    add(kind === 'beat' ? beatColumnNode(at, id) : makeNode('story', at, { ref: id }));
+  };
+  const addPlanCardRef = useRef(addPlanCardNow);
+  useEffect(() => {
+    addPlanCardRef.current = addPlanCardNow;
+  });
+  const addPlanCard = useCallback((kind, id) => addPlanCardRef.current(kind, id), []);
+
+  /** Tidy to plan: scene cards go to the column of their first beat (one undoable change). */
+  const tidy = () => {
+    const next = tidyToPlan(docRef.current, allRefs, plan, structureId ?? activeStructure(plan?.structures, null)?.id ?? null);
+    if (next !== docRef.current) onChange(next);
   };
 
   function pickTool(t) {
@@ -695,6 +726,11 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
         <button type="button" className="cv-tool" onClick={onRedo} aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled={readOnly}>
           ↷
         </button>
+        {plannerOn && !readOnly && plan !== null && (
+          <button type="button" className="cv-tool cv-tool-labeled" onClick={tidy} title="Move scene cards into the column of their first beat">
+            <span className="cv-tool-label">Tidy to plan</span>
+          </button>
+        )}
       </div>
 
       {!readOnly && (
@@ -716,6 +752,17 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
             </button>
             );
           })}
+          {plannerOn && plan !== null && (
+            <PlanTools
+              bookId={bookId}
+              plan={plan}
+              structureId={structureId}
+              connecting={tool === 'connect'}
+              onCause={() => pickTool('connect')}
+              onAddCard={addPlanCard}
+              onProblem={onProblem}
+            />
+          )}
           <input ref={fileRef} type="file" accept={IMAGE_ACCEPT} hidden onChange={(e) => {
             const f = e.target.files?.[0];
             e.target.value = '';

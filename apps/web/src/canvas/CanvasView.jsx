@@ -2,6 +2,8 @@
 // (debounced, guarded by the sha256 last seen; a 409 shows the conflict banner).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '../api.js';
+import { abilities } from '../collab/model.js';
+import { useSession } from '../shared/session.jsx';
 import { useModule } from '../prefs/PrefsContext.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { Link, useNavigate } from '../router.jsx';
@@ -12,6 +14,8 @@ import { useStructureWrites } from '../planner/useStructureWrites.js';
 import { useStructure } from '../structure/useStructure.jsx';
 import { CanvasBoard } from './CanvasBoard.jsx';
 import { canvasHref, canvasUrl, history, parseCanvasSearch, record, redo, undo } from './model.js';
+import { Inspector, InspectorHint } from './plan/Inspector.jsx';
+import { PlanDrawer } from './plan/PlanDrawer.jsx';
 import { PlanRail } from './plan/PlanRail.jsx';
 import { canvasRefIds, findingOnCanvas, findingRefIds, loadLayers, saveLayers } from './plan/selectors.js';
 import { usePlanData } from './plan/usePlanData.js';
@@ -176,7 +180,7 @@ export function CanvasPage({ bookId, list, slug, problem = null, onDismiss = () 
       </aside>
       <section className="cv-main" aria-label={open ? `Canvas ${open.title}` : 'Canvas'}>
         {open ? (
-          <OpenCanvas key={open.slug} bookId={bookId} summary={open} onArchive={() => onArchive(open)} onSaved={onSaved} initial={initial} plan={plannerOn ? plan : null} focusRefs={focus} onRefIds={setRefIds} layers={plannerOn ? layers : null} branch={plannerOn ? branch : null} />
+          <OpenCanvas key={open.slug} bookId={bookId} summary={open} onArchive={() => onArchive(open)} onSaved={onSaved} initial={initial} plan={plannerOn ? plan : null} focusRefs={focus} onRefIds={setRefIds} layers={plannerOn ? layers : null} branch={plannerOn ? branch : null} structureId={structureId} />
         ) : (
           <div className="cv-none">
             <h2>Start a canvas</h2>
@@ -192,20 +196,28 @@ export function CanvasPage({ bookId, list, slug, problem = null, onDismiss = () 
 }
 
 /** One canvas: fetch, history, autosave, conflict banner. */
-function OpenCanvas({ bookId, summary, onArchive, onSaved, initial, plan, focusRefs, onRefIds, layers, branch }) {
+function OpenCanvas({ bookId, summary, onArchive, onSaved, initial, plan, focusRefs, onRefIds, layers, branch, structureId }) {
   const { data, error } = useApi(initial ? null : canvasUrl(bookId, summary.slug), '');
   const loaded = initial ?? data;
   if (error) return <p className="error">{error}</p>;
   if (!loaded) return <p className="muted cv-loading">Loading…</p>;
-  return <Editor key={loaded.sha256} bookId={bookId} loaded={loaded} onArchive={onArchive} onSaved={onSaved} plan={plan} focusRefs={focusRefs} onRefIds={onRefIds} layers={layers} branch={branch} />;
+  return <Editor key={loaded.sha256} bookId={bookId} loaded={loaded} onArchive={onArchive} onSaved={onSaved} plan={plan} focusRefs={focusRefs} onRefIds={onRefIds} layers={layers} branch={branch} structureId={structureId} />;
 }
 
-function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = null, onRefIds = () => {}, layers = null, branch = null }) {
+function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = null, onRefIds = () => {}, layers = null, branch = null, structureId = null }) {
   const { track } = useWrites();
   const { status } = useStatus();
   const book = useMemo(() => ({ id: bookId }), [bookId]);
   const reloadLinks = useRef(() => {});
-  const refreshPlan = plan?.refresh ?? noop;
+  const [planVersion, setPlanVersion] = useState(0); // bumped on every plan save, so the Inspector reads the scene plan again
+  const planRefresh = plan?.refresh ?? noop;
+  const refreshPlan = useCallback(() => {
+    planRefresh();
+    setPlanVersion((n) => n + 1);
+  }, [planRefresh]);
+  const [picked, setPicked] = useState(/** @type {string[]} */ ([]));
+  const [drawer, setDrawer] = useState(/** @type {any} */ (null)); // the ref the plan drawer edits
+  const onSelectionChange = useCallback((ids) => setPicked((prev) => (prev.length === ids.length && prev.every((id, i) => id === ids[i]) ? prev : ids)), []);
   const reloadPlan = useRef(noop);
   const structure = useStructure({ book, activeId: null, onChanged: () => {
     reloadLinks.current();
@@ -226,7 +238,9 @@ function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = n
   const saved = useRef(loaded.canvas);
   const shaRef = useRef(loaded.sha256);
   const timer = useRef(null);
-  const readOnly = loaded.problem !== null && loaded.problem !== undefined;
+  // read-only when the file is broken, or (shared mode) for viewers, reviewers and share links; the server refuses their writes anyway
+  const can = abilities(useSession());
+  const readOnly = (loaded.problem !== null && loaded.problem !== undefined) || can.readOnly;
   const doc = live ?? hist.present;
 
   const flush = useCallback(
@@ -293,7 +307,8 @@ function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = n
           Archive
         </button>
       </header>
-      {readOnly && (
+      {readOnly && !loaded.problem && <p className="muted cv-banner">You can look at this canvas and its plan. Ask the owner for an editor role to change them.</p>}
+      {loaded.problem && (
         <p className="warning cv-banner" role="alert">
           This file cannot be read as a canvas ({loaded.problem}). It is shown read-only; fix the file in a text editor.
         </p>
@@ -340,33 +355,57 @@ function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = n
           </button>
         </div>
       )}
-      <CanvasBoard
-        bookId={bookId}
-        doc={doc}
-        refs={refs}
-        targets={loaded.targets ?? []}
-        readOnly={readOnly}
-        fitKey={loaded.slug}
-        onChange={onChange}
-        onUndo={() => {
-          setLive(null);
-          setHist(undo);
-        }}
-        onRedo={() => {
-          setLive(null);
-          setHist(redo);
-        }}
-        onUploadImage={(file) => track(bookId, () => uploadCanvasImage(bookId, file).then((r) => ({ ...r, status: r.ok ? 201 : 400 })))}
-        onProblem={setProblem}
-        links={linkWrites.links}
-        linkWrites={linkWrites}
-        plan={plan}
-        focusRefs={focusRefs}
-        layers={layers}
-        branch={branch}
-        findings={plan?.findings ?? null}
-        planWrites={planWrites}
-      />
+      <div className="cv-body">
+        <div className="cv-board-col">
+          <CanvasBoard
+            bookId={bookId}
+            doc={doc}
+            refs={refs}
+            targets={loaded.targets ?? []}
+            readOnly={readOnly}
+            fitKey={loaded.slug}
+            onChange={onChange}
+            onUndo={() => {
+              setLive(null);
+              setHist(undo);
+            }}
+            onRedo={() => {
+              setLive(null);
+              setHist(redo);
+            }}
+            onUploadImage={(file) => track(bookId, () => uploadCanvasImage(bookId, file).then((r) => ({ ...r, status: r.ok ? 201 : 400 })))}
+            onProblem={setProblem}
+            links={linkWrites.links}
+            linkWrites={linkWrites}
+            plan={plan}
+            focusRefs={focusRefs}
+            layers={layers}
+            branch={branch}
+            findings={plan?.findings ?? null}
+            planWrites={planWrites}
+            onSelectionChange={onSelectionChange}
+            structureId={structureId}
+          />
+        </div>
+        {plan &&
+          (picked.length === 1 ? (
+            <Inspector
+              bookId={bookId}
+              plan={plan}
+              refInfo={refs[picked[0]] ?? null}
+              node={doc.nodes.find((n) => n.id === picked[0]) ?? null}
+              findings={plan.findings ?? null}
+              readOnly={readOnly}
+              onEdit={() => setDrawer(refs[picked[0]] ?? null)}
+              writes={planWrites}
+              structureId={structureId}
+              version={planVersion}
+            />
+          ) : (
+            <InspectorHint />
+          ))}
+      </div>
+      {plan && drawer && !readOnly && <PlanDrawer bookId={bookId} plan={{ ...plan, refresh: refreshPlan }} refInfo={drawer} structure={structure} onClose={() => setDrawer(null)} />}
       {structure.ui}
     </div>
   );

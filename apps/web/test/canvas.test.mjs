@@ -206,7 +206,7 @@ describe('page', () => {
     assert.match(markup, /type="checkbox" aria-label="Task: rooftop"\/>/);
     assert.match(markup, /class="cv-edge-label"[^>]*>leads to</);
     const toolbar = /<div class="cv-toolbar" role="toolbar" aria-label="Add to the canvas">([\s\S]*?)<\/div>/.exec(markup)[1];
-    assert.deepEqual([...toolbar.matchAll(/aria-label="([^"]+)"/g)].map((x) => x[1]), ['Note', 'To-do list', 'Colour swatch', 'Image', 'Story card', 'Web link', 'Column', 'Group', 'Connect two cards']);
+    assert.deepEqual([...toolbar.matchAll(/aria-label="([^"]+)"/g)].map((x) => x[1]), ['Note', 'To-do list', 'Colour swatch', 'Image', 'Story card', 'Web link', 'Column', 'Group', 'Connect two cards', 'Cause', 'Clue', 'Arc', 'Relationship', 'Beat']);
     assert.match(toolbar, /aria-keyshortcuts="N"/);
     assert.match(markup, /planning\/canvases\/neon-shadows\.canvas/);
   });
