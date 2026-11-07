@@ -27,6 +27,7 @@ Permissions (a token has one or more):
 | `read` | The read routes below, for the granted books only. |
 | `propose` | `POST /api/v1/books/:book/proposals`. |
 | `canvas` | Create, save, archive and restore canvases (`/api/v1/books/:book/canvases`, below). Reading canvases needs only `read`. |
+| `plan` | Create, change, archive and restore Story Planner items (`POST /api/v1/books/:book/plan/...`, below). Reading the plan needs only `read`. Each change can be undone by the author in the app. |
 | `events` | Its own webhook subscriptions (`/api/v1/webhooks`). |
 
 Rules:
@@ -52,7 +53,7 @@ Every error is JSON: `{ "error": "<kind>", "code": "<CODE>", "message": "<words>
 | `401` | No valid token: missing, malformed, unknown or revoked (`TOKEN`). |
 | `403` | `PLUGIN_SCOPE` (not this route, permission or book), or `MODULE_OFF`. |
 | `404` | No such scene, entry, canvas or webhook. |
-| `409` | The proposal changes nothing (`NO_CHANGE`) or the file moved on (`CONFLICT` for a canvas, `REFUSED_PATH_TAKEN` for a taken canvas name). |
+| `409` | The proposal changes nothing (`NO_CHANGE`) or the file moved on (`CONFLICT` for a canvas or a plan write, `REFUSED_PATH_TAKEN` for a taken canvas name). |
 | `413` / `415` | The body is too large (5 MB) / is not `application/json`. |
 | `503` | The token file cannot be read (it is never replaced; fix or move it). |
 
@@ -73,15 +74,36 @@ All answers are JSON. Line breaks in text are `\n`. A `sha256` is the hash of th
 | `GET /api/v1/books/:b/search?q=&limit=` | `{ query, hits: [{ id, kind, title, path, snippet }] }` (`q` 1 to 200 characters, `limit` 1 to 100, default 20) |
 | `GET /api/v1/books/:b/graph` | `{ nodes: [{ id, kind, type, name }], edges: [{ from, to, kind, rel }] }` |
 | `GET /api/v1/books/:b/diagnostics` | `{ diagnostics: [{ code, severity, file, location, message }] }` |
-| `GET /api/v1/books/:b/plan` | `{ story: { fields, body }, counts, primary_structure }`: the story plan and the planner counts (see `plan-overview` below), without `path` and `sha256` |
+| `GET /api/v1/books/:b/plan` | `{ story: { fields, body, sha256 }, counts, primary_structure }`: the story plan and the planner counts (see `plan-overview` below); `story.sha256` is `null` when there is no story plan file |
 | `GET /api/v1/books/:b/plan/links` | `{ links: [Link], archived: [Link] }` |
 | `GET /api/v1/books/:b/plan/arcs` | `{ arcs: [Arc], archived: [Arc] }` |
 | `GET /api/v1/books/:b/plan/structures` | `{ structures: [Structure], archived: [{ slug, name }] }` |
 | `GET /api/v1/books/:b/plan/relationships` | `{ relationships: [Relationship], archived: [{ slug, name }] }` |
 | `GET /api/v1/books/:b/plan/synopses` | `{ synopses: [Synopsis], archived: [Synopsis] }` |
 | `GET /api/v1/books/:b/plan/clues` | `{ clues: [Clue], archived: [{ slug, fact }] }` |
+| `GET /api/v1/books/:b/plan/scene-plans/:sceneId` | One scene plan: `{ scene_id, sha256, fields, characters, body }`; `404` when there is none to read |
+| `GET /api/v1/books/:b/plan/check` | `{ findings: [{ rule, severity, title, message, subject, related }] }`: the plan check (rules `PL1` to `PL6` of the continuity answer) |
+| `GET /api/v1/books/:b/plan/templates` | `{ templates }`: the structure templates with their beats |
 
-The `plan` routes return the same objects as the app's own planner reads ([Story Planner routes](#story-planner-routes-the-apps-own-not-api-v1)), with every `path`, `sha256`, `base_sha256`, `file` and `rel` key left out. They need the `read` permission and a granted book, and answer `403 MODULE_OFF` when the `planner` module is off for the book. Planner data is read-only for plugins: there is no planner write route in API v1, and the app's own `/api/books/:b/` planner routes stay `403 PLUGIN_SCOPE` for a token.
+The `plan` routes return the same objects as the app's own planner reads ([Story Planner routes](#story-planner-routes-the-apps-own-not-api-v1)), with every `path`, `file`, `rel` and `base_sha256` key left out. A `sha256` is kept: it is the value to send back as `base_sha256` in a plan write. They need the `read` permission and a granted book, and answer `403 MODULE_OFF` when the `planner` module is off for the book. The app's own `/api/books/:b/` planner routes stay `403 PLUGIN_SCOPE` for a token.
+
+## Plan writes (permission `plan`)
+
+A token with `plan` can write Story Planner files under `planning/` (links, scene plans, `story.md`, structures, arcs, relationships, clues, synopses) and nothing else. Each route runs the app's own planner route with the same body, validation, sha check and Undo, so the body and the answer are as in [Story Planner routes](#story-planner-routes-the-apps-own-not-api-v1), "Writes". All are `POST` with a JSON object. The `planner` and `integrations` modules must be on for the book (else `403 MODULE_OFF`).
+
+| Route | Runs |
+|---|---|
+| `POST /api/v1/books/:b/plan/story` | `POST /api/books/:b/story-plan` |
+| `POST /api/v1/books/:b/plan/scene-plans/:sceneId` | `POST /api/books/:b/scene-plans/:sceneId` |
+| `POST /api/v1/books/:b/plan/{links,arcs,structures,relationships,clues,synopses}` | the create route of that collection |
+| `POST /api/v1/books/:b/plan/<collection>/:slug` | its update route |
+| `POST /api/v1/books/:b/plan/<collection>/:slug/{archive,restore}` | its archive and restore routes |
+| `POST /api/v1/books/:b/plan/arcs/:slug/milestones` | set milestones |
+| `POST /api/v1/books/:b/plan/structures/:slug/beats` | set beats |
+| `POST /api/v1/books/:b/plan/relationships/:slug/developments` | set developments |
+| `POST /api/v1/books/:b/plan/clues/:slug/knowers` | set knowers |
+
+A slug is lower-case letters, digits and hyphens (up to 120); anything else is `403 PLUGIN_SCOPE`, not a route. Pass `base_sha256` from the read; a stale one is `409` with `current: { sha256, text }` and nothing is written. A real write answers with `opId`, which the author can undo in the app. A shared server audits a plan write as `plugin.plan-<kind>-write` (for example `plugin.plan-links-write`). See [contracts/M11-ai-plan-tools.md](contracts/M11-ai-plan-tools.md).
 
 ## Proposals (permission `propose`)
 
@@ -127,7 +149,7 @@ A canvas is a JSON Canvas file, `planning/canvases/<slug>.canvas`. A canvas slug
 
 ## Story Planner routes (the app's own, not API v1)
 
-These routes store causal links between scenes, per-scene planning fields, the book's story plan, character arcs, story structures with their beat sheets, relationships between Codex entries, synopses, and clues (see [format.md](format.md), "Story Planner files"). They sit under `/api/books/:b/`, are **not part of plugin API v1**, and a bearer token is refused (`403 PLUGIN_SCOPE`). They are for the StoryForge app itself.
+These routes store causal links between scenes, per-scene planning fields, the book's story plan, character arcs, story structures with their beat sheets, relationships between Codex entries, synopses, and clues (see [format.md](format.md), "Story Planner files"). They sit under `/api/books/:b/`, are **not part of plugin API v1**, and a bearer token is refused on these paths (`403 PLUGIN_SCOPE`). They are for the StoryForge app itself; a plugin token with the `plan` permission reaches the same writes through `/api/v1/books/:b/plan/...` ([Plan writes](#plan-writes-permission-plan)).
 
 A link, an arc, a structure, a relationship, a synopsis or a clue is named by its `slug`. A scene plan is named by its scene's id. The story plan is one file per book and has no name in the route. Reads are not gated by a module.
 

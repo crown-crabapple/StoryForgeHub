@@ -141,7 +141,7 @@ The **Canvas | List** switch (`planner` on) shows the same plan as plain headed 
 - The relationship graph and the Flow and graph "Download SVG" on the canvas. The relationship card opens the relationship editor only.
 - The series plan on the canvas (read-only, in its drawer).
 - Moving planner data into the `.canvas` file.
-- MCP and plugin tools for the plan: unchanged (read-only planner tools; canvas tools edit the file only).
+- MCP and plugin tools for the plan: unchanged in M10 (read-only planner tools; canvas tools edit the file only). M11 adds the `plan` permission and the plan write tools: see [M11-ai-plan-tools.md](M11-ai-plan-tools.md).
 
 ## 15. Checks that exist
 

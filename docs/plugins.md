@@ -17,7 +17,7 @@ plugin: word-frequency                # a slug, unique in the library
 name: Word frequency
 version: 1.0.0
 api: 1                                # the API major it targets
-permissions: [read]                   # read | propose | events
+permissions: [read]                   # read | propose | events | canvas | plan
 books: all                            # all | [book-slug, …]
 ---
 What it does, in plain words.
@@ -43,7 +43,7 @@ It lists the book (`GET /api/v1/books`), reads its outline, reads every scene, a
 const res = await fetch(`${base}/api/v1${path}`, { headers: { authorization: `Bearer ${token}` } });
 ```
 
-A `read` token can also read the book's story plan: `GET /api/v1/books/:b/plan` and `/plan/links`, `/plan/arcs`, `/plan/structures`, `/plan/relationships`, `/plan/synopses` and `/plan/clues` (the field lists are in [api.md](api.md)). They return no file paths or hashes, and answer `403 MODULE_OFF` when the **Story Planner** module is off for the book. Planner data is read-only: to suggest a change, propose one to a scene.
+A `read` token can also read the book's story plan: `GET /api/v1/books/:b/plan` and `/plan/links`, `/plan/arcs`, `/plan/structures`, `/plan/relationships`, `/plan/synopses` and `/plan/clues`, plus `/plan/scene-plans/:sceneId`, `/plan/check` and `/plan/templates` (the field lists are in [api.md](api.md)). They return no file paths; each item has its `sha256`. They answer `403 MODULE_OFF` when the **Story Planner** module is off for the book. A `read` token cannot change the plan. A token with the `plan` permission can write it (`POST /api/v1/books/:b/plan/...`, see [api.md](api.md)); you tick that permission in the grant dialog, where it reads "Change the plan". Without it, propose a change to a scene instead.
 
 Ask only for what you need: a `read` token is enough to read; a token with only `read` that tries to propose gets `403 PLUGIN_SCOPE`.
 
