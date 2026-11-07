@@ -214,3 +214,14 @@ test('overflow at 360 px: wide content scrolls inside its own box instead of wid
   // the dialogs are at most the window wide (a11y-styles.test.mjs checks the min() form); on phones the cap is the viewport itself
   assert.ok(phoneRules.some((r) => r.selector.includes('.dialog') && /max-width:\s*100vw/.test(r.body)));
 });
+
+test('the Plan page is one screen tall: a long plan rail scrolls inside the side list instead of stretching the board', () => {
+  const css = read('canvas/canvas.css');
+  const body = (sel) => rules(css).find((r) => r.media === null && r.selector === sel)?.body ?? '';
+  // `flex: 1` is a 0% basis, which the column-flex .app (no fixed height) treats as "as tall as the content"
+  assert.match(body('.cv-page'), /flex:\s*1 1 auto/);
+  assert.match(body('.cv-page'), /height:\s*calc\(100dvh/);
+  assert.match(body('.app:has(> .cv-page)'), /height:\s*100dvh/);
+  assert.match(body('.app:has(> .cv-page) > .cv-page'), /flex:\s*1 1 0/);
+  assert.match(body('.cv-list'), /overflow-y:\s*auto/);
+});

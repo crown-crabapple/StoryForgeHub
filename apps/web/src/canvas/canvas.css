@@ -1,11 +1,22 @@
 /* M09-J01 Canvas: list on the left, an infinite board on the right with a floating toolbar (Storyflow-style). Colours come from the theme tokens;
    card tints use the JSON Canvas colour of a card (--cv-tint), mixed into the surface so text keeps its contrast. */
 
+/* The page is one screen tall; the side list and the board scroll on their own. `flex: 1` (a 0% basis) would size the page to
+   its content in the column-flex .app, whose height is not fixed, so a long plan rail made the whole page as tall as the rail.
+   A basis of auto keeps the height below; where :has() works, .app is exactly one screen and the page takes what the bars leave. */
 .cv-page {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   height: calc(100dvh - var(--topbar) - 48px);
+}
+.app:has(> .cv-page) {
+  height: 100dvh;
+  min-height: 0;
+}
+.app:has(> .cv-page) > .cv-page {
+  flex: 1 1 0;
+  height: auto;
 }
 .cv-layout {
   display: flex;
