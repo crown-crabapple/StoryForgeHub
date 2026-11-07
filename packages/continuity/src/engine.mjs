@@ -9,7 +9,7 @@ import { plannerFindings } from './planner.mjs';
 /**
  * @typedef {import('./model.mjs').Source} Source
  * @typedef {{ fingerprint: string, rule: string, rule_version: number, severity: 'error'|'warning'|'info', title: string, message: string,
- *   subject: { kind: 'entry'|'thread'|'event'|'scene'|'structure'|'clue', id: string, slug?: string, name?: string }, sources: Source[] }} Finding
+ *   subject: { kind: 'entry'|'thread'|'event'|'scene'|'structure'|'clue', id: string, slug?: string, name?: string }, sources: Source[], related: string[] }} Finding
  * @typedef {{ engine_version: 1, findings: Finding[], suppressed: { finding: Finding, exception: { file: string, slug: string, intentional: boolean } }[],
  *   stale_exceptions: { file: string, slug: string, fingerprint: string }[], skipped: string[] }} ContinuityResult
  */
@@ -32,7 +32,8 @@ const byOrder = (a, b) =>
  */
 export async function checkContinuity(bookRoot, _opts = {}) { // eslint-disable-line no-unused-vars
   const model = await loadModel(bookRoot);
-  const all = [...(await factConflicts(model)), ...(await timelineFindings(model)), ...(await threadFindings(model)), ...(await plannerFindings(model))];
+  // `related`: extra ids (scenes, beats) a canvas can mark; [] for rules that do not set it. Not part of the fingerprint.
+  const all = [...(await factConflicts(model)), ...(await timelineFindings(model)), ...(await threadFindings(model)), ...(await plannerFindings(model))].map((f) => ({ ...f, related: f.related ?? [] }));
   const seen = new Set();
   const found = all.filter((f) => !seen.has(f.fingerprint) && seen.add(f.fingerprint)).sort(byOrder);
 

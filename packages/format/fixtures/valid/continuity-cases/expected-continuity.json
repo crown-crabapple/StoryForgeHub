@@ -42,7 +42,8 @@
           },
           "excerpt": "{ slug: bram-keel, event: learns, value: the-lamp-is-hollow }"
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "th1-8a88a07025c4e719",
@@ -86,7 +87,8 @@
           },
           "excerpt": "title: The Dock"
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "tl1-76045e6199a10907",
@@ -130,7 +132,8 @@
           },
           "excerpt": "{ slug: ana-voss, event: location, value: market }"
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "tl1-ae3104c4ed359cca",
@@ -174,7 +177,8 @@
           },
           "excerpt": "date: 2020-03"
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "tl1-98e98ea2450f4db5",
@@ -218,7 +222,8 @@
           },
           "excerpt": "dov-ellis"
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "tl1-b6fcc14fb20619d0",
@@ -262,7 +267,8 @@
           },
           "excerpt": "{ slug: tin-whistle, event: holder, value: bram-keel }"
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "cf1-614d656695e6a7a3",
@@ -306,7 +312,8 @@
           },
           "excerpt": "Her green eyes caught the lamplight."
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "cf1-5f9706d4cca30c35",
@@ -350,7 +357,8 @@
           },
           "excerpt": "Hair: Black"
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "cf1-d0c8fb73903d70b7",
@@ -394,7 +402,8 @@
           },
           "excerpt": "Her stocky build filled the doorway of the tide office."
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "st1-564c3cf37c76b9f8",
@@ -438,7 +447,8 @@
           },
           "excerpt": "{ slug: clay-jar, event: holder, value: ana-voss }"
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "st1-9d74a5861b433f4c",
@@ -482,7 +492,8 @@
           },
           "excerpt": "{ slug: copper-kettle, event: holder, value: bram-keel }"
         }
-      ]
+      ],
+      "related": []
     },
     {
       "fingerprint": "th1-b7e16e0c9eb28472",
@@ -512,7 +523,8 @@
           },
           "excerpt": "status: open"
         }
-      ]
+      ],
+      "related": []
     }
   ],
   "suppressed": []

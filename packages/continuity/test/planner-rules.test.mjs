@@ -297,3 +297,13 @@ test('clue fingerprints do not change when the clue text or scene titles change;
   assert.equal(moved.length, 1);
   assert.notEqual(moved[0].fingerprint, pl6, 'another planted scene is another finding');
 });
+
+test('related: PL3 carries the beat id, PL6 the revealed and first planted scene ids, and every finding has a related array', async () => {
+  const root = four();
+  structure(root, [{ n: 1, name: 'Midpoint' }]);
+  clue(root, 1, { planted: [3, 4], revealed: 2 });
+  const r = await checkContinuity(root);
+  assert.deepEqual(ofRule(r, 'PL3')[0].related, [id('note', 401)]);
+  assert.deepEqual(ofRule(r, 'PL6')[0].related, [scene(2), scene(3)]);
+  assert.ok(r.findings.length > 0 && r.findings.every((f) => Array.isArray(f.related)));
+});

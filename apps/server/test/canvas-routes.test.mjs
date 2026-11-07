@@ -192,3 +192,55 @@ test('upload for=canvas stores under assets/canvas/; every canvas write route ha
   assert.equal(badFor.status, 400);
   for (const route of ['canvas-create', 'canvas-save', 'canvas-archive', 'canvas-restore']) assert.equal(WRITE_CLASSES[route], 'write', route);
 });
+
+// ---- Story Planner items as story cards (docs/plans/canvas-plan-integration.md, decisions 3-4)
+
+const CLUE = 'note_01S5000000000000000000001E';
+const BEAT = 'note_01S50000000000000000000018';
+const STRUCTURE = 'note_01S50000000000000000000017';
+const card = (id, ref) => ({ id, type: 'file', file: 'x.md', x: 0, y: 0, width: 260, height: 140, storyforge: { ref } });
+
+async function plannerBoard(archiveStructure) {
+  return freshBook('valid/planner', async (root) => {
+    await fs.mkdir(path.join(root, 'planning', 'canvases'), { recursive: true });
+    const canvas = { nodes: [card('c1', CLUE), card('b1', BEAT), card('x1', 'note_01S5ZZZZZZZZZZZZZZZZZZZZZZ')], edges: [] };
+    await fs.writeFile(path.join(root, 'planning', 'canvases', 'plan.canvas'), JSON.stringify(canvas));
+    if (archiveStructure) {
+      const dest = path.join(root, 'archive', 'planning', 'structures');
+      await fs.mkdir(dest, { recursive: true });
+      await fs.rename(path.join(root, 'planning', 'structures', 'main-three-act.md'), path.join(dest, 'main-three-act.md'));
+    }
+  });
+}
+
+test('planner cards: a clue card and a beat card resolve ok; an unknown id is broken; targets list the planner items with beats after their structure', async () => {
+  const { port } = await plannerBoard(false);
+  const got = await send(port, 'GET', u('canvases', 'plan'));
+  assert.equal(got.status, 200, got.text);
+  assert.equal(got.json.refs.c1.state, 'ok');
+  assert.equal(got.json.refs.c1.kind, 'clue');
+  assert.equal(got.json.refs.c1.title, 'The harbour key opens the sea gate.');
+  assert.equal(got.json.refs.c1.path, 'planning/clues/sea-gate-key.md');
+  assert.equal(got.json.refs.b1.state, 'ok');
+  assert.equal(got.json.refs.b1.kind, 'beat');
+  assert.equal(got.json.refs.b1.title, 'Opening image');
+  assert.equal(got.json.refs.b1.structure, STRUCTURE);
+  assert.equal(got.json.refs.b1.path, 'planning/structures/main-three-act.md');
+  assert.equal(got.json.refs.x1.state, 'broken');
+  const kinds = new Set(got.json.targets.map((t) => t.kind));
+  for (const k of ['clue', 'structure', 'beat', 'arc', 'story-plan']) assert.ok(kinds.has(k), k);
+  const at = got.json.targets.findIndex((t) => t.ref === STRUCTURE);
+  assert.ok(at >= 0);
+  assert.equal(got.json.targets[at + 1].ref, BEAT);
+  assert.equal(got.json.targets[at + 1].structure, STRUCTURE);
+  assert.ok(got.json.targets.some((t) => t.ref === CLUE && t.kind === 'clue' && t.subtitle === 'clue'));
+});
+
+test('planner cards: a beat of an archived structure is archived and keeps the structure path; it is not offered as a target', async () => {
+  const { port } = await plannerBoard(true);
+  const got = await send(port, 'GET', u('canvases', 'plan'));
+  assert.equal(got.json.refs.b1.state, 'archived');
+  assert.equal(got.json.refs.b1.kind, 'beat');
+  assert.equal(got.json.refs.b1.path, 'archive/planning/structures/main-three-act.md');
+  assert.ok(!got.json.targets.some((t) => t.ref === BEAT || t.ref === STRUCTURE));
+});

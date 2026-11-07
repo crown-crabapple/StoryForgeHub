@@ -53,8 +53,8 @@ Refused on save with `REFUSED_BAD_CANVAS` (400, `message` names the node or edge
 | `POST /api/books/:b/canvases/:slug/archive` / `restore` `{ base_sha256?, dryRun? }` | write | moves to / from `archive/planning/canvases/` |
 | `POST /api/books/:b/attachments?name=…&for=canvas` | write | as M04-J04 §4, stored under `assets/canvas/` |
 
-- `refs[nodeId].state`: `ok` | `archived` | `broken`. `kind`: `scene` | `entry` | `thread` | `event` | `research` | `doc` | `source`.
-- `targets`: everything a story card may point at (scenes in book order, live entries, threads, events, research notes): `{ ref, kind, title, subtitle }`.
+- `refs[nodeId].state`: `ok` | `archived` | `broken`. `kind`: `scene` | `entry` | `thread` | `event` | `research` | `doc` | `source` | `story-plan` | `structure` | `arc` | `relationship` | `synopsis` | `clue` | `beat`. A `beat` ref is the beat's own id (`fm.beats[].id` of a structure); it resolves to `state` `ok` (structure live) or `archived` (structure archived), with `kind: 'beat'`, `structure` (the structure id) and `path` = the structure file. An unknown id is `broken`.
+- `targets`: everything a story card may point at (scenes in book order, live entries, threads, events, research notes, then the Story Planner items: the story plan, structures each followed by its beats, arcs, relationships, synopses, clues): `{ ref, kind, title, subtitle, slug }`; a beat target also has `structure`.
 - Writes go through the store (single writer). Create, archive and restore are one batch with a dry run and never delete. The save is a whole-file write guarded by `base_sha256`.
 - Module: the canvas routes and tab belong to the `board` module (off → tab hidden, writes 403 `MODULE_OFF`).
 

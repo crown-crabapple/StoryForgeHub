@@ -646,3 +646,174 @@
     display: none;
   }
 }
+
+/* M10 plan on the canvas: plan cards and the plan part of the left rail. Tokens only. */
+.cv-plan .cv-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.cv-plan-row,
+.cv-plan-line {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-plan-label {
+  font-weight: 600;
+  color: var(--text);
+}
+.cv-chip {
+  display: inline-block;
+  padding: 0 var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-2);
+  background: var(--surface-2);
+}
+.cv-chip-warn {
+  border-color: var(--warning);
+  color: var(--text);
+}
+.cv-plan-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  margin: var(--s1) 0 0;
+}
+.cv-plan-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.cv-picker-head h3 {
+  margin: var(--s2) 0 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.cv-picker-list .cv-picker-head {
+  display: block;
+}
+.cv-plan-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+.cv-rail-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 var(--s2);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.cv-layer-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: 36px;
+  padding: var(--s1) var(--s3);
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cv-layer-btn:hover {
+  background: var(--surface-2);
+}
+.cv-layer-btn[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--border);
+}
+.cv-layer-btn[aria-pressed='false'] .cv-layer-dot {
+  opacity: 0.35;
+}
+.cv-layer-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.cv-layer-name {
+  flex: 1;
+}
+.cv-layer-count {
+  font-size: 12px;
+  color: var(--muted);
+}
+.cv-rail-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s2);
+}
+.cv-rail-field label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.cv-rail-field select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: var(--s1) var(--s2);
+}
+.cv-rail-branches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.cv-rail-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 32px;
+  padding: 0 var(--s3);
+  cursor: pointer;
+}
+.cv-rail-findings {
+  gap: var(--s1);
+}
+.cv-finding {
+  display: flex;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.cv-finding:hover {
+  background: var(--surface-2);
+}
+.cv-finding-code {
+  flex: none;
+  font-weight: 600;
+  color: var(--warning);
+}
+.cv-finding-off {
+  display: block;
+  padding: 0 var(--s3);
+  font-size: 12px;
+}

@@ -1,6 +1,6 @@
 // The interactive board of one canvas (M09-J01): pan and zoom, select, drag, resize, connect, edit in place, and the Storyflow-style toolbar.
 // It owns only what is on the screen (view, selection, the gesture in progress); the canvas document lives in CanvasView, which saves it.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useModule } from '../prefs/PrefsContext.jsx';
 import { RELATIONS, relationLabel } from '../planner/requests.js';
 import { Dialog } from '../shell/Dialog.jsx';
@@ -40,6 +40,7 @@ import {
   withoutLink,
   zoomAt,
 } from './model.js';
+import { groupTargets, nodesForRefIds } from './plan/selectors.js';
 import { IMAGE_ACCEPT } from './requests.js';
 
 /** The toolbar, in order: [tool, label]. Each tool's key is the registry command canvas.<tool>. */
@@ -60,10 +61,12 @@ const TOOL_GLYPH = { note: 'Aa', todo: '☑', swatch: '◐', image: '▣', story
  * @param {{ bookId: string, doc: { nodes: any[], edges: any[] }, refs: Record<string, any>, targets: any[], readOnly: boolean, fitKey: string,
  *   onChange: (next: any, opts?: { commit?: boolean }) => void, onUndo: () => void, onRedo: () => void,
  *   onUploadImage: (file: File) => Promise<{ ok: true, path: string } | { ok: false, message: string }>, onProblem: (message: string | null) => void,
- *   links?: Map<string, any> | null, linkWrites?: ReturnType<typeof import('./useCanvasLinks.js').useCanvasLinks> | null }} props
+ *   links?: Map<string, any> | null, linkWrites?: ReturnType<typeof import('./useCanvasLinks.js').useCanvasLinks> | null,
+ *   plan?: any, focusRefs?: { refIds: string[], seq: number } | null }} props
  *   `links` are the live Flow links by slug (null until loaded); `linkWrites` makes a scene-to-scene connection a real Flow link.
+ *   `plan` is the planner data (usePlanData) the plan cards read; `focusRefs` selects the cards that show those ref ids and pans to them (a new object each time).
  */
-export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onChange, onUndo, onRedo, onUploadImage, onProblem, links = null, linkWrites = null }) {
+export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onChange, onUndo, onRedo, onUploadImage, onProblem, links = null, linkWrites = null, plan = null, focusRefs = null }) {
   const shortcuts = useShortcuts(); // the canvas keys come from the shortcut registry (M07-J04), so they can be rebound
   const boardRef = useRef(null);
   const fileRef = useRef(null);
@@ -100,6 +103,21 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
     setEditing(null);
     setEdgeSel(null);
   }, [fitKey]);
+
+  // plan check: select the cards for a finding and bring them into view (each new focusRefs object once)
+  const focused = useRef(null);
+  useEffect(() => {
+    if (!focusRefs || focused.current === focusRefs) return;
+    focused.current = focusRefs;
+    const ids = nodesForRefIds(docRef.current.nodes, refs, focusRefs.refIds);
+    if (ids.length === 0) return;
+    setSelected(new Set(ids));
+    setEdgeSel(null);
+    setEditing(null);
+    const box = bounds(docRef.current.nodes.filter((n) => ids.includes(n.id)));
+    const r = boardRef.current?.getBoundingClientRect();
+    if (box && r) setView((v) => ({ ...v, x: r.width / 2 - (box.x + box.width / 2) * v.zoom, y: r.height / 2 - (box.y + box.height / 2) * v.zoom }));
+  }, [focusRefs, refs]);
 
   const fit = useCallback(() => {
     const r = boardRef.current?.getBoundingClientRect();
@@ -425,7 +443,7 @@ export function CanvasBoard({ bookId, doc, refs, targets, readOnly, fitKey, onCh
         {isContainer(n) ? (
           <ContainerHead node={n} editing={editing === n.id} onPatch={patch(n.id)} onDone={doneEditing} count={kind === 'column' ? columnMembers(doc.nodes, n).length : 0} />
         ) : (
-          <CardBody node={n} bookId={bookId} refInfo={refInfo} editing={editing === n.id} readOnly={readOnly} onPatch={patch(n.id)} onDone={doneEditing} />
+          <CardBody node={n} bookId={bookId} refInfo={refInfo} editing={editing === n.id} readOnly={readOnly} plan={plan} onPatch={patch(n.id)} onDone={doneEditing} />
         )}
         {isSel && !readOnly && selected.size === 1 && editing !== n.id && <span className="cv-resize" aria-hidden="true" onPointerDown={(e) => onResizePointerDown(e, n)} />}
       </div>
@@ -665,14 +683,21 @@ export function StoryPicker({ targets, onPick, onClose }) {
         </div>
       </div>
       <ul className="cv-picker-list">
-        {shown.map((t) => (
-          <li key={t.ref}>
-            <button type="button" onClick={() => onPick(t)}>
-              <span className="cv-meta">{REF_KIND_LABEL[t.kind] ?? t.kind}</span>
-              <span className="cv-picker-title">{t.title}</span>
-              <span className="muted">{t.subtitle}</span>
-            </button>
-          </li>
+        {groupTargets(shown).map((g) => (
+          <Fragment key={g.kind}>
+            <li className="cv-picker-head" role="presentation">
+              <h3>{REF_KIND_LABEL[g.kind] ?? g.kind}</h3>
+            </li>
+            {g.items.map((t) => (
+              <li key={t.ref}>
+                <button type="button" onClick={() => onPick(t)}>
+                  <span className="cv-meta">{REF_KIND_LABEL[t.kind] ?? t.kind}</span>
+                  <span className="cv-picker-title">{t.title}</span>
+                  <span className="muted">{t.subtitle}</span>
+                </button>
+              </li>
+            ))}
+          </Fragment>
         ))}
         {shown.length === 0 && <li className="muted">Nothing matches.</li>}
       </ul>

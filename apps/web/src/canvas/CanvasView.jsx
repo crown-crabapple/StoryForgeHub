@@ -2,6 +2,7 @@
 // (debounced, guarded by the sha256 last seen; a 409 shows the conflict banner).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '../api.js';
+import { useModule } from '../prefs/PrefsContext.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { Link, useNavigate } from '../router.jsx';
 import { useWrites } from '../shell/writes.jsx';
@@ -9,6 +10,9 @@ import { bookVersion, useStatus } from '../status.jsx';
 import { useStructure } from '../structure/useStructure.jsx';
 import { CanvasBoard } from './CanvasBoard.jsx';
 import { canvasHref, canvasUrl, history, parseCanvasSearch, record, redo, undo } from './model.js';
+import { PlanRail } from './plan/PlanRail.jsx';
+import { canvasRefIds, findingOnCanvas, findingRefIds, loadLayers, saveLayers } from './plan/selectors.js';
+import { usePlanData } from './plan/usePlanData.js';
 import { useCanvasLinks } from './useCanvasLinks.js';
 import { archiveCanvas, createCanvas, explainCanvasFailure, restoreCanvas, saveCanvas, uploadCanvasImage } from './requests.js';
 
@@ -102,6 +106,21 @@ export function CanvasView({ bookId, search = '' }) {
  */
 export function CanvasPage({ bookId, list, slug, problem = null, onDismiss = () => {}, onNew, onArchive, onRestore, onSaved = () => {}, initial = null }) {
   const open = list.canvases.find((c) => c.slug === slug) ?? null;
+  const plannerOn = useModule('planner');
+  const plan = usePlanData({ bookId, enabled: plannerOn });
+  const [layers, setLayers] = useState(() => loadLayers(bookId)); // kept per book
+  const [structureId, setStructureId] = useState(/** @type {string | null} */ (null));
+  const [branch, setBranch] = useState(/** @type {string | null} */ (null));
+  const [focus, setFocus] = useState(/** @type {{ refIds: string[], seq: number } | null} */ (null));
+  const [onCanvas, setOnCanvas] = useState(/** @type {Set<string> | null} */ (null));
+  const changeLayers = (next) => {
+    setLayers(next);
+    saveLayers(bookId, next);
+  };
+  const pickFinding = (finding) => {
+    if (findingOnCanvas(finding, onCanvas)) setFocus((f) => ({ refIds: findingRefIds(finding), seq: (f?.seq ?? 0) + 1 }));
+  };
+  const setRefIds = useCallback((next) => setOnCanvas((prev) => (prev && next && prev.size === next.size && [...next].every((id) => prev.has(id)) ? prev : next)), []);
   return (
     <div className="cv-layout">
       <aside className="cv-list" aria-label="Canvases">
@@ -140,6 +159,9 @@ export function CanvasPage({ bookId, list, slug, problem = null, onDismiss = () 
             </ul>
           </details>
         )}
+        {plannerOn && (
+          <PlanRail plan={plan} layers={layers} onLayers={changeLayers} structureId={structureId} onStructure={setStructureId} branch={branch} onBranch={setBranch} onFinding={pickFinding} onCanvas={open ? onCanvas : null} />
+        )}
         {problem && (
           <div className="error cv-problem" role="alert">
             <p>{problem}</p>
@@ -151,7 +173,7 @@ export function CanvasPage({ bookId, list, slug, problem = null, onDismiss = () 
       </aside>
       <section className="cv-main" aria-label={open ? `Canvas ${open.title}` : 'Canvas'}>
         {open ? (
-          <OpenCanvas key={open.slug} bookId={bookId} summary={open} onArchive={() => onArchive(open)} onSaved={onSaved} initial={initial} />
+          <OpenCanvas key={open.slug} bookId={bookId} summary={open} onArchive={() => onArchive(open)} onSaved={onSaved} initial={initial} plan={plannerOn ? plan : null} focusRefs={focus} onRefIds={setRefIds} />
         ) : (
           <div className="cv-none">
             <h2>Start a canvas</h2>
@@ -167,15 +189,15 @@ export function CanvasPage({ bookId, list, slug, problem = null, onDismiss = () 
 }
 
 /** One canvas: fetch, history, autosave, conflict banner. */
-function OpenCanvas({ bookId, summary, onArchive, onSaved, initial }) {
+function OpenCanvas({ bookId, summary, onArchive, onSaved, initial, plan, focusRefs, onRefIds }) {
   const { data, error } = useApi(initial ? null : canvasUrl(bookId, summary.slug), '');
   const loaded = initial ?? data;
   if (error) return <p className="error">{error}</p>;
   if (!loaded) return <p className="muted cv-loading">Loading…</p>;
-  return <Editor key={loaded.sha256} bookId={bookId} loaded={loaded} onArchive={onArchive} onSaved={onSaved} />;
+  return <Editor key={loaded.sha256} bookId={bookId} loaded={loaded} onArchive={onArchive} onSaved={onSaved} plan={plan} focusRefs={focusRefs} onRefIds={onRefIds} />;
 }
 
-function Editor({ bookId, loaded, onArchive, onSaved }) {
+function Editor({ bookId, loaded, onArchive, onSaved, plan = null, focusRefs = null, onRefIds = () => {} }) {
   const { track } = useWrites();
   const { status } = useStatus();
   const book = useMemo(() => ({ id: bookId }), [bookId]);
@@ -190,7 +212,7 @@ function Editor({ bookId, loaded, onArchive, onSaved }) {
   const [save, setSave] = useState({ state: 'saved', sha: loaded.sha256, message: null });
   const [conflict, setConflict] = useState(null);
   const [problem, setProblem] = useState(null);
-  const refs = loaded.refs ?? {};
+  const refs = useMemo(() => loaded.refs ?? {}, [loaded.refs]);
   const saved = useRef(loaded.canvas);
   const shaRef = useRef(loaded.sha256);
   const timer = useRef(null);
@@ -241,6 +263,12 @@ function Editor({ bookId, loaded, onArchive, onSaved }) {
     setLive(null);
     setHist((h) => record(h, next));
   }, []);
+
+  // tell the page which ref ids are on this canvas (the plan check says so for a finding with no card here)
+  useEffect(() => {
+    onRefIds(canvasRefIds(doc.nodes, refs));
+  }, [doc.nodes, refs, onRefIds]);
+  useEffect(() => () => onRefIds(null), [onRefIds]);
 
   const title = doc?.storyforge?.title ?? loaded.title;
   const setTitle = (t) => onChange({ ...hist.present, storyforge: { schema: 'storyforge.canvas/v1', ...(hist.present.storyforge ?? {}), title: t } });
@@ -322,6 +350,8 @@ function Editor({ bookId, loaded, onArchive, onSaved }) {
         onProblem={setProblem}
         links={linkWrites.links}
         linkWrites={linkWrites}
+        plan={plan}
+        focusRefs={focusRefs}
       />
       {structure.ui}
     </div>
