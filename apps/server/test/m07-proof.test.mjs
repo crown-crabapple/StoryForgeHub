@@ -71,6 +71,7 @@ const SAMPLES = {
   'chapter-archive': ['POST', `${b}/chapters/1/archive`],
   'chapter-create': ['POST', `${b}/chapters`],
   'chapter-fields': ['POST', `${b}/chapters/1/fields`],
+  'chapter-move': ['POST', `${b}/chapters/1/move`],
   'chapters-renumber': ['POST', `${b}/chapters/renumber`],
   'check-scene': ['POST', `${b}/check`],
   'codex-type-create': ['POST', `${b}/codex/types`],

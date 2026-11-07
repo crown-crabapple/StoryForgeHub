@@ -5,6 +5,7 @@ export {
   createChapter,
   setChapterFields,
   renumberChapters,
+  moveChapter,
   archiveChapter,
   createAct,
   setActFields,

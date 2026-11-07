@@ -104,6 +104,7 @@ const ROUTES = [
   { name: 'chapter create', url: (b) => u(b, 'chapters'), body: { act: 2, after: 3, title: 'Aftermath' } },
   { name: 'chapter fields', url: (b) => u(b, 'chapters/1/fields'), body: { title: 'The Flooded Rows' }, lineEdit: /title/ },
   { name: 'chapter archive', url: (b) => u(b, 'chapters/2/archive'), body: {} },
+  { name: 'chapter move', url: (b) => u(b, 'chapters/2/move'), body: { act: 2 } },
   { name: 'chapters renumber', url: (b) => u(b, 'chapters/renumber'), body: { step: 1 }, needsGap: true },
   { name: 'act create', url: (b) => u(b, 'acts'), body: { title: 'Ebb Tide' } },
   { name: 'act fields', url: (b) => u(b, 'acts/1/fields'), body: { title: 'Lower Water' }, lineEdit: /title/ },

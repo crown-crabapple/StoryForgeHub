@@ -70,10 +70,18 @@ test('rail: every scene row is draggable, with its link and menu button still re
   }
 });
 
-test('rail: only scene rows are draggable (acts, chapters and the heading are not)', () => {
+test('rail: scene rows and chapter rows are draggable (acts and the heading are not)', () => {
   const html = rail();
-  assert.equal(count(html, /draggable="true"/g), 3);
+  assert.equal(count(html, /draggable="true"/g), 6);
   for (const li of html.matchAll(/<li\b[^>]*draggable="true"[^>]*>/g)) assert.match(li[0], /data-scene-id=/);
+  const chapters = [...html.matchAll(/<div\b[^>]*draggable="true"[^>]*>/g)].map((d) => /data-chapter-row="(\d+)"/.exec(d[0])?.[1]);
+  assert.deepEqual(chapters, ['1', '2', '3']);
+  assert.doesNotMatch(html, /data-act-row="\d+"[^>]*draggable="true"/);
+});
+
+test('stylesheet: a chapter being dragged dims, and an act drop target is outlined with the accent colour', () => {
+  assert.match(rule('.outline-chapter-item.is-dragging') ?? '', /opacity/);
+  assert.match(rule('.outline-act.is-drop-target') ?? '', /var\(--accent\)/);
 });
 
 test('rail: the link inside a draggable row does not start its own native link drag', () => {

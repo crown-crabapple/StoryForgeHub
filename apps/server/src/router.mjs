@@ -676,6 +676,7 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'chapters' && d === 'renumber' && e === undefined) return { route: 'chapters-renumber', bookId: b };
   if (method === 'POST' && c === 'chapters' && d !== undefined && e === 'fields') return { route: 'chapter-fields', bookId: b, n: d };
   if (method === 'POST' && c === 'chapters' && d !== undefined && e === 'archive') return { route: 'chapter-archive', bookId: b, n: d };
+  if (method === 'POST' && c === 'chapters' && d !== undefined && d !== 'renumber' && e === 'move') return { route: 'chapter-move', bookId: b, n: d };
   if (method === 'POST' && c === 'acts' && d === undefined) return { route: 'act-create', bookId: b };
   if (method === 'POST' && c === 'acts' && d !== undefined && e === 'fields') return { route: 'act-fields', bookId: b, n: d };
   if (method === 'POST' && c === 'ops' && d !== undefined && e === 'restore') return { route: 'op-restore', bookId: b, opId: d };
@@ -1139,6 +1140,13 @@ async function handleStructure(repository, match, body) {
     case 'chapter-archive': {
       if (num === null) return NOT_FOUND;
       const r = await repository.archiveChapter(bookId, num, { dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'chapter-move': {
+      if (num === null) return NOT_FOUND;
+      if (!Number.isInteger(body.act) || body.act < 0) return badRequest('act must be an integer >= 0');
+      if (body.after !== undefined && body.after !== null && (!Number.isInteger(body.after) || body.after < 0)) return badRequest('after must be a chapter number, null or omitted');
+      const r = await repository.moveChapter(bookId, num, { act: body.act, ...(body.after !== undefined ? { after: body.after } : {}), dryRun });
       return respond(r, 200, structureBody);
     }
     case 'chapters-renumber': {

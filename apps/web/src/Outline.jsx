@@ -5,12 +5,13 @@ import { RowMenu } from './structure/RowMenu.jsx';
 import { actKey, chapterKey, readCollapsed, writeCollapsed } from './structure/collapse.js';
 import { STATUSES, actName, archivedName, archivedScenes, chapterName, povInitial, wordsOf } from './structure/helpers.js';
 import { useShortcuts } from './shortcuts/ShortcutsContext.jsx';
-import { dropTarget, halfOf, keyboardTarget } from './structure/move-target.js';
+import { chapterDropTarget, dropTarget, halfOf, keyboardTarget } from './structure/move-target.js';
 import { useStructure } from './structure/useStructure.jsx';
 import { bookProgress, chapterProgress } from './writing/scene-context.js';
 
 const EXPAND_MS = 600;
 const DRAG_TYPE = 'application/x-storyforge-scene';
+const CHAPTER_DRAG_TYPE = 'application/x-storyforge-chapter';
 const findScene = (book, id) => book.acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes)).find((s) => s.id === id);
 
 const sceneHref = (bookId, sceneId) => `/books/${encodeURIComponent(bookId)}?scene=${encodeURIComponent(sceneId)}`;
@@ -178,6 +179,7 @@ export function Outline({ book, activeId = null, onChanged }) {
   const shortcuts = useShortcuts(); // outline.moveUp / outline.moveDown come from the shortcut registry (M07-J04)
   const [collapsed, setCollapsed] = useState(() => readCollapsed(book.id));
   const [dragId, setDragId] = useState(null);
+  const [dragChapter, setDragChapter] = useState(null);
   const [drop, setDrop] = useState(null);
   const [live, setLive] = useState('');
   const root = useRef(null);
@@ -192,7 +194,7 @@ export function Outline({ book, activeId = null, onChanged }) {
       return next;
     });
 
-  const { start, ui, move } = useStructure({
+  const { start, ui, move, moveChapter } = useStructure({
     book,
     activeId,
     onChanged,
@@ -230,15 +232,48 @@ export function Outline({ book, activeId = null, onChanged }) {
     clearHover();
     dragRef.current = null;
     setDragId(null);
+    setDragChapter(null);
     setDrop(null);
   };
 
   function beginDrag(e, scene) {
     e.dataTransfer.setData(DRAG_TYPE, scene.id);
     e.dataTransfer.effectAllowed = 'move';
-    dragRef.current = scene.id;
+    dragRef.current = { kind: 'scene', id: scene.id };
     setDragId(scene.id);
     setLive(`Picked up ${scene.title || 'Untitled scene'}. Drag over a scene to place it before or after, or over a chapter to put it at the end.`);
+  }
+
+  /** A whole chapter is picked up by its row (its scenes stay in it). */
+  function beginChapterDrag(e, ch, name) {
+    if (e.target instanceof Element && e.target.closest('[data-scene-id]')) return; // a scene row inside starts its own drag
+    e.stopPropagation();
+    e.dataTransfer.setData(CHAPTER_DRAG_TYPE, String(ch.chapter));
+    e.dataTransfer.effectAllowed = 'move';
+    dragRef.current = { kind: 'chapter', chapter: ch.chapter };
+    setDragChapter(ch.chapter);
+    setLive(`Picked up ${name}. Drag over a chapter to place it before or after, or over an act to put it at the end of that act.`);
+  }
+
+  /** For a dragged chapter: a chapter row (which half; its scenes count as after it) or an act row. */
+  function chapterOverOf(e) {
+    const el = e.target instanceof Element ? e.target : null;
+    const chRow = el?.closest('[data-chapter-row]');
+    if (chRow) return { kind: 'chapter', chapter: Number(chRow.dataset.chapterRow), half: halfOf(e.clientY, chRow.getBoundingClientRect()) };
+    const item = el?.closest('[data-chapter-item]');
+    if (item) return { kind: 'chapter', chapter: Number(item.dataset.chapterItem), half: 'after' };
+    const actRow = el?.closest('[data-act-row]');
+    if (actRow) return { kind: 'act', act: Number(actRow.dataset.actRow) };
+    return null;
+  }
+
+  /** What a drop here would do, for whatever is being dragged. */
+  function targetOf(e) {
+    const d = dragRef.current;
+    if (!d) return null;
+    if (d.kind === 'chapter') return chapterDropTarget(book, d.chapter, chapterOverOf(e));
+    const over = overOf(e);
+    return over ? dropTarget(book, d.id, over) : null;
   }
 
   /** What is under the pointer: a scene row (and which half) or a chapter row. */
@@ -273,9 +308,8 @@ export function Outline({ book, activeId = null, onChanged }) {
 
   function onDragOver(e) {
     if (!dragRef.current) return;
-    hoverExpand(e);
-    const over = overOf(e);
-    const target = over ? dropTarget(book, dragRef.current, over) : null;
+    if (dragRef.current.kind === 'scene') hoverExpand(e); // a dragged chapter goes between chapters, so nothing needs opening
+    const target = targetOf(e);
     if (target && !target.noop) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
@@ -289,14 +323,19 @@ export function Outline({ book, activeId = null, onChanged }) {
   }
 
   function onDrop(e) {
-    const id = dragRef.current;
-    if (!id) return;
+    const d = dragRef.current;
+    if (!d) return;
     e.preventDefault();
-    const over = overOf(e);
-    const target = over ? dropTarget(book, id, over) : null;
+    const target = targetOf(e);
     endDrag();
-    const scene = findScene(book, id);
-    if (target && !target.noop && scene) void move(scene, target);
+    if (!target || target.noop) return;
+    if (d.kind === 'chapter') {
+      const ch = book.acts.flatMap((a) => a.chapters).find((c) => c.chapter === d.chapter);
+      if (ch) void moveChapter(ch, { act: target.act, after: target.after });
+      return;
+    }
+    const scene = findScene(book, d.id);
+    if (scene) void move(scene, target);
   }
 
   function onDragLeave(e) {
@@ -335,7 +374,10 @@ export function Outline({ book, activeId = null, onChanged }) {
       return next;
     });
 
-  const endTarget = drop && !drop.noop && drop.indicator.kind === 'end' ? drop.chapter : null;
+  const sceneDrop = dragChapter === null ? drop : null;
+  const chapterDrop = dragChapter !== null && drop && !drop.noop ? drop.indicator : null;
+  const endTarget = sceneDrop && !sceneDrop.noop && sceneDrop.indicator.kind === 'end' ? sceneDrop.chapter : null;
+  const actTarget = chapterDrop?.kind === 'end' ? chapterDrop.act : null;
 
   return (
     <div className="outline" ref={root} onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} onDragLeave={onDragLeave} onDragEnd={endDrag}>
@@ -354,7 +396,7 @@ export function Outline({ book, activeId = null, onChanged }) {
           const lastChapter = act.chapters[act.chapters.length - 1];
           return (
             <li key={act.act}>
-              <div className="outline-row outline-act" data-act-row={act.act}>
+              <div className={`outline-row outline-act${actTarget === act.act ? ' is-drop-target' : ''}`} data-act-row={act.act} {...(actTarget === act.act ? { 'data-drop': 'end' } : {})}>
                 <Toggle collapsed={actCollapsed} onToggle={() => toggle(actKey(act.act))} name={aName}>
                   <FolderIcon width={15} height={15} />
                   <span className="outline-label" title={aName}>{aName}</span>
@@ -373,11 +415,15 @@ export function Outline({ book, activeId = null, onChanged }) {
                   const chCollapsed = collapsed.has(chapterKey(ch.chapter));
                   const cName = chapterName(ch);
                   const lastScene = ch.scenes[ch.scenes.length - 1];
+                  const chapterMark = chapterDrop && chapterDrop.kind !== 'end' && chapterDrop.chapter === ch.chapter ? chapterDrop.kind : null;
                   return (
-                    <li key={ch.chapter}>
+                    <li key={ch.chapter} className={`outline-chapter-item${dragChapter === ch.chapter ? ' is-dragging' : ''}`} data-chapter-item={ch.chapter}>
+                      {chapterMark && <span className="drop-line drop-line-chapter" data-position={chapterMark} aria-hidden="true" />}
                       <div
                         className={`outline-row outline-chapter${endTarget === ch.chapter ? ' is-drop-target' : ''}`}
                         data-chapter-row={ch.chapter}
+                        draggable="true"
+                        onDragStart={(e) => beginChapterDrag(e, ch, cName)}
                         {...(endTarget === ch.chapter ? { 'data-drop': 'end' } : {})}
                       >
                         <Toggle collapsed={chCollapsed} onToggle={() => toggle(chapterKey(ch.chapter))} name={cName}>
@@ -404,6 +450,7 @@ export function Outline({ book, activeId = null, onChanged }) {
                             { label: 'Rename...', run: () => start({ type: 'rename-chapter', chapter: ch }) },
                             { label: 'Add scene', run: () => start({ type: 'add-scene', chapter: ch.chapter, act: act.act, after: lastScene ? lastScene.id : null }) },
                             { label: 'Add chapter after', run: () => start({ type: 'add-chapter', act: act.act, after: ch.chapter }) },
+                            { label: 'Move to act...', run: () => start({ type: 'move-chapter', chapter: ch, name: cName }) },
                             { label: 'Archive chapter', run: () => start({ type: 'archive-chapter', chapter: ch, name: cName }) },
                           ]}
                         />
@@ -419,7 +466,7 @@ export function Outline({ book, activeId = null, onChanged }) {
                             chapterNode={ch}
                             act={act.act}
                             start={start}
-                            dropMark={drop && !drop.noop && drop.indicator.sceneId === s.id ? drop.indicator.kind : null}
+                            dropMark={sceneDrop && !sceneDrop.noop && sceneDrop.indicator.sceneId === s.id ? sceneDrop.indicator.kind : null}
                             dragging={dragId === s.id}
                             onDragStart={beginDrag}
                           />

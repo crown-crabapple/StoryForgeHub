@@ -7,12 +7,16 @@ import { Dialog } from '../shell/Dialog.jsx';
 import { ToastFrame } from '../shell/ToastStack.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { MoveDialog } from './MoveDialog.jsx';
+import { chapterPlaces, currentChapterPlace, parseChapterPlace } from './move-target.js';
 import { PreviewDialog } from './PreviewDialog.jsx';
 import { bookUrl, explainFailure, pathsOf, send, slugify } from './helpers.js';
 
 const TOAST_MS = 12000;
 
-/** One small form in a dialog. `fields`: [{ name, label, type?: 'text' | 'number' | 'checkbox', initial?, hint?, required? }]. */
+/**
+ * One small form in a dialog. `fields`: [{ name, label, type?: 'text' | 'number' | 'checkbox' | 'select', initial?, hint?, required?, groups? }].
+ * A select takes `groups`: [{ label, options: [{ value, label }] }] (one optgroup each).
+ */
 function FormDialog({ form, onSubmit, onClose, busy }) {
   const [values, setValues] = useState(() => Object.fromEntries(form.fields.map((f) => [f.name, f.initial ?? (f.type === 'checkbox' ? false : '')])));
   const set = (name, value) => setValues((v) => ({ ...v, [name]: value }));
@@ -31,6 +35,18 @@ function FormDialog({ form, onSubmit, onClose, busy }) {
               {f.type === 'checkbox' ? null : <span className="form-label">{f.label}</span>}
               {f.type === 'checkbox' ? (
                 <input type="checkbox" name={f.name} checked={Boolean(values[f.name])} onChange={(e) => set(f.name, e.target.checked)} />
+              ) : f.type === 'select' ? (
+                <select name={f.name} value={values[f.name]} onChange={(e) => set(f.name, e.target.value)}>
+                  {(f.groups ?? []).map((g) => (
+                    <optgroup key={g.label} label={g.label}>
+                      {g.options.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               ) : (
                 <input
                   type={f.type ?? 'text'}
@@ -276,6 +292,36 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
     }
   }
 
+  /**
+   * Move a whole chapter (drag and drop, Move to act...): flushes the open editor, then the dry run and the Preview, since a chapter move
+   * touches every file of the chapter and may renumber later chapters. `target`: { act, after } as POST .../chapters/:n/move takes it.
+   * @returns {Promise<{ error?: string } | undefined>}
+   */
+  async function moveChapter(chapterNode, target, { stayInForm = false } = {}) {
+    const name = chapterNode.title ? `${chapterNode.label}: ${chapterNode.title}` : chapterNode.label;
+    const open = bridge.current();
+    if (open) {
+      const blocked = (message) => {
+        if (stayInForm) return { error: message };
+        showToast({ message });
+        return undefined;
+      };
+      if (open.isConflict?.()) return blocked('Not moved: the open scene has a conflict with the file on disk. Resolve that first.');
+      const { saved } = await open.flush();
+      if (!saved) return blocked('Not moved: the open scene has changes that could not be saved yet. Resolve that first.');
+    }
+    return previewThenApply(
+      {
+        title: `Move ${name}`,
+        url: bookUrl(bookId, `/chapters/${chapterNode.chapter}/move`),
+        body: { act: target.act, ...(target.after !== undefined ? { after: target.after } : {}) },
+        done: `Moved ${name}.`,
+        undoable: true,
+      },
+      { stayInForm },
+    );
+  }
+
   async function undo() {
     const opId = toast?.opId;
     if (!opId) return;
@@ -456,6 +502,21 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
             }),
         });
         break;
+      case 'move-chapter': {
+        const initial = currentChapterPlace(book, c.chapter.chapter);
+        setForm({
+          title: `Move ${c.name} to act`,
+          submit: 'Preview',
+          fields: [{ name: 'place', label: 'Where', type: 'select', initial, groups: chapterPlaces(book, c.chapter.chapter), hint: 'Chapters are numbered in book order, so later chapters may be renumbered. The Preview shows every file first.' }],
+          onSubmit: (v) => {
+            const place = parseChapterPlace(v.place);
+            if (!place) return { error: 'Choose where the chapter goes.' };
+            if (v.place === initial) return { close: true };
+            return moveChapter(c.chapter, place, { stayInForm: true });
+          },
+        });
+        break;
+      }
       case 'archive-chapter':
         previewThenApply({
           title: `Archive ${c.name}`,
@@ -538,5 +599,5 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
       {toast && <Toast toast={toast} onUndo={undo} onDismiss={() => setToast(null)} />}
     </>
   );
-  return { start, ui, move, apply: applyNow, preview: previewThenApply, showToast };
+  return { start, ui, move, moveChapter, apply: applyNow, preview: previewThenApply, showToast };
 }

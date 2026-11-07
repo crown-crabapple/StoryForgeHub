@@ -15,7 +15,7 @@ const NEEDS = { read: 1, export: 1, comment: 2, suggest: 2, write: 3, ai: 3, adm
 export const WRITE_CLASSES = Object.freeze({
   // manuscript, structure and planning edits
   'act-create': 'write', 'act-fields': 'write', 'activity-session': 'write', archive: 'write', 'attachment-upload': 'write', body: 'write',
-  'chapter-archive': 'write', 'chapter-create': 'write', 'chapter-fields': 'write', 'chapters-renumber': 'write', 'check-scene': 'write',
+  'chapter-archive': 'write', 'chapter-create': 'write', 'chapter-fields': 'write', 'chapter-move': 'write', 'chapters-renumber': 'write', 'check-scene': 'write',
   'codex-type-create': 'write', 'continuity-exception-archive': 'write', 'continuity-exception-create': 'write', create: 'write',
   'entry-archive': 'write', 'entry-body': 'write', 'entry-create': 'write', 'entry-fields': 'write', 'entry-restore': 'write', 'entry-slug': 'write',
   'event-archive': 'write', 'event-body': 'write', 'event-create': 'write', 'event-fields': 'write', 'event-restore': 'write', goal: 'write',

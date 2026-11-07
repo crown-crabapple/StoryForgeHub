@@ -205,3 +205,58 @@ test('dialogTarget: the two selects become { chapter, act, after }; "" is the st
   assert.deepEqual(dialogTarget(BOOK, 5, ''), { chapter: 5, act: 2, after: null });
   assert.equal(dialogTarget(BOOK, '99', ''), null);
 });
+
+// ---------------------------------------------------------------- whole chapters (POST .../chapters/:n/move)
+
+test('chapter drop on an act row: the end of that act', async () => {
+  const { chapterDropTarget } = await import('../src/structure/move-target.js');
+  const t = chapterDropTarget(BOOK, 3, { kind: 'act', act: 2 });
+  assert.equal(t.act, 2);
+  assert.equal(t.after, undefined);
+  assert.equal(t.noop, false);
+  assert.equal(t.text, 'Move Chapter 3 to the end of Act 2: High Water');
+  assert.deepEqual(t.indicator, { kind: 'end', chapter: null, act: 2 });
+});
+
+test('chapter drop on the upper half of the first chapter of an act: the start of that act', async () => {
+  const { chapterDropTarget } = await import('../src/structure/move-target.js');
+  const t = chapterDropTarget(BOOK, 1, { kind: 'chapter', chapter: 4, half: 'before' });
+  assert.deepEqual({ act: t.act, after: t.after, noop: t.noop }, { act: 2, after: null, noop: false });
+  assert.equal(t.text, 'Move Chapter 1: The Drowned Rows to the start of Act 2: High Water');
+});
+
+test('chapter drop on the lower half of a chapter: after it; on the upper half: after the one before it (skipping the mover)', async () => {
+  const { chapterDropTarget } = await import('../src/structure/move-target.js');
+  const below = chapterDropTarget(BOOK, 0, { kind: 'chapter', chapter: 4, half: 'after' });
+  assert.deepEqual({ act: below.act, after: below.after }, { act: 2, after: 4 });
+  assert.equal(below.text, 'Move Prologue after Chapter 4 in Act 2: High Water');
+  const above = chapterDropTarget(BOOK, 1, { kind: 'chapter', chapter: 2, half: 'before' });
+  assert.deepEqual({ act: above.act, after: above.after, noop: above.noop }, { act: 1, after: 0, noop: true });
+});
+
+test('a chapter dropped on itself, or at the end of its own act when it is already last, is a no-op', async () => {
+  const { chapterDropTarget } = await import('../src/structure/move-target.js');
+  assert.equal(chapterDropTarget(BOOK, 1, { kind: 'chapter', chapter: 1, half: 'after' }).noop, true);
+  assert.equal(chapterDropTarget(BOOK, 5, { kind: 'act', act: 2 }).noop, true);
+  assert.equal(chapterDropTarget(BOOK, 4, { kind: 'act', act: 2 }).noop, false);
+});
+
+test('an empty act is described as "into empty"', async () => {
+  const { chapterTarget } = await import('../src/structure/move-target.js');
+  const book = { acts: [...BOOK.acts, { act: 3, label: 'Act 3', title: null, chapters: [] }] };
+  assert.equal(chapterTarget(book, 5, 3, undefined).text, 'Move Chapter 5 into empty Act 3');
+  assert.equal(chapterTarget(book, 5, 9, undefined), null);
+});
+
+test('Move to act... places: one group per act, the mover left out, values round-trip', async () => {
+  const { chapterPlaces, currentChapterPlace, parseChapterPlace } = await import('../src/structure/move-target.js');
+  const groups = chapterPlaces(BOOK, 4);
+  assert.deepEqual(groups.map((g) => g.label), ['Act 1: Low Water', 'Act 2: High Water']);
+  assert.deepEqual(groups[1].options, [{ value: '2:', label: 'At the start' }, { value: '2:5', label: 'After Chapter 5' }]);
+  assert.equal(groups[0].options.length, 5);
+  assert.equal(currentChapterPlace(BOOK, 4), '2:');
+  assert.equal(currentChapterPlace(BOOK, 3), '1:2');
+  assert.deepEqual(parseChapterPlace('2:'), { act: 2, after: null });
+  assert.deepEqual(parseChapterPlace('1:3'), { act: 1, after: 3 });
+  assert.equal(parseChapterPlace('x'), null);
+});

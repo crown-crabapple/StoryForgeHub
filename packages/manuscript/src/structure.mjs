@@ -1,5 +1,6 @@
 // Structure commands (M03-J01): scene fields, chapters, acts, renumber chapters, archive chapter,
 // split, merge, undo. Every one has a dry run, refuses on a broken book and goes through the store.
+import { rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import {
   editFrontMatterLine,
@@ -316,6 +317,165 @@ export function renumberChapters(bookRoot, args = {}) {
       withDiff: true,
       extra: { mapping: Object.fromEntries([...mapping].filter(([a, b]) => a !== b)) },
     });
+  });
+}
+
+/**
+ * Move a whole chapter into an act (the same act or another), before or after the other chapters there.
+ * `after` is a chapter number in the target act (null = first in the act; omitted = last in the act).
+ *
+ * Book order follows chapter numbers and an act may never come after a later act (E206), so the chapter
+ * takes a number that fits its new place: it keeps its own when that already fits, else the first free number
+ * between its new neighbours, else every chapter is renumbered 1..N (0..N-1 when the book has a chapter 0) in
+ * the new order. Every file of the moved chapter's folder (scenes, chapter.md, variants, anything else) goes
+ * to the target act's folder; scenes get the new `act` (and `chapter`) line. Bodies are never touched.
+ * @param {string} bookRoot @param {number} chapter
+ * @param {{act:number, after?:number|null, dryRun?:boolean}} args
+ */
+export function moveChapter(bookRoot, chapter, args = {}) {
+  return guarded(async () => {
+    const { act, after, dryRun = false } = args ?? {};
+    if (!isInt(chapter)) return fail('REFUSED_BAD_ARGS', 'chapter must be an integer >= 0');
+    if (!isInt(act)) return fail('REFUSED_BAD_ARGS', 'act must be an integer >= 0');
+    if (after !== undefined && after !== null && !isInt(after)) return fail('REFUSED_BAD_ARGS', 'after must be a chapter number, null or omitted');
+    if (after === chapter) return fail('REFUSED_BAD_ANCHOR', 'a chapter cannot be placed after itself');
+    const prep = await prepare(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store } = prep;
+    const meta = await scanMeta(store);
+
+    // every live chapter with its act: scenes first, then the act folder of a chapter that only has chapter.md
+    /** @type {Map<number, number>} */
+    const actOf = new Map();
+    for (const s of lb.book.order) actOf.set(s.chapter, s.act);
+    for (const c of meta.chapters) if (!actOf.has(c.n) && c.actNum !== null) actOf.set(c.n, c.actNum);
+    if (!actOf.has(chapter)) return fail('REFUSED_UNKNOWN_CHAPTER', `chapter ${chapter} has no scenes and no chapter.md in an act folder`);
+    const acts = new Set([...actOf.values(), ...meta.acts.map((a) => a.n), ...withNumber(meta.actNumbers)]);
+    if (!acts.has(act)) return fail('REFUSED_UNKNOWN_ACT', `act ${act} does not exist`);
+
+    const order = [...actOf.keys()].sort((a, b) => a - b).map((n) => ({ n, act: actOf.get(n) }));
+    const rest = order.filter((c) => c.n !== chapter);
+    let at;
+    if (typeof after === 'number') {
+      const anchor = rest.findIndex((c) => c.n === after);
+      if (anchor === -1) return fail('REFUSED_BAD_ANCHOR', `chapter ${after} does not exist`);
+      if (rest[anchor].act !== act) return fail('REFUSED_BAD_ANCHOR', `chapter ${after} is not in act ${act}`);
+      at = anchor + 1;
+    } else {
+      const inAct = rest.map((c, i) => (c.act === act ? i : -1)).filter((i) => i !== -1);
+      if (inAct.length) at = after === null ? inAct[0] : inAct[inAct.length - 1] + 1;
+      else {
+        // an empty act: after every chapter of an earlier act, before every chapter of a later one
+        const later = rest.findIndex((c) => c.act > act);
+        at = later === -1 ? rest.length : later;
+      }
+    }
+    const next = [...rest.slice(0, at), { n: chapter, act }, ...rest.slice(at)];
+    for (let i = 1; i < next.length; i++) {
+      if (next[i].act < next[i - 1].act) return fail('REFUSED_BAD_ANCHOR', `that place would put act ${next[i].act} after act ${next[i - 1].act}`);
+    }
+
+    // numbers: keep everyone's if the mover fits (or a free number does) between its new neighbours, else renumber all
+    const prev = next[at - 1]?.n;
+    const following = next[at + 1]?.n;
+    const lo = prev === undefined ? 0 : prev + 1;
+    const hi = following === undefined ? Infinity : following - 1;
+    /** @type {Map<number, number>} old number -> new number */
+    const mapping = new Map(order.map((c) => [c.n, c.n]));
+    if (chapter < lo || chapter > hi) {
+      if (lo <= hi) mapping.set(chapter, prev === undefined && hi >= 1 ? Math.max(1, lo) : lo);
+      else {
+        const hasZero = order[0].n === 0;
+        next.forEach((c, i) => mapping.set(c.n, hasZero ? i : i + 1));
+      }
+    }
+    const newOf = (n) => mapping.get(n) ?? n;
+    const actAfter = (n) => (n === chapter ? act : actOf.get(n));
+
+    // folders: a chapter's folder goes to its act's folder with ch-NNN for its new number (the rest of the name is kept)
+    const resolver = await makePathResolver(store);
+    const actDirOf = (a, n) => path.posix.dirname(resolver.dir(a, n));
+    const mapDir = (dir, oldN) => {
+      const n = newOf(oldN);
+      const a = actAfter(oldN);
+      if (n === oldN && a === actOf.get(oldN)) return dir;
+      const base = path.posix.basename(dir);
+      const name = CHAP_DIR_RE.test(base) ? base.replace(/^ch-\d+/, `ch-${pad(n, 3)}`) : base;
+      return `${a === actOf.get(oldN) ? path.posix.dirname(dir) : actDirOf(a, n)}/${name}`;
+    };
+
+    const changes = [];
+    const handled = new Set();
+    /** @type {Map<string, string>} old folder -> new folder */
+    const movedDirs = new Map();
+    const take = async (rel, edits, to) => {
+      handled.add(rel);
+      const r = await sceneChange(store, { path: rel }, edits, to);
+      if ('unsimple' in r) return unsimpleResult(r.unsimple);
+      if (r.change) changes.push(r.change);
+      return null;
+    };
+    const editsFor = (oldN, { withAct }) => {
+      const e = {};
+      if (newOf(oldN) !== oldN) e.chapter = newOf(oldN);
+      if (withAct && actAfter(oldN) !== actOf.get(oldN)) e.act = actAfter(oldN);
+      return e;
+    };
+    for (const s of lb.book.order) {
+      const dir = path.posix.dirname(s.path);
+      const to = mapDir(dir, s.chapter);
+      if (to !== dir) movedDirs.set(dir, to);
+      const bad = await take(s.path, editsFor(s.chapter, { withAct: true }), `${to}/${path.posix.basename(s.path)}`);
+      if (bad) return bad;
+    }
+    for (const c of meta.chapters) {
+      if (!actOf.has(c.n)) continue;
+      const dir = path.posix.dirname(c.rel);
+      const to = mapDir(dir, c.n);
+      if (to !== dir) movedDirs.set(dir, to);
+      const bad = await take(c.rel, editsFor(c.n, { withAct: false }), `${to}/chapter.md`);
+      if (bad) return bad;
+    }
+    for (const x of lb.book.excluded.filter((e) => e.reason === 'variant')) {
+      const dir = path.posix.dirname(x.path);
+      if (!movedDirs.has(dir)) continue;
+      const read = await store.read(x.path);
+      const n = read ? readSimpleLine(read.bytes, 'chapter') : null;
+      const oldN = n !== null && /^\d+$/.test(n) ? Number(n) : null;
+      const edits = {};
+      if (oldN !== null) {
+        const e = editsFor(oldN, { withAct: true });
+        for (const k of Object.keys(e)) if (new RegExp(`^${k}:`, 'm').test(read.bytes.toString('latin1'))) edits[k] = e[k];
+      }
+      const bad = await take(x.path, edits, `${movedDirs.get(dir)}/${path.posix.basename(x.path)}`);
+      if (bad) return bad;
+    }
+    // anything else in a folder that moves goes with it, unchanged
+    for (const [dir, to] of movedDirs) {
+      for (const e of await store.list(dir)) {
+        const rel = `${dir}/${e.name}`;
+        if (e.isDirectory || e.name.startsWith('.') || handled.has(rel)) continue;
+        const before = await readBytes(store, rel);
+        changes.push({ from: rel, to: `${to}/${e.name}`, content: before, before });
+      }
+    }
+    const renumbered = Object.fromEntries([...mapping].filter(([a, b]) => a !== b));
+    const res = await finish({
+      bookRoot,
+      store,
+      lb,
+      op: 'moveChapter',
+      args: { chapter, act, after: after ?? null },
+      changes,
+      dryRun,
+      withDiff: true,
+      extra: { chapter: newOf(chapter), act, mapping: renumbered },
+    });
+    // a folder the move emptied is removed (rmdir only removes an empty folder, so nothing else can go); undo recreates it
+    if (res.ok && !dryRun) {
+      for (const dir of movedDirs.keys()) await rmdir(path.join(path.resolve(bookRoot), ...dir.split('/'))).catch(() => {});
+    }
+    return res;
   });
 }
 

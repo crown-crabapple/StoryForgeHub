@@ -173,3 +173,88 @@ export function dialogTarget(book, chapterValue, positionValue) {
   if (!ch) return null;
   return { chapter: ch.chapter, act: ch.act, after: positionValue === '' || positionValue == null ? null : positionValue };
 }
+
+// ---------------------------------------------------------------- whole chapters
+
+/**
+ * Where a chapter would go, as the chapter-move route takes it: { act, after } with `after` a chapter number of that act,
+ * null for the start, or undefined for the end. `noop` when that is where the chapter already is.
+ * @param {any} book @param {number} chapter @param {number} act @param {number | null | undefined} after
+ * @returns {{ act: number, after: number | null | undefined, noop: boolean, text: string } | null}
+ */
+export function chapterTarget(book, chapter, act, after) {
+  const chapters = chaptersInOrder(book);
+  const mover = chapters.find((c) => c.chapter === chapter);
+  const actNode = (book?.acts ?? []).find((a) => a.act === act);
+  if (!mover || !actNode) return null;
+  const others = actNode.chapters.filter((c) => c.chapter !== chapter);
+  const pred = after === undefined ? (others[others.length - 1]?.chapter ?? null) : after;
+  const own = book.acts.find((a) => a.act === mover.act).chapters;
+  const at = own.findIndex((c) => c.chapter === chapter);
+  const noop = mover.act === act && (at > 0 ? own[at - 1].chapter : null) === pred;
+  const name = chapterTitle(mover);
+  const where = actTitle(actNode);
+  let text;
+  if (others.length === 0) text = `Move ${name} into empty ${where}`;
+  else if (pred === null) text = `Move ${name} to the start of ${where}`;
+  else if (after === undefined) text = `Move ${name} to the end of ${where}`;
+  else text = `Move ${name} after ${chapterTitle(others.find((c) => c.chapter === pred) ?? { label: `chapter ${pred}` })} in ${where}`;
+  return { act, after, noop, text };
+}
+
+/**
+ * What dropping a dragged chapter would do. `over`: { kind: 'chapter', chapter, half: 'before' | 'after' } (a chapter, or one of its
+ * scenes, which counts as after it) or { kind: 'act', act } (an act row: the end of that act).
+ * @returns {{ act: number, after: number | null | undefined, noop: boolean, text: string,
+ *   indicator: { kind: 'before' | 'after' | 'end', chapter: number | null, act: number } } | null}
+ */
+export function chapterDropTarget(book, chapter, over) {
+  if (!over) return null;
+  if (over.kind === 'act') {
+    const t = chapterTarget(book, chapter, over.act, undefined);
+    return t && { ...t, indicator: { kind: 'end', chapter: null, act: over.act } };
+  }
+  const row = chaptersInOrder(book).find((c) => c.chapter === over.chapter);
+  if (!row) return null;
+  const indicator = { kind: over.half === 'before' ? 'before' : 'after', chapter: row.chapter, act: row.act };
+  if (row.chapter === chapter) {
+    const t = chapterTarget(book, chapter, row.act, undefined);
+    return t && { ...t, noop: true, text: 'Drop here to leave it where it is', indicator };
+  }
+  let after = row.chapter;
+  if (over.half === 'before') {
+    const inAct = book.acts.find((a) => a.act === row.act).chapters.filter((c) => c.chapter !== chapter);
+    const at = inAct.findIndex((c) => c.chapter === row.chapter);
+    after = at > 0 ? inAct[at - 1].chapter : null;
+  }
+  const t = chapterTarget(book, chapter, row.act, after);
+  return t && { ...t, indicator };
+}
+
+/**
+ * Every place a chapter can go, for the Move to act... dialog: one group per act with "At the start", "After <chapter>" for each
+ * other chapter, or "Into this act" for an empty one. `value` is `<act>:<after>` with an empty `after` for the start.
+ * @returns {{ label: string, options: { value: string, label: string }[] }[]}
+ */
+export function chapterPlaces(book, chapter) {
+  return (book?.acts ?? []).map((a) => {
+    const others = a.chapters.filter((c) => c.chapter !== chapter);
+    const options = others.length === 0 ? [{ value: `${a.act}:`, label: `Into ${actTitle(a)}` }] : [{ value: `${a.act}:`, label: 'At the start' }, ...others.map((c) => ({ value: `${a.act}:${c.chapter}`, label: `After ${chapterTitle(c)}` }))];
+    return { label: actTitle(a), options };
+  });
+}
+
+/** The chapter's current place as a chapterPlaces value. */
+export function currentChapterPlace(book, chapter) {
+  for (const a of book?.acts ?? []) {
+    const at = a.chapters.findIndex((c) => c.chapter === chapter);
+    if (at !== -1) return `${a.act}:${at > 0 ? a.chapters[at - 1].chapter : ''}`;
+  }
+  return '';
+}
+
+/** Parse a chapterPlaces value. @param {string} value @returns {{ act: number, after: number | null } | null} */
+export function parseChapterPlace(value) {
+  const m = /^(\d+):(\d*)$/.exec(String(value ?? ''));
+  return m ? { act: Number(m[1]), after: m[2] === '' ? null : Number(m[2]) } : null;
+}
