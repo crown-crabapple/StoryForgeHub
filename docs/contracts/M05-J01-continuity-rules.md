@@ -85,6 +85,7 @@ Finding = {
   message: string,              // what conflicts with what, quoting both values
   subject: { kind: 'entry'|'thread'|'event'|'scene', id, slug?, name? },
   sources: Source[]             // ≥ 1; ordered: canon/earlier first
+  related: string[]             // extra ids a canvas can mark (scene ids, a beat id); [] for rules that set none; not part of the fingerprint
 }
 Source = {
   role: 'canon' | 'text' | 'event' | 'thread' | 'note',

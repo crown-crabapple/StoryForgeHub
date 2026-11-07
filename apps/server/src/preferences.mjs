@@ -58,7 +58,11 @@ export const moduleOff = (moduleId) => ({
 export async function checkModule(repository, state, match) {
   const id = moduleOfRoute(match.route);
   if (id === null) return null;
-  return (await moduleOn(repository, state, id, match.bookId ? { bookId: match.bookId } : {})) ? null : moduleOff(id);
+  const scope = match.bookId ? { bookId: match.bookId } : {};
+  if (await moduleOn(repository, state, id, scope)) return null;
+  // M10: the Plan tab is a canvas, so canvas writes are on when the board OR the planner is on
+  if (id === 'board' && (await moduleOn(repository, state, 'planner', scope))) return null;
+  return moduleOff(id);
 }
 
 /** The gate the repository asks about receipts (a save records no receipt while the module is off for its book). @param {any} state */

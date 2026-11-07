@@ -275,7 +275,7 @@ function SceneRow({ bookId, card, onSetFields, labelDefs, badges }) {
       {badges && (
         <td className="pb-plan-cell">
           <BadgeChips chips={badgeChips(badges, card, PLAN_FACE)} />
-          <Link to={planHref(bookId, { view: 'flow', node: card.id })} aria-label={`Open ${card.title || 'Untitled scene'} in Plan`}>
+          <Link to={planHref(bookId, { select: card.id })} aria-label={`Open ${card.title || 'Untitled scene'} in Plan`}>
             Open in Plan
           </Link>
         </td>

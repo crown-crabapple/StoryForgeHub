@@ -1,0 +1,237 @@
+/* M10 C6: the Inspector (right of the board) and the wide plan drawer. Tokens only. */
+.cv-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.cv-board-col {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cv-inspector {
+  width: 300px;
+  flex: none;
+  overflow-y: auto;
+  padding: var(--s3) var(--s4);
+  border-left: 1px solid var(--divider);
+  background: var(--surface);
+}
+.cv-inspector h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.cv-insp-kind {
+  margin: 0 0 var(--s1);
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cv-insp-path {
+  margin: var(--s1) 0 0;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.cv-insp-actions {
+  display: flex;
+  gap: var(--s2);
+  margin: var(--s3) 0;
+}
+.cv-insp-section {
+  margin-top: var(--s4);
+}
+.cv-insp-section h3 {
+  margin: 0 0 var(--s2);
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.cv-insp-section dl {
+  margin: 0;
+}
+.cv-insp-row {
+  padding: var(--s1) 0;
+  border-bottom: 1px solid var(--divider);
+}
+.cv-insp-row dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.cv-insp-row dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.cv-insp-row dd ul {
+  margin: 0;
+  padding-left: var(--s4);
+}
+.cv-insp-row.is-warn {
+  border-left: 3px solid var(--warning);
+  padding-left: var(--s2);
+}
+.cv-insp-row.is-warn dd {
+  color: var(--text);
+}
+.cv-insp-beats {
+  margin: var(--s2) 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.cv-insp-legend {
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cv-insp-check {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 32px;
+  font-size: 13px;
+}
+.cv-insp-hint {
+  width: 300px;
+  flex: none;
+  padding: var(--s4);
+  border-left: 1px solid var(--divider);
+  background: var(--surface);
+}
+
+.cv-drawer {
+  position: fixed;
+  top: var(--topbar);
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  width: min(720px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+.cv-drawer:focus-visible {
+  outline: var(--focus);
+  outline-offset: -2px;
+}
+.cv-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--divider);
+}
+.cv-drawer-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.cv-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4);
+}
+
+@media (max-width: 720px) {
+  .cv-body {
+    flex-direction: column;
+  }
+  .cv-inspector,
+  .cv-insp-hint {
+    width: auto;
+    max-height: 40vh;
+    border-left: 0;
+    border-top: 1px solid var(--divider);
+  }
+}
+
+/* M10 C10: List mode (plain headed lists in place of the board) and the Canvas | List switch. Tokens only. */
+.cv-mode {
+  display: inline-flex;
+  gap: var(--s1);
+}
+.cv-mode .btn[aria-pressed="true"] {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.cv-plist {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s3) var(--s4);
+}
+.cv-plist h2 {
+  font-size: 16px;
+  margin: var(--s4) 0 var(--s2);
+}
+.cv-plist h3 {
+  font-size: 14px;
+  margin: var(--s3) 0 var(--s1);
+}
+.cv-plist-items,
+.cv-plist-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cv-plist-items > li {
+  padding: var(--s1) 0;
+  border-bottom: 1px solid var(--divider);
+}
+.cv-plist-links {
+  padding-left: var(--s4);
+}
+.cv-plist-pick,
+.cv-plist-link {
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  padding: var(--s1) var(--s2);
+  text-align: left;
+  cursor: pointer;
+}
+.cv-plist-pick {
+  display: block;
+  width: 100%;
+}
+.cv-plist-link {
+  color: var(--accent);
+  padding: 0 var(--s1);
+}
+.cv-plist-pick:hover,
+.cv-plist-link:hover {
+  border-color: var(--border);
+}
+.cv-plist-pick[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.cv-plist-pick:focus-visible,
+.cv-plist-link:focus-visible {
+  outline: var(--focus);
+  outline-offset: 2px;
+}
+.cv-plist-title {
+  font-weight: 600;
+}
+.cv-plist-line,
+.cv-plist-warn {
+  margin: 0;
+  padding: 0 var(--s2);
+  font-size: 13px;
+}
+.cv-plan-build {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  align-items: center;
+}

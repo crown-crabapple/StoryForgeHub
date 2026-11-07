@@ -1,10 +1,11 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from './router.jsx';
+import { NAV_EVENT } from './nav-event.js';
 import { LibraryView } from './LibraryView.jsx';
 import { BookView } from './BookView.jsx';
 import { CodexView } from './codex/CodexView.jsx';
 import { ContinuityView } from './continuity/ContinuityView.jsx';
 import { NotesView } from './notes/NotesView.jsx';
-import { PlanView } from './planner/PlanView.jsx';
 import { CanvasView } from './canvas/CanvasView.jsx';
 import { TimelineView } from './timeline/TimelineView.jsx';
 import { InsightsView } from './insights/InsightsView.jsx';
@@ -13,7 +14,7 @@ import { TimerProvider } from './writing/TimerProvider.jsx';
 import { useApi } from './api.js';
 import { SettingsView } from './ai/SettingsView.jsx';
 import { RoutedPrefsProvider, usePrefs } from './prefs/PrefsContext.jsx';
-import { parseRoute, tabModule } from './routes.js';
+import { parseRoute, redirectFor, tabModule, tabVisible } from './routes.js';
 import { ShortcutsProvider } from './shortcuts/ShortcutsContext.jsx';
 import { AppShell } from './shell/AppShell.jsx';
 import { WritesProvider } from './shell/writes.jsx';
@@ -73,6 +74,13 @@ function Routes() {
   const prefs = usePrefs();
   const { data: books } = useApi('/api/books', libraryVersion(status));
   const route = parseRoute(pathname, search);
+  // an old address (/books/:id/canvas...) is replaced by the new one, so Back does not return to it
+  const redirect = redirectFor(pathname, search);
+  useEffect(() => {
+    if (redirect === null) return;
+    window.history.replaceState(null, '', redirect);
+    window.dispatchEvent(new Event(NAV_EVENT));
+  }, [redirect]);
   let view;
   let bookId = null;
   let tab = 'manuscript';
@@ -86,7 +94,7 @@ function Routes() {
     bookId = route.bookId;
     tab = route.tab;
     const gate = tabModule(route.tab);
-    if (gate !== null && !prefs.moduleOn(gate)) {
+    if (gate !== null && !tabVisible(route.tab, prefs.moduleOn)) {
       // the page of a module that is off (M07-J04): the address still works, it just says so
       view = (
         <main id="main" tabIndex={-1} className="page">
@@ -99,8 +107,7 @@ function Routes() {
     } else if (route.tab === 'timeline') view = <TimelineView bookId={route.bookId} search={search} />;
     else if (route.tab === 'continuity') view = <ContinuityView bookId={route.bookId} search={search} />;
     else if (route.tab === 'notes') view = <NotesView bookId={route.bookId} search={search} />;
-    else if (route.tab === 'plan') view = <PlanView bookId={route.bookId} search={search} />;
-    else if (route.tab === 'canvas') view = <CanvasView bookId={route.bookId} search={search} />;
+    else if (route.tab === 'plan') view = <CanvasView bookId={route.bookId} search={search} />;
     else if (route.tab === 'insights') view = <InsightsView bookId={route.bookId} search={search} />;
     else if (route.tab === 'tasks') view = <TasksView bookId={route.bookId} search={search} />;
     else view = <CodexView bookId={route.bookId} search={search} places={route.tab === 'places'} />;

@@ -9,7 +9,7 @@ import { archiveCanvas, createCanvas, restoreCanvas, saveCanvas } from '@storyfo
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const str = (v) => (typeof v === 'string' && v.trim() !== '' ? v : null);
 const SLUG_OF_RE = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.canvas$/;
-const TARGET_KINDS = ['scene', 'entry', 'thread', 'event', 'research', 'doc', 'source'];
+const TARGET_KINDS = ['scene', 'entry', 'thread', 'event', 'research', 'doc', 'source', 'story-plan', 'structure', 'arc', 'relationship', 'synopsis', 'clue'];
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
 
 /**
@@ -54,7 +54,23 @@ export function createCanvasMethods({ root, readValidate = () => validate(root),
     const docs = extractDocs(ctx.result, ctx.book.path).filter((d) => TARGET_KINDS.includes(d.kind) && typeof d.fm.id === 'string');
     const order = new Map(ctx.book.order.map((s) => [s.id, s]));
     const bookRel = (file) => (ctx.prefix && file.startsWith(ctx.prefix) ? file.slice(ctx.prefix.length) : file);
-    const titleOf = (d) => str(d.fm.title) ?? str(d.fm.name) ?? str(d.fm.slug) ?? d.fm.id;
+    const plainTitle = (d) => str(d.fm.title) ?? str(d.fm.name) ?? str(d.fm.slug) ?? d.fm.id;
+    const entryName = (id) => {
+      const e = typeof id === 'string' ? docs.find((x) => x.kind === 'entry' && x.fm.id === id && !x.archived) ?? docs.find((x) => x.kind === 'entry' && x.fm.id === id) : null;
+      return e ? plainTitle(e) : null;
+    };
+    const titleOf = (d) => {
+      if (d.kind === 'clue') return str(d.fm.fact) ?? plainTitle(d);
+      if (d.kind === 'arc') return entryName(d.fm.character) ?? str(d.fm.character) ?? plainTitle(d);
+      if (d.kind === 'relationship') {
+        const a = entryName(d.fm.a);
+        const b = entryName(d.fm.b);
+        return a && b ? `${a} & ${b}` : plainTitle(d);
+      }
+      if (d.kind === 'story-plan') return 'Story plan';
+      return plainTitle(d);
+    };
+    const beatsOf = (d) => (Array.isArray(d.fm.beats) ? d.fm.beats : []).filter((b) => b && typeof b === 'object' && !Array.isArray(b) && typeof b.id === 'string');
     const subtitleOf = (d) => {
       if (d.kind === 'scene') {
         const s = order.get(d.fm.id);
@@ -63,6 +79,12 @@ export function createCanvasMethods({ root, readValidate = () => validate(root),
       if (d.kind === 'entry') return str(d.fm.type) ?? 'entry';
       if (d.kind === 'thread') return str(d.fm.status) ?? 'thread';
       if (d.kind === 'event') return str(d.fm.when) ?? 'event';
+      if (d.kind === 'clue') return `${str(d.fm.kind) ?? 'clue'}${d.fm.red_herring === true ? ' · red herring' : ''}`;
+      if (d.kind === 'structure') return `${beatsOf(d).length} beat${beatsOf(d).length === 1 ? '' : 's'}`;
+      if (d.kind === 'synopsis') return `${str(d.fm.type) ?? 'synopsis'}${Number.isInteger(d.fm.target_words) ? ` · ${d.fm.target_words} words` : ''}`;
+      if (d.kind === 'arc') return str(d.fm.arc_type) ?? 'arc';
+      if (d.kind === 'relationship') return 'relationship';
+      if (d.kind === 'story-plan') return 'plan';
       return d.kind === 'doc' ? 'planning doc' : d.kind;
     };
     const byId = new Map();
@@ -70,13 +92,32 @@ export function createCanvasMethods({ root, readValidate = () => validate(root),
       const prev = byId.get(d.fm.id);
       if (!prev || (prev.archived && !d.archived)) byId.set(d.fm.id, d);
     }
+    /** beat id -> { beat, doc } (the structure that holds it; a live structure beats an archived one) */
+    const beatById = new Map();
+    for (const d of docs) {
+      if (d.kind !== 'structure') continue;
+      for (const beat of beatsOf(d)) {
+        const prev = beatById.get(beat.id);
+        if (!prev || (prev.doc.archived && !d.archived)) beatById.set(beat.id, { beat, doc: d });
+      }
+    }
+    const beatTitle = (beat) => str(beat.name) ?? beat.id;
     const live = docs.filter((d) => !d.archived);
     const rank = (d) => (d.kind === 'scene' ? (order.get(d.fm.id)?.position ?? 1e9) : 0);
     const targets = live
       .filter((d) => d.kind !== 'scene' || order.has(d.fm.id))
       .sort((a, b) => TARGET_KINDS.indexOf(a.kind) - TARGET_KINDS.indexOf(b.kind) || rank(a) - rank(b) || titleOf(a).localeCompare(titleOf(b)))
-      .map((d) => ({ ref: d.fm.id, kind: d.kind, title: titleOf(d), subtitle: subtitleOf(d), slug: str(d.fm.slug) }));
+      .flatMap((d) => [
+        { ref: d.fm.id, kind: d.kind, title: titleOf(d), subtitle: subtitleOf(d), slug: str(d.fm.slug) },
+        ...(d.kind === 'structure'
+          ? beatsOf(d).map((beat) => ({ ref: beat.id, kind: 'beat', title: beatTitle(beat), subtitle: titleOf(d), slug: null, structure: d.fm.id }))
+          : []),
+      ]);
     const resolve = (ref) => {
+      const held = beatById.get(ref);
+      if (held && !byId.has(ref)) {
+        return { state: held.doc.archived ? 'archived' : 'ok', kind: 'beat', id: ref, title: beatTitle(held.beat), summary: str(held.beat.question) ?? titleOf(held.doc), path: bookRel(held.doc.file), slug: null, structure: held.doc.fm.id };
+      }
       const d = byId.get(ref) ?? docs.find((x) => x.fm.slug === ref);
       if (!d) return { state: 'broken', kind: null, id: ref, title: null, summary: null, path: null, slug: null };
       return { state: d.archived ? 'archived' : 'ok', kind: d.kind, id: d.fm.id, title: titleOf(d), summary: str(d.fm.summary) ?? subtitleOf(d), path: bookRel(d.file), slug: str(d.fm.slug) };

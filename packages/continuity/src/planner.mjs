@@ -37,6 +37,7 @@ export async function plannerFindings(model) {
         title: `"${nameOf(s)}" is not in the flow`,
         message: `No link in the planner goes into or out of "${nameOf(s)}" (scene ${s.position}). If it belongs in the flow, link it to the scenes around it.`,
         subject: { kind: 'scene', id: sid, slug: s.doc.fm.slug, name: nameOf(s) },
+        related: [sid],
         sources: [await at(s)],
       });
     }
@@ -53,6 +54,7 @@ export async function plannerFindings(model) {
         title: `Transition from "${nameOf(a)}" to "${nameOf(b)}" is not documented`,
         message: `"${nameOf(a)}" (scene ${a.position}) and "${nameOf(b)}" (scene ${b.position}) are next to each other, and both have links, but the link between them is not documented in the planner.`,
         subject: { kind: 'scene', id: aId, slug: a.doc.fm.slug, name: nameOf(a) },
+        related: [aId, bId],
         sources: [await at(a), await at(b)],
       });
     }
@@ -73,6 +75,7 @@ export async function plannerFindings(model) {
         title: `Beat "${bname}" in "${sname}" has no scenes`,
         message: `The beat "${bname}" in the structure "${sname}" does not list any scenes yet.`,
         subject: { kind: 'structure', id: st.fm.id, slug: st.fm.slug, name: sname },
+        related: [beat.id],
         sources: [await model.fmSource(st, 'plan', 'structure', 'beats', ['beats'])],
       });
     }
@@ -88,6 +91,7 @@ export async function plannerFindings(model) {
       title: `"${title}" has a payoff but no setup`,
       message: `"${title}" lists payoff scenes but no setup scenes. Add the scene that plants it, or leave it if that is intended.`,
       subject: { kind: 'thread', id: thread.fm.id, slug: thread.fm.slug, name: title },
+      related: [],
       sources: [await model.fmSource(thread, 'thread', 'thread', 'payoff', ['payoff'])],
     });
   }
@@ -110,6 +114,7 @@ export async function plannerFindings(model) {
         title: `"${fact}" is planted but never revealed`,
         message: `The clue "${fact}" is planted in the planner but no scene reveals it. Add the scene where the truth comes out, or mark it as a red herring if that is intended.`,
         subject,
+        related: planted.map((x) => x.doc.fm.id),
         sources: [await model.fmSource(clue, 'plan', 'clue', 'planted', ['planted'])],
       });
     }
@@ -126,6 +131,7 @@ export async function plannerFindings(model) {
           title: `"${fact}" is revealed before it is planted`,
           message: `The clue "${fact}" is revealed in "${nameOf(revealed)}" (scene ${revealed.position}), which comes before the first scene that plants it, "${nameOf(first)}" (scene ${first.position}).`,
           subject,
+          related: [rId, pId],
           sources: [await model.fmSource(clue, 'plan', 'clue', 'revealed', ['revealed']), await model.fmSource(clue, 'plan', 'clue', 'planted', ['planted']), await at(revealed), await at(first)],
         });
       }

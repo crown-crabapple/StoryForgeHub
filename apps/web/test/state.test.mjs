@@ -58,7 +58,7 @@ test('routes: library, book, scene, raw file, tabs and unknown paths', () => {
 test('routes: every project tab has a link that parses back to itself', () => {
   assert.deepEqual(
     PROJECT_TABS.map((t) => t.label),
-    ['Manuscript', 'Plan', 'Codex', 'Timeline', 'Continuity', 'Places', 'Notes', 'Canvas'],
+    ['Manuscript', 'Plan', 'Codex', 'Timeline', 'Continuity', 'Places', 'Notes'],
   );
   for (const t of PROJECT_TABS) {
     const route = parseRoute(tabHref('book one', t.key));

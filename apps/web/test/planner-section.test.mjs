@@ -80,7 +80,7 @@ test('view: links as words, outgoing and incoming, each an href to the flow view
 test('view: no links gives the empty text and a Connect in Flow link', () => {
   const html = render({ plan: PLAN, links: { links: [], archived: [] } });
   assert.ok(html.includes('Not linked to other scenes yet.'));
-  assert.match(html, /<a href="\/books\/b1\/plan\?view=flow&node=S1"[^>]*>Connect in Flow<\/a>/);
+  assert.match(html, /<a href="\/books\/b1\/plan\?select=S1"[^>]*>Connect in Flow<\/a>/);
 });
 
 test('view: loading, a notice and an inline refusal', () => {

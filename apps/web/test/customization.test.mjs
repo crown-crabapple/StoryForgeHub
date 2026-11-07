@@ -217,11 +217,13 @@ describe('modules', () => {
   const tabs = (markup) => [...walk(parse(markup))].filter((n) => n.attrs.class === 'project-tab').map((n) => n.attrs.href.replace('/books/book_1', '') || '/');
   test('a tab of a module that is off disappears from the project navigation', () => {
     const on = html(withPrefs(prefs(), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
-    assert.deepEqual(tabs(on), ['/', '/plan', '/codex', '/timeline', '/continuity', '/places', '/notes', '/canvas']);
+    assert.deepEqual(tabs(on), ['/', '/plan', '/codex', '/timeline', '/continuity', '/places', '/notes']);
     const off = html(withPrefs(prefs({ off: ['timeline', 'continuity', 'research', 'board'] }), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
     assert.deepEqual(tabs(off), ['/', '/plan', '/codex', '/places']);
     const noPlan = html(withPrefs(prefs({ off: ['planner'] }), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
-    assert.deepEqual(tabs(noPlan), ['/', '/codex', '/timeline', '/continuity', '/places', '/notes', '/canvas'], 'the Plan tab follows the planner module');
+    assert.deepEqual(tabs(noPlan), ['/', '/plan', '/codex', '/timeline', '/continuity', '/places', '/notes'], 'the Plan tab is the canvas page: the board module alone keeps it');
+    const neither = html(withPrefs(prefs({ off: ['planner', 'board'] }), h(m.ProjectNav, { bookId: 'book_1', active: 'manuscript' })));
+    assert.deepEqual(tabs(neither), ['/', '/codex', '/timeline', '/continuity', '/places', '/notes'], 'with the planner and the board module both off the Plan tab goes');
   });
 
   test("the pages J02 adds are gated by id: insights and tasks follow their module when they exist", () => {
@@ -229,7 +231,12 @@ describe('modules', () => {
     assert.equal(m.tabModule('tasks'), 'tasks');
     assert.equal(m.tabModule('timeline'), 'timeline');
     assert.equal(m.tabModule('notes'), 'research');
-    assert.equal(m.tabModule('canvas'), 'board', 'M09-J01: the Canvas follows the board module');
+    assert.equal(m.tabModule('canvas'), null, 'M10: there is no Canvas tab any more');
+    assert.equal(m.tabVisible('plan', (id) => id === 'board'), true);
+    assert.equal(m.tabVisible('plan', (id) => id === 'planner'), true);
+    assert.equal(m.tabVisible('plan', () => false), false);
+    assert.equal(m.tabVisible('timeline', (id) => id !== 'timeline'), false);
+    assert.equal(m.tabVisible('codex', () => false), true);
     assert.equal(m.tabModule('plan'), 'planner');
     assert.equal(m.tabModule('codex'), null);
     assert.deepEqual(m.MODULES.map((x) => x.id), Object.keys(ALL_ON));

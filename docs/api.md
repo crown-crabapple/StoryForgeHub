@@ -112,12 +112,12 @@ the current text is `409 NO_CHANGE`. The `suggestions` module must be on for the
 
 ## Canvases (permissions `read` and `canvas`)
 
-A canvas is a JSON Canvas file, `planning/canvases/<slug>.canvas`. A canvas slug is lower-case letters, digits and hyphens (up to 60); anything else is `403 PLUGIN_SCOPE`, not a route. The **Board** module must be on for the book (else `403 MODULE_OFF`, `module: "board"`). Writes go through the same store and sha check as the app and are never dry runs.
+A canvas is a JSON Canvas file, `planning/canvases/<slug>.canvas`. A canvas slug is lower-case letters, digits and hyphens (up to 60); anything else is `403 PLUGIN_SCOPE`, not a route. The **Board** or the **Story Planner** module must be on for the book (else `403 MODULE_OFF`, `module: "board"`). Writes go through the same store and sha check as the app and are never dry runs.
 
 | Route | Permission | Answer |
 |---|---|---|
 | `GET /api/v1/books/:b/canvases` | `read` | `{ canvases: [{ slug, title, path, nodes, edges, sha256, updated_at, problem }], archived: [...] }` |
-| `GET /api/v1/books/:b/canvases/:slug` | `read` | `{ slug, title, path, sha256, canvas, problem, refs, targets }`; `targets` are the scenes, entries, threads and events a story card can link to |
+| `GET /api/v1/books/:b/canvases/:slug` | `read` | `{ slug, title, path, sha256, canvas, problem, refs, targets }`; `targets` are what a story card can link to: scenes, entries, threads, events, research notes, and the planner items (story plan, structures with their beats, arcs, relationships, synopses, clues) |
 | `POST /api/v1/books/:b/canvases` | `canvas` | body `{ title (1 to 200 characters), slug? }`; `201 { slug, path, sha256 }` |
 | `PUT /api/v1/books/:b/canvases/:slug` | `canvas` | body `{ canvas: { nodes, edges, storyforge? }, base_sha256 }`; `200 { slug, path, sha256 }` |
 | `POST /api/v1/books/:b/canvases/:slug/archive` | `canvas` | optional body `{ base_sha256 }`; `200 { ok: true, slug, path }` |

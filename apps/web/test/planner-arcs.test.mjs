@@ -19,7 +19,6 @@ before(async () => {
   m.panel = await vite.ssrLoadModule('/src/planner/ArcPanel.jsx');
   m.section = await vite.ssrLoadModule('/src/planner/ScenePlanSection.jsx');
   m.overview = await vite.ssrLoadModule('/src/planner/OverviewView.jsx');
-  m.page = await vite.ssrLoadModule('/src/planner/PlanPage.jsx');
 });
 after(async () => {
   await vite?.close();
@@ -224,10 +223,7 @@ test('scene Plan section: lists the arc milestones set in the scene and links th
   assert.doesNotMatch(view(null), /Arc milestones in this scene/);
 });
 
-test('Plan subnav has Lanes, and the Overview counts character arcs with a link to it', () => {
-  const html = render(h(m.page.PlanPage, { bookId: 'b1', view: 'arcs' }, h('p', null, 'body')));
-  assert.match(html, /<a href="\/books\/b1\/plan\?view=arcs" class="view-tab" aria-current="page">Lanes<\/a>/);
-  assert.match(html, /<a href="\/books\/b1\/plan" class="view-tab">Overview<\/a>/);
+test('the Overview counts character arcs with a link to them', () => {
   const overview = {
     story: { path: null, sha256: null, fields: Object.fromEntries(m.req.STORY_FIELDS.map((f) => [f.key, null])), body: '' },
     counts: { scenes: 4, planned_scenes: 1, links: 0, linked_scenes: 0, unlinked_scenes: 4, broken_links: 0, archived_links: 0, threads: 0, arcs: 2 },

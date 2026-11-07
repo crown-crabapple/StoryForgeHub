@@ -6,8 +6,8 @@ import { explainFailure } from '../structure/helpers.js';
 
 const enc = encodeURIComponent;
 
-/** /books/:id/canvas with the optional ?canvas=<slug>. @param {string} bookId @param {string | null} [slug] */
-export const canvasHref = (bookId, slug = null) => `/books/${enc(bookId)}/canvas${slug ? `?canvas=${enc(slug)}` : ''}`;
+/** /books/:id/plan (the Plan tab is the canvas page) with the optional ?canvas=<slug>. @param {string} bookId @param {string | null} [slug] */
+export const canvasHref = (bookId, slug = null) => `/books/${enc(bookId)}/plan${slug ? `?canvas=${enc(slug)}` : ''}`;
 /** @param {string} search */
 export function parseCanvasSearch(search) {
   const p = new URLSearchParams(search);
@@ -437,7 +437,10 @@ export const redo = (h) => (h.future.length === 0 ? h : { past: [...h.past, h.pr
 // ---------------------------------------------------------------- names and links
 
 export const KIND_LABEL = { note: 'Note', todo: 'To-do', swatch: 'Swatch', image: 'Image', story: 'Story card', file: 'File', link: 'Link', group: 'Group', column: 'Column' };
-export const REF_KIND_LABEL = { scene: 'Scene', entry: 'Codex', thread: 'Thread', event: 'Event', research: 'Research', doc: 'Planning doc', source: 'Source' };
+export const REF_KIND_LABEL = {
+  scene: 'Scene', entry: 'Codex', thread: 'Thread', event: 'Event', research: 'Research', doc: 'Planning doc', source: 'Source',
+  'story-plan': 'Story plan', structure: 'Structure', beat: 'Beat', arc: 'Arc', relationship: 'Relationship', synopsis: 'Synopsis', clue: 'Clue',
+};
 
 /** The accessible name of a card. @param {any} n @param {any} [ref] */
 export function cardName(n, ref = null) {

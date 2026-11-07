@@ -172,7 +172,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       return done({ status: 200, body: { diagnostics: list.map((/** @type {any} */ x) => ({ code: x.code, severity: x.severity, file: x.file, location: x.location, message: x.message })) } });
     }
     if (c === 'canvases') {
-      if (!(await moduleOn(repository, state, 'board', { bookId: bk.id }))) return done(moduleOff('board'));
+      if (!(await moduleOn(repository, state, 'board', { bookId: bk.id })) && !(await moduleOn(repository, state, 'planner', { bookId: bk.id }))) return done(moduleOff('board')); // M10: on with the board or the planner
       const r = await canvasRoute(bk, d2, parts[6] ?? undefined);
       return done(r.res, r.target ?? target);
     }

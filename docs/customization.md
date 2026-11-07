@@ -126,6 +126,8 @@ Default commands: `editor.bold` Ctrl+B, `editor.italic` Ctrl+I, `editor.link` Ct
 
 Settings > Features turns features on and off: `ai`, `continuity`, `receipts`, `suggestions`, `timeline`, `board`, `threads`, `insights`, `tasks`, `research`, `planner` (Story Planner: causal links, scene plans and the story plan), `integrations`.
 
+The **Plan** tab is a canvas. It is shown when `planner` or `board` is on. With `planner` on it has the plan layers, the plan check, the Inspector, the plan tools, Build your plan canvas and List mode; with only `board` on it is the free canvas. Canvases can be saved when either is on. See [contracts/M10-plan-canvas.md](contracts/M10-plan-canvas.md).
+
 A feature that is **off**:
 
 - disappears from the navigation and the panels (its project tab, its section in the right panel, its views);

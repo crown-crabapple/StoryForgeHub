@@ -15,10 +15,6 @@ before(async () => {
   m.model = await vite.ssrLoadModule('/src/planner/model.js');
   m.req = await vite.ssrLoadModule('/src/planner/requests.js');
   m.overview = await vite.ssrLoadModule('/src/planner/OverviewView.jsx');
-  m.flow = await vite.ssrLoadModule('/src/planner/FlowView.jsx');
-  m.graph = await vite.ssrLoadModule('/src/planner/FlowGraph.jsx');
-  m.connect = await vite.ssrLoadModule('/src/planner/ConnectDialog.jsx');
-  m.page = await vite.ssrLoadModule('/src/planner/PlanPage.jsx');
   m.routes = await vite.ssrLoadModule('/src/routes.js');
 });
 after(async () => {
@@ -43,12 +39,6 @@ const LINKS = {
   ],
   archived: [LINK('old', 'S3', 'S2', 'reveals', { from_title: 'Ferry', to_title: 'The Tide' })],
 };
-const EDGES = [
-  { id: 'note_key-ferry', slug: 'key-ferry', from: 'S1', to: 'S3', relation: 'therefore', rationale: '', sha256: 'a', broken: false },
-  { id: 'note_tide-key', slug: 'tide-key', from: 'S2', to: 'S1', relation: 'pays_off', rationale: '', sha256: 'b', broken: false },
-  { id: 'note_gone', slug: 'gone', from: 'S1', to: 'S_GONE', relation: 'but', rationale: '', sha256: 'c', broken: true },
-];
-const FLOW = { nodes: NODES, edges: EDGES };
 const URLSTATE = (patch = {}) => ({ view: 'flow', node: null, link: null, mode: null, filter: null, ...patch });
 
 test('model: parsePlanSearch defaults, and planUrl round-trips every part', () => {
@@ -155,132 +145,6 @@ test('Overview: an empty book gets friendly words, no errors', () => {
   const html = render(h(m.overview.OverviewView, { bookId: 'b1', overview: empty }));
   assert.match(html, /This book has no scenes yet/);
   assert.doesNotMatch(html, /role="alert"|NaN|undefined/);
-});
-
-test('Plan page: Overview and Flow switch, Board and Outline are plain links, aria-current marks the view', () => {
-  const html = render(h(m.page.PlanPage, { bookId: 'b1', view: 'flow' }, h('p', null, 'body')));
-  assert.match(html, /<h1>Plan<\/h1>/);
-  assert.match(html, /<a href="\/books\/b1\/plan" class="view-tab">Overview<\/a>/);
-  assert.match(html, /<a href="\/books\/b1\/plan\?view=flow" class="view-tab" aria-current="page">Flow<\/a>/);
-  assert.match(html, /<a href="\/books\/b1\?view=board" class="view-tab">Board<\/a>/);
-  assert.match(html, /<a href="\/books\/b1\?view=outline" class="view-tab">Outline<\/a>/);
-});
-
-const flowView = (props) => render(h(m.flow.FlowView, { bookId: 'b1', flow: FLOW, links: LINKS, url: URLSTATE({ mode: 'list' }), wide: true, ...props }));
-
-test('Flow list: one row per live link with the sentence, the rationale, Edit and Archive; a missing scene is flagged in words', () => {
-  const html = flowView();
-  assert.match(html, /<h2 id="flow-links-h">Links<\/h2>/);
-  assert.match(html, /<span class="flow-sentence">The Key — therefore → Ferry<\/span>/);
-  assert.match(html, /The key fails, so Maren takes the ferry\./);
-  assert.match(html, /<span class="flow-sentence">The Tide — pays off → The Key<\/span>/);
-  assert.match(html, /The Key — but → Missing scene \(missing scene\)/);
-  assert.equal([...html.matchAll(/>Edit<\/button>/g)].length, 3);
-  assert.equal([...html.matchAll(/>Archive<\/button>/g)].length, 3);
-  assert.match(html, /aria-label="Edit link: The Key — therefore → Ferry"/);
-  assert.doesNotMatch(html, /flow-graph/);
-});
-
-test('Flow list: scenes not linked yet with a Connect button each, and archived links collapsed with Restore', () => {
-  const html = flowView();
-  assert.match(html, /<h2 id="flow-unlinked-h">Scenes not linked yet<\/h2>/);
-  assert.match(html, /aria-label="Connect Untitled scene"[^>]*>Connect…<\/button>/);
-  assert.match(html, /<details class="plan-block flow-archived"><summary>Archived links \(1\)<\/summary>/);
-  assert.doesNotMatch(html, /<details[^>]* open/);
-  assert.match(html, /aria-label="Restore link: Ferry — reveals → The Tide"[^>]*>Restore<\/button>/);
-});
-
-test('Flow list: filter=unlinked shows only the scenes not linked yet; the search box filters by title', () => {
-  const only = flowView({ url: URLSTATE({ mode: 'list', filter: 'unlinked' }) });
-  assert.doesNotMatch(only, /flow-links-h/);
-  assert.match(only, /Showing only scenes that are not linked yet/);
-  assert.match(only, /Untitled scene/);
-  const searched = flowView({ query: 'ferry' });
-  assert.match(searched, /The Key — therefore → Ferry/);
-  assert.doesNotMatch(searched, /The Tide — pays off/);
-});
-
-test('Flow toolbar: List and Graph toggle with aria-pressed, a labelled search, Connect; below 768 px only the list with a note', () => {
-  const wide = flowView({ url: URLSTATE() }); // no ?mode: the graph is the default on a wide screen
-  assert.match(wide, /<button type="button" class="btn" aria-pressed="false">List<\/button>/);
-  assert.match(wide, /<button type="button" class="btn" aria-pressed="true">Graph<\/button>/);
-  assert.match(wide, /<label for="flow-search">Find a scene by title<\/label>/);
-  assert.match(wide, />Connect scenes…<\/button>/);
-  assert.match(wide, /The graph is laid out by manuscript order\./);
-  const narrow = flowView({ url: URLSTATE({ mode: 'graph' }), wide: false });
-  assert.match(narrow, /aria-pressed="true">List</);
-  assert.match(narrow, /aria-pressed="false" disabled="">Graph</);
-  assert.match(narrow, /at least 768 px wide/);
-  assert.doesNotMatch(narrow, /role="group" aria-label="Flow graph/);
-});
-
-test('Flow graph: a group with the required name, a button per scene, a labelled button per edge, the legend, broken links left out', () => {
-  const html = flowView({ url: URLSTATE({ mode: 'graph' }) });
-  assert.match(html, /role="group" aria-label="Flow graph\. The same links are in the List view\."/);
-  assert.match(html, /<svg[^>]*aria-hidden="true"/);
-  assert.equal([...html.matchAll(/class="flow-node"/g)].length, 4);
-  assert.match(html, /<button type="button" class="flow-node"[^>]*aria-pressed="false"><span class="flow-node-title">The Key<\/span><span class="flow-node-status">drafting<\/span><span class="flow-node-summary">Maren finds the key\.<\/span><\/button>/);
-  assert.match(html, /<button[^>]*class="flow-edge-label"[^>]*aria-label="The Key therefore Ferry"[^>]*>therefore<\/button>/);
-  assert.match(html, /aria-label="The Tide pays off The Key"[^>]*>pays off<\/button>/);
-  assert.equal([...html.matchAll(/class="flow-edge-label"/g)].length, 2, 'the broken link has no label button');
-  assert.equal([...html.matchAll(/<path class="flow-edge"/g)].length, 2);
-  assert.match(html, /marker-end="url\(#flow-arrow\)"/);
-  assert.match(html, /stroke-dasharray="2 5"/, 'pays off is dotted');
-  assert.match(html, /Links to a missing scene are not drawn \(1\)/);
-  assert.match(html, /Solid: therefore, enables, motivates\./);
-  assert.match(html, />Zoom out<\/button>/);
-  assert.match(html, />Zoom in<\/button>/);
-  assert.match(html, />Fit<\/button>/);
-});
-
-test('Flow graph: the selected scene and link are marked with aria-pressed, and the same input gives the same markup', () => {
-  const props = { nodes: NODES, edges: EDGES.slice(0, 2), selectedNode: 'S3', selectedLink: 'tide-key' };
-  const html = render(h(m.graph.FlowGraph, props));
-  assert.equal([...html.matchAll(/class="flow-node"[^>]*aria-pressed="true"/g)].length, 1);
-  assert.match(html, /class="flow-edge-label"[^>]*aria-label="The Tide pays off The Key"[^>]*aria-pressed="true"/);
-  assert.match(html, /data-selected="true"/);
-  assert.equal(render(h(m.graph.FlowGraph, props)), html);
-});
-
-test('Flow side panel: help, a selected scene (open in manuscript, connect from it, its links), a selected link (relation, rationale, Save, Reverse, Archive)', () => {
-  assert.match(flowView(), /Select a scene to see its plan and links/);
-  const scene = flowView({ url: URLSTATE({ mode: 'list', node: 'S1' }), scenePlan: h('p', null, 'PLAN SECTION') });
-  assert.match(scene, /<h2 id="scene-panel-h">The Key<\/h2>/);
-  assert.match(scene, /<a href="\/books\/b1\?scene=S1">Open in manuscript<\/a>/);
-  assert.match(scene, />Connect from this scene…<\/button>/);
-  assert.match(scene, />→ therefore Ferry<\/button>/);
-  assert.match(scene, />The Tide pays off →<\/button>/);
-  assert.match(scene, /PLAN SECTION/);
-  const link = flowView({ url: URLSTATE({ mode: 'list', link: 'key-ferry' }) });
-  assert.match(link, /<label for="link-relation">Relation<\/label>/);
-  assert.match(link, /<option value="therefore" selected="">therefore<\/option>/);
-  assert.match(link, /<option value="pays_off">pays off<\/option>/);
-  assert.match(link, /<label for="link-rationale">Rationale<\/label>/);
-  assert.match(link, /The key fails, so Maren takes the ferry\.<\/textarea>/);
-  assert.match(link, /<button type="submit" class="btn btn-primary" disabled="">Save<\/button>/);
-  assert.match(link, />Reverse direction<\/button>/);
-  assert.match(link, /<dt>From<\/dt><dd><button[^>]*>The Key<\/button>/);
-  assert.match(link, /<dt>To<\/dt><dd><button[^>]*>Ferry<\/button>/);
-  const gone = flowView({ url: URLSTATE({ link: 'nope' }) });
-  assert.match(gone, /That link is not there any more\./);
-});
-
-test('Flow: an empty book says so', () => {
-  const html = flowView({ flow: { nodes: [], edges: [] }, links: { links: [], archived: [] } });
-  assert.match(html, /This book has no scenes yet/);
-});
-
-test('Connect dialog: every field has a label, each relation has a plain line, a preset From scene is selected', () => {
-  const html = render(h(m.connect.ConnectDialog, { scenes: NODES, links: LINKS.links, initialFrom: 'S2', onPreview: () => {}, onClose: () => {} }));
-  assert.match(html, /role="dialog" aria-modal="true" aria-label="Connect scenes"/);
-  for (const [id, label] of [['connect-from', 'From scene'], ['connect-relation', 'Relation'], ['connect-to-filter', 'Find the To scene'], ['connect-to', 'To scene'], ['connect-rationale', 'Rationale \\(optional\\)']]) {
-    assert.match(html, new RegExp(`<label for="${id}">${label}</label>`), label);
-    assert.match(html, new RegExp(`id="${id}"`), `${id} exists`);
-  }
-  assert.match(html, /<option value="S2" selected="">Ch 1: The Tide<\/option>/);
-  for (const r of m.req.RELATIONS) assert.ok(html.includes(`${m.req.relationLabel(r.value)} — ${r.description}`), r.value);
-  assert.match(html, />Preview<\/button>/);
-  assert.match(html, />Cancel<\/button>/);
 });
 
 test('routes: Plan is a project tab right after Manuscript at /plan, parses as a tab, and follows the planner module', () => {
