@@ -180,7 +180,7 @@ function ArchivedSection({ book, start }) {
  * `onChanged` runs after any structure command wrote (the page reloads the book).
  * @param {{ book: any, activeId?: string | null, onChanged?: (info: any) => void }} props
  */
-export function Outline({ book, activeId = null, onChanged }) {
+export function Outline({ book, activeId = null, onChanged, onPickScene = null }) {
   const shortcuts = useShortcuts(); // outline.moveUp / outline.moveDown come from the shortcut registry (M07-J04)
   const [collapsed, setCollapsed] = useState(() => readCollapsed(book.id));
   const [dragId, setDragId] = useState(null);
@@ -384,8 +384,18 @@ export function Outline({ book, activeId = null, onChanged }) {
   const endTarget = sceneDrop && !sceneDrop.noop && sceneDrop.indicator.kind === 'end' ? sceneDrop.chapter : null;
   const actTarget = chapterDrop?.kind === 'end' ? chapterDrop.act : null;
 
+  /** The Read view: a plain click on a scene row scrolls the reading page there instead of opening the editor (a modified click still opens a new tab). */
+  const pickScene = (e) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const link = e.target.closest?.('[data-scene-link]');
+    const id = link?.closest('[data-scene-id]')?.getAttribute('data-scene-id');
+    if (!id) return;
+    e.preventDefault();
+    onPickScene(id);
+  };
+
   return (
-    <div className="outline" ref={root} onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} onDragLeave={onDragLeave} onDragEnd={endDrag}>
+    <div className="outline" ref={root} onClickCapture={onPickScene ? pickScene : undefined} onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} onDragLeave={onDragLeave} onDragEnd={endDrag}>
       <div className="rail-head">
         <h2 className="rail-heading">{book.title ?? book.slug ?? book.id}</h2>
         <RowMenu name={book.title ?? book.slug ?? book.id} items={[{ label: 'Renumber chapters...', run: () => start({ type: 'renumber' }) }, { label: 'Tidy file names...', run: () => start({ type: 'tidy' }) }]} />

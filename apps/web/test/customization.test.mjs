@@ -244,8 +244,8 @@ describe('modules', () => {
 
   test('the Board and Threads views follow their modules', () => {
     const views = (markup) => [...walk(parse(markup))].filter((n) => n.attrs.class === 'view-tab').map((n) => n.children.map((c) => c.text ?? '').join('').trim());
-    assert.deepEqual(views(html(withPrefs(prefs(), h(m.ViewSwitch, { bookId: 'book_1', view: 'write' })))), ['Write', 'Board', 'Outline', 'Threads']);
-    assert.deepEqual(views(html(withPrefs(prefs({ off: ['board', 'threads'] }), h(m.ViewSwitch, { bookId: 'book_1', view: 'write' })))), ['Write', 'Outline']);
+    assert.deepEqual(views(html(withPrefs(prefs(), h(m.ViewSwitch, { bookId: 'book_1', view: 'write' })))), ['Write', 'Board', 'Outline', 'Threads', 'Read']);
+    assert.deepEqual(views(html(withPrefs(prefs({ off: ['board', 'threads'] }), h(m.ViewSwitch, { bookId: 'book_1', view: 'write' })))), ['Write', 'Outline', 'Read']);
   });
 
   test('a right-rail section of a module that is off is not drawn, whatever the layout pins', () => {
