@@ -21,7 +21,7 @@ const journalFile = (root, opId) => path.join(journalDir(root), `${opId}.json`);
 
 /**
  * @typedef {{ rel: string, before_sha256: string|null, after_sha256: string|null, tmp: string|null }} JournalFile
- * @typedef {{ opId: string, op: string, args: unknown, at: string, state: string, files: JournalFile[] }} JournalEntry
+ * @typedef {{ opId: string, op: string, args: unknown, at: string, state: string, actor?: { kind: string, id: string, name: string }, files: JournalFile[] }} JournalEntry (`actor`: M12, only for a write made through a plugin token)
  */
 
 /**

@@ -55,6 +55,8 @@ export const WRITE_CLASSES = Object.freeze({
   'shared-share-create': 'admin', 'shared-share-revoke': 'admin', 'shared-settings': 'admin',
   // M08-J02 plugin access tokens and webhook subscriptions: a token or a webhook reaches the author's book, so in shared mode only the owner grants them
   'plugin-grant': 'admin', 'plugin-revoke': 'admin', 'webhook-create': 'admin', 'webhook-revoke': 'admin',
+  // M12: how much AI a book allows (it caps every token), so in shared mode only the owner sets it
+  'book-ai-level': 'admin',
 });
 
 /**

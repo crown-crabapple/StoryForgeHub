@@ -67,10 +67,25 @@ export function setupBlocks(client, s) {
   ];
 }
 
-/** The permissions a connection gets: read always, propose, canvas and plan when ticked, events never. @param {boolean} propose @param {boolean} [canvas] @param {boolean} [plan] */
-export const connectionPermissions = (propose, canvas = false, plan = false) => ['read', ...(propose ? ['propose'] : []), ...(canvas ? ['canvas'] : []), ...(plan ? ['plan'] : [])];
+/** The permissions a connection gets: read always, propose, canvas, plan, workspace and draft when ticked, events never. @param {boolean} propose @param {boolean} [canvas] @param {boolean} [plan] @param {boolean} [workspace] @param {boolean} [draft] */
+export const connectionPermissions = (propose, canvas = false, plan = false, workspace = false, draft = false) => [
+  'read',
+  ...(propose ? ['propose'] : []),
+  ...(canvas ? ['canvas'] : []),
+  ...(plan ? ['plan'] : []),
+  ...(workspace ? ['workspace'] : []),
+  ...(draft ? ['draft'] : []),
+];
 
-const permissionWords = (/** @type {string[]} */ perms) => perms.map((p) => (p === 'read' ? 'read your books' : p === 'propose' ? 'suggest changes' : p === 'canvas' ? 'edit canvases' : p === 'plan' ? 'change the plan' : p)).join(', ');
+const PERMISSION_WORDS = /** @type {Record<string, string>} */ ({
+  read: 'read your books',
+  propose: 'suggest changes',
+  canvas: 'edit canvases',
+  plan: 'change the plan',
+  workspace: 'edit workspace docs and ledgers',
+  draft: 'create chapters and scenes',
+});
+const permissionWords = (/** @type {string[]} */ perms) => perms.map((p) => PERMISSION_WORDS[p] ?? p).join(', ');
 const booksText = (/** @type {'all' | string[]} */ books) => (books === 'all' ? 'All books' : books.join(', '));
 const day = (/** @type {number | null | undefined} */ ms) => (typeof ms === 'number' ? new Date(ms).toISOString().slice(0, 10) : null);
 
@@ -141,6 +156,8 @@ function ConnectForm({ books, taken, mode, busy, error, onCreate }) {
   const [propose, setPropose] = useState(true);
   const [canvas, setCanvas] = useState(false);
   const [plan, setPlan] = useState(false);
+  const [workspace, setWorkspace] = useState(false);
+  const [draft, setDraft] = useState(false);
   const [scope, setScope] = useState('all');
   const [picked, setPicked] = useState(/** @type {Set<string>} */ (new Set()));
   const slug = connectionSlug(name, taken);
@@ -159,7 +176,7 @@ function ConnectForm({ books, taken, mode, busy, error, onCreate }) {
       onSubmit={(e) => {
         e.preventDefault();
         if (slug.ok && ready && !busy)
-          onCreate({ plugin: slug.slug, permissions: connectionPermissions(propose, canvas, plan), books: scope === 'all' ? 'all' : books.map((b) => b.slug).filter((s) => picked.has(s)), client });
+          onCreate({ plugin: slug.slug, permissions: connectionPermissions(propose, canvas, plan, workspace, draft), books: scope === 'all' ? 'all' : books.map((b) => b.slug).filter((s) => picked.has(s)), client });
       }}
     >
       <h3 id={`${id}-h`}>{taken.length === 0 ? 'New connection' : 'Add another connection'}</h3>
@@ -201,6 +218,15 @@ function ConnectForm({ books, taken, mode, busy, error, onCreate }) {
         <input type="checkbox" checked={plan} onChange={() => setPlan(!plan)} />
         <span>Change the plan: the AI may write your Story Planner items (planning material, never your prose; you can Undo each change)</span>
       </label>
+      <label className="choice">
+        <input type="checkbox" checked={workspace} onChange={() => setWorkspace(!workspace)} />
+        <span>Workspace docs and ledgers: the AI may write your book and style docs, state notes and ledgers (never your prose; you can Undo each change)</span>
+      </label>
+      <label className="choice">
+        <input type="checkbox" checked={draft} onChange={() => setDraft(!draft)} />
+        <span>Create chapters and scenes: the AI may add new chapters and scenes as drafts (it never changes a scene you already have)</span>
+      </label>
+      <p className="field-hint">The book&apos;s AI level (Settings, AI level) still limits what is allowed: a permission above the book&apos;s level is refused.</p>
       {error && (
         <p role="alert" className="field-error">
           {error}
@@ -229,7 +255,7 @@ export function ClaudeView({ data, loadError = null, moduleOff = false, mode = n
       <h2 id="claude-heading">AI connections (MCP)</h2>
       <p className="muted">
         Let {mode === 'shared' ? 'Claude Code' : 'Claude Code, Claude Desktop'} or another MCP client read your books. Make one key for each client or computer, as many as you need: each has its own books and permissions, and you can revoke one without affecting the
-        others. An AI never changes your prose: a suggestion changes nothing until you accept it. Only if you tick them below may it edit your canvases or change your plan.
+        others. An AI never changes your prose: a suggestion changes nothing until you accept it. Only if you tick them below may it edit your canvases, change your plan, edit workspace docs or create new chapters and scenes.
       </p>
       {moduleOff && <p className="field-warning">The Integrations module is off, so no AI client can reach your books. Turn it on under Modules above.</p>}
       {loadError && (

@@ -10,6 +10,8 @@ export const PERMISSION_TEXT = {
   propose: 'Propose changes as suggestions. Nothing in your book changes until you accept a suggestion yourself.',
   canvas: 'Create, change, archive and restore canvases (planning boards). It never touches your prose.',
   plan: 'Change the plan: read and write the Story Planner (scene plans, links, structures, arcs, relationships, clues, synopses). You can Undo each change. It never touches your prose.',
+  workspace: 'Workspace docs and ledgers: write the workspace docs (book, style, state) and ledgers. You can Undo each change. It never touches your prose. The book\'s AI level still limits what is allowed.',
+  draft: 'Create chapters and scenes: add new chapters and scenes as drafts. It never changes a scene you already have. The book\'s AI level still limits what is allowed.',
   events: 'Subscribe to webhooks for its own address (it can never ask for scene text).',
 };
 const PERMISSIONS = Object.keys(PERMISSION_TEXT);

@@ -4,6 +4,7 @@ import { useApi } from '../api.js';
 import { ClaudeSettings } from '../integrations/ClaudePanel.jsx';
 import { PluginsSettings } from '../integrations/PluginsPanel.jsx';
 import { WebhooksSettings } from '../integrations/WebhooksPanel.jsx';
+import { AiLevelSettings } from '../prefs/AiLevelSettings.jsx';
 import { PreferencesSettings } from '../prefs/PreferencesSettings.jsx';
 import { Link } from '../router.jsx';
 import { useSession } from '../shared/session.jsx';
@@ -336,6 +337,7 @@ export function SettingsView() {
       <PreferencesSettings />
       {(mode !== 'shared' || user?.role === 'owner') && (
         <>
+          <AiLevelSettings />
           <ClaudeSettings mode={mode} />
           <PluginsSettings />
           <WebhooksSettings />

@@ -169,6 +169,8 @@
  *   createTask(bookId: string, args: Record<string, any>): Promise<WriteResult & Record<string, any>>,
  *   setTaskStatus(bookId: string, ref: string, status: string): Promise<WriteResult & Record<string, any>>,
  *   setDailyGoal(bookId: string, goal: number | null): Promise<WriteResult & { daily_word_goal?: number }>,
+ *   setAiLevel(bookId: string, level: string | null, opts?: { scope?: 'book' | 'library' }): Promise<WriteResult & { level?: string | null, scope?: string }>,  (M12: preferences.ai.level in book.md or library.md)
+ *   listAiActivity(bookId: string, opts?: { limit?: number }): Promise<WriteResult & { items?: { opId: string, at: string, actor: { kind: string, id: string, name: string }, op: string, summary: string, files: string[], undone: boolean, undoable: boolean }[] }>,  (M12: what plugin tokens changed, newest first)
  *   listRevisions(bookId: string, sceneId: string): Promise<WriteResult & { revisions?: any[] }>,
  *   getRevision(bookId: string, sceneId: string, file: string): Promise<WriteResult & { revision?: any }>,
  *   saveRevision(bookId: string, sceneId: string, opts?: { label?: string, reason?: 'manual' | 'external' }): Promise<WriteResult & { stored?: boolean, revision?: any }>,

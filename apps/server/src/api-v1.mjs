@@ -4,6 +4,7 @@
 // review. Reads are projections with stable field names (within API major 1 fields are only added). Who may call what is decided by plugin-policy.mjs first.
 import { checkWebhookUrl } from '@storyforge/integrations';
 import { aiLevelReaches, loadPlugins } from '@storyforge/format';
+import { runAsActor } from '@storyforge/store';
 import pkg from '../package.json' with { type: 'json' };
 import { decidePlugin } from './plugin-policy.mjs';
 import { aiLevelOf, aiLevelRefused, moduleOff, moduleOn } from './preferences.mjs';
@@ -102,6 +103,8 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
   }
   const books = /** @type {any[]} */ (grant ? await repository.listBooks() : []); // an unknown or revoked token is refused before anything is read
   const slugOf = (/** @type {string} */ x) => books.find((b) => b.slug === x || b.id === x)?.slug ?? null;
+  // M12 AI Activity: every write made through this token records who made it (its grant) in the op journal; reads record nothing
+  const asActor = (/** @type {() => Promise<any>} */ fn) => (method === 'GET' ? fn() : runAsActor({ kind: 'plugin', id: grant.id, name: grant.plugin }, fn));
   const d = decidePlugin(grant, method, pathname, slugOf);
   if (!d.ok) return out(d.status, d.body, grant);
   const book = d.book ? books.find((b) => b.slug === d.book) : null;
@@ -191,7 +194,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     }
     if (c === 'canvases') {
       if (!(await moduleOn(repository, state, 'board', { bookId: bk.id })) && !(await moduleOn(repository, state, 'planner', { bookId: bk.id }))) return done(moduleOff('board')); // M10: on with the board or the planner
-      const r = await canvasRoute(bk, d2, parts[6] ?? undefined);
+      const r = await asActor(() => canvasRoute(bk, d2, parts[6] ?? undefined));
       return done(r.res, r.target ?? target);
     }
     if (c === 'workspace') {
@@ -229,7 +232,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       return done({ status: 200, body: planOut(r) }, `${target}/${d2}`);
     }
     if (c === 'proposals') {
-      const r = await propose(bk);
+      const r = await asActor(() => propose(bk));
       return done(r.res, r.target ? `${target}/${r.target}` : target, r.res.status === 201 ? { by: r.by, proposal: r.proposal } : {});
     }
     return out(404, NOT_FOUND.body, grant, target);
@@ -289,7 +292,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     if (!isObject(read.value)) return badRequest('body must be a JSON object');
     const refused = guard ? guard(/** @type {Record<string, unknown>} */ (read.value)) : null;
     if (refused) return refused;
-    return handleWrite(repository, match, read.value, state, { principal: { kind: 'plugin', id: grant.id, display_name: grant.plugin } });
+    return asActor(() => handleWrite(repository, match, read.value, state, { principal: { kind: 'plugin', id: grant.id, display_name: grant.plugin } }));
   }
 
   /**
