@@ -2,11 +2,15 @@ import { useState } from 'react';
 import { useApi } from '../api.js';
 import { Link, useNavigate } from '../router.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
+import { abilities } from '../collab/model.js';
+import { useSession } from '../shared/session.jsx';
+import { useWrites } from '../shell/writes.jsx';
 import { ContinuityPage } from './ContinuityPage.jsx';
+import { ContinuitySettings } from './ContinuitySettings.jsx';
 import { continuityHref, normalizeFamily, parseContinuitySearch } from './model.js';
 import { suggestionUrl, suggestionsUrl } from '../suggestions/model.js';
 import { useSuggestionActions } from '../suggestions/useSuggestionActions.jsx';
-import { continuityUrl } from './requests.js';
+import { continuityUrl, explainContinuityFailure, saveSettingsRequest, sendRequest, settingsUrl } from './requests.js';
 import { useContinuityActions } from './useContinuityActions.jsx';
 
 /** Keep ?family= of the address in step with the filter, without adding a history entry (the other parameters stay). @param {'facts' | 'plan' | null} family */
@@ -33,6 +37,17 @@ export function ContinuityView({ bookId, search = '' }) {
   // the family filter starts from ?family= and is written back to it with history.replaceState (no new history entry)
   const [filter, setFilter] = useState({ status: 'all', rule: null, subject: null, family: url.family });
   const actions = useContinuityActions({ bookId, onChanged: () => setBump((n) => n + 1) });
+  // M12 W4: the continuity settings (owners and editors only; the server refuses anyone else)
+  const canSettings = abilities(useSession()).decide;
+  const settings = useApi(canSettings ? settingsUrl(bookId) : null, version);
+  const { track } = useWrites();
+  const [saving, setSaving] = useState({ busy: false, error: null, saved: false });
+  const saveSettings = async (body) => {
+    setSaving({ busy: true, error: null, saved: false });
+    const { status, json } = await track(bookId, () => sendRequest(saveSettingsRequest(bookId, body)));
+    if (status === 200) setBump((n) => n + 1);
+    setSaving({ busy: false, error: status === 200 ? null : explainContinuityFailure(status, json), saved: status === 200 });
+  };
   // M05-J06: the Suggestions group (all suggestions of the book) and the one open for review
   const sg = useSuggestionActions({ bookId, onChanged: () => setBump((n) => n + 1) });
   const sgKey = `${version}|${sg.stamp}`;
@@ -82,6 +97,7 @@ export function ContinuityView({ bookId, search = '' }) {
           onRestore: actions.restore,
           onRemove: actions.remove,
         }}
+        settingsPanel={canSettings && settings.data ? <ContinuitySettings settings={settings.data} busy={saving.busy} error={saving.error} saved={saving.saved} onSave={saveSettings} /> : null}
         suggestions={sgList.data?.suggestions ?? null}
         selectedSuggestion={sgOne.data}
         selectedSuggestionId={url.suggestion}

@@ -4119,6 +4119,19 @@ label.form-check {
   margin: 0;
   font-size: var(--fs-13);
 }
+.cf-settings {
+  margin: 0.75rem 0;
+  font-size: var(--fs-13);
+}
+.cf-settings summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.cf-settings-rules {
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  margin: 0.5rem 0;
+}
 .cf-row {
   width: 100%;
   font: inherit;

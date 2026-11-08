@@ -20,13 +20,16 @@ export const RULE_INFO = {
   PL3: { name: 'Beat with no scenes', description: 'A beat in a story structure has no scenes listed. The beat is not documented in the plan yet.' },
   PL4: { name: 'Payoff with no setup', description: 'A plot thread lists scenes where it pays off but none where it is set up. The setup is not documented in the plan.' },
   PL5: { name: 'Clue never revealed', description: 'A clue is planted in some scenes, but no scene where the truth comes out is documented in the plan. Mark it a red herring if that is the point.' },
+  CS1: { name: 'Dead on the page', description: 'A character who died (and was not revived) is in the cast of a scene in a later chapter, as point of view or as appearing.' },
+  CS2: { name: 'Gone object used', description: 'An object that was destroyed or lost (and not found again) is in the cast of a scene in a later chapter, as point of view or as appearing.' },
+  TH2: { name: 'Promise overdue', description: 'A promise or question is set up in one chapter and still open many chapters later. The limit is in the continuity settings.' },
   PL6: { name: 'Revealed before planted', description: 'The plan reveals a clue in a scene that comes before the first scene where it is planted, in reading order.' },
 };
 export const RULE_IDS = Object.keys(RULE_INFO);
 
 /** The two families of rules the queue can be narrowed to: facts the story states, and what the plan documents. */
 export const RULE_FAMILIES = {
-  facts: { label: 'Story facts', rules: ['CF1', 'TL1', 'KN1', 'ST1', 'TH1'] },
+  facts: { label: 'Story facts', rules: ['CF1', 'TL1', 'KN1', 'ST1', 'TH1', 'CS1', 'CS2', 'TH2'] },
   plan: { label: 'Plan', rules: ['PL1', 'PL2', 'PL3', 'PL4', 'PL5', 'PL6'] },
 };
 /** The family key ('facts' | 'plan') of a rule id (a sub-rule such as TH1a counts as its rule); null when unknown. @param {string} rule @returns {'facts' | 'plan' | null} */
@@ -41,6 +44,24 @@ export const normalizeFamily = (family) => (family === 'facts' || family === 'pl
 export const ruleName = (rule) => RULE_INFO[rule]?.name ?? rule;
 
 export const SEVERITY_LABEL = { error: 'Error', warning: 'Warning', info: 'Info' };
+
+/** What a rule's severity can be set to in the continuity settings ('' = the rule's own severity). */
+export const SEVERITY_CHOICES = [
+  { key: '', label: 'Default' },
+  { key: 'error', label: 'Error' },
+  { key: 'warning', label: 'Warning' },
+  { key: 'info', label: 'Info' },
+  { key: 'off', label: 'Off' },
+];
+
+/** The settings form's state from GET /continuity/settings: { overdue: text, severity: { [rule]: word } }. @param {{ overdue_chapters?: number, severity?: Record<string, string> } | null | undefined} settings */
+export const settingsDraft = (settings) => ({ overdue: String(settings?.overdue_chapters ?? 12), severity: { ...(settings?.severity ?? {}) } });
+
+/** The POST body for the form's state: only rules that are not 'Default'. @param {{ overdue: string, severity: Record<string, string> }} draft */
+export const settingsBody = (draft) => ({
+  overdue_chapters: Number(draft.overdue),
+  severity: Object.fromEntries(Object.entries(draft.severity).filter(([, word]) => word !== '' && word !== undefined).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))),
+});
 
 /** The status filters of the queue's sidebar. */
 export const STATUS_FILTERS = [

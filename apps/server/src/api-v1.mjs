@@ -8,7 +8,7 @@ import { runAsActor } from '@storyforge/store';
 import pkg from '../package.json' with { type: 'json' };
 import { decidePlugin } from './plugin-policy.mjs';
 import { aiLevelOf, aiLevelRefused, moduleOff, moduleOn } from './preferences.mjs';
-import { handleWrite, matchWriteRoute } from './router.mjs';
+import { continuityOptions, handleWrite, matchWriteRoute } from './router.mjs';
 
 export const API_MAJOR = 1;
 const NOT_FOUND = { status: 404, body: { error: 'not_found' } };
@@ -17,6 +17,8 @@ const isObject = (/** @type {unknown} */ v) => v !== null && typeof v === 'objec
 const MAX_HUNKS = 200;
 /** M12 W3: the app write routes a workspace write of a plugin may reach (see memberWrite): threads, the chapter cast, ledgers (knowledge, state events), tasks and the AI writing log. Never scene-body or scene-fields. */
 const WORKSPACE_ROUTES = ['thread-', 'scene-cast', 'ledger-', 'task-', 'activity-ai-log'];
+/** M12 W4: the only app write routes the continuity dismiss and restore calls reach: the exception create and archive routes (never the author's continuity settings). */
+const CONTINUITY_ROUTES = ['continuity-exception-'];
 const MAX_TEXT = 4 * 1024 * 1024;
 
 /** @param {string} s @returns {string | null} */
@@ -44,6 +46,7 @@ export function v1RouteOf(method, pathname) {
   if (c === 'cast' || c === 'knowledge' || c === 'state-events') return method === 'GET' ? c : c === 'knowledge' ? 'knowledge-record' : 'state-record';
   if (c === 'tasks') return method === 'GET' ? 'tasks' : d === undefined ? 'task-create' : 'task-status';
   if (c === 'activity') return 'activity-ai-log';
+  if (c === 'continuity') return method === 'GET' ? 'continuity' : parts[7] === 'archive' ? 'continuity-restore' : 'continuity-dismiss';
   if (['threads', 'events', 'search', 'graph', 'diagnostics'].includes(c)) return c;
   if (c === 'proposals') return 'proposals';
   if (c === 'plan') return d === undefined ? 'plan' : method === 'POST' ? `plan-${d}-write` : `plan-${d}`;
@@ -196,6 +199,16 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       return done(r.ok ? { status: 200, body: planOut({ tasks: r.tasks, counts: r.counts }) } : NOT_FOUND);
     }
     if (c === 'activity') return done(await memberWrite(bk, 'POST', ['activity', 'ai-words'], WORKSPACE_ROUTES), `${target}/activity`);
+    if (c === 'continuity') {
+      // M12 W4: the continuity module must be on. GET: all findings (?chapter=N, &cast=<entry>:<role>,... for a planned chapter), the dismissed ones and the stale exceptions.
+      // POST exceptions { fingerprint, reason }: dismiss one finding; POST exceptions/<slug>/archive: restore it. Both need 'workspace' at level planner (plugin-policy.mjs).
+      if (!(await moduleOn(repository, state, 'continuity', { bookId: bk.id }))) return done(moduleOff('continuity'));
+      if (method === 'POST') return done(await continuityWrite(bk, parts[6] ?? undefined), `${target}/continuity`);
+      const q = continuityOptions(params);
+      if (q.error) return done(badRequest(q.error));
+      const all = await repository.getContinuity(bk.id, q.opts);
+      return done(all ? { status: 200, body: { findings: all.findings, suppressed: all.suppressed, stale_exceptions: all.stale_exceptions, settings: all.settings } } : NOT_FOUND);
+    }
     if (c === 'scenes') {
       const s = await repository.getScene(bk.id, d2);
       if (!s) return done(NOT_FOUND);
@@ -320,6 +333,23 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       ? (/** @type {Record<string, unknown>} */ b) => (b.locked === false ? { status: 403, body: { error: 'forbidden', code: 'AUTHOR_ONLY', message: 'only the author can unlock a workspace doc; nothing was changed' } } : null)
       : undefined;
     return memberWrite(bk, 'POST', segments, ['workspace-'], guard);
+  }
+
+  /**
+   * M12 W4: dismiss a finding (POST /continuity/exceptions { fingerprint, reason } -> the app's continuity-exception-create with the reason as its rationale) or restore it
+   * (POST /continuity/exceptions/<slug>/archive -> continuity-exception-archive). Both through the app's own routes, so the same checks, store and Undo.
+   * @param {any} bk @param {string | undefined} slug the exception's slug, for a restore
+   */
+  async function continuityWrite(bk, slug) {
+    if (slug !== undefined) return memberWrite(bk, 'DELETE', ['continuity', 'exceptions', slug], CONTINUITY_ROUTES);
+    const guard = (/** @type {Record<string, unknown>} */ b) => {
+      if (typeof b.fingerprint !== 'string' || b.fingerprint === '') return badRequest('fingerprint must be the fingerprint of a current finding');
+      if (typeof b.reason !== 'string' || b.reason.trim() === '') return badRequest('reason is required (why this is fine)', 'RATIONALE_REQUIRED');
+      b.rationale = b.reason;
+      delete b.reason;
+      return null;
+    };
+    return memberWrite(bk, 'POST', ['continuity', 'exceptions'], CONTINUITY_ROUTES, guard);
   }
 
   /**

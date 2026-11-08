@@ -508,7 +508,7 @@ const WORKSPACE_TOOLS = [
   wsWrite({
     name: 'codex_record_knowledge',
     title: 'Record what a character learns',
-    text: 'Records that a character learns a fact in a chapter (a learns item on that chapter\'s state event; the event is made when missing). The fact is one line of text; it is stored as a key made from it (see codex_knowledge_at). Nothing is ever deleted.',
+    text: 'Records that a character learns a fact in a chapter (a learns item on that chapter\'s state event; the event is made when missing). The fact is one line of text; the full wording is kept, and a key made from it is stored too (see codex_knowledge_at). Nothing is ever deleted.',
     props: { character: entryRef('The character: a Codex entry slug or id.'), fact: { type: 'string', minLength: 1, maxLength: 300, description: 'The fact, one line of text.' }, chapter: chapterNo('The chapter number where the character learns it.') },
     required: ['character', 'fact', 'chapter'],
     path: () => 'knowledge',
@@ -578,6 +578,64 @@ const WORKSPACE_TOOLS = [
     path: () => 'activity/ai-words',
     body: (a) => given(a, ['words', 'chapter', 'note']),
   }),
+];
+
+const FINGERPRINT_RE = /^[a-z0-9]{2,4}-[0-9a-f]{16}$/;
+const fingerprintArg = { type: 'string', minLength: 1, maxLength: 100, description: 'The fingerprint of a finding (from codex_continuity_check).' };
+
+/** Continuity (M12 W4): check (read), dismiss and restore a finding (workspace, level planner). The author's thresholds and severities are not a tool: only the author changes them. @type {Tool[]} */
+const CONTINUITY_TOOLS = [
+  {
+    name: 'codex_continuity_check',
+    title: 'Run the continuity check',
+    description: `Runs the continuity rules (facts, timeline, knowledge, possession, threads, the plan, a dead character or a gone object on the page, an overdue promise) and returns the findings, the ones the author dismissed and the stale dismissals. With chapter, only the findings that touch that chapter. With chapter and cast (the entries you plan to put in that chapter, each as pov, appears or mentioned), the check also runs as if they were in that chapter: a pre-flight for a chapter not written yet. Read only. ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({
+      book: bookArg,
+      chapter: chapterNo('Only findings that touch this chapter number.'),
+      cast: rowList({ entry: entryRef('A Codex entry slug or id.'), role: { type: 'string', enum: CAST_ROLE_ENUM } }, ['entry', 'role'], 'The planned cast of the chapter (needs chapter).'),
+    }, ['book']),
+    annotations: READ,
+    async run(args, api) {
+      if (args.cast !== undefined && args.chapter === undefined) throw new ToolError('cast needs a chapter');
+      const query = {
+        ...(args.chapter !== undefined ? { chapter: String(args.chapter) } : {}),
+        ...(args.cast !== undefined && args.cast.length > 0 ? { cast: args.cast.map((/** @type {{ entry: string, role: string }} */ c) => `${c.entry}:${c.role}`).join(',') } : {}),
+      };
+      return result(await api.get(`${bookPath(args.book)}/continuity`, query));
+    },
+  },
+  {
+    name: 'codex_dismiss_finding',
+    title: 'Dismiss a continuity finding',
+    description: `Dismisses one continuity finding as intended or fine, with the reason why (the author sees it and can restore it). The finding is hidden from codex_continuity_check but nothing in the story changes. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({ book: bookArg, fingerprint: fingerprintArg, reason: { type: 'string', minLength: 1, maxLength: 5000, description: 'Why this is fine (required).' } }, ['book', 'fingerprint', 'reason']),
+    annotations: WORKSPACE,
+    async run(args, api) {
+      const r = await api.post(`${bookPath(args.book)}/continuity/exceptions`, { fingerprint: args.fingerprint, reason: args.reason });
+      return result({ ...r, note: WORKSPACE_NOTE });
+    },
+  },
+  {
+    name: 'codex_restore_finding',
+    title: 'Restore a dismissed finding',
+    description: `Brings back a dismissed continuity finding: give the fingerprint of the finding or the slug of its dismissal (both are listed in the "suppressed" part of codex_continuity_check). The dismissal is archived, never deleted. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({ book: bookArg, finding: { type: 'string', minLength: 1, maxLength: 200, description: 'The finding fingerprint or the slug of the dismissal.' } }, ['book', 'finding']),
+    annotations: WORKSPACE,
+    async run(args, api) {
+      let slug = args.finding;
+      if (FINGERPRINT_RE.test(args.finding)) {
+        const all = await api.get(`${bookPath(args.book)}/continuity`);
+        const hit = (all.suppressed ?? []).find((/** @type {any} */ s) => s.finding?.fingerprint === args.finding);
+        if (!hit) throw new ToolError('no dismissed finding has that fingerprint');
+        slug = hit.exception.slug;
+      }
+      const r = await api.post(`${bookPath(args.book)}/continuity/exceptions/${seg(slug)}/archive`, {});
+      return result({ ...r, note: WORKSPACE_NOTE });
+    },
+  },
 ];
 
 /** @type {Tool[]} */
@@ -1112,11 +1170,13 @@ export const TOOLS = [
   },
   ...PLAN_WRITE_TOOLS,
   ...WORKSPACE_TOOLS,
+  ...CONTINUITY_TOOLS,
 ];
 
 /** Names an author of the original Codex MCP might ask for that v2 has no plugin route for. */
 export const NOT_OFFERED = [
   'codex_create_chapter', 'codex_push_files', 'codex_delete_ledger_item', 'codex_delete_knowledge',
-  'codex_continuity_check', 'codex_delete_state_event', 'codex_dismiss_finding', 'codex_restore_finding',
+  'codex_delete_state_event',
+  // the continuity thresholds and severities are the author's own (continuity settings in StoryForge); there is no plugin route for them
   'codex_set_continuity_thresholds',
 ];

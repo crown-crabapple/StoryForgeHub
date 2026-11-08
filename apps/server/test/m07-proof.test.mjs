@@ -77,6 +77,7 @@ const SAMPLES = {
   'codex-type-create': ['POST', `${b}/codex/types`],
   'continuity-exception-archive': ['DELETE', `${b}/continuity/exceptions/x`],
   'continuity-exception-create': ['POST', `${b}/continuity/exceptions`],
+  'continuity-settings-save': ['POST', `${b}/continuity/settings`],
   create: ['POST', `${b}/scenes`],
   'entry-archive': ['POST', `${b}/entries/entry_X/archive`],
   'entry-body': ['PUT', `${b}/entries/entry_X/body`],

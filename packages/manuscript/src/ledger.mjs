@@ -97,12 +97,12 @@ const sameItem = (a, b) => a.slug === b.slug && a.event === b.event && (a.value 
 /**
  * Append state items to the "Chapter N (state)" event (slug chapter-N-state, order N, scenes: the chapter's first scene), creating it when missing. Items are
  * { slug: <character/object entry slug or id>, event: died | revived | destroyed | lost | found | holder | location | learns | knows, value? }: `value` is the fact key for
- * learns / knows (a slug-shaped key), a codex entry slug for holder (or "") and location, and absent for the rest. An item already in the event is not added twice.
+ * learns / knows (a slug-shaped key; learns / knows may also carry `fact`, the full wording as one line), a codex entry slug for holder (or "") and location, and absent for the rest. An item already in the event is not added twice.
  * Existing items are kept as they are; nothing is ever removed (retiring a state is a later item that ends it). The event's text (its body) is not touched.
  * Refusals: REFUSED_BAD_ARGS (with `index`), REFUSED_UNKNOWN_CHAPTER, REFUSED_UNKNOWN_ENTRY (with `index`), SLUG_TAKEN (another entry, thread or event uses chapter-N-state),
  * and ROLLED_BACK when the check after the write finds a new error (e.g. a holder that is not a character).
  * @param {string} bookRoot
- * @param {{ chapter: number, items: { slug: string, event: string, value?: string }[], allowKnowledge?: boolean, dryRun?: boolean }} args
+ * @param {{ chapter: number, items: { slug: string, event: string, value?: string, fact?: string }[], allowKnowledge?: boolean, dryRun?: boolean }} args
  */
 export function recordEventState(bookRoot, args = {}) {
   return guarded(async () => {
@@ -115,7 +115,9 @@ export function recordEventState(bookRoot, args = {}) {
       if (!isMap(m)) return fail('REFUSED_BAD_ARGS', `items[${i}] must be an object with slug and event`, { field: `items[${i}]`, index: i });
       if (typeof m.slug !== 'string' || m.slug.trim() === '' || m.slug.length > 200 || /[\x00-\x1f\x7f]/.test(m.slug)) return fail('REFUSED_BAD_ARGS', `${at('slug')} must be an entry slug or id`, { field: at('slug'), index: i });
       if (!kinds.includes(m.event)) return fail('REFUSED_BAD_ARGS', `${at('event')} must be one of ${kinds.join(', ')}`, { field: at('event'), index: i });
-      for (const key of Object.keys(m)) if (!['slug', 'event', 'value'].includes(key)) return fail('REFUSED_BAD_ARGS', `unknown state field ${key}; the fields are slug, event, value`, { field: at(key), index: i });
+      const knowing = m.event === 'learns' || m.event === 'knows';
+      for (const key of Object.keys(m)) if (!['slug', 'event', 'value', ...(knowing ? ['fact'] : [])].includes(key)) return fail('REFUSED_BAD_ARGS', `unknown state field ${key}; the fields are slug, event, value${knowing ? ', fact' : ''}`, { field: at(key), index: i });
+      if (m.fact !== undefined && (typeof m.fact !== 'string' || m.fact.trim() === '' || m.fact.length > 300 || /[\x00-\x1f\x7f]/.test(m.fact))) return fail('REFUSED_BAD_ARGS', `${at('fact')} must be one line of text (up to 300 characters)`, { field: at('fact'), index: i });
       const hasValue = m.value !== undefined && m.value !== null;
       if (m.event === 'learns' || m.event === 'knows') {
         if (typeof m.value !== 'string' || !SLUG_RE.test(m.value) || m.value.length > 60) return fail('REFUSED_BAD_ARGS', `${at('value')} must be a fact key (a-z, 0-9, single hyphens, up to 60 characters)`, { field: at('value'), index: i });
@@ -138,7 +140,7 @@ export function recordEventState(bookRoot, args = {}) {
     const existing = doc && Array.isArray(doc.fm.state) ? doc.fm.state.filter(isMap) : [];
     const fresh = [];
     for (const m of items) {
-      const item = { slug: m.slug, event: m.event, ...(m.value !== undefined && m.value !== null ? { value: m.value } : {}) };
+      const item = { slug: m.slug, event: m.event, ...(m.value !== undefined && m.value !== null ? { value: m.value } : {}), ...(typeof m.fact === 'string' ? { fact: m.fact.trim() } : {}) };
       if (![...existing, ...fresh].some((x) => sameItem(x, item))) fresh.push(item);
     }
     const stateLines = (list) => ['state:', ...list.flatMap((item) => itemLines(item, true))];

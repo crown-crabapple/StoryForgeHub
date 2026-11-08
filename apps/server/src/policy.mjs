@@ -16,7 +16,7 @@ export const WRITE_CLASSES = Object.freeze({
   // manuscript, structure and planning edits
   'act-create': 'write', 'act-fields': 'write', 'activity-session': 'write', archive: 'write', 'attachment-upload': 'write', body: 'write',
   'chapter-archive': 'write', 'chapter-create': 'write', 'chapter-fields': 'write', 'chapter-move': 'write', 'chapters-renumber': 'write', 'check-scene': 'write',
-  'codex-type-create': 'write', 'continuity-exception-archive': 'write', 'continuity-exception-create': 'write', create: 'write',
+  'codex-type-create': 'write', 'continuity-exception-archive': 'write', 'continuity-exception-create': 'write', 'continuity-settings-save': 'write', create: 'write',
   'entry-archive': 'write', 'entry-body': 'write', 'entry-create': 'write', 'entry-fields': 'write', 'entry-restore': 'write', 'entry-slug': 'write',
   'event-archive': 'write', 'event-body': 'write', 'event-create': 'write', 'event-fields': 'write', 'event-restore': 'write', goal: 'write',
   'index-rebuild': 'write', 'note-archive': 'write', 'note-body': 'write', 'note-create': 'write', 'note-fields': 'write', 'note-restore': 'write',

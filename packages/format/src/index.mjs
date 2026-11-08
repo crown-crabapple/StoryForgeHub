@@ -202,7 +202,7 @@ export { ID_PREFIX_RE } from './ids.mjs';
 export { escapesRoot } from './schema.mjs';
 // Building blocks for the continuity engine (@storyforge/continuity). Re-exports only.
 export { readText } from './fs.mjs';
-export { STATE_EVENTS, CAST_ROLES, FINGERPRINT_RE } from './schema.mjs';
+export { STATE_EVENTS, CAST_ROLES, FINGERPRINT_RE, SETTINGS_SEVERITIES } from './schema.mjs';
 
 // M07-J04: preferences (the layers and their precedence) and custom prompt components / workflows. Additive within v1.
 export * from './preferences.mjs';

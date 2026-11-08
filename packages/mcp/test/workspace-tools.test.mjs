@@ -36,7 +36,7 @@ test('workspace tools: reads need read, writes need workspace; no unlock tool; t
   for (const n of WRITES) assert.equal(ro.includes(n), false, `${n} hidden without workspace`);
   const both = await listed(['read', 'workspace']);
   for (const n of [...READS, ...WRITES]) assert.ok(both.includes(n), n);
-  assert.equal(both.length, 32 + TOOLS.filter((x) => x.need === 'workspace').length); // every read tool plus every workspace tool (docs, ledgers, tasks, log)
+  assert.equal(both.length, 33 + TOOLS.filter((x) => x.need === 'workspace').length); // every read tool plus every workspace tool (docs, ledgers, tasks, log)
   const t = (await setup(['read', 'workspace']).rpc('tools/list')).result.tools.find((x) => x.name === 'codex_save_doc');
   assert.deepEqual(t.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
   assert.match(t.description, /sha256/);

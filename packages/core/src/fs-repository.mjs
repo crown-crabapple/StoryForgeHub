@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { checkContinuity } from '@storyforge/continuity';
+import { checkContinuity, readSettings } from '@storyforge/continuity';
 import { discover, escapesRoot, extractDocs, extractShared, isFile, loadDoc, loadPrompts, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts, buildGraph, subGraph } from '@storyforge/index';
 import { MAX_ATTACHMENT_BYTES, applyRepair, fieldLabels, planRepair } from '@storyforge/manuscript';
@@ -1167,9 +1167,17 @@ export function createFsRepository(libraryRoot, options = {}) {
       return big ? await oversized(book.path, image) : null;
     },
 
-    async getContinuity(bookId) {
+    async getContinuity(bookId, opts = {}) {
       const book = await bookById(bookId);
-      return book ? checkContinuity(abs(book.path)) : null;
+      return book ? checkContinuity(abs(book.path), opts) : null;
+    },
+
+    async getContinuitySettings(bookId) {
+      const result = await readValidate();
+      const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
+      if (!book) return null;
+      const doc = extractDocs(result, book.path).find((d) => d.kind === 'continuity-settings' && !d.archived);
+      return { exists: Boolean(doc), file: doc ? doc.rel : 'planning/continuity/settings.md', ...readSettings(doc?.fm) };
     },
 
     async continuityBooks() {

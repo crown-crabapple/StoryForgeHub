@@ -3,6 +3,7 @@
 import path from 'node:path';
 import { LineCounter, isMap, isScalar, parseDocument } from 'yaml';
 import { extractDocs, extractLinks, readText, validate } from '@storyforge/format';
+import { readSettings } from './settings.mjs';
 
 /** @typedef {import('@storyforge/format').Doc} Doc */
 
@@ -184,7 +185,7 @@ export async function loadModel(bookRoot) {
   }
 
   return {
-    root, skipped, docs: live, scenes, positionOf, events, eventScenes, ref, refs, frontMatterAt, fmSource, bodySource,
+    root, skipped, docs: live, settings: readSettings(live.find((d) => d.kind === 'continuity-settings')?.fm), scenes, positionOf, events, eventScenes, ref, refs, frontMatterAt, fmSource, bodySource,
     entries: live.filter((d) => d.kind === 'entry' && typeof d.fm.id === 'string'),
     threads: live.filter((d) => d.kind === 'thread' && typeof d.fm.id === 'string'),
     links: live.filter((d) => d.kind === 'link'),

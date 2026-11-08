@@ -107,8 +107,16 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     }
     // M05-J01: continuity findings, computed from the files on every call (read-only)
     if (c === 'continuity' && d === undefined) {
-      const continuity = await repository.getContinuity(b);
+      // M12 W4: ?chapter=N keeps the findings that touch that chapter; &cast=<entry>:<role>,... also checks that planned cast (CS1, CS2) as if it were in chapter N
+      const q = continuityOptions(params);
+      if (q.error) return badRequest(q.error);
+      const continuity = await repository.getContinuity(b, q.opts);
       return continuity ? { status: 200, body: continuity } : NOT_FOUND;
+    }
+    // M12 W4: the author's continuity settings (planning/continuity/settings.md): { exists, file, overdue_chapters, severity }
+    if (c === 'continuity' && d === 'settings' && e === undefined) {
+      const settings = await repository.getContinuitySettings(b);
+      return settings ? { status: 200, body: settings } : NOT_FOUND;
     }
     // M05-J02: the lines around a finding's evidence ("Show both"): ?file=<book-relative>&line=N&radius=3 (radius at most 10)
     if (c === 'continuity' && d === 'context' && e === undefined) {
@@ -764,6 +772,8 @@ export function matchWriteRoute(method, pathname) {
   // M05-J02 continuity exceptions
   if (method === 'POST' && c === 'continuity' && d === 'exceptions' && e === undefined) return { route: 'continuity-exception-create', bookId: b };
   if (method === 'DELETE' && c === 'continuity' && d === 'exceptions' && e !== undefined && f === undefined) return { route: 'continuity-exception-archive', bookId: b, slug: e };
+  // M12 W4: the author's continuity settings (the app only; there is no plugin route for it)
+  if (method === 'POST' && c === 'continuity' && d === 'settings' && e === undefined) return { route: 'continuity-settings-save', bookId: b };
   // M05-J06 suggestions: decide one hunk or every pending hunk; check one scene (read-only report)
   if (method === 'POST' && c === 'suggestions' && d !== undefined && e === undefined) return { route: 'suggestion-decide', bookId: b, suggestionId: d };
   if (method === 'POST' && c === 'suggestions' && d !== undefined && e === 'hunks' && f !== undefined) return { route: 'suggestion-hunk-decide', bookId: b, suggestionId: d, hunkId: f };
@@ -877,6 +887,31 @@ function plannerBeats(v) {
     }
   }
   return null;
+}
+
+/**
+ * M12 W4: the ?chapter=N and ?cast=<entry>:<role>,... of a continuity check. `cast` needs `chapter`. Entry is an entry id or slug; role is pov, appears or mentioned.
+ * @param {URLSearchParams} params @returns {{ error: string, opts?: undefined } | { error?: undefined, opts: { chapter?: number, cast?: { entry: string, role: string }[] } }}
+ */
+export function continuityOptions(params) {
+  const chapter = params.get('chapter');
+  const cast = params.get('cast');
+  if (chapter !== null && !/^[0-9]{1,6}$/.test(chapter)) return { error: 'chapter must be a chapter number' };
+  if (cast !== null && chapter === null) return { error: 'cast needs a chapter' };
+  /** @type {{ entry: string, role: string }[] | undefined} */
+  let list;
+  if (cast !== null) {
+    list = [];
+    for (const part of cast.split(',').filter((x) => x !== '')) {
+      const at = part.lastIndexOf(':');
+      const entry = at > 0 ? part.slice(0, at).trim() : '';
+      const role = at > 0 ? part.slice(at + 1).trim() : '';
+      if (entry === '' || !['pov', 'appears', 'mentioned'].includes(role)) return { error: 'cast must be <entry>:<role> pairs separated by commas; role is pov, appears or mentioned' };
+      list.push({ entry, role });
+    }
+    if (list.length > 200) return { error: 'cast has too many entries' };
+  }
+  return { opts: { ...(chapter !== null ? { chapter: Number(chapter) } : {}), ...(list ? { cast: list } : {}) } };
 }
 
 /** Like respond(), with the continuity refusals named by their codes: 404 FINDING_NOT_FOUND, 409 ALREADY_EXCEPTED, 400 RATIONALE_REQUIRED. */
@@ -1616,6 +1651,13 @@ async function handleStructure(repository, match, body) {
       if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
       const r = await repository.archiveContinuityException(bookId, /** @type {string} */ (match.slug), { dryRun: body.dryRun === true });
       return respondContinuity(r, 200, (x) => (x.dryRun ? { ok: true, dryRun: true, archived: x.archived, changes: x.changes } : { ok: true, archived: x.archived, opId: x.opId ?? null, undo: x.undo ?? null }));
+    }
+    case 'continuity-settings-save': {
+      if (body.overdue_chapters !== undefined && !Number.isInteger(body.overdue_chapters)) return badRequest('overdue_chapters must be a whole number');
+      if (body.severity !== undefined && (body.severity === null || typeof body.severity !== 'object' || Array.isArray(body.severity))) return badRequest('severity must be an object of rule id to error, warning, info or off');
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.saveContinuitySettings(bookId, { overdue_chapters: /** @type {number | undefined} */ (body.overdue_chapters), severity: /** @type {Record<string, string> | undefined} */ (body.severity), dryRun: body.dryRun === true });
+      return respondContinuity(r, 200, (x) => (x.dryRun ? { ok: true, dryRun: true, file: x.file, text: x.text, changes: x.changes } : { ok: true, file: x.file, opId: x.opId ?? null, undo: x.undo ?? null }));
     }
     case 'op-restore': {
       const r = await repository.restoreOp(bookId, /** @type {string} */ (match.opId), { dryRun });

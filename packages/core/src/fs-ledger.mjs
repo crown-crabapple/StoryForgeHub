@@ -118,7 +118,7 @@ export function createLedgerMethods({ repository, readValidate, activity }) {
 
     /**
      * The facts a character knows by the end of chapter `at` (all of them without `at`), from the `knows` / `learns` items of the timeline events in book order:
-     * { ok, character: { id, slug, name }, at, facts: [{ fact, how: 'knows' | 'learns', chapter, event, event_id }] } (the first item that gives each fact).
+     * { ok, character: { id, slug, name }, at, facts: [{ fact (the key), text (the full wording; the key for an older item), how: 'knows' | 'learns', chapter, event, event_id }] } (the first item that gives each fact).
      * NOT_FOUND for an unknown book or a character that is no entry of it.
      * @param {string} bookId @param {{ character: string, at?: number }} args
      */
@@ -135,7 +135,7 @@ export function createLedgerMethods({ repository, readValidate, activity }) {
         if (at !== undefined && it.rank > at) continue;
         if (seen.has(it.raw.value)) continue;
         seen.add(it.raw.value);
-        facts.push({ fact: it.raw.value, how: it.raw.event, chapter: it.chapter ?? (it.rank === -1 ? 0 : null), event: it.event, event_id: it.event_id });
+        facts.push({ fact: it.raw.value, text: typeof it.raw.fact === 'string' && it.raw.fact.trim() !== '' ? it.raw.fact : it.raw.value, how: it.raw.event, chapter: it.chapter ?? (it.rank === -1 ? 0 : null), event: it.event, event_id: it.event_id });
       }
       return { ok: true, code: 'OK', character: entryOut(who), at: at ?? null, facts };
     },
@@ -161,7 +161,7 @@ export function createLedgerMethods({ repository, readValidate, activity }) {
   const writes = {
     /**
      * Record that a character learns a fact in a chapter: a `learns` item on the chapter's "Chapter N (state)" event. `fact` is the text of the fact; its key (what the item
-     * stores, and what knowledgeAt returns) is the slug of it (up to 60 characters).
+     * stores, and what knowledgeAt returns) is the slug of it (up to 60 characters); the item also keeps the full wording as `fact` (knowledgeAt returns it as `text`).
      * @param {string} bookId @param {{ character: string, fact: string, chapter: number, dryRun?: boolean }} args
      */
     async recordKnowledge(bookId, { character, fact, chapter, dryRun } = {}) {
@@ -169,8 +169,8 @@ export function createLedgerMethods({ repository, readValidate, activity }) {
       if (typeof fact !== 'string' || fact.trim() === '' || fact.length > 300 || CONTROL_RE.test(fact)) return fail('BAD_ARGS', { message: 'fact must be one line of text (up to 300 characters)' });
       const key = slugify(fact).slice(0, 60).replace(/-+$/g, '');
       if (key === '') return fail('BAD_ARGS', { message: 'the fact has no letters or digits to make a key from' });
-      const r = await repository.recordEventState(bookId, { chapter, items: [{ slug: character, event: 'learns', value: key }], allowKnowledge: true, ...(dryRun === true ? { dryRun: true } : {}) });
-      return r.ok ? { ...r, character, fact: key } : r;
+      const r = await repository.recordEventState(bookId, { chapter, items: [{ slug: character, event: 'learns', value: key, fact: fact.trim() }], allowKnowledge: true, ...(dryRun === true ? { dryRun: true } : {}) });
+      return r.ok ? { ...r, character, fact: key, text: fact.trim() } : r;
     },
 
     /**

@@ -27,6 +27,8 @@ const READ_TOOLS = ['codex_status', 'codex_list_books', 'codex_list_chapters', '
   'codex_list_docs', 'codex_get_doc',
   // M12 W3: ledger, cast, knowledge, state events and tasks (reads)
   'codex_get_ledger', 'codex_get_cast', 'codex_knowledge_at', 'codex_get_state_events', 'codex_get_tasks',
+  // M12 W4: the continuity check
+  'codex_continuity_check',
   // the ChatGPT connector pair
   'search', 'fetch'];
 const CANVAS_TOOLS = ['codex_create_canvas', 'codex_save_canvas', 'codex_edit_canvas', 'codex_archive_canvas', 'codex_restore_canvas', 'codex_add_plan_cards'];
@@ -65,10 +67,10 @@ test('tools/list: a read+propose token sees 35 tools, read+propose+canvas all 41
   const both = (await t.grant({ plugin: 'both', permissions: ['read', 'propose'] })).token;
   const ro = (await t.grant({ plugin: 'ro', permissions: ['read'] })).token;
   const all = (await rpc(t, both, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(all.length, 35);
+  assert.equal(all.length, 36);
   assert.deepEqual([...all].sort(), [...READ_TOOLS, ...PROPOSE_TOOLS].sort());
   const some = (await rpc(t, ro, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(some.length, 32);
+  assert.equal(some.length, 33);
   assert.deepEqual([...some].sort(), [...READ_TOOLS].sort());
   assert.equal(some.some((n) => n.startsWith('codex_save_')), false);
 });

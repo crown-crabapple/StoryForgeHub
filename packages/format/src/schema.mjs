@@ -84,6 +84,12 @@ export const KINDS = {
     required: ['slug', 'fingerprint', 'rule', 'title'],
     fields: { slug: 'slug', fingerprint: 'str', rule: 'str', title: 'str', created: 'any', intentional: 'bool' },
   },
+  // Added 2026-11-07, M12 W4 (additive within v1): the author's continuity settings, one file: planning/continuity/settings.md. `overdue_chapters` is how many chapters a promise or question may stay open (TH2); `severity` maps a rule id to error, warning, info or off.
+  'continuity-settings': {
+    prefix: 'note',
+    required: [],
+    fields: { overdue_chapters: 'int1', severity: 'map' },
+  },
   // Added 2026-11-02, M05-J04 (additive within v1): one saved AI chat or rewrite, under ai/<YYYY>/.
   'ai-record': {
     prefix: 'note',
@@ -240,6 +246,9 @@ export const STATE_EVENTS = {
   holder: 'link', location: 'link', learns: 'fact', knows: 'fact',
 };
 
+/** M12 W4: the words a continuity settings file may give a rule's severity. */
+export const SETTINGS_SEVERITIES = ['error', 'warning', 'info', 'off'];
+
 /** M12 chapter cast: the roles a scene's `cast` items may give an entry. At most one `pov` per scene. */
 export const CAST_ROLES = ['pov', 'appears', 'mentioned'];
 
@@ -322,6 +331,10 @@ function checkState(state, file, add) {
     }
     const need = STATE_EVENTS[item.event];
     const has = !isAbsent(item.value);
+    if (item.fact !== undefined) {
+      if (need !== 'fact') add('E102', file, `state[${i}].fact`, `${item.event} takes no fact wording`);
+      else if (typeof item.fact !== 'string' || item.fact.trim() === '' || /[\x00-\x1f\x7f]/.test(item.fact)) add('E102', file, `state[${i}].fact`, 'fact must be one line of text');
+    }
     if (need === 'none') {
       if (has) add('E102', file, `state[${i}].value`, `${item.event} takes no value`);
     } else if (!has) {
@@ -611,6 +624,13 @@ export function checkFields(doc, ctx, add) {
       if (!Array.isArray(words) || words.some((w) => typeof w !== 'string')) {
         add('E102', file, 'values', `values.${label} must be a list of words`);
       }
+    }
+  }
+
+  if (doc.kind === 'continuity-settings' && isPlainMap(fm.severity)) {
+    for (const [rule, word] of Object.entries(fm.severity)) {
+      if (!/^[A-Z]{2}[0-9]+$/.test(rule)) add('E102', file, `severity.${rule}`, 'severity key must be a rule id such as CS1');
+      else if (typeof word !== 'string' || !SETTINGS_SEVERITIES.includes(word)) add('E102', file, `severity.${rule}`, `severity must be one of ${SETTINGS_SEVERITIES.join(', ')}`);
     }
   }
 

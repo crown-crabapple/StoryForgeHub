@@ -141,10 +141,11 @@ test('recordKnowledge / knowledgeAt: a learns item on the chapter state event (m
     const first = await repo.recordKnowledge(BOOK, { character: 'maren-hollis', fact: 'The key opens the sluice', chapter: 1 });
     assert.equal(first.ok, true, JSON.stringify(first));
     assert.equal(first.fact, 'the-key-opens-the-sluice');
+    assert.equal(first.text, 'The key opens the sluice');
     assert.equal(first.created, true);
     assert.equal(first.slug, 'chapter-1-state');
     const eventText = await read(root, 'planning/timeline/chapter-1-state.md');
-    assert.match(eventText, /title: Chapter 1 \(state\)\norder: 1\nscenes: \[scene_01S50000000000000000000002\]\nstate:\n {2}- slug: maren-hollis\n {4}event: learns\n {4}value: the-key-opens-the-sluice\n/);
+    assert.match(eventText, /title: Chapter 1 \(state\)\norder: 1\nscenes: \[scene_01S50000000000000000000002\]\nstate:\n {2}- slug: maren-hollis\n {4}event: learns\n {4}value: the-key-opens-the-sluice\n {4}fact: "The key opens the sluice"\n/);
     assert.deepEqual(await errorsOf(root), []);
 
     const second = await repo.recordKnowledge(BOOK, { character: MAREN, fact: 'Pell is the ferryman', chapter: 1 });
@@ -168,6 +169,7 @@ test('recordKnowledge / knowledgeAt: a learns item on the chapter state event (m
     assert.equal(at2.facts.length, 2);
     const all = await repo.knowledgeAt(BOOK, { character: 'maren-hollis' });
     assert.deepEqual(all.facts.map((f) => f.fact), ['the-key-opens-the-sluice', 'pell-is-the-ferryman', 'the-wall-will-fall']);
+    assert.deepEqual(all.facts.map((f) => f.text), ['The key opens the sluice', 'Pell is the ferryman', 'The wall will fall'], 'the full wording is kept');
     assert.deepEqual((await repo.knowledgeAt(BOOK, { character: 'pell' })).facts, []);
 
     assert.equal((await repo.knowledgeAt(BOOK, { character: 'nobody-here' })).code, 'NOT_FOUND');

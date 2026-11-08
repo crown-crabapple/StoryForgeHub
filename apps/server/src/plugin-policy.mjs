@@ -47,6 +47,11 @@ const V1 = [
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/tasks$/, need: 'workspace', book: true, level: 'advisor' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/tasks\/[^/]{1,120}\/status$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/activity\/ai-words$/, need: 'workspace', book: true, level: 'planner' },
+  // M12 W4: continuity. Reading needs 'read'; dismissing a finding (an exception) and restoring it need 'workspace' at level planner and run the app's own continuity-exception-* routes.
+  // The author's continuity settings have no plugin route.
+  { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/continuity$/, need: 'read', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/continuity\/exceptions$/, need: 'workspace', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/continuity\/exceptions\/[a-z0-9-]{1,120}\/archive$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'GET', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'POST', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'DELETE', re: /^\/api\/v1\/webhooks\/[^/]+$/, need: 'events', book: false },

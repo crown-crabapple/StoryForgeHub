@@ -3,7 +3,7 @@
 // and prose, Codex entries and events are never touched.
 import path from 'node:path';
 import { checkContinuity } from '@storyforge/continuity';
-import { extractDocs, validate } from '@storyforge/format';
+import { SETTINGS_SEVERITIES, extractDocs, validate } from '@storyforge/format';
 import { slugify, ulid } from '@storyforge/manuscript';
 import { openStore } from '@storyforge/store';
 import { localDate } from './writing-log.mjs';
@@ -139,5 +139,42 @@ export function createContinuityExceptionMethods({ root, afterWrite = () => {}, 
     return { ok: true, code: 'OK', lines };
   }
 
-  return { createContinuityException, archiveContinuityException, getContinuityContext };
+  /**
+   * Save the author's continuity settings: planning/continuity/settings.md (created, or its front matter replaced; an existing id and body are kept).
+   * `overdue_chapters` is a whole number from 1 to 999; `severity` maps a rule id (CS1, TH2 ...) to error, warning, info or off. Both are optional and replace what the file had.
+   * Refusals: BAD_ARGS, NOT_FOUND, ROLLED_BACK.
+   * @param {string} bookId @param {{ overdue_chapters?: number, severity?: Record<string, string>, dryRun?: boolean }} args
+   */
+  async function saveContinuitySettings(bookId, args = {}) {
+    const { overdue_chapters: overdue, severity, dryRun = false } = args ?? {};
+    if (overdue !== undefined && overdue !== null && (!Number.isInteger(overdue) || overdue < 1 || overdue > 999)) return fail('BAD_ARGS', { message: 'overdue_chapters must be a whole number from 1 to 999' });
+    if (severity !== undefined && severity !== null) {
+      if (typeof severity !== 'object' || Array.isArray(severity)) return fail('BAD_ARGS', { message: 'severity must be a map of rule id to error, warning, info or off' });
+      for (const [rule, word] of Object.entries(severity)) {
+        if (!/^[A-Z]{2}[0-9]+$/.test(rule)) return fail('BAD_ARGS', { message: `"${rule}" is not a rule id such as CS1` });
+        if (typeof word !== 'string' || !SETTINGS_SEVERITIES.includes(word)) return fail('BAD_ARGS', { message: `severity of ${rule} must be ${SETTINGS_SEVERITIES.join(', ')}` });
+      }
+    }
+    const found = await findBook(bookId);
+    if (!found) return fail('NOT_FOUND');
+    const store = await openStore(bookRootOf(found.book));
+    const file = `${DIR}/settings.md`;
+    const cur = await store.read(file);
+    const old = cur ? cur.bytes.toString('utf8').replace(/\r\n/g, '\n') : '';
+    const id = /^id: (note_[0-9A-Za-z]{26})$/m.exec(old)?.[1] ?? `note_${ulid()}`;
+    const close = old.startsWith('---\n') ? old.indexOf('\n---\n', 3) : -1;
+    const body = close >= 0 ? old.slice(close + 5) : '';
+    const rules = Object.entries(severity ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    const lines = ['---', 'schema: storyforge.continuity-settings/v1', `id: ${id}`];
+    if (overdue) lines.push(`overdue_chapters: ${overdue}`);
+    if (rules.length) lines.push('severity:', ...rules.map(([r, w]) => `  ${r}: ${w}`));
+    const text = `${lines.join('\n')}\n---\n${body}`;
+    if (dryRun) return { ok: true, code: 'OK', dryRun: true, file, text, changes: [{ from: cur ? file : null, to: file }] };
+    const bytes = Buffer.from(text, 'utf8');
+    const r = await run(found, store, 'saveContinuitySettings', { file }, (tx) => (cur ? tx.write(file, bytes, { baseSha256: cur.sha256 }) : tx.create(file, bytes)));
+    if (!r.ok) return r;
+    return { ok: true, code: 'OK', file, opId: r.opId, undo: { op: r.opId } };
+  }
+
+  return { createContinuityException, archiveContinuityException, getContinuityContext, saveContinuitySettings };
 }
