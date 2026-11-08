@@ -3,7 +3,7 @@
 A small, versioned HTTP API for programs you run yourself: a plugin that reads a book, a script that proposes edits, a receiver that listens for webhooks. It is
 served by the same StoryForge process as the app, under `/api/v1`.
 
-The principle: **StoryForge never runs plugin code, and no token can write a canonical file.** A plugin reads what you let it read, and it can *propose* a change. The one exception is canvases (planning boards, `planning/canvases/*.canvas`): a token with the `canvas` permission can change those directly, and nothing else.
+The principle: **StoryForge never runs plugin code, and no token can change prose you wrote or accepted.** A plugin reads what you let it read, and it can *propose* a change. The exceptions are planning material and AI drafts: a token with `canvas` can change canvases (`planning/canvases/*.canvas`), with `plan` the Story Planner files, with `workspace` the workspace docs, ledgers, a scene's cast, state events, tasks and the writing log, and with `draft` it can add new chapters and scenes marked as AI drafts. It cannot change a scene you wrote or accepted, or a Codex entry. The book's [AI level](#ai-level) caps all of them.
 A proposal is a suggestion; nothing in your book changes until you accept it in the normal review (and accepting writes receipts, as for any suggestion).
 
 The other `/api/*` routes are the app's own and are not part of this API. A token cannot reach them.
@@ -28,6 +28,8 @@ Permissions (a token has one or more):
 | `propose` | `POST /api/v1/books/:book/proposals`. |
 | `canvas` | Create, save, archive and restore canvases (`/api/v1/books/:book/canvases`, below). Reading canvases needs only `read`. |
 | `plan` | Create, change, archive and restore Story Planner items (`POST /api/v1/books/:book/plan/...`, below). Reading the plan needs only `read`. Each change can be undone by the author in the app. |
+| `workspace` | Write workspace docs, ledger threads, a scene's cast, knowledge, state events, tasks, the AI writing log, and dismiss or restore continuity findings (below). Reading them needs only `read`. Each change can be undone by the author in the app. |
+| `draft` | Create chapters and scenes (always AI drafts) and replace the body of such a draft the author has not accepted (below). |
 | `events` | Its own webhook subscriptions (`/api/v1/webhooks`). |
 
 Rules:
@@ -38,6 +40,7 @@ Rules:
   bearer request, because it carries no ambient authority.
 - A token reaches `/api/v1` only. Every other route, every write to a book, admin, AI, export, backup and receipts answer `403 PLUGIN_SCOPE`.
 - Shared mode audits every plugin call (`plugin.<route>`, token id, status). A plugin token is not a member and has no role.
+- <a id="ai-level"></a>**AI level.** Every book has an AI level, `off`, `advisor`, `planner` or `cowriter` (default `planner`), set by the author in Settings, **AI level**. It caps what any token may do in that book, whatever the token was granted: a write above the level is `403 AI_LEVEL` with `level` (the book's) and `needs` (the lowest level the route needs), and nothing is written. Reads need no level. `advisor` reaches `POST proposals` and `POST tasks`; `planner` reaches the `plan`, `canvas` and `workspace` writes; `cowriter` reaches the `draft` writes. A token cannot change the level. See [contracts/M12-ai-workspace.md](contracts/M12-ai-workspace.md).
 - Turning the **Integrations** module off (Settings, Modules, or `modules: { integrations: false }` in `library.md` / `book.md`) stops all API v1 access and webhook
   delivery: every call is `403 MODULE_OFF`.
 
@@ -51,9 +54,9 @@ Every error is JSON: `{ "error": "<kind>", "code": "<CODE>", "message": "<words>
 |---|---|
 | `400` | The request is malformed (`BAD_ARGS`). |
 | `401` | No valid token: missing, malformed, unknown or revoked (`TOKEN`). |
-| `403` | `PLUGIN_SCOPE` (not this route, permission or book), or `MODULE_OFF`. |
+| `403` | `PLUGIN_SCOPE` (not this route, permission or book), `MODULE_OFF`, `AI_LEVEL` (the book's AI level is below what the route needs), `NOT_AI_DRAFT` (the scene is not an unaccepted AI draft) or `AUTHOR_ONLY` (unlocking a doc). |
 | `404` | No such scene, entry, canvas or webhook. |
-| `409` | The proposal changes nothing (`NO_CHANGE`) or the file moved on (`CONFLICT` for a canvas or a plan write, `REFUSED_PATH_TAKEN` for a taken canvas name). |
+| `409` | The proposal changes nothing (`NO_CHANGE`) or the file moved on (`CONFLICT` for a canvas, plan, workspace doc, cast or draft write, `REFUSED_PATH_TAKEN` for a taken canvas or doc name), or a workspace doc is locked (`LOCKED`). |
 | `413` / `415` | The body is too large (5 MB) / is not `application/json`. |
 | `503` | The token file cannot be read (it is never replaced; fix or move it). |
 
@@ -64,7 +67,7 @@ All answers are JSON. Line breaks in text are `\n`. A `sha256` is the hash of th
 | Route | Answer |
 |---|---|
 | `GET /api/v1` | `{ api: 1, server: "<version>" }` |
-| `GET /api/v1/books` | `{ books: [{ id, slug, title, status, series, series_number, language, scenes, words }] }`, granted books only |
+| `GET /api/v1/books` | `{ books: [{ id, slug, title, status, series, series_number, language, scenes, words, ai_level }] }`, granted books only; `ai_level` is the book's AI level |
 | `GET /api/v1/books/:b` | The book with `acts: [{ act, label, chapters: [{ chapter, label, title, scenes: [{ id, title, order, act, chapter, sequence, status, pov, words, path }] }] }]` |
 | `GET /api/v1/books/:b/scenes/:id` | One scene: the scene fields above plus `sha256`, `front_matter` (the parsed YAML) and `body` |
 | `GET /api/v1/books/:b/entries` | `{ entries: [{ id, slug, type, name, status, role, aliases, archived, path }] }` |
@@ -84,6 +87,14 @@ All answers are JSON. Line breaks in text are `\n`. A `sha256` is the hash of th
 | `GET /api/v1/books/:b/plan/scene-plans/:sceneId` | One scene plan: `{ scene_id, sha256, fields, characters, body }`; `404` when there is none to read |
 | `GET /api/v1/books/:b/plan/check` | `{ findings: [{ rule, severity, title, message, subject, related }] }`: the plan check (rules `PL1` to `PL6` of the continuity answer) |
 | `GET /api/v1/books/:b/plan/templates` | `{ templates }`: the structure templates with their beats |
+| `GET /api/v1/books/:b/workspace/docs` | `{ docs: [{ path, title, workspace, chapter, locked, sha256, updated_at }], archived: [...] }`. With `?path=<address>`: one doc, `{ path, title, workspace, chapter, locked, sha256, body }` (`404` if none). `403 MODULE_OFF` when the `workspace` module is off |
+| `GET /api/v1/books/:b/ledger` | `{ promises, questions, clues, counts }`: threads of kind `promise` or `question` (with `open`, `setup`, `develop`, `payoff` scene ids and their chapters, `sha256`) and the planner clues |
+| `GET /api/v1/books/:b/cast` | `{ cast: [{ scene, title, chapter, cast: [{ entry, id, slug, name, role }] }] }`; `?chapter=N` keeps one chapter |
+| `GET /api/v1/books/:b/knowledge?character=&at=` | `{ character, at, facts: [{ fact, text, how, chapter, event, event_id }] }`; `character` is an entry id or slug and is required; `at` is a chapter number |
+| `GET /api/v1/books/:b/state-events` | `{ events: [{ event, event_id, chapter, subject, kind, value? }] }`; `?chapter=N` keeps one chapter |
+| `GET /api/v1/books/:b/tasks` | `{ tasks, counts }`; `?status=open\|doing\|done\|dropped` and `?for=ai\|author` filter |
+| `GET /api/v1/books/:b/continuity` | `{ findings, suppressed, stale_exceptions, settings }`; `?chapter=N` keeps the findings that touch that chapter, `&cast=<entry>:<role>,...` also checks a planned cast (see [Continuity review](#continuity-review-the-apps-own-not-api-v1)). `403 MODULE_OFF` when `continuity` is off |
+| `GET /api/v1/books/:b/context?chapter=N&budget=C` | The chapter context pack: `{ chapter, budget, chars, workspace, story, scene_plans, cast, knowledge, open_ledger, state_events, state_docs, previous_tail, continuity, truncated }`. `chapter` is required; `budget` is 500 to 200000 characters (default 24000) |
 
 The `plan` routes return the same objects as the app's own planner reads ([Story Planner routes](#story-planner-routes-the-apps-own-not-api-v1)), with every `path`, `file`, `rel` and `base_sha256` key left out. A `sha256` is kept: it is the value to send back as `base_sha256` in a plan write. They need the `read` permission and a granted book, and answer `403 MODULE_OFF` when the `planner` module is off for the book. The app's own `/api/books/:b/` planner routes stay `403 PLUGIN_SCOPE` for a token.
 
@@ -104,6 +115,42 @@ A token with `plan` can write Story Planner files under `planning/` (links, scen
 | `POST /api/v1/books/:b/plan/clues/:slug/knowers` | set knowers |
 
 A slug is lower-case letters, digits and hyphens (up to 120); anything else is `403 PLUGIN_SCOPE`, not a route. Pass `base_sha256` from the read; a stale one is `409` with `current: { sha256, text }` and nothing is written. A real write answers with `opId`, which the author can undo in the app. A shared server audits a plan write as `plugin.plan-<kind>-write` (for example `plugin.plan-links-write`). See [contracts/M11-ai-plan-tools.md](contracts/M11-ai-plan-tools.md).
+
+## Workspace writes (permission `workspace`)
+
+A token with `workspace` can write workspace docs (`planning/workspace/`, `planning/state/chapter-NN/`, `planning/development/`), ledger threads, a scene's `cast` key, state items of a chapter's state event, tasks, the AI words of the writing log, and continuity exceptions. Never prose, scene text or Codex entries. Each route runs the app's own route with the same body, validation, sha check and Undo; all are `POST` with a JSON object, and a real write answers with `opId`. The book's AI level must be `planner` (`advisor` for creating a task), else `403 AI_LEVEL`. The `workspace` module must be on for the routes marked **workspace**; `threads`, `tasks` and `continuity` for the others as marked, else `403 MODULE_OFF`.
+
+| Route | Body | Runs |
+|---|---|---|
+| `POST /api/v1/books/:b/workspace/docs` | `{ path, body, title?, base_sha256? }` | create a doc, or replace an existing one's body (**workspace**) |
+| `POST /api/v1/books/:b/workspace/docs/append` | `{ path, text }` | append (creates the doc) |
+| `POST /api/v1/books/:b/workspace/docs/lock` | `{ path }` or `{ prefix }`, `locked: true` | lock one doc, or every state doc of `state/chapter-NN`; `locked: false` is `403 AUTHOR_ONLY` |
+| `POST /api/v1/books/:b/workspace/docs/archive`, `.../restore` | `{ path, base_sha256? }` | move to or from `archive/planning/` |
+| `POST /api/v1/books/:b/workspace/setup` | `{}` | create the starter docs that do not exist; answers `{ created, existing }` |
+| `POST /api/v1/books/:b/ledger/threads` | `{ title, kind: "promise" \| "question", status? }` | create a thread (**threads**) |
+| `POST /api/v1/books/:b/ledger/threads/:slug` | `{ status?, setup?, develop?, payoff?, characters?, base_sha256? }` | change a thread (**threads**) |
+| `POST /api/v1/books/:b/scenes/:sceneId/cast` | `{ cast: [{ entry, role }], base_sha256? }` | set the whole cast of a scene; `role` is `pov`, `appears` or `mentioned`, at most one `pov` (**workspace**) |
+| `POST /api/v1/books/:b/knowledge` | `{ character, fact, chapter }` | a character learns a fact in a chapter (**workspace**) |
+| `POST /api/v1/books/:b/state-events` | `{ chapter, items: [{ subject, kind, value? }] }` | `kind`: `died`, `revived`, `destroyed`, `lost`, `found`, `holder`, `location` (**workspace**) |
+| `POST /api/v1/books/:b/tasks` | `{ title, notes?, labels?, for? }` | create a task (**tasks**); level `advisor` |
+| `POST /api/v1/books/:b/tasks/:id/status` | `{ status, for? }` | set the status and/or `for` (**tasks**) |
+| `POST /api/v1/books/:b/activity/ai-words` | `{ words, chapter?, note? }` | add AI words to today's row of the writing log (**workspace**) |
+| `POST /api/v1/books/:b/continuity/exceptions` | `{ fingerprint, reason }` | dismiss a finding; `reason` is required (**continuity**) |
+| `POST /api/v1/books/:b/continuity/exceptions/:slug/archive` | `{}` | restore a dismissed finding (**continuity**) |
+
+A doc `path` is `workspace/<name>`, `state/chapter-NN/(situation|characters|knowledge|inventory)` or `development/<name>`. Changing an existing doc needs `base_sha256` (the `sha256` you read); a stale or missing one is `409 CONFLICT` with `current: { sha256, body }`. A locked doc is `409 LOCKED`. A cast, knowledge or state-event write needs the chapter or scene to exist in the book. The author's continuity settings have no v1 route. See [contracts/M12-ai-workspace.md](contracts/M12-ai-workspace.md).
+
+## Draft writes (permission `draft`)
+
+A token with `draft` can add chapters and scenes to a book at AI level `cowriter`. A scene it creates is always an AI draft (`origin: ai`, `status: drafting`), whatever the body says, and its words are added to the AI words of the writing log.
+
+| Route | Body | Answer |
+|---|---|---|
+| `POST /api/v1/books/:b/chapters` | `{ title, after?, act? }`: after chapter `after`, or first in act `act` | `201`, with the new chapter, its act and its one empty placeholder scene |
+| `POST /api/v1/books/:b/scenes` | `{ chapter, title, body, summary?, after? }`: `after` is a scene id, `null` for the start; omitted, the end of the chapter | `201 { id, path }` |
+| `PUT /api/v1/books/:b/scenes/:sceneId/draft` | `{ body, base_sha256 }` | `200 { sha256, words }` |
+
+`PUT .../draft` replaces the whole body of a scene only while it has `origin: ai` and `status: drafting`; any other scene is `403 NOT_AI_DRAFT`. The author accepts a draft by changing its status; after that a token can only propose an edit. A stale `base_sha256` is `409`. Undo does not remove a created chapter or scene: the author archives it (AI Activity shows **Archive**).
 
 ## Proposals (permission `propose`)
 
@@ -319,9 +366,29 @@ Errors:
 
 A write that would add a validation error to the book is refused and nothing is written.
 
+## AI workspace routes (the app's own, not API v1)
+
+The routes behind the plugin routes above, plus the ones only the author reaches. They sit under `/api/books/:b/`; a bearer token is refused on them (`403 PLUGIN_SCOPE`). Answers are the app's: a list is the list itself, not wrapped as on v1.
+
+| Route | Body or answer |
+|---|---|
+| `GET /api/books/:b/ledger`, `/cast`, `/knowledge`, `/state-events`, `/context` | As the v1 reads above (same query strings). `state-events` also takes `?chapter=all` |
+| `GET /api/books/:b/workspace/docs[?path=]` | As the v1 read |
+| `GET /api/books/:b/tasks` | Also takes `?for=ai\|author`; each task has `for` |
+| `GET /api/books/:b/ai-activity` | `{ activity: [{ opId, at, actor, route, summary, files, undone, undoable, archivable, target }] }`, newest first, at most 200: what plugin tokens changed, from the op journal |
+| `GET /api/books/:b/continuity/settings` | `{ exists, file, overdue_chapters, severity }` |
+| `POST /api/books/:b/ai-level` | `{ level: "off" \| "advisor" \| "planner" \| "cowriter" \| null, scope?: "book" \| "library" }` gives `200 { ok, level, scope }`. Owner only in shared mode |
+| `POST /api/books/:b/workspace/docs`, `.../append`, `.../lock`, `.../archive`, `.../restore`, `POST .../workspace/setup` | As the v1 writes. `.../lock` with `locked: false` unlocks (the author only) |
+| `POST /api/books/:b/scenes/:sceneId/cast`, `POST .../knowledge`, `POST .../state-events`, `POST .../activity/ai-words` | As the v1 writes |
+| `PUT /api/books/:b/scenes/:sceneId/ai-draft` | `{ body, base_sha256 }`; `403 NOT_AI_DRAFT` for any scene that is not an unaccepted AI draft |
+| `POST /api/books/:b/scenes` | Also takes `origin: "ai" \| "author"` (anything else is `400`) |
+| `POST /api/books/:b/continuity/settings` | `{ overdue_chapters?, severity?, dryRun? }`: `overdue_chapters` a whole number of 1 or more, `severity` an object of rule id to `error`, `warning`, `info` or `off` |
+
+Writes to `workspace-*`, `scene-cast`, `ledger-*` and `activity-ai-log` belong to the `workspace` module (`403 MODULE_OFF` when it is off). To undo a change in AI Activity, `POST /api/books/:b/ops/:opId/restore`; to archive an AI chapter or scene, `POST /api/books/:b/chapters/:n/archive` or `POST /api/books/:b/scenes/:sceneId/archive` (`{ base_sha256 }`).
+
 ## Continuity review (the app's own, not API v1)
 
-`GET /api/books/:b/continuity` answers `{ engine_version, findings, suppressed, stale_exceptions, skipped }`; `404` for an unknown book. The Story Planner rules are part of the same answer. They read only structured records, never prose, and they work with exceptions and "Make a task" like the other rules.
+`GET /api/books/:b/continuity` answers `{ engine_version, findings, suppressed, stale_exceptions, skipped, settings }`, where `settings` is `{ overdue_chapters, severity }`; `404` for an unknown book. `?chapter=N` keeps the findings that touch chapter N; `&cast=<entry>:<role>,...` (needs `chapter`; role `pov`, `appears` or `mentioned`) also checks that planned cast as if it were in chapter N, for rules `CS1` and `CS2`. A bad `chapter` or `cast` is `400`. The Story Planner rules are part of the same answer. They read only structured records, never prose, and they work with exceptions and "Make a task" like the other rules.
 
 | Rule | Severity | Finds |
 |---|---|---|
@@ -331,6 +398,9 @@ A write that would add a validation error to the book is refused and nothing is 
 | `PL4` | warning | A plot thread with `payoff` scenes and no `setup` scenes. |
 | `PL5` | info | A live clue of kind `clue` (or with no kind) with planted scenes, no `revealed` scene and `red_herring` not `true`. Fingerprint detail: `unrevealed|<clue id>`. |
 | `PL6` | warning | A clue whose `revealed` scene comes before its first planted scene in reading order. Fingerprint detail: `order|<clue id>`; the revealed scene and the first planted scene are the two scenes. |
+| `CS1` | error | A character entry has a `died` state item with no later `revived`, and then is the `pov` or `appears` in the `cast` of a scene in a later chapter. |
+| `CS2` | error | An entry has a `destroyed` or `lost` state item with no later `found`, and then is the `pov` or `appears` in the `cast` of a scene in a later chapter. |
+| `TH2` | warning | A `promise` or `question` thread is set up in chapter X, is not `paid` or `dropped`, and the last chapter with scenes is more than `overdue_chapters` (default 12) after X. |
 
 `PL1` and `PL2` read only the main plan: a link with a `branch` is left out, so a what-if branch never adds a finding. PL5 and PL6 read the clue's own `planted` and `revealed` fields, not the timeline's `knows` and `learns`; a `reader` knower never changes either.
 

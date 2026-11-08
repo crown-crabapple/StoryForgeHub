@@ -1,0 +1,36 @@
+/* The AI Workspace page (M12 W8): the docs list beside the editor, and the four chapter state docs in a row that stacks on narrow screens. */
+.workspace-docs {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(0, 2fr);
+  gap: 1.5rem;
+}
+.workspace-doc textarea {
+  width: 100%;
+  font-family: var(--font-mono, monospace);
+}
+.workspace-dev-note {
+  font-weight: 600;
+}
+.workspace-state-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1rem;
+}
+.workspace-state-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.workspace-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.workspace-table th,
+.workspace-table td {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+}
+@media (max-width: 900px) {
+  .workspace-docs {
+    grid-template-columns: 1fr;
+  }
+}

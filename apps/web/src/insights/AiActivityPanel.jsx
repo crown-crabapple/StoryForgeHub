@@ -18,9 +18,9 @@ export const actorName = (actor) => (actor?.name ?? 'an AI connection').replace(
 
 /**
  * The list from the server's answer (also used by tests).
- * @param {{ items: any[] | null, error?: string | null, busy?: string | null, message?: string | null, onUndo?: (item: any) => void }} props `items` null while loading
+ * @param {{ items: any[] | null, readOnly?: boolean, error?: string | null, busy?: string | null, message?: string | null, onUndo?: (item: any) => void }} props `items` null while loading
  */
-export function AiActivityView({ items, error = null, busy = null, message = null, onUndo = () => {}, onArchive = () => {} }) {
+export function AiActivityView({ items, error = null, busy = null, message = null, onUndo = () => {}, onArchive = () => {}, readOnly = false }) {
   return (
     <section aria-labelledby="ai-activity-h" className="ai-activity">
       <h2 id="ai-activity-h">AI Activity</h2>
@@ -49,7 +49,7 @@ export function AiActivityView({ items, error = null, busy = null, message = nul
               <p>{it.summary}</p>
               {it.undone ? (
                 <p className="muted">Undone.</p>
-              ) : it.archivable ? (
+              ) : readOnly ? null : it.archivable ? (
                 // a scene or chapter the AI created: a created file cannot be undone, so the author archives it (nothing is deleted)
                 <button type="button" className="btn btn-small" disabled={busy !== null} aria-label={`Archive: ${it.summary}`} onClick={() => onArchive(it)}>
                   {busy === it.opId ? 'Archiving…' : 'Archive'}
@@ -69,8 +69,8 @@ export function AiActivityView({ items, error = null, busy = null, message = nul
   );
 }
 
-/** The AI Activity section of a book's Insights page. @param {{ bookId: string, version?: string }} props `version`: changes when the book does, to reload the list */
-export function AiActivityPanel({ bookId, version = '' }) {
+/** The AI Activity section of a book's Insights page. @param {{ bookId: string, version?: string }} props `version`: changes when the book does, to reload the list; `readOnly` (a viewer or reviewer) hides Undo and Archive */
+export function AiActivityPanel({ bookId, version = '', readOnly = false }) {
   const { track } = useWrites();
   const [bump, setBump] = useState(0);
   const [busy, setBusy] = useState(/** @type {string | null} */ (null));
@@ -99,5 +99,5 @@ export function AiActivityPanel({ bookId, version = '' }) {
     setMessage(status === 200 ? 'Archived. It is in the archive folder; nothing was deleted.' : `Not archived: ${explainFailure(status, json)}`);
     setBump((n) => n + 1);
   }
-  return <AiActivityView items={data?.activity ?? null} error={error} busy={busy} message={message} onUndo={undo} onArchive={archive} />;
+  return <AiActivityView items={data?.activity ?? null} error={error} busy={busy} message={message} onUndo={undo} onArchive={archive} readOnly={readOnly} />;
 }

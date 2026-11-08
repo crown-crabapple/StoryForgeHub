@@ -68,6 +68,16 @@ Optional, and off for every book until you tick **Save each chat and rewrite as 
 book's `ai/` folder as a Markdown file: the task, provider, model, whether it was local or cloud, the files given, your instruction and the reply. The full context text is
 saved only if you tick **Include the full context in the saved record** for that one record. These files are part of the book and go into backups.
 
+## AI connections (MCP and plugins)
+
+An AI connection is a different thing from the workshop above. It is a client you run (Claude Code, Claude Desktop, any MCP client or plugin) that calls StoryForge with an access token you granted in **Settings**, **AI connections (MCP)**. StoryForge makes no outbound request for it. Whatever the connection reads leaves StoryForge in the answer to its request; what the client does with that text afterwards is up to the client and its provider.
+
+- **What it can read:** with the `read` permission, the scenes, Codex entries, plan, workspace docs and ledgers of the books you granted. A book outside the grant is not visible.
+- **What it can write:** only what its permissions and the book's **AI level** allow (Settings, **AI level**: Off, Advisor, Planner or Co-writer; a book with none set is Planner). It can never change a scene you wrote or accepted: it can suggest an edit for you to accept, and with the `draft` permission it can add new chapters and scenes, which are marked as AI drafts until you change their status.
+- **What you can see:** every change a connection makes is listed in AI Activity, newest first, with the connection's name, the time and the files, and each has Undo (or Archive, for a chapter or scene it created). Nothing is deleted.
+- **AI words:** words an AI connection writes (a new scene, a revised draft, or words it logs) are added to a separate `AI words` column of `activity/writing-log.md`. Your own word counts are never changed by them. The Insights numbers carry the split as human words, AI words and AI share.
+- Turn the **Integrations** module off and every connection is refused. Revoke a token and it stops at once. The AI workshop settings above (provider, key, `ai` module) do not apply to connections.
+
 ## Receipts
 
 A book keeps receipts: small files in `provenance/` that record who changed a scene (you, an AI suggestion you accepted, or a change made outside StoryForge), chained with

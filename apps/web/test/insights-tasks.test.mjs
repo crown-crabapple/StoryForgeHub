@@ -60,16 +60,16 @@ describe('routes and navigation', () => {
     assert.equal(tabHref(BOOK, 'insights'), `/books/${BOOK}/insights`);
     assert.equal(tabHref(BOOK, 'tasks'), `/books/${BOOK}/tasks`);
     assert.deepEqual(PROJECT_TABS.map((t) => t.key), ['manuscript', 'plan', 'codex', 'timeline', 'continuity', 'places', 'notes']);
-    assert.deepEqual(MORE_TABS.map((t) => t.label), ['Insights', 'Tasks']);
+    assert.deepEqual(MORE_TABS.map((t) => t.label), ['Insights', 'Tasks', 'AI Workspace']);
     assert.equal(parseRoute(`/books/${BOOK}/nope`).name, 'notfound');
   });
 
-  test('the shell has the project nav (seven links) and a second, named nav with Insights and Tasks; aria-current marks the active one', () => {
+  test('the shell has the project nav (seven links) and a second, named nav with Insights, Tasks and AI Workspace; aria-current marks the active one', () => {
     const shell = (tab) => html(h(mod('/src/shell/AppShell.jsx').AppShell, { books: d.books, bookId: BOOK, tab }, h('main', { id: 'main' }, h('h1', null, 'x'))));
     const markup = shell('insights');
     assert.equal([...markup.matchAll(/<nav\b[^>]*aria-label="Project"/g)].length, 1);
-    const more = /<nav[^>]*aria-label="Insights and tasks"[\s\S]*?<\/nav>/.exec(markup)[0];
-    assert.deepEqual(hrefs(more), [`/books/${BOOK}/insights`, `/books/${BOOK}/tasks`]);
+    const more = /<nav[^>]*aria-label="Insights, tasks and AI workspace"[\s\S]*?<\/nav>/.exec(markup)[0];
+    assert.deepEqual(hrefs(more), [`/books/${BOOK}/insights`, `/books/${BOOK}/tasks`, `/books/${BOOK}/workspace`]);
     assert.equal([...more.matchAll(/aria-current="page"/g)].length, 1);
     assert.match(more, /aria-current="page"[^>]*>Insights</);
     assert.match(shell('tasks'), /aria-current="page"[^>]*>Tasks</);

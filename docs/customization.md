@@ -19,12 +19,12 @@ There are four layers.
 
 | Kind of setting | Keys | Order (the last one wins) |
 |---|---|---|
-| **Project** | `modules`, `labels`, `export` | built-in, then your profile, then `library.md`, then `book.md` |
+| **Project** | `modules`, `labels`, `export`, `ai` | built-in, then your profile, then `library.md`, then `book.md` |
 | **Appearance** | `theme`, `typography`, `layout`, `shortcuts` | built-in, then `library.md`, then `book.md`, then your profile |
 
 In words: for how things **look and feel**, the person at the keyboard always wins. For **which features are on**, the project wins, so a book can say "no AI for this book" and no profile can turn it back on. A feature the project says nothing about follows your profile.
 
-Settings that are mappings (typography, layout, shortcuts, modules) are merged key by key: a profile that sets only `size` keeps the `family` from the library. Settings > Which setting wins shows where each non-default value comes from.
+Settings that are mappings (typography, layout, shortcuts, modules, ai) are merged key by key: a profile that sets only `size` keeps the `family` from the library. Settings > Which setting wins shows where each non-default value comes from.
 
 A value that is wrong in `library.md` or `book.md` is ignored when settings are resolved, and the checker tells you: an unknown key is `I401`, a wrong kind of value is `E102` at `preferences.<key>`.
 
@@ -124,7 +124,7 @@ Default commands: `editor.bold` Ctrl+B, `editor.italic` Ctrl+I, `editor.link` Ct
 
 ## Features (modules)
 
-Settings > Features turns features on and off: `ai`, `continuity`, `receipts`, `suggestions`, `timeline`, `board`, `threads`, `insights`, `tasks`, `research`, `planner` (Story Planner: causal links, scene plans and the story plan), `integrations`.
+Settings > Features turns features on and off: `ai`, `continuity`, `receipts`, `suggestions`, `timeline`, `board`, `threads`, `insights`, `tasks`, `research`, `planner` (Story Planner: causal links, scene plans and the story plan), `integrations`, `workspace` (shown as **AI Workspace**: workspace docs, ledgers, the chapter cast and the AI writing log).
 
 The **Plan** tab is a canvas. It is shown when `planner` or `board` is on. With `planner` on it has the plan layers, the plan check, the Inspector, the plan tools, Build your plan canvas and List mode; with only `board` on it is the free canvas. Canvases can be saved when either is on. See [contracts/M10-plan-canvas.md](contracts/M10-plan-canvas.md).
 
@@ -140,9 +140,27 @@ A feature the **project** turns off (in `library.md` or `book.md`) shows as "Set
 
 Turning **receipts** off stops new receipts, and the provenance chain gets a gap. StoryForge asks before it does this and keeps a warning in Settings while it is off. Receipts already on disk are untouched, and verification works as it does today (it reports `RCPT_CHAIN_GAP` wherever a later receipt no longer starts where the one before it ended).
 
+### AI Workspace off
+
+With `workspace` off, the workspace doc, cast, knowledge, state-event and AI-words routes answer `403 MODULE_OFF` and write nothing, for you and for AI connections, and the `/workspace` routes of the plugin API answer `403 MODULE_OFF` too. The files stay in the book.
+
 ### AI off
 
 With `ai` off StoryForge never calls the AI transport: no request, not even the connection test, leaves your computer. This holds even when a provider is set up.
+
+## AI level
+
+`ai.level` says how much an AI connection (an MCP client or a plugin token) may do in a book, whatever its token was granted. It is one of `off` (read only), `advisor` (suggest edits, add tasks), `planner` (also change the plan, canvases, workspace docs, ledgers and state) and `cowriter` (shown as Co-writer; also create chapters and scenes as AI drafts). A book that sets none has `planner`.
+
+It is a project key, so the order is built-in, then your profile, then `library.md`, then `book.md`: a book's own level wins. Settings > AI level sets it for a book or, as the library default, in `library.md`; only the owner can in shared mode. By hand, in `book.md`:
+
+```yaml
+preferences:
+  ai:
+    level: advisor
+```
+
+A level that is not one of the four, or another key under `ai`, is `E102` at `preferences.ai.level` (or `preferences.ai.<key>`) and is ignored when settings are resolved. The level limits connections only, not what you do in the app. See [mcp.md](mcp.md).
 
 ## Custom prompts
 
@@ -193,6 +211,7 @@ In the editor choose **Run a prompt...** (it appears when AI is on for the book)
 | Use a different look on this computer | Settings > Theme / Typography / Layout (saved in my profile) |
 | Keep two sets of choices | Create a second profile; start with `--profile <name>` |
 | Forbid AI in one book | `preferences: { modules: { ai: false } }` in that book's `book.md` |
+| Let an AI connection only read and suggest in one book | Settings > AI level, or `preferences: { ai: { level: advisor } }` in that book's `book.md` |
 | Share a custom theme | Export it, send the `.theme.json` file; the other person imports it |
 | Rebind a key | Settings > Shortcuts > Change |
 | Add my own prompt | A Markdown file in `<library>/_prompts/` |

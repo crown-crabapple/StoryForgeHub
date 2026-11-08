@@ -17,7 +17,7 @@ plugin: word-frequency                # a slug, unique in the library
 name: Word frequency
 version: 1.0.0
 api: 1                                # the API major it targets
-permissions: [read]                   # read | propose | events | canvas | plan
+permissions: [read]                   # read | propose | events | canvas | plan | workspace | draft
 books: all                            # all | [book-slug, …]
 ---
 What it does, in plain words.
@@ -44,6 +44,10 @@ const res = await fetch(`${base}/api/v1${path}`, { headers: { authorization: `Be
 ```
 
 A `read` token can also read the book's story plan: `GET /api/v1/books/:b/plan` and `/plan/links`, `/plan/arcs`, `/plan/structures`, `/plan/relationships`, `/plan/synopses` and `/plan/clues`, plus `/plan/scene-plans/:sceneId`, `/plan/check` and `/plan/templates` (the field lists are in [api.md](api.md)). They return no file paths; each item has its `sha256`. They answer `403 MODULE_OFF` when the **Story Planner** module is off for the book. A `read` token cannot change the plan. A token with the `plan` permission can write it (`POST /api/v1/books/:b/plan/...`, see [api.md](api.md)); you tick that permission in the grant dialog, where it reads "Change the plan". Without it, propose a change to a scene instead.
+
+A token with `workspace` can also write workspace docs, ledger threads, a scene's cast, knowledge, state events, tasks, the AI words of the writing log and continuity dismissals (`POST /api/v1/books/:b/workspace/docs`, `/ledger/threads`, `/scenes/:id/cast`, `/knowledge`, `/state-events`, `/tasks`, `/activity/ai-words`, `/continuity/exceptions`; see [api.md](api.md)). It reads its own writes back with `read`: `/workspace/docs`, `/ledger`, `/cast`, `/knowledge`, `/state-events`, `/tasks`, `/continuity` and `/context`. The grant dialog calls it "Workspace docs and ledgers". A token with `draft` can create chapters and scenes (`POST /chapters`, `POST /scenes`) and revise an unaccepted AI draft (`PUT /scenes/:id/draft`); the dialog calls it "Create chapters and scenes". A scene it creates is always an AI draft; it never changes a scene the author wrote or accepted.
+
+The book's **AI level** (Settings, **AI level**: off, advisor, planner or co-writer) caps every token, whatever it was granted. A write above the level is `403 AI_LEVEL` and nothing is written; `GET /api/v1/books` shows each book's `ai_level`. A plugin cannot change the level, unlock a doc (`403 AUTHOR_ONLY`) or change the continuity settings.
 
 Ask only for what you need: a `read` token is enough to read; a token with only `read` that tries to propose gets `403 PLUGIN_SCOPE`.
 
@@ -79,8 +83,9 @@ To connect Claude Code or Claude Desktop with a token, see [mcp.md](mcp.md).
 
 ## What a plugin cannot do
 
-- Write any file of the book: scenes, entries, planning files, receipts. Proposals are the only way to suggest one, and only the author applies it.
+- Change a scene the author wrote or accepted, a Codex entry, a receipt, or any other canonical file. Proposals are the only way to suggest such a change, and only the author applies it. What a token may write directly is limited to canvases (`canvas`), Story Planner files (`plan`), workspace docs, ledgers, cast, state events, tasks and the writing log (`workspace`), and new AI draft chapters and scenes (`draft`), each within the book's AI level.
 - Reach any route outside `/api/v1`: no export, backup, restore, AI, settings, members or receipts.
+- Set the book's AI level, or exceed it.
 - Read a book it was not granted, or use a token that was revoked.
 - Turn on "Include the scene text" for a webhook, or send one to the local network. Only the author does.
 
