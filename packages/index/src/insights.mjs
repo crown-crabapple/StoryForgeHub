@@ -54,7 +54,7 @@ export function sortKeys(v) {
  *   edges: { from: string, to: string, kind: string, rel: string, location: string }[],
  *   labelDefs: { name: string, color: string }[],
  *   goals: GoalIn[], dailyWordGoal: number | null,
- *   days: { date: string, added: number, removed: number, net: number, minutes: number, sessions: number }[],
+ *   days: { date: string, added: number, removed: number, net: number, minutes: number, sessions: number, ai_words?: number }[],
  *   sessions: SessionIn[],
  *   tasks: { status: string }[],
  * }} InsightInputs
@@ -179,8 +179,12 @@ export function computeInsights(inp) {
   for (let i = 89; i >= 0; i--) {
     const date = addDays(today, -i);
     const d = logByDate.get(date);
-    days.push({ date, added: d?.added ?? 0, removed: d?.removed ?? 0, net: d?.net ?? 0, minutes: d?.minutes ?? 0, sessions: d?.sessions ?? 0 });
+    days.push({ date, added: d?.added ?? 0, removed: d?.removed ?? 0, net: d?.net ?? 0, minutes: d?.minutes ?? 0, sessions: d?.sessions ?? 0, ai_words: d?.ai_words ?? 0 });
   }
+  // M12 W3: human against AI words over the whole log (human = words the author added; AI = words an AI logged)
+  const humanWords = inp.days.reduce((n, d) => n + d.added, 0);
+  const aiWords = inp.days.reduce((n, d) => n + (d.ai_words ?? 0), 0);
+  const ai = { human_words: humanWords, ai_words: aiWords, ai_share: humanWords + aiWords === 0 ? 0 : Math.round((aiWords / (humanWords + aiWords)) * 1000) / 1000 };
 
   // ------------------------------------------------------------ manuscript
   const perChapter = chapters.map((c) => ({ act: c.act, chapter: c.chapter, label: c.label, title: c.title, words: 0, scenes: 0, final: 0 }));
@@ -328,7 +332,7 @@ export function computeInsights(inp) {
     schema: 'storyforge.insights/v1',
     as_of: today,
     book: { id: inp.book.id, title: inp.book.title, word_target: inp.book.word_target, words: totalWords, scenes: scenes.length },
-    progress: { goals, days, scopes },
+    progress: { goals, days, scopes, ai },
     manuscript: {
       chapters: perChapter,
       scenes: scenes.map((s) => ({ id: s.id, title: s.title, act: s.act, chapter: s.chapter, position: s.position, words: s.word_count, status: s.status, pov: s.pov })),

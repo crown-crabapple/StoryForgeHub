@@ -46,6 +46,8 @@ export const WRITE_CLASSES = Object.freeze({
   'planner-synopsis-create': 'write', 'planner-synopsis-update': 'write', 'planner-synopsis-archive': 'write', 'planner-synopsis-restore': 'write',
   // M07-J02 goals and revision tasks (book files; never prose)
   'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
+  // M12 W3: a scene's chapter cast (its `cast` key only), knowledge and state items on a chapter's state event, the AI words of the writing log (never prose)
+  'scene-cast': 'write', 'ledger-knowledge-record': 'write', 'ledger-state-record': 'write', 'activity-ai-log': 'write',
   // M07-J04 profiles: per-machine appearance settings of the server process, so in shared mode only the owner changes them
   'profile-save': 'admin', 'profile-switch': 'admin', 'profile-delete': 'admin',
   // shared-mode administration (shared-routes.mjs)

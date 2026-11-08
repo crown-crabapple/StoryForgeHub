@@ -19,6 +19,7 @@ import { createWriteMethods } from './fs-writes.mjs';
 import { createWorldMethods, fieldDefsOf, labelDefsOf, labelsOfDoc } from './fs-world.mjs';
 import { createGoalMethods } from './fs-goals.mjs';
 import { createTaskMethods } from './fs-tasks.mjs';
+import { createLedgerMethods } from './fs-ledger.mjs';
 import { createInsightReads } from './fs-insights.mjs';
 import { registerReceiptEngine } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
@@ -1290,6 +1291,7 @@ export function createFsRepository(libraryRoot, options = {}) {
   const reconcileBook = (p) => manager.reconcile(p, 'write', { full: true });
   Object.assign(repository, createGoalMethods({ root, activity, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook }));
   Object.assign(repository, createTaskMethods({ root, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook, now: options.clock }));
+  Object.assign(repository, createLedgerMethods({ repository, readValidate, activity })); // M12 W3: ledgers, chapter cast, knowledge and state events, AI words
   Object.assign(repository, createInsightReads({ root, manager, readValidate, activity, now: options.clock }));
   // M09-J01: canvases (planning/canvases/*.canvas). Read from the files on every call; this module lists and reads for them.
   Object.assign(

@@ -116,7 +116,7 @@ const TABLE = '| Date | Words added | Words removed | Minutes | Sessions |\n|---
 
 test('parseWritingLog reads the rows of the FORMAT-v1 9.1 example', () => {
   const text = `${HEAD}${TABLE}| 2026-11-01 | 642 | 87 | 95 | 3 |\n`;
-  assert.deepEqual(parseWritingLog(text), [{ date: '2026-11-01', added: 642, removed: 87, minutes: 95, sessions: 3 }]);
+  assert.deepEqual(parseWritingLog(text), [{ date: '2026-11-01', added: 642, removed: 87, minutes: 95, sessions: 3, ai: 0 }]);
 });
 
 test('parseWritingLog skips header, separator, prose and unparseable rows; accepts CRLF and loose spacing', () => {
@@ -132,7 +132,7 @@ test('parseWritingLog skips header, separator, prose and unparseable rows; accep
     '',
   ].join('\n');
   assert.deepEqual(parseWritingLog(text).map((r) => r.date), ['2026-10-30', '2026-11-03']);
-  assert.deepEqual(parseWritingLog(text)[1], { date: '2026-11-03', added: 7, removed: 8, minutes: 9, sessions: 10 });
+  assert.deepEqual(parseWritingLog(text)[1], { date: '2026-11-03', added: 7, removed: 8, minutes: 9, sessions: 10, ai: 0 });
 });
 
 test('parseWritingLog: empty input and a file with no table give no rows', () => {
@@ -151,9 +151,9 @@ test('newWritingLog is a storyforge.doc/v1 titled "Writing log" with the table h
 test('applyToWritingLog creates today\'s row at the end of a new log and accumulates in place', () => {
   let text = newWritingLog('note_01S50000000000000000000ZZ9');
   text = applyToWritingLog(text, '2026-11-01', { added: 10, removed: 2 });
-  assert.deepEqual(parseWritingLog(text), [{ date: '2026-11-01', added: 10, removed: 2, minutes: 0, sessions: 0 }]);
+  assert.deepEqual(parseWritingLog(text), [{ date: '2026-11-01', added: 10, removed: 2, minutes: 0, sessions: 0, ai: 0 }]);
   text = applyToWritingLog(text, '2026-11-01', { added: 5, minutes: 20, sessions: 1 });
-  assert.deepEqual(parseWritingLog(text), [{ date: '2026-11-01', added: 15, removed: 2, minutes: 20, sessions: 1 }]);
+  assert.deepEqual(parseWritingLog(text), [{ date: '2026-11-01', added: 15, removed: 2, minutes: 20, sessions: 1, ai: 0 }]);
 });
 
 test('applyToWritingLog: every other line stays byte-identical (earlier rows, unparseable rows, prose, front matter)', () => {
@@ -197,7 +197,7 @@ test('applyToWritingLog: a file with no table gets one appended; existing text i
   const before = `${HEAD}Hand written notes only.\n`;
   const after = applyToWritingLog(before, '2026-11-01', { added: 4, removed: 0, minutes: 2, sessions: 1 });
   assert.ok(after.startsWith(before));
-  assert.deepEqual(parseWritingLog(after), [{ date: '2026-11-01', added: 4, removed: 0, minutes: 2, sessions: 1 }]);
+  assert.deepEqual(parseWritingLog(after), [{ date: '2026-11-01', added: 4, removed: 0, minutes: 2, sessions: 1, ai: 0 }]);
 });
 
 test('applyToWritingLog: idempotent shape - applying a zero delta to an existing row changes nothing', () => {
@@ -352,7 +352,7 @@ test("activity: recorded words stay in memory until the flush timer fires; then 
   await activity.flush();
   const text = await read();
   assert.match(text, /^---\nschema: storyforge\.doc\/v1\nid: note_[0-9A-HJKMNP-TV-Z]{26}\ntitle: Writing log\n---\n/);
-  assert.deepEqual(parseWritingLog(text), [{ date: '2026-11-01', added: 150, removed: 20, minutes: 0, sessions: 0 }]);
+  assert.deepEqual(parseWritingLog(text), [{ date: '2026-11-01', added: 150, removed: 20, minutes: 0, sessions: 0, ai: 0 }]);
   assert.deepEqual(written, ['b']);
 });
 
@@ -369,7 +369,7 @@ test('activity: session reports add minutes and one session each', async () => {
   activity.session('b', 25);
   activity.session('b', 5);
   await activity.flush();
-  assert.deepEqual(parseWritingLog(await read()), [{ date: '2026-11-01', added: 0, removed: 0, minutes: 30, sessions: 2 }]);
+  assert.deepEqual(parseWritingLog(await read()), [{ date: '2026-11-01', added: 0, removed: 0, minutes: 30, sessions: 2, ai: 0 }]);
 });
 
 test("activity: a second flush updates today's row in place; earlier rows and unparseable rows stay byte-identical", async () => {
@@ -428,7 +428,7 @@ test('activity.read: file rows plus pending memory; today, days, goal and streak
   activity.session('b', 15);
   const r = await activity.read('b', { days: 30 });
   assert.equal(r.goal, 500);
-  assert.deepEqual(r.today, { date: '2026-11-01', added: 520, removed: 10, net: 510, minutes: 15, sessions: 1 });
+  assert.deepEqual(r.today, { date: '2026-11-01', added: 520, removed: 10, net: 510, minutes: 15, sessions: 1, ai_words: 0 });
   assert.deepEqual(r.days.map((d) => d.date), ['2026-10-29', '2026-10-30', '2026-10-31', '2026-11-01']);
   assert.equal(r.days[2].net, 500);
   assert.equal(r.streak, 2, '10-31 (net 500) and 11-01 (net 510); 10-30 was short');
@@ -441,7 +441,7 @@ test('activity.read: days limits the window; no goal means streak 0; a quiet tod
   const r = await activity.read('b', { days: 7 });
   assert.deepEqual(r.days.map((d) => d.date), ['2026-10-31']);
   assert.equal(r.streak, 0);
-  assert.deepEqual(r.today, { date: '2026-11-01', added: 0, removed: 0, net: 0, minutes: 0, sessions: 0 });
+  assert.deepEqual(r.today, { date: '2026-11-01', added: 0, removed: 0, net: 0, minutes: 0, sessions: 0, ai_words: 0 });
 });
 
 test('activity.read: a missing log file reads as an empty history', async () => {
@@ -458,4 +458,40 @@ test('activity: a log written by flush validates clean with the book', async () 
   activity.session('b', 3);
   await activity.flush();
   assert.deepEqual((await validate(root)).diagnostics.map((d) => `${d.code}|${d.file}|${d.location}`).sort(), base);
+});
+
+// ------------------------------------------------------------------ M12 W3: the optional AI words column
+
+test('AI words: old rows parse with 0, a row with the trailing column carries it, and mixed rows share one table', () => {
+  const text = '| Date | Words added | Words removed | Minutes | Sessions | AI words |\n|---|---|---|---|---|---|\n| 2026-11-01 | 10 | 2 | 5 | 1 |\n| 2026-11-02 | 7 | 0 | 3 | 1 | 250 |\n';
+  assert.deepEqual(parseWritingLog(text), [
+    { date: '2026-11-01', added: 10, removed: 2, minutes: 5, sessions: 1, ai: 0 },
+    { date: '2026-11-02', added: 7, removed: 0, minutes: 3, sessions: 1, ai: 250 },
+  ]);
+});
+
+test('AI words: the column is written only for a row that has AI words, and then the header and separator get it once; other rows stay as they were', () => {
+  let text = newWritingLog('note_01S5000000000000000000AAAA');
+  text = applyToWritingLog(text, '2026-11-01', { added: 10, removed: 2 });
+  assert.doesNotMatch(text, /AI words/, 'no AI words, no column');
+  const plain = text;
+  text = applyToWritingLog(text, '2026-11-02', { ai: 300 });
+  assert.match(text, /\| Date \| Words added \| Words removed \| Minutes \| Sessions \| AI words \|\n\|---\|---\|---\|---\|---\|---\|\n\| 2026-11-01 \| 10 \| 2 \| 0 \| 0 \|\n\| 2026-11-02 \| 0 \| 0 \| 0 \| 0 \| 300 \|\n/);
+  assert.equal((text.match(/AI words/g) ?? []).length, 1);
+  text = applyToWritingLog(text, '2026-11-02', { ai: 20, added: 1 });
+  text = applyToWritingLog(text, '2026-11-01', { added: 5 });
+  assert.deepEqual(parseWritingLog(text).map((r) => [r.date, r.added, r.ai]), [['2026-11-01', 15, 0], ['2026-11-02', 1, 320]]);
+  assert.equal((text.match(/AI words/g) ?? []).length, 1, 'the header is changed once');
+  assert.ok(text.includes('| 2026-11-01 | 15 | 2 | 0 | 0 |\n'), 'a row without AI words keeps five cells');
+  // adding AI words to an existing 5-cell row
+  assert.match(applyToWritingLog(plain, '2026-11-01', { ai: 9 }), /\| 2026-11-01 \| 10 \| 2 \| 0 \| 0 \| 9 \|\n/);
+});
+
+test('AI words: a CRLF file keeps its line endings, and a file with no table gets a table with the column', () => {
+  const crlf = '---\r\nschema: storyforge.doc/v1\r\nid: note_01S5000000000000000000AAAA\r\ntitle: Writing log\r\n---\r\n\r\n| Date | Words added | Words removed | Minutes | Sessions |\r\n|---|---|---|---|---|\r\n| 2026-11-01 | 10 | 2 | 0 | 0 |\r\n';
+  const out = applyToWritingLog(crlf, '2026-11-01', { ai: 40 });
+  assert.ok(!/[^\r]\n/.test(out), 'every line break is still CRLF');
+  assert.match(out, /\| Sessions \| AI words \|\r\n\|---\|---\|---\|---\|---\|---\|\r\n\| 2026-11-01 \| 10 \| 2 \| 0 \| 0 \| 40 \|\r\n/);
+  const bare = applyToWritingLog('Notes only.\n', '2026-11-01', { ai: 7 });
+  assert.match(bare, /Notes only\.\n\n\| Date \| Words added \| Words removed \| Minutes \| Sessions \| AI words \|\n\|---\|---\|---\|---\|---\|---\|\n\| 2026-11-01 \| 0 \| 0 \| 0 \| 0 \| 7 \|\n/);
 });

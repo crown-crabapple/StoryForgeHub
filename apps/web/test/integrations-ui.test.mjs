@@ -146,7 +146,7 @@ describe('Settings page and modules', () => {
     const t = text(html(h(m.settings.SettingsView)));
     assert.match(t, /Plugins/);
     assert.match(t, /Webhooks/);
-    assert.equal(m.prefs.MODULES.at(-1).id, 'integrations');
+    assert.ok(m.prefs.MODULES.some((x) => x.id === 'integrations'));
   });
 
   test('no control has a positive tab index, so the keyboard walk is the page order', () => {

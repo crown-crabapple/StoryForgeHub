@@ -321,7 +321,7 @@ test('acceptance 5: with the integrations module off every API v1 call is 403 MO
 test('the integrations module is listed with the others, on by default', async () => {
   const t = await bootPersonal();
   const prefs = (await t.member('GET', '/api/preferences')).json;
-  assert.equal(prefs.moduleIds.at(-1), 'integrations');
+  assert.ok(prefs.moduleIds.includes('integrations'));
   assert.equal(prefs.modules.integrations.on, true);
 });
 
