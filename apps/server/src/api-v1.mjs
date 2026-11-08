@@ -46,6 +46,13 @@ export function v1RouteOf(method, pathname) {
     if (method === 'POST' && parts[6] === 'archive') return 'canvas-archive';
     if (method === 'POST' && parts[6] === 'restore') return 'canvas-restore';
   }
+  if (c === 'workspace') {
+    if (d === 'setup') return method === 'POST' ? 'workspace-setup' : 'other';
+    if (d === 'docs') {
+      if (parts[6] === undefined) return method === 'GET' ? 'workspace-docs' : method === 'POST' ? 'workspace-doc-save' : 'other';
+      if (method === 'POST' && ['append', 'lock', 'archive', 'restore'].includes(parts[6])) return `workspace-doc-${parts[6]}`;
+    }
+  }
   return 'other';
 }
 
@@ -187,6 +194,12 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       const r = await canvasRoute(bk, d2, parts[6] ?? undefined);
       return done(r.res, r.target ?? target);
     }
+    if (c === 'workspace') {
+      // M12 W2: workspace docs. Reads need 'read', writes 'workspace' at level planner (plugin-policy.mjs); the workspace module must be on for both.
+      if (!(await moduleOn(repository, state, 'workspace', { bookId: bk.id }))) return done(moduleOff('workspace'));
+      if (method === 'POST') return done(await workspaceWrite(bk, d2, parts[6] ?? undefined), `${target}/workspace/${[d2, parts[6]].filter(Boolean).join('/')}`);
+      return done(await workspaceRead(bk), `${target}/workspace/docs`);
+    }
     if (c === 'plan') {
       // Story Planner M8 (ADR 0003): read only; refused with the planner module off
       if (!(await moduleOn(repository, state, 'planner', { bookId: bk.id }))) return done(moduleOff('planner'));
@@ -236,19 +249,46 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     return memberWrite(bk, 'POST', [segment, ...rest.slice(1)], ['planner-']);
   }
 
+  /** GET /api/v1/books/:b/workspace/docs[?path=<address>]: the list, or one doc with its body and sha256 (pass it back as base_sha256 to change it). @param {any} bk */
+  async function workspaceRead(bk) {
+    const addr = params.get('path');
+    if (addr === null) {
+      const list = await repository.listWorkspaceDocs(bk.id);
+      return list ? { status: 200, body: list } : NOT_FOUND;
+    }
+    const doc = await repository.getWorkspaceDoc(bk.id, addr);
+    return doc ? { status: 200, body: { ...doc, body: lf(doc.body) } } : NOT_FOUND;
+  }
+
+  /**
+   * M12 W2: a workspace write (permission 'workspace', level planner, both checked before this runs), through the app's own workspace-* route (sha check, locks, store, op journal).
+   * A plugin may lock a doc but never unlock one: only the author unlocks (403 AUTHOR_ONLY, nothing runs).
+   * @param {any} bk @param {string | undefined} what 'docs' or 'setup' @param {string | undefined} action append | lock | archive | restore
+   */
+  async function workspaceWrite(bk, what, action) {
+    const segments = what === 'setup' ? ['workspace', 'setup'] : ['workspace', 'docs', ...(action === undefined ? [] : [action])];
+    const guard = action === 'lock'
+      ? (/** @type {Record<string, unknown>} */ b) => (b.locked === false ? { status: 403, body: { error: 'forbidden', code: 'AUTHOR_ONLY', message: 'only the author can unlock a workspace doc; nothing was changed' } } : null)
+      : undefined;
+    return memberWrite(bk, 'POST', segments, ['workspace-'], guard);
+  }
+
   /**
    * M12: run one of the app's own write routes for a plugin request (the route the v1 path maps onto), with the same validation, sha checks, store, module gate and
    * op journal (Undo) as the app. Only a route whose name starts with one of `allowed` is reachable this way; anything else is a 404 and nothing runs.
    * plugin-policy.mjs has already checked the token's permission, book and the book's AI level for the v1 path.
    * @param {any} bk @param {string} verb the member route's method @param {string[]} segments the member path after /api/books/:id @param {string[]} allowed route-name prefixes
+   * @param {(body: Record<string, unknown>) => { status: number, body: unknown } | null} [guard] a refusal decided from the request body before the route runs (null: go ahead)
    */
-  async function memberWrite(bk, verb, segments, allowed) {
+  async function memberWrite(bk, verb, segments, allowed, guard) {
     const memberPath = ['', 'api', 'books', bk.id, ...segments].map((x) => (x === '' ? '' : encodeURIComponent(x))).join('/');
     const match = matchWriteRoute(verb, memberPath);
     if (!match || typeof match.route !== 'string' || !allowed.some((p) => match.route.startsWith(p))) return NOT_FOUND;
     const read = await readJson();
     if (!read.ok) return { status: read.status, body: read.body };
     if (!isObject(read.value)) return badRequest('body must be a JSON object');
+    const refused = guard ? guard(/** @type {Record<string, unknown>} */ (read.value)) : null;
+    if (refused) return refused;
     return handleWrite(repository, match, read.value, state, { principal: { kind: 'plugin', id: grant.id, display_name: grant.plugin } });
   }
 

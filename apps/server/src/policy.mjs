@@ -37,6 +37,8 @@ export const WRITE_CLASSES = Object.freeze({
   'entry-move-to-series': 'write', 'entry-copy-to-book': 'write', 'labels-set': 'write', 'template-save': 'admin',
   // M09-J01 canvases (planning/canvases/*.canvas; planning material, never prose)
   'canvas-create': 'write', 'canvas-save': 'write', 'canvas-archive': 'write', 'canvas-restore': 'write',
+  // M12 W2 workspace docs (planning/workspace, planning/state, planning/development; planning material, never prose). Lock and unlock are write too: owner and editor.
+  'workspace-doc-save': 'write', 'workspace-doc-append': 'write', 'workspace-doc-lock': 'write', 'workspace-doc-archive': 'write', 'workspace-doc-restore': 'write', 'workspace-setup': 'write',
   // Story Planner M1 (ADR 0003): planning/links/*.md and planning/scene-plans/*.md only; never a scene file
   'planner-link-create': 'write', 'planner-link-update': 'write', 'planner-link-archive': 'write', 'planner-link-restore': 'write', 'planner-scene-plan-save': 'write', 'planner-story-plan-save': 'write',
   'planner-arc-create': 'write', 'planner-arc-update': 'write', 'planner-arc-milestones': 'write', 'planner-arc-archive': 'write', 'planner-arc-restore': 'write',

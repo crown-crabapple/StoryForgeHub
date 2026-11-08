@@ -1,6 +1,6 @@
 // Plugin access policy (contract M08-J02 sections 2-3). A request with `Authorization: Bearer` is a plugin request: it may reach only /api/v1/*, only
 // what its grant's permissions allow, and only the books it was granted. It never reaches the member routes, writes, admin, AI, export, backup or receipts.
-// Writes: with 'canvas' it may change a canvas (planning/canvases/*.canvas) of a granted book; with 'plan' (M11) the Story Planner files of a granted book.
+// Writes: with 'canvas' it may change a canvas (planning/canvases/*.canvas) of a granted book; with 'plan' (M11) the Story Planner files of a granted book; with 'workspace' (M12) the workspace docs under planning/.
 // Both go through the same store, sha checks and module gates as the app. Nothing a token does can change prose, scenes or Codex entries.
 // Decided before (and instead of) the member policy; a bearer request never carries a member's cookie authority.
 
@@ -33,6 +33,10 @@ const V1 = [
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/canvases$/, need: 'canvas', book: true, level: 'planner' },
   { method: 'PUT', re: /^\/api\/v1\/books\/([^/]+)\/canvases\/[a-z0-9-]{1,60}$/, need: 'canvas', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/canvases\/[a-z0-9-]{1,60}\/(archive|restore)$/, need: 'canvas', book: true, level: 'planner' },
+  // M12 W2 workspace docs (book, style, state): reading needs 'read'; writing needs 'workspace' at book AI level planner, through the app's own workspace-* routes (planning material, never prose)
+  { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/workspace\/docs$/, need: 'read', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/workspace\/docs(\/(append|lock|archive|restore))?$/, need: 'workspace', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/workspace\/setup$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'GET', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'POST', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'DELETE', re: /^\/api\/v1\/webhooks\/[^/]+$/, need: 'events', book: false },

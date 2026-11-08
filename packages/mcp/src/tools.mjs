@@ -1,8 +1,9 @@
-// The MCP tool table (M08 MCP service). Each tool is a name, a JSON Schema for its arguments, the permission it needs ('read', 'propose', 'canvas' or 'plan') and a run() that talks to the
+// The MCP tool table (M08 MCP service). Each tool is a name, a JSON Schema for its arguments, the permission it needs ('read', 'propose', 'canvas', 'plan' or 'workspace') and a run() that talks to the
 // plugin API /api/v1 only, through the `api` helper the protocol layer builds over the server's `call`. Nothing here touches a file or the network, and no tool can change
 // prose or a canonical file: the propose tools create a suggestion the author accepts or rejects in StoryForge. The one exception is the canvas tools (permission 'canvas'),
 // which change only planning/canvases/*.canvas files, and the plan tools (permission 'plan', M11), which write only Story Planner files under planning/ through the app's own
-// planner routes (the author can Undo each change). plugin-policy.mjs still decides every underlying request.
+// planner routes (the author can Undo each change), and the workspace tools (permission 'workspace', M12), which write only workspace docs under planning/ the same way.
+// plugin-policy.mjs still decides every underlying request.
 
 /** A failure whose message is safe to show the model (becomes an isError tool result). */
 export class ToolError extends Error {
@@ -16,13 +17,14 @@ export class ToolError extends Error {
 /**
  * @typedef {{ get: (path: string, query?: Record<string, string>) => Promise<any>, post: (path: string, body?: unknown) => Promise<any>, put: (path: string, body?: unknown) => Promise<any>, origin: string }} Api
  * @typedef {{ content: { type: 'text', text: string }[], structuredContent: Record<string, unknown> }} ToolResult
- * @typedef {{ name: string, title: string, description: string, need: 'read' | 'propose' | 'canvas' | 'plan', inputSchema: Record<string, any>,
+ * @typedef {{ name: string, title: string, description: string, need: 'read' | 'propose' | 'canvas' | 'plan' | 'workspace', inputSchema: Record<string, any>,
  *   annotations: { readOnlyHint: boolean, destructiveHint: false, idempotentHint: boolean, openWorldHint: false },
  *   run: (args: Record<string, any>, api: Api) => Promise<ToolResult> }} Tool
  */
 
 const BOOK_DOC = 'The book is its slug or its id (see codex_list_books).';
 const CANVAS_NOTE = 'This changed the canvas file directly; it is planning material, not prose.';
+const WORKSPACE_NOTE = 'This changed the workspace doc directly (planning material, not prose); the author can Undo it in StoryForge.';
 const PLAN_NOTE = 'This changed the planning file directly (planning material, not prose); the author can Undo it in StoryForge.';
 const NOTE = 'Nothing was changed. The author reviews this suggestion in StoryForge and accepts or rejects it.';
 const seg = (/** @type {string} */ s) => encodeURIComponent(s);
@@ -129,6 +131,10 @@ const CARD_W = 260;
 const CARD_H = 150;
 const CARD_GAP = 40;
 const CARD_COLUMNS = 4;
+
+const WORKSPACE = { readOnlyHint: false, destructiveHint: /** @type {const} */ (false), idempotentHint: false, openWorldHint: /** @type {const} */ (false) };
+const workspaceBase = (/** @type {string} */ book) => `${bookPath(book)}/workspace/docs`;
+const docPathArg = { type: 'string', minLength: 1, maxLength: 100, description: 'The doc address, for example workspace/book, workspace/style, state/chapter-04/knowledge or development/ideas (see codex_list_docs).' };
 
 // ---- M11 plan write tools (permission 'plan'): each posts to /api/v1/books/:b/plan/..., which runs the app's own planner route (same validation, sha check, op journal and Undo).
 const planSha = { type: 'string', minLength: 64, maxLength: 64, description: 'The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since.' };
@@ -825,12 +831,87 @@ export const TOOLS = [
       return result({ ...r, note: CANVAS_NOTE });
     },
   },
+  // ---- M12 W2 workspace docs: the book, style and per-chapter state docs under planning/ (planning material, not prose)
+  {
+    name: 'codex_list_docs',
+    title: 'List workspace docs',
+    description: `Lists the workspace docs of a book: the book settings, the style guide and the per-chapter state docs (situation, characters, knowledge, inventory). Each has a path (its address, for example workspace/book, workspace/style or state/chapter-04/knowledge), title, workspace kind (book, style, state or other), chapter (for state docs), locked and sha256; archived ones are listed separately. A locked doc cannot be changed until the author unlocks it. These are planning documents, not prose. ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg }, ['book']),
+    annotations: READ,
+    async run(args, api) {
+      const r = await api.get(workspaceBase(args.book));
+      return result({ docs: r.docs, archived: r.archived });
+    },
+  },
+  {
+    name: 'codex_get_doc',
+    title: 'Read a workspace doc',
+    description: `Reads one workspace doc by its path (the address codex_list_docs shows, for example workspace/style or state/chapter-04/knowledge): title, locked, markdown body and sha256. Pass the sha256 back as base_sha256 to codex_save_doc to change it. A planning document, not prose. ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg, path: docPathArg }, ['book', 'path']),
+    annotations: READ,
+    async run(args, api) {
+      const doc = await api.get(workspaceBase(args.book), { path: args.path });
+      const { body, ...head } = doc;
+      return splitResult(doc, String(body ?? ''), head);
+    },
+  },
+  {
+    name: 'codex_save_doc',
+    title: 'Save a workspace doc',
+    description: `Creates a workspace doc, or replaces the whole body of an existing one. The path is the doc's address: workspace/<name> (workspace/book and workspace/style are the book settings and style guide), state/chapter-NN/(situation|characters|knowledge|inventory), or development/<name> for proposals that are never canon. To change an existing doc pass base_sha256 (the sha256 from codex_get_doc or codex_list_docs); if the doc changed since you read it you get a conflict, so read it again and redo your change. A locked doc is refused (LOCKED): only the author unlocks. title is optional. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({ book: bookArg, path: docPathArg, body: { type: 'string', description: 'The complete markdown body of the doc.' }, title: { type: 'string', minLength: 1, maxLength: 300, description: 'Optional new title.' }, base_sha256: { type: 'string', minLength: 64, maxLength: 64, description: 'The sha256 of the doc as you read it. Required to change an existing doc; leave it out to create one.' } }, ['book', 'path', 'body']),
+    annotations: WORKSPACE,
+    async run(args, api) {
+      const r = await api.post(workspaceBase(args.book), { path: args.path, body: args.body, ...given(args, ['title', 'base_sha256']) });
+      return result({ ...r, note: WORKSPACE_NOTE });
+    },
+  },
+  {
+    name: 'codex_append_doc',
+    title: 'Append to a workspace doc',
+    description: `Appends a block of markdown to the end of a workspace doc (a blank line in between), and creates the doc when it does not exist yet. Use it for running history such as a timeline log. Nothing already in the doc is changed, so no base_sha256 is needed. A locked doc is refused (LOCKED). Same paths as codex_save_doc. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({ book: bookArg, path: docPathArg, text: { type: 'string', minLength: 1, maxLength: 200000, description: 'The markdown to append.' } }, ['book', 'path', 'text']),
+    annotations: WORKSPACE,
+    async run(args, api) {
+      const r = await api.post(`${workspaceBase(args.book)}/append`, { path: args.path, text: args.text });
+      return result({ ...r, note: WORKSPACE_NOTE });
+    },
+  },
+  {
+    name: 'codex_lock_docs',
+    title: 'Lock workspace docs',
+    description: `Locks one workspace doc (path) or every state doc of one chapter (prefix, for example state/chapter-04), so nothing can change them. Give exactly one of path and prefix. There is no unlock tool: only the author unlocks, in StoryForge. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({ book: bookArg, path: docPathArg, prefix: { type: 'string', minLength: 1, maxLength: 100, description: 'A chapter state folder to lock whole, for example state/chapter-04.' } }, ['book']),
+    annotations: WORKSPACE,
+    async run(args, api) {
+      if ((args.path === undefined) === (args.prefix === undefined)) throw new ToolError('give exactly one of "path" and "prefix"');
+      const r = await api.post(`${workspaceBase(args.book)}/lock`, { ...given(args, ['path', 'prefix']), locked: true });
+      return result({ ...r, note: WORKSPACE_NOTE });
+    },
+  },
+  {
+    name: 'codex_setup_workspace',
+    title: 'Set up the workspace docs',
+    description: `Creates the starter workspace docs that do not exist yet: workspace/book (book settings), workspace/style (style guide) and state/chapter-00/situation, characters, knowledge and inventory (the state before chapter 1). Existing docs are never touched, so it is safe to call again. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({ book: bookArg }, ['book']),
+    annotations: WORKSPACE,
+    async run(args, api) {
+      const r = await api.post(`${bookPath(args.book)}/workspace/setup`, {});
+      return result({ ...r, note: WORKSPACE_NOTE });
+    },
+  },
   ...PLAN_WRITE_TOOLS,
 ];
 
 /** Names an author of the original Codex MCP might ask for that v2 has no plugin route for. */
 export const NOT_OFFERED = [
-  'codex_create_chapter', 'codex_push_files', 'codex_list_docs', 'codex_get_doc', 'codex_save_doc', 'codex_append_doc', 'codex_lock_docs', 'codex_get_ledger',
+  'codex_create_chapter', 'codex_push_files', 'codex_get_ledger',
   'codex_save_ledger_item', 'codex_delete_ledger_item', 'codex_get_cast', 'codex_set_chapter_cast', 'codex_knowledge_at', 'codex_record_knowledge', 'codex_delete_knowledge',
   'codex_continuity_check', 'codex_get_state_events', 'codex_record_state_events', 'codex_delete_state_event', 'codex_dismiss_finding', 'codex_restore_finding',
   'codex_set_continuity_thresholds', 'codex_get_tasks', 'codex_update_task', 'codex_complete_task', 'codex_create_task', 'codex_log_writing',

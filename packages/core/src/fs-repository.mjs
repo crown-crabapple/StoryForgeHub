@@ -24,6 +24,7 @@ import { registerReceiptEngine } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
 import { createTimelineReads } from './fs-timeline.mjs';
 import { createCanvasMethods } from './fs-canvas.mjs';
+import { createWorkspaceMethods } from './fs-workspace.mjs';
 import { createPlannerMethods } from './fs-planner.mjs';
 import { countWords } from './word-count.mjs';
 
@@ -1305,6 +1306,26 @@ export function createFsRepository(libraryRoot, options = {}) {
           return [];
         }
       },
+      async readFileAt(libRel) {
+        try {
+          const real = await realpath(abs(libRel));
+          const rel = path.relative(await realpath(root), real);
+          if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
+          const [bytes, st] = await Promise.all([readFile(real), stat(real)]);
+          return st.isFile() ? { bytes, mtimeMs: st.mtimeMs } : null;
+        } catch {
+          return null;
+        }
+      },
+    }),
+  );
+  // M12 W2: workspace docs (planning/workspace, planning/state, planning/development). Read from the validated documents and the files on every call.
+  Object.assign(
+    repository,
+    createWorkspaceMethods({
+      root,
+      readValidate,
+      afterWrite: (p) => manager.afterWrite(p),
       async readFileAt(libRel) {
         try {
           const real = await realpath(abs(libRel));

@@ -264,6 +264,16 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const canvas = await repository.getCanvas(b, d);
       return canvas ? { status: 200, body: canvas } : NOT_FOUND;
     }
+    // M12 W2: workspace docs (planning/workspace, planning/state, planning/development); reads are not module-gated, like every read
+    if (c === 'workspace' && d === 'docs' && e === undefined) {
+      const addr = params.get('path');
+      if (addr === null) {
+        const list = await repository.listWorkspaceDocs(b);
+        return list ? { status: 200, body: list } : NOT_FOUND;
+      }
+      const doc = await repository.getWorkspaceDoc(b, addr);
+      return doc ? { status: 200, body: doc } : NOT_FOUND;
+    }
     // Story Planner M1 (ADR 0003 D05): causal links, scene plans and the flow projection (reads are not module-gated, like every read)
     if (c === 'links' && d === undefined) {
       const list = await repository.listLinks(b);
@@ -731,6 +741,13 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'PUT' && c === 'canvases' && d !== undefined && e === undefined) return { route: 'canvas-save', bookId: b, slug: d };
   if (method === 'POST' && c === 'canvases' && d !== undefined && e === 'archive') return { route: 'canvas-archive', bookId: b, slug: d };
   if (method === 'POST' && c === 'canvases' && d !== undefined && e === 'restore') return { route: 'canvas-restore', bookId: b, slug: d };
+  // M12 W2 workspace docs: save (create or update), append, lock / unlock, archive, restore; and the starter docs
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === undefined) return { route: 'workspace-doc-save', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === 'append') return { route: 'workspace-doc-append', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === 'lock') return { route: 'workspace-doc-lock', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === 'archive') return { route: 'workspace-doc-archive', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === 'restore') return { route: 'workspace-doc-restore', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'setup' && e === undefined) return { route: 'workspace-setup', bookId: b };
   // Story Planner M1 (ADR 0003 D05): causal links and scene plans, flat under the book
   if (method === 'POST' && c === 'links' && d === undefined) return { route: 'planner-link-create', bookId: b };
   if (method === 'POST' && c === 'links' && d !== undefined && e === undefined) return { route: 'planner-link-update', bookId: b, slug: d };
@@ -794,6 +811,13 @@ function respondPlanner(r, okStatus) {
   // M5: a beat that is still the end of a live link cannot be removed; the links are named so the author can archive or re-point them
   if (!r.ok && r.code === 'REFUSED_BEAT_LINKED') return { status: 400, body: { error: 'refused', code: r.code, message: r.message, links: Array.isArray(r.links) ? r.links : [], archived_links: Array.isArray(r.archived_links) ? r.archived_links : [] } };
   return respond(r, okStatus, structureBody);
+}
+
+/** Like respond(), with the workspace refusals named by their codes: 409 LOCKED, 409 conflict (with the current sha256 and body). */
+function respondWorkspace(r, okStatus, okBody) {
+  if (!r.ok && r.code === 'LOCKED') return { status: 409, body: { error: 'conflict', code: 'LOCKED', message: r.message, ...(r.path ? { path: r.path } : {}) } };
+  if (!r.ok && r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', code: 'CONFLICT', ...(r.message ? { message: r.message } : {}), current: r.current ?? null } };
+  return respond(r, okStatus, okBody);
 }
 
 /**
@@ -1298,6 +1322,37 @@ async function handleStructure(repository, match, body) {
       const call = match.route === 'canvas-archive' ? repository.archiveCanvas : repository.restoreCanvas;
       const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
+    }
+    // ---- M12 W2 workspace docs: the only files these routes write are planning/workspace/*.md, planning/state/chapter-NN/*.md and planning/development/*.md (archive/ when archived)
+    case 'workspace-doc-save': {
+      if (typeof body.path !== 'string' || typeof body.body !== 'string') return badRequest('expected { path: string, title?: string, body: string, base_sha256?: string }');
+      if (body.title !== undefined && typeof body.title !== 'string') return badRequest('title must be a string');
+      if (body.base_sha256 !== undefined && body.base_sha256 !== null && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.saveWorkspaceDoc(bookId, { path: body.path, ...(body.title !== undefined ? { title: body.title } : {}), body: body.body, baseSha256: body.base_sha256 ?? null, dryRun });
+      return respondWorkspace(r, r.created ? created : 200, (x) => ({ ok: true, path: x.path, sha256: x.sha256, created: x.created === true, opId: x.opId ?? null, ...(x.dryRun ? { dryRun: true, changes: x.changes } : {}) }));
+    }
+    case 'workspace-doc-append': {
+      if (typeof body.path !== 'string' || typeof body.text !== 'string') return badRequest('expected { path: string, text: string }');
+      const r = await repository.appendWorkspaceDoc(bookId, { path: body.path, text: body.text, dryRun });
+      return respondWorkspace(r, r.created ? created : 200, (x) => ({ ok: true, path: x.path, sha256: x.sha256, created: x.created === true, opId: x.opId ?? null }));
+    }
+    case 'workspace-doc-lock': {
+      if (typeof body.locked !== 'boolean') return badRequest('expected { path: string } or { prefix: string }, and locked: true | false');
+      if ((typeof body.path === 'string') === (typeof body.prefix === 'string')) return badRequest('give exactly one of path and prefix (a string)');
+      const r = await repository.lockWorkspaceDocs(bookId, { ...(typeof body.path === 'string' ? { path: body.path } : { prefix: body.prefix }), locked: body.locked, dryRun });
+      return respondWorkspace(r, 200, (x) => ({ ok: true, locked: x.locked, changed: x.changed, matched: x.matched, opId: x.opId ?? null }));
+    }
+    case 'workspace-doc-archive':
+    case 'workspace-doc-restore': {
+      if (typeof body.path !== 'string') return badRequest('expected { path: string }');
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const call = match.route === 'workspace-doc-archive' ? repository.archiveWorkspaceDoc : repository.restoreWorkspaceDoc;
+      const r = await call.call(repository, bookId, { path: body.path, baseSha256: body.base_sha256, dryRun });
+      return respondWorkspace(r, 200, (x) => ({ ok: true, path: x.path, file: x.file, opId: x.opId ?? null }));
+    }
+    case 'workspace-setup': {
+      const r = await repository.setupWorkspace(bookId, { dryRun });
+      return respondWorkspace(r, r.created?.length ? created : 200, (x) => ({ ok: true, created: x.created, existing: x.existing, opId: x.opId ?? null }));
     }
     // ---- Story Planner M1 (ADR 0003): the only files these routes write are planning/links/<slug>.md, planning/scene-plans/<slug>.md and planning/story.md (archive/ when archived)
     case 'planner-link-create':

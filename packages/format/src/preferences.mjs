@@ -239,6 +239,7 @@ export function moduleOfRoute(route) {
   if (route.startsWith('note-') || route === 'attachment-upload') return 'research';
   if (route.startsWith('canvas-')) return 'board'; // M09-J01: canvases are visual planning, with the corkboard
   if (route.startsWith('planner-')) return 'planner'; // Story Planner M1 (ADR 0003): causal links and scene plans
+  if (route.startsWith('workspace-')) return 'workspace'; // M12 W2: workspace docs (book, style, state)
   return null;
 }
 

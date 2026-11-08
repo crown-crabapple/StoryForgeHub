@@ -201,7 +201,8 @@ export const KINDS = {
   doc: {
     prefix: 'note',
     required: ['title'],
-    fields: { title: 'str', locked: 'bool' },
+    // M12 W2 (additive within v1): a workspace doc (planning/workspace/, planning/state/chapter-NN/, planning/development/) says which kind it is; `chapter` is the state doc's chapter.
+    fields: { title: 'str', locked: 'bool', workspace: ['book', 'style', 'state', 'other'], chapter: 'int' },
   },
   research: {
     prefix: 'note',
