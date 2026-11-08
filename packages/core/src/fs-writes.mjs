@@ -54,6 +54,8 @@ import {
   setRelationshipDevelopments,
   setStructureBeats,
   setSceneFields,
+  setSceneCast,
+  recordEventState,
   saveScenePlan,
   saveStoryPlan,
   setThreadFields,
@@ -609,6 +611,9 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     },
 
     setSceneFields: (bookId, sceneId, args = {}) => structure(bookId, (b) => setSceneFields(b, sceneId, args ?? {})),
+    // ---- M12 W3: the chapter cast (only the scene's `cast` key) and the "Chapter N (state)" event's state items (append only). Unknown chapter / entry codes are kept.
+    setSceneCast: (bookId, sceneId, args = {}) => structure(bookId, (b) => setSceneCast(b, sceneId, args ?? {}), ['REFUSED_UNKNOWN_ENTRY']),
+    recordEventState: (bookId, args = {}) => structure(bookId, (b) => recordEventState(b, args ?? {}), ['REFUSED_UNKNOWN_ENTRY', 'REFUSED_UNKNOWN_CHAPTER']),
     /**
      * Move a scene. `expect: [{ path, sha256 }]` (book-relative paths) is the state the author saw: if any listed file
      * differs now, nothing is written and the result is CONFLICT with `changed: [paths]`.

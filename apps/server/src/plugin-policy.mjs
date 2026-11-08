@@ -37,6 +37,16 @@ const V1 = [
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/workspace\/docs$/, need: 'read', book: true },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/workspace\/docs(\/(append|lock|archive|restore))?$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/workspace\/setup$/, need: 'workspace', book: true, level: 'planner' },
+  // M12 W3: ledgers, chapter cast, knowledge, state events, tasks and the AI writing log. Reads need 'read'; writes need 'workspace' and the book's AI level, and run the app's own routes
+  // (thread-*, scene-cast, ledger-*, task-*, activity-ai-log), which write only a thread, a scene's `cast` key, state items of a chapter's state event, a task file or the writing log; never prose.
+  { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/(ledger|cast|knowledge|state-events|tasks)$/, need: 'read', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/ledger\/threads$/, need: 'workspace', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/ledger\/threads\/[^/]{1,120}$/, need: 'workspace', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/scenes\/[^/]{1,120}\/cast$/, need: 'workspace', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/(knowledge|state-events)$/, need: 'workspace', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/tasks$/, need: 'workspace', book: true, level: 'advisor' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/tasks\/[^/]{1,120}\/status$/, need: 'workspace', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/activity\/ai-words$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'GET', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'POST', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'DELETE', re: /^\/api\/v1\/webhooks\/[^/]+$/, need: 'events', book: false },

@@ -128,7 +128,8 @@ test('GET activity: fresh book has the documented shape, zeros, goal null, strea
   const r = await request(port, 'GET', b('/activity?days=30'));
   assert.equal(r.status, 200, r.text);
   assert.equal(r.json.goal, null);
-  assert.deepEqual(r.json.today, { added: 0, removed: 0, net: 0, minutes: 0, sessions: 0 });
+  assert.deepEqual(r.json.today, { added: 0, removed: 0, net: 0, minutes: 0, sessions: 0, ai_words: 0 });
+  assert.deepEqual(r.json.totals, { human_words: 0, ai_words: 0, ai_share: 0 });
   assert.ok(Array.isArray(r.json.days));
   assert.equal(r.json.streak, 0);
 });

@@ -19,6 +19,7 @@ export { setLabels } from './labels.mjs';
 export { loadSeries } from './book.mjs';
 export { createThread, setThreadFields, THREAD_STATUSES, THREAD_KINDS, THREAD_LISTS } from './threads.mjs';
 export { editFrontMatterLine } from './frontmatter.mjs';
+export { setSceneCast, recordEventState, STATE_KINDS, stateEventSlug, stateEventTitle } from './ledger.mjs';
 export { unifiedDiff } from './diff.mjs';
 export { rebuildIndex, readIndex } from './indexfile.mjs';
 export { __testHooks } from './commit.mjs';

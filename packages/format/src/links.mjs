@@ -361,6 +361,11 @@ export async function resolveLinks(docs, bookDir, add, context = {}) {
         if (types?.value) check('value', item.value, types.value);
       });
     }
+    if (d.kind === 'scene' && Array.isArray(fm.cast)) {
+      fm.cast.forEach((item, i) => {
+        if (item && typeof item === 'object' && !Array.isArray(item) && typeof item.entry === 'string') resolveTarget(d, `cast[${i}].entry`, item.entry, ENTRY);
+      });
+    }
     if (d.kind === 'entry' && Array.isArray(fm.related)) {
       fm.related.forEach((r, i) => {
         if (!r || typeof r !== 'object' || typeof r.to !== 'string') return;

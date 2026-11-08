@@ -24,7 +24,7 @@ export class ToolError extends Error {
 
 const BOOK_DOC = 'The book is its slug or its id (see codex_list_books).';
 const CANVAS_NOTE = 'This changed the canvas file directly; it is planning material, not prose.';
-const WORKSPACE_NOTE = 'This changed the workspace doc directly (planning material, not prose); the author can Undo it in StoryForge.';
+const WORKSPACE_NOTE = 'This changed the workspace files directly (a workspace doc, ledger, cast, state, task or writing log; planning material, not prose); the author can Undo it in StoryForge.';
 const PLAN_NOTE = 'This changed the planning file directly (planning material, not prose); the author can Undo it in StoryForge.';
 const NOTE = 'Nothing was changed. The author reviews this suggestion in StoryForge and accepts or rejects it.';
 const seg = (/** @type {string} */ s) => encodeURIComponent(s);
@@ -374,6 +374,210 @@ const PLAN_WRITE_TOOLS = [
     body: (a) => given(a, ['name', 'target_words', 'body', 'basis', 'base_sha256']),
   }),
   ...archivePair('synopsis', 'synopses'),
+];
+
+// ---- M12 W3 workspace tools. Reads (permission 'read'): the promises / questions ledger, the chapter cast, what a character knows by a chapter, the state events, the tasks.
+// Writes (permission 'workspace'; the book's AI level decides too): each posts to /api/v1/books/:b/..., which runs the app's own route (same validation, sha check, op journal and Undo).
+const CAST_ROLE_ENUM = ['pov', 'appears', 'mentioned'];
+const STATE_KIND_ENUM = ['died', 'revived', 'destroyed', 'lost', 'found', 'holder', 'location'];
+const THREAD_KIND_ENUM = ['promise', 'question'];
+const THREAD_STATUS_ENUM = ['planned', 'planted', 'developed', 'paid', 'dropped', 'unresolved'];
+const TASK_STATUS_ENUM = ['open', 'doing', 'done', 'dropped'];
+const FOR_ENUM = ['ai', 'author'];
+const chapterNo = (/** @type {string} */ words) => ({ type: 'integer', minimum: 0, description: words });
+const entryRef = (/** @type {string} */ words) => ({ type: 'string', minLength: 1, maxLength: 200, description: words });
+const taskRef = { type: 'string', minLength: 1, maxLength: 200, description: 'The task id or slug (see codex_get_tasks).' };
+const sceneIdList = (/** @type {string} */ words) => ({ type: 'array', items: { type: 'string' }, description: words });
+
+/** One workspace read: GET /api/v1/books/:b/<path>[?query]. @param {{ name: string, title: string, text: string, props?: Record<string, any>, required?: string[], path: string, query?: (args: Record<string, any>) => Record<string, string> }} d @returns {Tool} */
+const wsRead = ({ name, title, text, props = {}, required = [], path, query = () => ({}) }) => ({
+  name,
+  title,
+  description: `${text} Read only. ${BOOK_DOC}`,
+  need: 'read',
+  inputSchema: schema({ book: bookArg, ...props }, ['book', ...required]),
+  annotations: READ,
+  async run(args, api) {
+    return result(await api.get(`${bookPath(args.book)}/${path}`, query(args)));
+  },
+});
+
+/** One workspace write: POST /api/v1/books/:b/<path(args)> with body(args); the answer is returned with WORKSPACE_NOTE. @param {{ name: string, title: string, text: string, props?: Record<string, any>, required?: string[], path: (args: Record<string, any>) => string, body: (args: Record<string, any>) => Record<string, unknown> }} d @returns {Tool} */
+const wsWrite = ({ name, title, text, props = {}, required = [], path, body }) => ({
+  name,
+  title,
+  description: `${text} ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+  need: 'workspace',
+  inputSchema: schema({ book: bookArg, ...props }, ['book', ...required]),
+  annotations: PLAN,
+  async run(args, api) {
+    const r = await api.post(`${bookPath(args.book)}/${path(args)}`, body(args));
+    return result({ ...r, note: WORKSPACE_NOTE });
+  },
+});
+
+/** @type {Tool[]} */
+const WORKSPACE_TOOLS = [
+  wsRead({
+    name: 'codex_get_ledger',
+    title: 'Read the promises and questions ledger',
+    text: 'Reads the ledger: promises and questions (threads of that kind: status, open or closed, the setup, develop and payoff scene ids and their chapters) and the planner clues (planted and revealed scenes and chapters).',
+    path: 'ledger',
+  }),
+  wsRead({
+    name: 'codex_get_cast',
+    title: 'Read the chapter cast',
+    text: 'Reads the cast of each scene (who is pov, who appears, who is only mentioned), for the whole book or one chapter.',
+    props: { chapter: chapterNo('Only this chapter number.') },
+    path: 'cast',
+    query: (a) => (a.chapter !== undefined ? { chapter: String(a.chapter) } : {}),
+  }),
+  wsRead({
+    name: 'codex_knowledge_at',
+    title: 'What a character knows at a chapter',
+    text: 'Lists the facts a character knows by the end of a chapter (all of them when at is left out), from the knows and learns items of the timeline events in book order.',
+    props: { character: entryRef('The character: a Codex entry slug or id.'), at: chapterNo('The chapter number; the facts known by the end of it.') },
+    required: ['character'],
+    path: 'knowledge',
+    query: (a) => ({ character: a.character, ...(a.at !== undefined ? { at: String(a.at) } : {}) }),
+  }),
+  wsRead({
+    name: 'codex_get_state_events',
+    title: 'Read the state events',
+    text: 'Lists the state events (died, revived, destroyed, lost, found, holder, location) with their chapter, subject and value, for the whole book or one chapter.',
+    props: { chapter: chapterNo('Only this chapter number.') },
+    path: 'state-events',
+    query: (a) => (a.chapter !== undefined ? { chapter: String(a.chapter) } : {}),
+  }),
+  wsRead({
+    name: 'codex_get_tasks',
+    title: 'Read the tasks',
+    text: 'Lists the revision tasks with their status and who they are for (ai or author), and the counts. Filter by status or by for.',
+    props: { status: { type: 'string', enum: TASK_STATUS_ENUM }, for: { type: 'string', enum: FOR_ENUM, description: 'Only tasks for the AI or for the author.' } },
+    path: 'tasks',
+    query: (a) => ({ ...(a.status !== undefined ? { status: a.status } : {}), ...(a.for !== undefined ? { for: a.for } : {}) }),
+  }),
+  {
+    name: 'codex_save_ledger_item',
+    title: 'Save a promise or question',
+    description: `Creates a promise or question (a thread of that kind) when slug is left out (title and kind are then required), or updates the thread with that slug: status, the setup, develop and payoff scene ids (each list replaces the old one), the characters. Retire a thread by setting its status to paid or dropped; nothing is deleted. Pass base_sha256 from codex_get_ledger when updating. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({
+      book: bookArg,
+      slug: slugArg('thread'),
+      title: { type: 'string', minLength: 1, maxLength: 300, description: 'The title (required when creating).' },
+      kind: { type: 'string', enum: THREAD_KIND_ENUM, description: 'promise or question (required when creating).' },
+      status: { type: 'string', enum: THREAD_STATUS_ENUM },
+      setup: sceneIdList('Scene ids where it is set up (the whole list).'),
+      develop: sceneIdList('Scene ids where it develops (the whole list).'),
+      payoff: sceneIdList('Scene ids where it pays off (the whole list).'),
+      characters: { type: 'array', items: { type: 'string' }, description: 'Codex entry slugs or ids (the whole list).' },
+      base_sha256: planShaOpt,
+    }, ['book']),
+    annotations: PLAN,
+    async run(args, api) {
+      const fields = given(args, ['status', 'setup', 'develop', 'payoff', 'characters', 'base_sha256']);
+      const base = `${bookPath(args.book)}/ledger/threads`;
+      if (args.slug !== undefined) {
+        if (Object.keys(fields).length === 0) throw new ToolError('give at least one field to change (status, setup, develop, payoff, characters)');
+        const r = await api.post(`${base}/${seg(args.slug)}`, fields);
+        return result({ ...r, note: WORKSPACE_NOTE });
+      }
+      if (typeof args.title !== 'string' || args.title.trim() === '' || args.kind === undefined) throw new ToolError('creating a ledger item needs a title and a kind (promise or question)');
+      const made = await api.post(base, { title: args.title, kind: args.kind, ...given(args, ['status']) });
+      const lists = given(args, ['setup', 'develop', 'payoff', 'characters']);
+      if (Object.keys(lists).length === 0) return result({ ...made, note: WORKSPACE_NOTE });
+      const slug = typeof made.slug === 'string' ? made.slug : typeof made.id === 'string' ? made.id : '';
+      const r = await api.post(`${base}/${seg(slug)}`, lists);
+      return result({ ...made, ...r, note: WORKSPACE_NOTE });
+    },
+  },
+  wsWrite({
+    name: 'codex_set_chapter_cast',
+    title: 'Set the cast of a scene',
+    text: 'Sets the cast of one scene (the whole list): each entry is a Codex entry id or slug with a role (pov, appears or mentioned); at most one pov. Only the scene\'s cast changes; its text never does. Pass base_sha256 (the scene sha256 from codex_get_scene) to refuse the change if the scene file changed since.',
+    props: {
+      scene: sceneId('The scene id (scene_...).'),
+      cast: rowList({ entry: entryRef('A Codex entry slug or id.'), role: { type: 'string', enum: CAST_ROLE_ENUM } }, ['entry', 'role'], 'The whole cast of the scene; an empty list clears it.'),
+      base_sha256: planShaOpt,
+    },
+    required: ['scene', 'cast'],
+    path: (a) => `scenes/${seg(a.scene)}/cast`,
+    body: (a) => ({ cast: a.cast, ...given(a, ['base_sha256']) }),
+  }),
+  wsWrite({
+    name: 'codex_record_knowledge',
+    title: 'Record what a character learns',
+    text: 'Records that a character learns a fact in a chapter (a learns item on that chapter\'s state event; the event is made when missing). The fact is one line of text; it is stored as a key made from it (see codex_knowledge_at). Nothing is ever deleted.',
+    props: { character: entryRef('The character: a Codex entry slug or id.'), fact: { type: 'string', minLength: 1, maxLength: 300, description: 'The fact, one line of text.' }, chapter: chapterNo('The chapter number where the character learns it.') },
+    required: ['character', 'fact', 'chapter'],
+    path: () => 'knowledge',
+    body: (a) => given(a, ['character', 'fact', 'chapter']),
+  }),
+  wsWrite({
+    name: 'codex_record_state_events',
+    title: 'Record state events',
+    text: 'Records state events of a chapter (added to that chapter\'s state event, made when missing): died or revived (a character), destroyed, lost or found (an entry), holder (value = the character who holds the object, or an empty string for nobody), location (value = a location entry). To retire a state, record the item that ends it (revived, found, a new holder); nothing is deleted.',
+    props: {
+      chapter: chapterNo('The chapter number.'),
+      items: rowList({ subject: entryRef('The Codex entry (slug or id) the event is about.'), kind: { type: 'string', enum: STATE_KIND_ENUM }, value: { type: 'string', maxLength: 200, description: 'Only for holder and location: a Codex entry slug or id.' } }, ['subject', 'kind'], 'The state events.'),
+    },
+    required: ['chapter', 'items'],
+    path: () => 'state-events',
+    body: (a) => given(a, ['chapter', 'items']),
+  }),
+  wsWrite({
+    name: 'codex_create_task',
+    title: 'Create a task',
+    text: 'Creates a task (a note to revise or check something). for is ai or author (default author): a task for the AI is one the author wants the AI to do.',
+    props: {
+      title: { type: 'string', minLength: 1, maxLength: 300, description: 'One line.' },
+      notes: notesArg('What to do, in text.'),
+      labels: { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 60 } },
+      for: { type: 'string', enum: FOR_ENUM, description: 'Who the task is for (default author).' },
+    },
+    required: ['title'],
+    path: () => 'tasks',
+    body: (a) => given(a, ['title', 'notes', 'labels', 'for']),
+  }),
+  {
+    name: 'codex_update_task',
+    title: 'Update a task',
+    description: `Changes a task's status (open, doing, done, dropped) and/or who it is for (ai or author). Give at least one. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({ book: bookArg, task: taskRef, status: { type: 'string', enum: TASK_STATUS_ENUM }, for: { type: 'string', enum: FOR_ENUM } }, ['book', 'task']),
+    annotations: PLAN,
+    async run(args, api) {
+      if (args.status === undefined && args.for === undefined) throw new ToolError('give a status and/or for');
+      let status = args.status;
+      if (status === undefined) {
+        const list = await api.get(`${bookPath(args.book)}/tasks`);
+        const found = (list.tasks ?? []).find((/** @type {any} */ t) => t.id === args.task || t.slug === args.task);
+        if (!found) throw new ToolError(`no task "${args.task}"; see codex_get_tasks`);
+        status = found.status;
+      }
+      const r = await api.post(`${bookPath(args.book)}/tasks/${seg(args.task)}/status`, { status, ...given(args, ['for']) });
+      return result({ ...r, note: WORKSPACE_NOTE });
+    },
+  },
+  wsWrite({
+    name: 'codex_complete_task',
+    title: 'Complete a task',
+    text: 'Marks a task done.',
+    props: { task: taskRef },
+    required: ['task'],
+    path: (a) => `tasks/${seg(a.task)}/status`,
+    body: () => ({ status: 'done' }),
+  }),
+  wsWrite({
+    name: 'codex_log_writing',
+    title: 'Log words an AI wrote',
+    text: 'Adds words an AI wrote to today\'s AI words in the writing log (the author\'s own word counts are never touched). Insights shows the human and AI share.',
+    props: { words: { type: 'integer', minimum: 1, maximum: 1000000, description: 'The number of words.' }, chapter: chapterNo('The chapter they belong to (optional).'), note: { type: 'string', maxLength: 500, description: 'One line about what was written (optional).' } },
+    required: ['words'],
+    path: () => 'activity/ai-words',
+    body: (a) => given(a, ['words', 'chapter', 'note']),
+  }),
 ];
 
 /** @type {Tool[]} */
@@ -907,12 +1111,12 @@ export const TOOLS = [
     },
   },
   ...PLAN_WRITE_TOOLS,
+  ...WORKSPACE_TOOLS,
 ];
 
 /** Names an author of the original Codex MCP might ask for that v2 has no plugin route for. */
 export const NOT_OFFERED = [
-  'codex_create_chapter', 'codex_push_files', 'codex_get_ledger',
-  'codex_save_ledger_item', 'codex_delete_ledger_item', 'codex_get_cast', 'codex_set_chapter_cast', 'codex_knowledge_at', 'codex_record_knowledge', 'codex_delete_knowledge',
-  'codex_continuity_check', 'codex_get_state_events', 'codex_record_state_events', 'codex_delete_state_event', 'codex_dismiss_finding', 'codex_restore_finding',
-  'codex_set_continuity_thresholds', 'codex_get_tasks', 'codex_update_task', 'codex_complete_task', 'codex_create_task', 'codex_log_writing',
+  'codex_create_chapter', 'codex_push_files', 'codex_delete_ledger_item', 'codex_delete_knowledge',
+  'codex_continuity_check', 'codex_delete_state_event', 'codex_dismiss_finding', 'codex_restore_finding',
+  'codex_set_continuity_thresholds',
 ];

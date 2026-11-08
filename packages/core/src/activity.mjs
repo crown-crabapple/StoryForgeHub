@@ -6,8 +6,18 @@ import { SESSIONS_DIR, appendSession, isoSecond, newSessionsFile, parseSessions,
 
 export const FLUSH_MS = 60_000;
 
-const ZERO = () => ({ added: 0, removed: 0, minutes: 0, sessions: 0 });
-const sum = (a, b) => ({ added: a.added + b.added, removed: a.removed + b.removed, minutes: a.minutes + b.minutes, sessions: a.sessions + b.sessions });
+/**
+ * Human against AI words over some days: `human_words` are the words added by the author's own saves, `ai_words` the words an AI logged; `ai_share` is ai / (human + ai), 0 when neither wrote.
+ * @param {{ added: number, ai_words?: number }[]} days
+ */
+export function aiShare(days) {
+  const human = days.reduce((n, d) => n + d.added, 0);
+  const ai = days.reduce((n, d) => n + (d.ai_words ?? 0), 0);
+  return { human_words: human, ai_words: ai, ai_share: human + ai === 0 ? 0 : Math.round((ai / (human + ai)) * 1000) / 1000 };
+}
+
+const ZERO = () => ({ added: 0, removed: 0, minutes: 0, sessions: 0, ai: 0 });
+const sum = (a, b) => ({ added: a.added + b.added, removed: a.removed + b.removed, minutes: a.minutes + b.minutes, sessions: a.sessions + b.sessions, ai: (a.ai ?? 0) + (b.ai ?? 0) });
 
 /**
  * @param {{
@@ -94,6 +104,11 @@ export function createActivity({ rootOf, readGoal, afterWrite = () => {}, now = 
       list.push({ at, added, removed });
       saves.set(bookPath, list);
     },
+    /** M12 W3: words an AI wrote today (logged by the AI workspace tools; the human `added` count is never touched). */
+    recordAi(bookPath, words) {
+      if (!words) return;
+      add(bookPath, localDate(clock()), { ai: words });
+    },
     /** The client reports a finished session of `minutes` (>= 1). */
     session(bookPath, minutes) {
       add(bookPath, localDate(clock()), { minutes, sessions: 1 });
@@ -152,7 +167,7 @@ export function createActivity({ rootOf, readGoal, afterWrite = () => {}, now = 
       const rows = new Map();
       for (const r of file ? parseWritingLog(file.bytes.toString('utf8')) : []) rows.set(r.date, sum(rows.get(r.date) ?? ZERO(), r));
       for (const [date, d] of pending.get(bookPath) ?? []) rows.set(date, sum(rows.get(date) ?? ZERO(), d));
-      return [...rows].map(([date, r]) => ({ date, added: r.added, removed: r.removed, net: r.added - r.removed, minutes: r.minutes, sessions: r.sessions })).sort((a, b) => (a.date < b.date ? -1 : 1));
+      return [...rows].map(([date, r]) => ({ date, added: r.added, removed: r.removed, net: r.added - r.removed, minutes: r.minutes, sessions: r.sessions, ai_words: r.ai })).sort((a, b) => (a.date < b.date ? -1 : 1));
     },
     flush,
     /** Flush and stop timers (the repository is closing). */
@@ -177,11 +192,11 @@ export function createActivity({ rootOf, readGoal, afterWrite = () => {}, now = 
       for (const [date, d] of pending.get(bookPath) ?? []) rows.set(date, sum(rows.get(date) ?? ZERO(), d));
       const today = localDate(clock());
       const goal = await readGoal(bookPath);
-      const asDay = (date, r) => ({ date, added: r.added, removed: r.removed, net: r.added - r.removed, minutes: r.minutes, sessions: r.sessions });
+      const asDay = (date, r) => ({ date, added: r.added, removed: r.removed, net: r.added - r.removed, minutes: r.minutes, sessions: r.sessions, ai_words: r.ai });
       const all = [...rows].map(([date, r]) => asDay(date, r));
       const from = localDate(new Date(clock().getTime() - (Math.max(1, days) - 1) * 86_400_000));
       const shown = all.filter((d) => d.date >= from).sort((a, b) => (a.date < b.date ? -1 : 1));
-      return { goal, today: asDay(today, rows.get(today) ?? ZERO()), days: shown, streak: computeStreak(all, goal, today) };
+      return { goal, today: asDay(today, rows.get(today) ?? ZERO()), days: shown, streak: computeStreak(all, goal, today), totals: aiShare(shown) };
     },
   };
 }

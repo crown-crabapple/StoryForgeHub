@@ -15,6 +15,8 @@ const NOT_FOUND = { status: 404, body: { error: 'not_found' } };
 const badRequest = (/** @type {string} */ message, code = 'BAD_ARGS') => ({ status: 400, body: { error: 'bad_request', code, message } });
 const isObject = (/** @type {unknown} */ v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const MAX_HUNKS = 200;
+/** M12 W3: the app write routes a workspace write of a plugin may reach (see memberWrite): threads, the chapter cast, ledgers (knowledge, state events), tasks and the AI writing log. Never scene-body or scene-fields. */
+const WORKSPACE_ROUTES = ['thread-', 'scene-cast', 'ledger-', 'task-', 'activity-ai-log'];
 const MAX_TEXT = 4 * 1024 * 1024;
 
 /** @param {string} s @returns {string | null} */
@@ -36,8 +38,12 @@ export function v1RouteOf(method, pathname) {
   if (a !== 'books') return 'other';
   if (parts.length === 3) return 'books';
   if (c === undefined) return 'book';
-  if (c === 'scenes' && d !== undefined) return 'scene';
+  if (c === 'scenes' && d !== undefined) return parts[6] === 'cast' ? 'scene-cast' : 'scene';
   if (c === 'entries') return d === undefined ? 'entries' : 'entry';
+  if (c === 'ledger') return method === 'GET' ? 'ledger' : d === 'threads' && parts[6] === undefined ? 'ledger-thread-create' : 'ledger-thread-update';
+  if (c === 'cast' || c === 'knowledge' || c === 'state-events') return method === 'GET' ? c : c === 'knowledge' ? 'knowledge-record' : 'state-record';
+  if (c === 'tasks') return method === 'GET' ? 'tasks' : d === undefined ? 'task-create' : 'task-status';
+  if (c === 'activity') return 'activity-ai-log';
   if (['threads', 'events', 'search', 'graph', 'diagnostics'].includes(c)) return c;
   if (c === 'proposals') return 'proposals';
   if (c === 'plan') return d === undefined ? 'plan' : method === 'POST' ? `plan-${d}-write` : `plan-${d}`;
@@ -150,6 +156,46 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
         },
       });
     }
+    // M12 W3: ledgers, chapter cast, knowledge, state events, tasks, the AI writing log. Writes map onto the app's own routes by name (see memberWrite); nothing here writes prose.
+    if (c === 'scenes' && method === 'POST') return done(await memberWrite(bk, 'POST', ['scenes', /** @type {string} */ (d2), 'cast'], WORKSPACE_ROUTES), `${target}/${d2}`);
+    if (c === 'ledger') {
+      if (method === 'POST') return done(await memberWrite(bk, 'POST', d2 === 'threads' && parts[6] === undefined ? ['threads'] : ['threads', /** @type {string} */ (parts[6]), 'fields'], WORKSPACE_ROUTES), `${target}/ledger`);
+      const ledger = await repository.getLedger(bk.id);
+      return done(ledger ? { status: 200, body: planOut(ledger) } : NOT_FOUND);
+    }
+    if (c === 'cast') {
+      const chapter = params.get('chapter');
+      if (chapter !== null && !/^[0-9]{1,6}$/.test(chapter)) return done(badRequest('chapter must be a chapter number'));
+      const cast = await repository.getCast(bk.id, chapter !== null ? { chapter: Number(chapter) } : {});
+      return done(cast ? { status: 200, body: { cast } } : NOT_FOUND);
+    }
+    if (c === 'knowledge') {
+      if (method === 'POST') return done(await memberWrite(bk, 'POST', ['knowledge'], WORKSPACE_ROUTES));
+      const character = params.get('character');
+      const at = params.get('at');
+      if (character === null || character === '') return done(badRequest('character is required (an entry id or slug)'));
+      if (at !== null && !/^[0-9]{1,6}$/.test(at)) return done(badRequest('at must be a chapter number'));
+      const r = await repository.knowledgeAt(bk.id, { character, ...(at !== null ? { at: Number(at) } : {}) });
+      if (r.ok) return done({ status: 200, body: { character: r.character, at: r.at, facts: r.facts } });
+      return done(r.code === 'NOT_FOUND' ? NOT_FOUND : badRequest(r.message ?? 'bad request'));
+    }
+    if (c === 'state-events') {
+      if (method === 'POST') return done(await memberWrite(bk, 'POST', ['state-events'], WORKSPACE_ROUTES));
+      const chapter = params.get('chapter');
+      if (chapter !== null && chapter !== 'all' && !/^[0-9]{1,6}$/.test(chapter)) return done(badRequest('chapter must be a chapter number or all'));
+      const events = await repository.getStateEvents(bk.id, chapter !== null && chapter !== 'all' ? { chapter: Number(chapter) } : {});
+      return done(events ? { status: 200, body: { events } } : NOT_FOUND);
+    }
+    if (c === 'tasks') {
+      if (method === 'POST') return done(await memberWrite(bk, 'POST', d2 === undefined ? ['tasks'] : ['tasks', d2, 'status'], WORKSPACE_ROUTES));
+      const status = params.get('status');
+      const forWho = params.get('for');
+      if (status !== null && !['open', 'doing', 'done', 'dropped'].includes(status)) return done(badRequest('status must be open, doing, done or dropped'));
+      if (forWho !== null && !['ai', 'author'].includes(forWho)) return done(badRequest('for must be ai or author'));
+      const r = await repository.listTasks(bk.id, { ...(status !== null ? { status } : {}), ...(forWho !== null ? { for: forWho } : {}) });
+      return done(r.ok ? { status: 200, body: planOut({ tasks: r.tasks, counts: r.counts }) } : NOT_FOUND);
+    }
+    if (c === 'activity') return done(await memberWrite(bk, 'POST', ['activity', 'ai-words'], WORKSPACE_ROUTES), `${target}/activity`);
     if (c === 'scenes') {
       const s = await repository.getScene(bk.id, d2);
       if (!s) return done(NOT_FOUND);

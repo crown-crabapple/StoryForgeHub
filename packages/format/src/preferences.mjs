@@ -240,6 +240,7 @@ export function moduleOfRoute(route) {
   if (route.startsWith('canvas-')) return 'board'; // M09-J01: canvases are visual planning, with the corkboard
   if (route.startsWith('planner-')) return 'planner'; // Story Planner M1 (ADR 0003): causal links and scene plans
   if (route.startsWith('workspace-')) return 'workspace'; // M12 W2: workspace docs (book, style, state)
+  if (route === 'scene-cast' || route.startsWith('ledger-') || route === 'activity-ai-log') return 'workspace'; // M12-W3: chapter cast, ledgers, the AI writing log
   return null;
 }
 

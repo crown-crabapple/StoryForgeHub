@@ -25,6 +25,8 @@ const READ_TOOLS = ['codex_status', 'codex_list_books', 'codex_list_chapters', '
   'codex_get_plan', 'codex_get_scene_plan', 'codex_get_plan_check', 'codex_list_structure_templates', 'codex_list_plan_links', 'codex_list_arcs', 'codex_list_structures', 'codex_list_relationships', 'codex_list_synopses', 'codex_list_clues',
   // M12 W2: workspace docs
   'codex_list_docs', 'codex_get_doc',
+  // M12 W3: ledger, cast, knowledge, state events and tasks (reads)
+  'codex_get_ledger', 'codex_get_cast', 'codex_knowledge_at', 'codex_get_state_events', 'codex_get_tasks',
   // the ChatGPT connector pair
   'search', 'fetch'];
 const CANVAS_TOOLS = ['codex_create_canvas', 'codex_save_canvas', 'codex_edit_canvas', 'codex_archive_canvas', 'codex_restore_canvas', 'codex_add_plan_cards'];
@@ -58,15 +60,15 @@ test('initialize names the server "storyforge" and answers with a supported prot
   assert.notEqual(other.json.result.protocolVersion, '1999-01-01');
 });
 
-test('tools/list: a read+propose token sees 30 tools, read+propose+canvas all 36, a read-only token the 27 read tools and no codex_save_*', async () => {
+test('tools/list: a read+propose token sees 35 tools, read+propose+canvas all 41, a read-only token the 32 read tools and no codex_save_*', async () => {
   const t = await bootPersonal();
   const both = (await t.grant({ plugin: 'both', permissions: ['read', 'propose'] })).token;
   const ro = (await t.grant({ plugin: 'ro', permissions: ['read'] })).token;
   const all = (await rpc(t, both, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(all.length, 30);
+  assert.equal(all.length, 35);
   assert.deepEqual([...all].sort(), [...READ_TOOLS, ...PROPOSE_TOOLS].sort());
   const some = (await rpc(t, ro, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(some.length, 27);
+  assert.equal(some.length, 32);
   assert.deepEqual([...some].sort(), [...READ_TOOLS].sort());
   assert.equal(some.some((n) => n.startsWith('codex_save_')), false);
 });
@@ -248,7 +250,7 @@ test('a token granted another book only cannot read or propose to this one (403 
 test('a legacy Codex tool name is a tool error saying it is not available', async () => {
   const t = await bootPersonal();
   const { token } = await t.grant({ permissions: ['read', 'propose'] });
-  const r = await call(t, token, 'codex_get_tasks', {});
+  const r = await call(t, token, 'codex_delete_ledger_item', {});
   assert.equal(r.isError, true);
   assert.match(textOf(r), /not available/);
 });

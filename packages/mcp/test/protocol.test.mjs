@@ -72,14 +72,14 @@ test('ping answers with an empty result', async () => {
   assert.deepEqual((await setup().rpc('ping')).result, {});
 });
 
-test('tools/list shows 30 tools with read+propose, 36 with canvas too, and 27 read-only tools without', async () => {
+test('tools/list shows 35 tools with read+propose, 41 with canvas too, and 32 read-only tools without', async () => {
   const all = (await setup().rpc('tools/list')).result.tools;
-  assert.equal(all.length, 30);
+  assert.equal(all.length, 35);
   assert.deepEqual(Object.keys(all[0]).sort(), ['annotations', 'description', 'inputSchema', 'name', 'title']);
   const ro = (await setup(['read']).rpc('tools/list')).result.tools;
-  assert.equal(ro.length, 27);
-  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 36);
-  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 33);
+  assert.equal(ro.length, 32);
+  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 41);
+  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 38);
   assert.ok(ro.every((t) => t.annotations.readOnlyHint === true));
   assert.equal(TOOLS.filter((t) => t.need === 'propose').length, 3);
   assert.equal(TOOLS.filter((t) => t.need === 'canvas').length, 6);
@@ -190,10 +190,10 @@ test('argument validation names the bad argument', async () => {
 
 test('NOT_OFFERED tools get an explanation, unknown tools a JSON-RPC error', async () => {
   const { tool, rpc } = setup();
-  assert.equal(NOT_OFFERED.length, 22);
-  const r = await tool('codex_get_tasks', {});
+  assert.equal(NOT_OFFERED.length, 9);
+  const r = await tool('codex_delete_ledger_item', {});
   assert.equal(r.isError, true);
-  assert.match(r.content[0].text, /codex_get_tasks is not available in StoryForge v2's MCP service/);
+  assert.match(r.content[0].text, /codex_delete_ledger_item is not available in StoryForge v2's MCP service/);
   const u = await rpc('tools/call', { name: 'codex_nope', arguments: {} });
   assert.deepEqual(u.error, { code: -32602, message: 'unknown tool' });
   assert.equal((await rpc('tools/call', {})).error.code, -32602);

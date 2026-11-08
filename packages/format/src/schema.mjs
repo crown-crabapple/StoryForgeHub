@@ -46,7 +46,7 @@ export const KINDS = {
       title: 'str', act: 'int', chapter: 'int', sequence: 'int1',
       status: ['outline', 'drafting', 'revised', 'final'],
       pov: 'str', characters: 'list', locations: 'list', plot_threads: 'list', summary: 'str',
-      variant_of: 'str', events: 'list',
+      variant_of: 'str', events: 'list', cast: 'list',
     },
   },
   entry: {
@@ -133,7 +133,7 @@ export const KINDS = {
   task: {
     prefix: 'note',
     required: ['slug', 'title', 'status'],
-    fields: { slug: 'slug', title: 'str', status: ['open', 'doing', 'done', 'dropped'], source: 'map', targets: 'list', created: 'any' },
+    fields: { slug: 'slug', title: 'str', status: ['open', 'doing', 'done', 'dropped'], source: 'map', targets: 'list', created: 'any', for: ['ai', 'author'] },
   },
   // Added 2026-11-05, Story Planner M1 (ADR 0003, additive within v1): one causal link between two scenes, under planning/links/. Never story text or canon.
   link: {
@@ -240,6 +240,9 @@ export const STATE_EVENTS = {
   holder: 'link', location: 'link', learns: 'fact', knows: 'fact',
 };
 
+/** M12 chapter cast: the roles a scene's `cast` items may give an entry. At most one `pov` per scene. */
+export const CAST_ROLES = ['pov', 'appears', 'mentioned'];
+
 /** Exception fingerprint shape (spec 6.4). */
 export const FINGERPRINT_RE = /^[a-z0-9]{2,4}-[0-9a-f]{16}$/;
 
@@ -330,6 +333,25 @@ function checkState(state, file, add) {
     } else if (item.event === 'location' && item.value === '') {
       add('E102', file, `state[${i}].value`, 'location needs a location slug');
     }
+  });
+}
+
+/**
+ * Scene `cast` items (M12): E102 for shape problems and for a second pov. Whether `entry` resolves (E301, E302) is checked with the links.
+ * @param {any[]} cast
+ * @param {string} file
+ * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ */
+function checkCast(cast, file, add) {
+  let pov = 0;
+  cast.forEach((item, i) => {
+    if (!isPlainMap(item)) {
+      add('E102', file, `cast[${i}]`, 'cast item must be a mapping with entry and role');
+      return;
+    }
+    if (typeof item.entry !== 'string' || item.entry.trim() === '') add('E102', file, `cast[${i}].entry`, 'cast item needs an entry id or slug');
+    if (typeof item.role !== 'string' || !CAST_ROLES.includes(item.role)) add('E102', file, `cast[${i}].role`, `role must be one of ${CAST_ROLES.join(', ')}`);
+    else if (item.role === 'pov' && ++pov === 2) add('E102', file, `cast[${i}].role`, 'a scene has at most one pov in its cast');
   });
 }
 
@@ -582,6 +604,7 @@ export function checkFields(doc, ctx, add) {
   }
 
   if (doc.kind === 'event' && Array.isArray(fm.state)) checkState(fm.state, file, add);
+  if (doc.kind === 'scene' && Array.isArray(fm.cast)) checkCast(fm.cast, file, add);
 
   if (doc.kind === 'codex-type' && isPlainMap(fm.values)) {
     for (const [label, words] of Object.entries(fm.values)) {

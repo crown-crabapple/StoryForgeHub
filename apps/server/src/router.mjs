@@ -200,8 +200,8 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       if (daysParam !== null && (!/^[0-9]+$/.test(daysParam) || Number(daysParam) < 1 || Number(daysParam) > 366)) return badRequest('days must be an integer from 1 to 366');
       const r = await repository.getActivity(b, daysParam !== null ? { days: Number(daysParam) } : {});
       if (!r.ok) return NOT_FOUND;
-      const { added, removed, net, minutes, sessions } = r.today;
-      return { status: 200, body: { goal: r.goal, today: { added, removed, net, minutes, sessions }, days: r.days, streak: r.streak } };
+      const { added, removed, net, minutes, sessions, ai_words: aiWords } = r.today;
+      return { status: 200, body: { goal: r.goal, today: { added, removed, net, minutes, sessions, ai_words: aiWords }, days: r.days, streak: r.streak, totals: r.totals } };
     }
     // M07-J02: the Insights numbers (one JSON, computed from the index when fresh, else from the files), goals, revision tasks (list; one task opened = its targets located)
     if (c === 'insights' && d === undefined) {
@@ -218,8 +218,36 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       if (status !== null && !['open', 'doing', 'done', 'dropped'].includes(status)) return badRequest('status must be open, doing, done or dropped');
       if (source !== null && !['continuity', 'check', 'manual'].includes(source)) return badRequest('source must be continuity, check or manual');
       const label = params.get('label');
-      const r = await repository.listTasks(b, { ...(status !== null ? { status } : {}), ...(source !== null ? { source } : {}), ...(label !== null && label !== '' ? { label } : {}) });
+      const forWho = params.get('for');
+      if (forWho !== null && !['ai', 'author'].includes(forWho)) return badRequest('for must be ai or author');
+      const r = await repository.listTasks(b, { ...(status !== null ? { status } : {}), ...(source !== null ? { source } : {}), ...(label !== null && label !== '' ? { label } : {}), ...(forWho !== null ? { for: forWho } : {}) });
       return r.ok ? { status: 200, body: { tasks: r.tasks, counts: r.counts, labels: r.labels } } : NOT_FOUND;
+    }
+    // M12 W3: the promises / questions ledger, the chapter cast, what a character knows by a chapter, the state events (reads; nothing here writes)
+    if (c === 'ledger' && d === undefined) {
+      const ledger = await repository.getLedger(b);
+      return ledger ? { status: 200, body: ledger } : NOT_FOUND;
+    }
+    if (c === 'cast' && d === undefined) {
+      const chapter = params.get('chapter');
+      if (chapter !== null && !/^[0-9]{1,6}$/.test(chapter)) return badRequest('chapter must be a chapter number');
+      const cast = await repository.getCast(b, chapter !== null ? { chapter: Number(chapter) } : {});
+      return cast ? { status: 200, body: cast } : NOT_FOUND;
+    }
+    if (c === 'knowledge' && d === undefined) {
+      const character = params.get('character');
+      const at = params.get('at');
+      if (character === null || character === '') return badRequest('character is required (an entry id or slug)');
+      if (at !== null && !/^[0-9]{1,6}$/.test(at)) return badRequest('at must be a chapter number');
+      const r = await repository.knowledgeAt(b, { character, ...(at !== null ? { at: Number(at) } : {}) });
+      if (r.ok) return { status: 200, body: { character: r.character, at: r.at, facts: r.facts } };
+      return r.code === 'NOT_FOUND' ? NOT_FOUND : badRequest(r.message ?? 'bad request');
+    }
+    if (c === 'state-events' && d === undefined) {
+      const chapter = params.get('chapter');
+      if (chapter !== null && chapter !== 'all' && !/^[0-9]{1,6}$/.test(chapter)) return badRequest('chapter must be a chapter number or all');
+      const events = await repository.getStateEvents(b, chapter !== null && chapter !== 'all' ? { chapter: Number(chapter) } : {});
+      return events ? { status: 200, body: events } : NOT_FOUND;
     }
     if (c === 'tasks' && d !== undefined && e === undefined) {
       const r = await repository.getTask(b, d);
@@ -678,6 +706,11 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'DELETE' && c === 'goals' && d !== undefined && e === undefined) return { route: 'goal-remove', bookId: b, goalId: d };
   if (method === 'POST' && c === 'tasks' && d === undefined) return { route: 'task-create', bookId: b };
   if (method === 'POST' && c === 'tasks' && d !== undefined && e === 'status' && f === undefined) return { route: 'task-status', bookId: b, taskId: d };
+  // M12 W3: chapter cast, knowledge and state events (the chapter's state event), the AI words of the writing log
+  if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'cast' && f === undefined) return { route: 'scene-cast', bookId: b, sceneId: d };
+  if (method === 'POST' && c === 'knowledge' && d === undefined) return { route: 'ledger-knowledge-record', bookId: b };
+  if (method === 'POST' && c === 'state-events' && d === undefined) return { route: 'ledger-state-record', bookId: b };
+  if (method === 'POST' && c === 'activity' && d === 'ai-words' && e === undefined) return { route: 'activity-ai-log', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f === undefined) return { route: 'revision-save', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f !== undefined && g === 'restore') return { route: 'revision-restore', bookId: b, sceneId: d, file: f };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'body') return { route: 'body', bookId: b, sceneId: d };
@@ -991,8 +1024,34 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
     }
     case 'task-status': {
       if (typeof body.status !== 'string') return badRequest("expected { status: 'open' | 'doing' | 'done' | 'dropped' }");
-      const r = await repository.setTaskStatus(bookId, /** @type {string} */ (match.taskId), body.status);
-      return respond(r, 200, (x) => ({ ok: true, id: x.id, slug: x.slug, status: x.status, path: x.path }));
+      if (body.for !== undefined && !['ai', 'author'].includes(/** @type {any} */ (body.for))) return badRequest('for must be ai or author');
+      const r = await repository.setTaskStatus(bookId, /** @type {string} */ (match.taskId), body.status, body.for !== undefined ? { for: /** @type {string} */ (body.for) } : {});
+      return respond(r, 200, (x) => ({ ok: true, id: x.id, slug: x.slug, status: x.status, for: x.for, path: x.path }));
+    }
+    // ---- M12 W3. scene-cast writes only the scene's `cast` key (never prose); the ledger routes only append state items to the chapter's "Chapter N (state)" event; activity-ai-log adds AI words to today's row.
+    case 'scene-cast': {
+      if (!Array.isArray(body.cast)) return badRequest('expected { cast: [{ entry, role }], base_sha256?: string }');
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.setSceneCast(bookId, /** @type {string} */ (match.sceneId), { cast: body.cast, baseSha256: body.base_sha256, dryRun: body.dryRun === true });
+      return respond(r, 200, structureBody);
+    }
+    case 'ledger-knowledge-record': {
+      if (typeof body.character !== 'string' || typeof body.fact !== 'string' || !Number.isInteger(body.chapter)) return badRequest('expected { character: entry id or slug, fact: string, chapter: integer >= 0 }');
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.recordKnowledge(bookId, { character: body.character, fact: body.fact, chapter: /** @type {number} */ (body.chapter), dryRun: body.dryRun === true });
+      return respond(r, 200, structureBody);
+    }
+    case 'ledger-state-record': {
+      if (!Number.isInteger(body.chapter) || !Array.isArray(body.items)) return badRequest('expected { chapter: integer >= 0, items: [{ subject, kind, value? }] }');
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.recordStateEvents(bookId, { chapter: /** @type {number} */ (body.chapter), items: body.items, dryRun: body.dryRun === true });
+      return respond(r, 200, structureBody);
+    }
+    case 'activity-ai-log': {
+      if (!Number.isInteger(body.words)) return badRequest('expected { words: integer >= 1, chapter?: integer, note?: string }');
+      const r = await repository.recordAiWords(bookId, { words: /** @type {number} */ (body.words), ...(body.chapter !== undefined ? { chapter: /** @type {any} */ (body.chapter) } : {}), ...(body.note !== undefined ? { note: /** @type {any} */ (body.note) } : {}) });
+      return respond(r, 200, structureBody);
     }
     case 'goal': {
       if (body.daily_word_goal === undefined || (body.daily_word_goal !== null && !Number.isInteger(body.daily_word_goal))) {

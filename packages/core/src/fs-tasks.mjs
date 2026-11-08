@@ -12,6 +12,8 @@ import { locateTarget, notFoundMessage } from './task-locate.mjs';
 
 export const TASKS_DIR = 'planning/tasks';
 export const TASK_STATUSES = ['open', 'doing', 'done', 'dropped'];
+/** M12 W3: who a task is for. A task without the `for` line is for the author. */
+export const TASK_FOR = ['ai', 'author'];
 const TASK_SCHEMA = 'storyforge.task/v1';
 const CONTROL_RE = new RegExp(`[\x00-\x1f\x7f]`);
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
@@ -33,6 +35,7 @@ function summarise(rel, file) {
     slug: typeof fm.slug === 'string' ? fm.slug : path.posix.basename(rel, '.md'),
     title: typeof fm.title === 'string' ? fm.title : path.posix.basename(rel, '.md'),
     status: TASK_STATUSES.includes(fm.status) ? fm.status : 'open',
+    for: fm.for === 'ai' ? 'ai' : 'author',
     source: source ? { kind: typeof source.kind === 'string' ? source.kind : 'manual', code: typeof source.code === 'string' ? source.code : null, fingerprint: typeof source.fingerprint === 'string' ? source.fingerprint : null } : { kind: 'manual', code: null, fingerprint: null },
     targets: (Array.isArray(fm.targets) ? fm.targets : []).filter((t) => isMap(t) && typeof t.id === 'string').map((t) => ({
       id: t.id, line: Number.isInteger(t.line) ? t.line : null, quote: typeof t.quote === 'string' ? t.quote : null, sha256: typeof t.sha256 === 'string' ? t.sha256 : null,
@@ -80,8 +83,8 @@ export function createTaskMethods({ root, afterWrite = () => {}, reconcile, now 
   const withoutNotes = (t) => Object.fromEntries(Object.entries(t).filter(([k]) => k !== 'notes'));
 
   /**
-   * The tasks of a book with the counts per status. Filters: `status` (one of the four), `label`, `source` ('continuity' | 'check' | 'manual').
-   * @param {string} bookId @param {{ status?: string, label?: string, source?: string }} [filter]
+   * The tasks of a book with the counts per status. Filters: `status` (one of the four), `label`, `source` ('continuity' | 'check' | 'manual'), `for` ('ai' | 'author').
+   * @param {string} bookId @param {{ status?: string, label?: string, source?: string, for?: string }} [filter]
    */
   async function listTasks(bookId, filter = {}) {
     const found = await findBook(bookId);
@@ -89,7 +92,7 @@ export function createTaskMethods({ root, afterWrite = () => {}, reconcile, now 
     const store = await openStore(bookRootOf(found.book), { recover: false });
     const all = await readTasks(store);
     const fold = (s) => s.trim().toLowerCase();
-    const shown = all.filter((t) => (!filter.status || t.status === filter.status) && (!filter.label || t.labels.some((l) => fold(l) === fold(filter.label ?? ''))) && (!filter.source || t.source.kind === filter.source));
+    const shown = all.filter((t) => (!filter.status || t.status === filter.status) && (!filter.label || t.labels.some((l) => fold(l) === fold(filter.label ?? ''))) && (!filter.source || t.source.kind === filter.source) && (!filter.for || t.for === filter.for));
     const count = (s) => all.filter((t) => t.status === s).length;
     const labels = [...new Set(all.flatMap((t) => t.labels))].sort();
     return {
@@ -156,10 +159,10 @@ export function createTaskMethods({ root, afterWrite = () => {}, reconcile, now 
   }
 
   /** The task file's text. */
-  function render({ id, slug, title, status, source, targets, created, labels, notes }) {
+  function render({ id, slug, title, status, source, targets, created, labels, notes, forWho = 'author' }) {
     const src = `{ kind: ${source.kind}${source.code ? `, code: ${JSON.stringify(source.code)}` : ''}${source.fingerprint ? `, fingerprint: ${source.fingerprint}` : ''} }`;
     const tl = targets.map((t) => `  - { id: ${t.id}${t.line ? `, line: ${t.line}` : ''}${t.quote ? `, quote: ${JSON.stringify(t.quote)}` : ''}${t.sha256 ? `, sha256: ${t.sha256}` : ''} }`);
-    const head = ['---', `schema: ${TASK_SCHEMA}`, `id: ${id}`, `slug: ${slug}`, `title: ${yamlText(title)}`, `status: ${status}`, `source: ${src}`];
+    const head = ['---', `schema: ${TASK_SCHEMA}`, `id: ${id}`, `slug: ${slug}`, `title: ${yamlText(title)}`, `status: ${status}`, ...(forWho === 'ai' ? ['for: ai'] : []), `source: ${src}`];
     head.push(tl.length ? 'targets:' : 'targets: []', ...tl, `created: "${created}"`, `labels: [${labels.map((l) => JSON.stringify(l)).join(', ')}]`, '---');
     return `${head.join('\n')}\n${notes.trim() === '' ? '' : `${notes.trim()}\n`}`;
   }
@@ -169,7 +172,8 @@ export function createTaskMethods({ root, afterWrite = () => {}, reconcile, now 
    * The same finding cannot make a second open task: TASK_EXISTS carries `existing` so the caller can offer it. Writes only the new task file.
    * Refusals: BAD_ARGS, NOT_FOUND, FINDING_NOT_FOUND, TASK_EXISTS.
    * @param {string} bookId
-   * @param {{ from?: 'continuity' | 'check' | 'manual', fingerprint?: string, sceneId?: string, finding?: any, title?: string, notes?: string, labels?: string[], targets?: { id: string, line?: number, quote?: string }[], dryRun?: boolean }} args
+   * `for` ('ai' | 'author', default author): who the task is for; written as a `for: ai` line only for the AI.
+   * @param {{ for?: 'ai' | 'author', from?: 'continuity' | 'check' | 'manual', fingerprint?: string, sceneId?: string, finding?: any, title?: string, notes?: string, labels?: string[], targets?: { id: string, line?: number, quote?: string }[], dryRun?: boolean }} args
    */
   async function createTask(bookId, args = {}) {
     const a = args ?? {};
@@ -178,6 +182,7 @@ export function createTaskMethods({ root, afterWrite = () => {}, reconcile, now 
     if (a.title !== undefined && a.title !== null && (typeof a.title !== 'string' || CONTROL_RE.test(a.title) || a.title.length > 300)) return fail('BAD_ARGS', { message: 'title must be one line of text (max 300)' });
     if (a.notes !== undefined && a.notes !== null && (typeof a.notes !== 'string' || a.notes.length > 20_000)) return fail('BAD_ARGS', { message: 'notes must be text (up to 20000 characters)' });
     if (a.labels !== undefined && (!Array.isArray(a.labels) || a.labels.length > 20 || a.labels.some((l) => typeof l !== 'string' || l.trim() === '' || CONTROL_RE.test(l) || l.length > 60))) return fail('BAD_ARGS', { message: 'labels must be a list of short names' });
+    if (a.for !== undefined && !TASK_FOR.includes(a.for)) return fail('BAD_ARGS', { message: `for must be one of ${TASK_FOR.join(', ')}` });
     const found = await findBook(bookId);
     if (!found) return fail('NOT_FOUND');
     const bookRoot = bookRootOf(found.book);
@@ -253,7 +258,7 @@ export function createTaskMethods({ root, afterWrite = () => {}, reconcile, now 
     }
     const file = `${TASKS_DIR}/${slug}.md`;
     const id = `note_${ulid()}`;
-    const text = render({ id, slug, title, status: 'open', source, targets, created: isoSecond(new Date(Number(now()))), labels: a.labels ?? [], notes });
+    const text = render({ id, slug, title, status: 'open', source, targets, created: isoSecond(new Date(Number(now()))), labels: a.labels ?? [], notes, forWho: a.for ?? 'author' });
     if (a.dryRun === true) return { ok: true, code: 'OK', dryRun: true, file, slug, id, text };
 
     const known = new Set(found.result.diagnostics.filter((d) => d.severity === 'error').map(errKey));
@@ -278,11 +283,12 @@ export function createTaskMethods({ root, afterWrite = () => {}, reconcile, now 
   }
 
   /**
-   * Change a task's status: a single-line front-matter edit of that one file. `ref` is the task's id or slug. Refusals: BAD_ARGS, NOT_FOUND, REFUSED_UNSIMPLE_FIELD.
-   * @param {string} bookId @param {string} ref @param {string} status
+   * Change a task's status (and, with `opts.for`, who it is for): single-line front-matter edits of that one file. `ref` is the task's id or slug. Refusals: BAD_ARGS, NOT_FOUND, REFUSED_UNSIMPLE_FIELD.
+   * @param {string} bookId @param {string} ref @param {string} status @param {{ for?: string }} [opts]
    */
-  async function setTaskStatus(bookId, ref, status) {
+  async function setTaskStatus(bookId, ref, status, opts = {}) {
     if (!TASK_STATUSES.includes(status)) return fail('BAD_ARGS', { message: `status must be one of ${TASK_STATUSES.join(', ')}` });
+    if (opts?.for !== undefined && !TASK_FOR.includes(opts.for)) return fail('BAD_ARGS', { message: `for must be one of ${TASK_FOR.join(', ')}` });
     const found = await findBook(bookId);
     if (!found || typeof ref !== 'string') return fail('NOT_FOUND');
     const store = await openStore(bookRootOf(found.book), { recover: false });
@@ -292,13 +298,22 @@ export function createTaskMethods({ root, afterWrite = () => {}, reconcile, now 
     if (!cur) return fail('NOT_FOUND');
     const edit = editFrontMatterLine(cur.bytes, 'status', status, { plain: true, anchors: ['title', 'slug', 'id'] });
     if (!edit.ok) return fail(edit.code, { message: edit.message });
-    if (edit.changed) {
-      const r = await store.write(task.path, edit.buf, { baseSha256: cur.sha256 });
+    let buf = edit.buf;
+    let changed = edit.changed;
+    // `for` is its own line after status; for the author it is simply absent (an existing line is rewritten, never left half-meaning)
+    if (opts?.for !== undefined && !(opts.for === 'author' && task.for === 'author')) {
+      const f = editFrontMatterLine(buf, 'for', opts.for, { plain: true, anchors: ['status'] });
+      if (!f.ok) return fail(f.code, { message: f.message });
+      buf = f.buf;
+      changed = changed || f.changed;
+    }
+    if (changed) {
+      const r = await store.write(task.path, buf, { baseSha256: cur.sha256 });
       if (!r.ok) return r.code === 'CONFLICT' ? fail('CONFLICT', { current: null }) : fail(r.code, r.message ? { message: r.message } : {});
       await refresh(found.book);
     }
     const after = await store.read(task.path);
-    return { ok: true, code: 'OK', id: task.id, slug: task.slug, status, path: task.path, sha256: after?.sha256 ?? null };
+    return { ok: true, code: 'OK', id: task.id, slug: task.slug, status, for: opts?.for ?? task.for, path: task.path, sha256: after?.sha256 ?? null };
   }
 
   return { listTasks, getTask, createTask, setTaskStatus };
