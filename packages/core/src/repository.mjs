@@ -151,7 +151,7 @@
  *   createChapter(bookId: string, args: { act?: number, after?: number | null, title: string, dryRun?: boolean }): Promise<StructureResult>,
  *   setChapterFields(bookId: string, chapter: number, args: { title?: string, label?: string, dryRun?: boolean }): Promise<StructureResult>,
  *   archiveChapter(bookId: string, chapter: number, args?: { dryRun?: boolean }): Promise<StructureResult>,
- *   renumberChapters(bookId: string, args?: { step?: number, dryRun?: boolean }): Promise<StructureResult>,
+ *   renumberChapters(bookId: string, args?: { step?: number, start?: 0 | 1, dryRun?: boolean }): Promise<StructureResult>,
  *   moveChapter(bookId: string, chapter: number, args: { act: number, after?: number | null, dryRun?: boolean }): Promise<StructureResult>,
  *   createAct(bookId: string, args: { title: string, dryRun?: boolean }): Promise<StructureResult>,
  *   setActFields(bookId: string, act: number, args: { title: string, dryRun?: boolean }): Promise<StructureResult>,

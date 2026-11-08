@@ -101,15 +101,14 @@ function Toast({ toast, onUndo, onDismiss }) {
 const sceneName = (s) => s.title || 'Untitled scene';
 
 /**
- * The structure commands of the manuscript tree: forms, the Preview dialog, applying, and the Undo toast.
+ * The structure commands of the manuscript tree: forms, applying, the problem dialog, and the Undo toast.
  * Returns `start(command)` and `ui` (the dialogs and the toast, rendered once next to the tree).
- * Every write goes through a dry run and the Preview, except a scene's rename-without-file-rename and its
- * status, which are single-line edits: those apply at once and offer Undo in the toast.
+ * Every write applies at once (no Preview step) and the toast offers Undo where the operation can be restored; a refusal opens a
+ * dialog with the reason.
  * `move(scene, target)` (drag and drop, Alt+Up/Down, the Move... dialog) flushes the open editor, asks the server for a dry run, and
- * applies at once when only the moved scene's file changes (toast with Undo = restore of the operation) or opens the Preview when neighbours are
- * renumbered. `onMoved(sceneId, target)` runs after a move was written.
+ * applies at once, also when neighbours are renumbered (toast with Undo = restore of the operation). `onMoved(sceneId, target)` runs after a move was written.
  * `apply(cmd)` and `preview(cmd, { stayInForm })` are the same two paths for any other write command `{ title, url, body, done, undoable?, after? }` (the
- * Board, Outline and Threads views use them): `apply` writes at once and offers Undo; `preview` shows the dry-run diff first.
+ * Board, Outline and Threads views use them): both write at once and offer Undo (`preview` is the older name, kept for callers).
  * @param {{ book: any, activeId?: string | null, onChanged?: (info: any) => void, onMoved?: (sceneId: string, target: any) => void }} p
  */
 export function useStructure({ book, activeId = null, onChanged, onMoved }) {
@@ -156,14 +155,15 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
   }
 
   /**
-   * Dry run, then the Preview. A refusal opens the Preview with the reason (a "no gap" refusal offers
-   * Renumber), or, with `stayInForm`, is returned so the form can show it and stay editable.
+   * Write a command at once (no Preview step): the toast says what was done and offers Undo when the command is undoable. A refusal
+   * opens the problem dialog with the reason (a "no gap" refusal offers Renumber), or, with `stayInForm`, is returned so the form can
+   * show it and stay editable. The server still checks every write (validation, conflicts), so nothing invalid is applied.
    */
   async function previewThenApply(cmd, { stayInForm = false } = {}) {
     setBusy(true);
-    const { status, json } = await write(cmd.url, { ...cmd.body, dryRun: true });
+    const { status, json } = await write(cmd.url, cmd.body);
     setBusy(false);
-    if (status !== 200) {
+    if (status !== 200 && status !== 201) {
       const message = explainFailure(status, json);
       if (stayInForm) return { error: message };
       setForm(null);
@@ -176,19 +176,24 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
       return undefined;
     }
     setForm(null);
-    const notes = json?.not_merged?.length
-      ? [{ heading: 'These fields of the second scene are not merged. Copy them by hand if you want them:', items: json.not_merged.map((n) => n.text) }]
-      : [];
-    setPreview({ title: cmd.title, changes: json?.changes ?? [], notes, cmd });
-    return undefined;
+    const skipped = json?.not_merged?.length ? ` Not merged (copy them by hand if you want them): ${json.not_merged.map((n) => n.text).join('; ')}.` : '';
+    showToast({ message: `${cmd.done}${skipped}`, opId: cmd.undoable ? (json?.opId ?? null) : null });
+    onChanged?.(json);
+    cmd.after?.(json);
+    return stayInForm ? { close: true } : undefined;
   }
   const startRef = useRef(null);
   useEffect(() => {
     startRef.current = start;
   });
 
-  /** A Preview whose files are known without asking the server (archive and restore of one scene). */
-  const localPreview = (title, changes, run) => setPreview({ title, changes, cmd: { local: run } });
+  /** A command run in the browser (archive and restore of one scene, tidy file names): runs at once; a failure opens the problem dialog. */
+  const localPreview = async (title, _changes, run) => {
+    setBusy(true);
+    const r = await run();
+    setBusy(false);
+    if (!r.ok) setPreview({ title, error: r.message, changes: [] });
+  };
 
   async function submitForm(values) {
     if (!form) return;
@@ -271,30 +276,19 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
         undoable: true, // Undo = restore of the operation (exact paths, numbers and bytes)
         after: () => onMoved?.(scene.id, target),
       };
-      if (changes.length === 1 && changes[0].from === pathsOf(book, scene.path).bookRel) {
-        // only the moved scene's own file changes: no neighbour is renumbered, so no Preview
-        setBusy(true);
-        const r = await applyNow(cmd);
-        setBusy(false);
-        return r.ok ? { ok: true } : fail(r.message);
-      }
-      setMoveDialog(null);
-      setForm(null);
-      setPreview({
-        title: `Move "${name}"`,
-        changes,
-        notes: [{ heading: 'Neighbouring scenes are renumbered to make room. No scene text changes.', items: [] }],
-        cmd,
-      });
-      return { ok: true };
+      // applied at once, also when neighbours are renumbered to make room (Undo restores every file exactly)
+      setBusy(true);
+      const r = await applyNow(cmd);
+      setBusy(false);
+      return r.ok ? { ok: true } : fail(r.message);
     } finally {
       moving.current = false;
     }
   }
 
   /**
-   * Move a whole chapter (drag and drop, Move to act...): flushes the open editor, then the dry run and the Preview, since a chapter move
-   * touches every file of the chapter and may renumber later chapters. `target`: { act, after } as POST .../chapters/:n/move takes it.
+   * Move a whole chapter (drag and drop, Move to act...): flushes the open editor, then applies at once (Undo restores every file of the
+   * chapter and any renumbered chapter). `target`: { act, after } as POST .../chapters/:n/move takes it.
    * @returns {Promise<{ error?: string } | undefined>}
    */
   async function moveChapter(chapterNode, target, { stayInForm = false } = {}) {
@@ -345,7 +339,7 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
           fields: [
             { name: 'title', label: 'Title', initial: c.scene.title ?? '' },
             { name: 'pov', label: 'POV (codex slug, optional)', initial: c.scene.pov ?? '' },
-            { name: 'renameFile', label: 'Also rename the file', type: 'checkbox', hint: 'Moves the file to a name that matches the title (with a preview). The text is untouched.' },
+            { name: 'renameFile', label: 'Also rename the file', type: 'checkbox', hint: 'Moves the file to a name that matches the title. The text is untouched.' },
           ],
           onSubmit: async (v) => {
             const body = { title: v.title, ...(v.pov && v.pov !== (c.scene.pov ?? '') ? { pov: v.pov } : {}), ...(v.renameFile ? { renameFile: true } : {}) };
@@ -364,7 +358,7 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
       case 'add-scene':
         setForm({
           title: 'Add scene',
-          submit: 'Preview',
+          submit: 'Add',
           fields: [{ name: 'title', label: 'Scene title (optional)', initial: '' }],
           onSubmit: (v) =>
             previewThenApply(
@@ -390,7 +384,7 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
         }
         setForm({
           title: 'Split scene',
-          submit: 'Preview',
+          submit: 'Split',
           fields: [
             {
               name: 'atLine',
@@ -425,6 +419,7 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
           url: bookUrl(bookId, '/scenes/merge'),
           body: { first: c.scene.id, second: c.next.id },
           done: 'Scenes merged. The second scene is in Archived.',
+          undoable: true,
         });
         break;
       case 'archive-scene': {
@@ -434,7 +429,7 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
           if (!got?.sha256) return { ok: false, message: 'The scene could not be read. Reload the page.' };
           const { status, json } = await write(sceneUrl(scene.id, '/archive'), { base_sha256: got.sha256 });
           if (status !== 200) return { ok: false, message: explainFailure(status, json) };
-          showToast({ message: `Archived "${sceneName(scene)}".` });
+          showToast({ message: `Archived "${sceneName(scene)}".`, opId: json?.opId ?? null });
           onChanged?.(json);
           if (scene.id === activeId) toBook();
           return { ok: true };
@@ -481,16 +476,16 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
       case 'rename-chapter':
         setForm({
           title: 'Rename chapter',
-          submit: 'Preview',
+          submit: 'Rename',
           fields: [{ name: 'title', label: 'Chapter title', initial: c.chapter.title ?? '' }],
           onSubmit: (v) =>
-            previewThenApply({ title: 'Rename chapter', url: bookUrl(bookId, `/chapters/${c.chapter.chapter}/fields`), body: { title: v.title }, done: 'Chapter renamed.' }, { stayInForm: true }),
+            previewThenApply({ title: 'Rename chapter', url: bookUrl(bookId, `/chapters/${c.chapter.chapter}/fields`), body: { title: v.title }, done: 'Chapter renamed.', undoable: true }, { stayInForm: true }),
         });
         break;
       case 'add-chapter':
         setForm({
           title: 'Add chapter',
-          submit: 'Preview',
+          submit: 'Add',
           fields: [{ name: 'title', label: 'Chapter title', initial: '', required: true }],
           onSubmit: (v) =>
             previewThenApply({
@@ -506,8 +501,8 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
         const initial = currentChapterPlace(book, c.chapter.chapter);
         setForm({
           title: `Move ${c.name} to act`,
-          submit: 'Preview',
-          fields: [{ name: 'place', label: 'Where', type: 'select', initial, groups: chapterPlaces(book, c.chapter.chapter), hint: 'Chapters are numbered in book order, so later chapters may be renumbered. The Preview shows every file first.' }],
+          submit: 'Move',
+          fields: [{ name: 'place', label: 'Where', type: 'select', initial, groups: chapterPlaces(book, c.chapter.chapter), hint: 'Chapters are numbered in book order, so other chapters may be renumbered. Undo puts every file back.' }],
           onSubmit: (v) => {
             const place = parseChapterPlace(v.place);
             if (!place) return { error: 'Choose where the chapter goes.' };
@@ -529,13 +524,34 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
           },
         });
         break;
-      case 'renumber':
-        previewThenApply({ title: 'Renumber chapters', url: bookUrl(bookId, '/chapters/renumber'), body: { step: 1 }, done: 'Chapters renumbered.', undoable: true });
+      case 'renumber': {
+        const nums = (book?.acts ?? []).flatMap((a) => a.chapters.map((ch) => ch.chapter));
+        const initial = nums.length && Math.min(...nums) === 0 ? '0' : '1';
+        setForm({
+          title: 'Renumber chapters',
+          submit: 'Renumber',
+          fields: [
+            {
+              name: 'start',
+              label: 'Number the first chapter',
+              type: 'select',
+              initial,
+              groups: [{ label: 'First chapter', options: [{ value: '1', label: 'Chapter 1' }, { value: '0', label: 'Chapter 0 (a prologue)' }] }],
+              hint: 'Every chapter is numbered in book order with no gaps (1, 2, 3...). Folders follow; no text changes. Undo puts every file back.',
+            },
+          ],
+          onSubmit: (v) =>
+            previewThenApply(
+              { title: 'Renumber chapters', url: bookUrl(bookId, '/chapters/renumber'), body: { step: 1, start: Number(v.start) }, done: 'Chapters renumbered.', undoable: true },
+              { stayInForm: true },
+            ),
+        });
         break;
+      }
       case 'new-act':
         setForm({
           title: 'New act',
-          submit: 'Preview',
+          submit: 'Add',
           fields: [{ name: 'title', label: 'Act title', initial: '', required: true }],
           onSubmit: (v) => previewThenApply({ title: 'New act', url: bookUrl(bookId, '/acts'), body: { title: v.title.trim() }, done: 'Act added.' }, { stayInForm: true }),
         });
@@ -543,9 +559,9 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
       case 'rename-act':
         setForm({
           title: 'Rename act',
-          submit: 'Preview',
+          submit: 'Rename',
           fields: [{ name: 'title', label: 'Act title', initial: c.act.title ?? '' }],
-          onSubmit: (v) => previewThenApply({ title: 'Rename act', url: bookUrl(bookId, `/acts/${c.act.act}/fields`), body: { title: v.title }, done: 'Act renamed.' }, { stayInForm: true }),
+          onSubmit: (v) => previewThenApply({ title: 'Rename act', url: bookUrl(bookId, `/acts/${c.act.act}/fields`), body: { title: v.title }, done: 'Act renamed.', undoable: true }, { stayInForm: true }),
         });
         break;
       default:

@@ -95,32 +95,20 @@ export function PlanningWorkspace({ book, planning, objects = null, view, mode =
   const setState = (thread, to) =>
     quick(fromRequest(threadStateRequest(bookId, thread, to), { done: `"${thread.title}" is now ${stateLabel(to).toLowerCase()}.`, undoable: true }));
 
-  /** A change of a thread's scene lists: the dry-run diff first, then Apply. */
+  /** A change of a thread's scene lists: applied at once, with Undo in the toast; a refusal opens a dialog with the reason. */
   async function previewThread(title, request, done) {
     setBusy(true);
-    const { status, json } = await send(request.url, { ...request.body, dryRun: true });
-    setBusy(false);
-    setFlow({
-      title,
-      changes: status === 200 ? (json?.changes ?? []) : [],
-      error: status === 200 ? null : explainPlanningFailure(status, json),
-      cmd: { url: request.url, body: request.body, done, undoable: true, after: () => {} },
-    });
-  }
-  async function applyFlow() {
-    if (!flow?.cmd) return;
-    setBusy(true);
-    const r = await track(bookId, () => send(flow.cmd.url, flow.cmd.body));
+    const r = await track(bookId, () => send(request.url, request.body));
     setBusy(false);
     if (r.status === 200) {
-      setFlow(null);
-      structure.showToast({ message: flow.cmd.done, opId: r.json?.opId ?? null });
+      structure.showToast({ message: done, opId: r.json?.opId ?? null });
       onChanged?.(r.json);
     } else {
-      setFlow({ ...flow, error: explainPlanningFailure(r.status, r.json) });
+      setFlow({ title, changes: [], error: explainPlanningFailure(r.status, r.json) });
       onChanged?.();
     }
   }
+  const applyFlow = () => setFlow(null);
   const ROLE_WORDS = { setup: 'setup', develop: 'development', payoff: 'payoff' };
   const markList = (thread, list, sceneId, present) => {
     const card = model.sceneById.get(sceneId);
