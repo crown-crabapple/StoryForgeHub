@@ -11,6 +11,7 @@ import { absOf, atomicWrite, fsyncDir, kindOf, mkdirTracked, moveFile, readOrNul
 import { escapesRoot } from './contain.mjs';
 import { fault } from './faults.mjs';
 import { acquireLock, releaseLock, updateLock } from './instance-lock.mjs';
+import { currentActor } from './actor.mjs';
 import { OP_ID_RE, archiveJournal, listJournal, makeOpId, writeJournal } from './journal.mjs';
 import { withRootLock } from './lock.mjs';
 import { notifyWrite } from './write-hooks.mjs';
@@ -208,6 +209,7 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
         args: args ?? null,
         at: new Date().toISOString(),
         state: 'pending',
+        ...(currentActor() ? { actor: currentActor() } : {}), // M12: who made this change (a plugin / AI connection); absent for the app's own writes
         files: planned.map(({ rel, before_sha256, after_sha256, tmp }) => ({ rel, before_sha256, after_sha256, tmp })),
       };
       const createdDirs = [];

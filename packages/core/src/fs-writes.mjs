@@ -1,7 +1,8 @@
 // FsRepository write methods. No filesystem access here: every change goes through
 // @storyforge/store (the single writer) or @storyforge/manuscript (which uses the store).
 import path from 'node:path';
-import { extractDocs, validate } from '@storyforge/format';
+import { AI_LEVELS, extractDocs, validate } from '@storyforge/format';
+import { isMap, parseDocument } from 'yaml';
 import {
   archiveArc,
   archiveChapter,
@@ -43,6 +44,7 @@ import {
   restoreSynopsis,
   restoreStructure,
   restoreOp,
+  opUndoable,
   setActFields,
   setArcMilestones,
   setChapterFields,
@@ -103,6 +105,54 @@ export function frontMatterEnd(buf) {
     pos = line.next;
   }
   return -1;
+}
+
+/**
+ * M12: the bytes of a book.md / library.md with `preferences.ai.level` set to `level` (null removes it, and the `ai` and `preferences` maps with it when that leaves
+ * them empty). Only the front matter is touched; comments and the other keys keep their place. `changed: false` when the file already says so.
+ * @param {Buffer} bytes @param {string | null} level
+ * @returns {{ ok: true, buf: Buffer, changed: boolean } | { ok: false, code: string, message: string }}
+ */
+export function withAiLevel(bytes, level) {
+  const end = frontMatterEnd(bytes);
+  if (end < 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'front matter is not terminated' };
+  const head = bytes.subarray(0, end).toString('utf8');
+  const firstNl = head.indexOf('\n');
+  const rest = head.slice(firstNl + 1);
+  const close = rest.lastIndexOf('---');
+  const inner = rest.slice(0, close);
+  const doc = parseDocument(inner, { version: '1.2', schema: 'core' });
+  if (doc.errors.length > 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: `the front matter cannot be read: ${doc.errors[0].message}` };
+  if (inner.trim() !== '' && !isMap(doc.contents)) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'the front matter is not a mapping' };
+  const bad = { ok: false, code: 'BAD_ARGS', message: 'preferences in this file is not a mapping, so the AI level cannot be set; edit it by hand' };
+  if (inner.trim() === '') doc.contents = doc.createNode({});
+  const prefs = doc.get('preferences', true);
+  const hasPrefs = prefs !== undefined && prefs !== null && !(prefs?.value === null);
+  if (hasPrefs && !isMap(prefs)) return /** @type {any} */ (bad);
+  const ai = isMap(prefs) ? prefs.get('ai', true) : undefined;
+  const hasAi = ai !== undefined && ai !== null && !(ai?.value === null);
+  if (hasAi && !isMap(ai)) return /** @type {any} */ (bad);
+  if (level === null) {
+    if (!isMap(ai)) return { ok: true, buf: bytes, changed: false };
+    ai.delete('level');
+    if (ai.items.length === 0 && isMap(prefs)) {
+      prefs.delete('ai');
+      if (prefs.items.length === 0) doc.delete('preferences');
+    }
+  } else if (isMap(ai)) ai.set('level', level);
+  else if (isMap(prefs)) prefs.set('ai', doc.createNode({ level }));
+  else doc.set('preferences', doc.createNode({ ai: { level } }));
+  const text = doc.toString({ lineWidth: 0 });
+  const next = Buffer.concat([Buffer.from(head.slice(0, firstNl + 1) + (head.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text) + rest.slice(close), 'utf8'), bytes.subarray(end)]);
+  return { ok: true, buf: next, changed: !next.equals(bytes) };
+}
+
+const OP_WORDS = { write: 'Changed', archive: 'Archived', restore: 'Restored', restoreOp: 'Undid' };
+/** One plain line for an AI Activity item: what kind of change and which files. @param {string} op @param {string[]} files */
+function aiActivitySummary(op, files) {
+  const words = OP_WORDS[op] ?? (typeof op === 'string' && op !== '' ? op.replace(/([A-Z])/g, ' $1').toLowerCase().replace(/^./, (c) => c.toUpperCase()) : 'Changed');
+  if (files.length === 0) return words;
+  return `${words}: ${files.slice(0, 3).join(', ')}${files.length > 3 ? ` and ${files.length - 3} more` : ''}`;
 }
 
 const errKey = (d) => `${d.code}\0${d.file}\0${d.location}`;
@@ -383,6 +433,63 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
         else afterWrite(found.book.path);
       }
       return { ok: true, code: 'OK', daily_word_goal: goal };
+    },
+
+    /**
+     * M12: set (or, with null, remove) `preferences.ai.level` in book.md (scope 'book') or in library.md (scope 'library', the default for every book that sets none).
+     * Only that key changes (the rest of the front matter, its comments and the body stay as they are); one journaled store write, so it can be undone like any other.
+     * @param {string} bookId @param {string | null} level one of AI_LEVELS, or null to remove the setting @param {{ scope?: 'book' | 'library' }} [opts]
+     */
+    async setAiLevel(bookId, level, { scope = 'book' } = {}) {
+      if (level !== null && !AI_LEVELS.includes(level)) return fail('BAD_ARGS', { message: `level must be one of ${AI_LEVELS.join(', ')}` });
+      if (scope !== 'book' && scope !== 'library') return fail('BAD_ARGS', { message: "scope must be 'book' or 'library'" });
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const store = await openStore(scope === 'library' ? root : bookRootOf(found.book));
+      const rel = scope === 'library' ? 'library.md' : 'book.md';
+      const cur = await store.read(rel);
+      if (!cur) return fail('NOT_FOUND', { message: scope === 'library' ? 'this library has no library.md to hold a default' : 'book.md was not found' });
+      const edit = withAiLevel(cur.bytes, level);
+      if (!edit.ok) return fail(edit.code, { message: edit.message });
+      if (edit.changed) {
+        const r = await store.write(rel, edit.buf, { baseSha256: cur.sha256 });
+        if (!r.ok) return r.code === 'CONFLICT' ? fail('CONFLICT', { current: null }) : fail(r.code, r.message ? { message: r.message } : {});
+        if (scope === 'book') {
+          if (reconcile) await reconcile(found.book.path);
+          else afterWrite(found.book.path);
+        }
+      }
+      return { ok: true, code: 'OK', level, scope, ...(edit.changed ? {} : { unchanged: true }) };
+    },
+
+    /**
+     * M12 AI Activity: what plugin tokens (AI connections) changed in a book, newest first. Read from the op journal: every store batch made through a plugin token
+     * records its actor. `undone`: a later undo restored it; `undoable`: Undo (POST /ops/:opId/restore) can work, judging by what the operation recorded.
+     * @param {string} bookId @param {{ limit?: number }} [opts]
+     */
+    async listAiActivity(bookId, { limit = 200 } = {}) {
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book), { recover: false });
+      const entries = (await store.journal()).filter((e) => e.state === 'done');
+      const undone = new Set(entries.filter((e) => e.op === 'restoreOp' && typeof e.args?.opId === 'string').map((e) => e.args.opId));
+      const items = [];
+      for (const e of entries) {
+        if (items.length >= limit) break;
+        if (!e.actor || typeof e.actor.kind !== 'string') continue;
+        const files = (Array.isArray(e.files) ? e.files : []).map((f) => f.rel).filter((p) => typeof p === 'string' && !p.startsWith('provenance/'));
+        let undoable = false;
+        if (!undone.has(e.opId)) {
+          try {
+            const raw = await store.readTrash(e.opId, 'op.json');
+            undoable = raw ? opUndoable(JSON.parse(raw.toString('utf8'))) : false;
+          } catch {
+            undoable = false;
+          }
+        }
+        items.push({ opId: e.opId, at: e.at, actor: { kind: e.actor.kind, id: e.actor.id, name: e.actor.name }, op: e.op, summary: aiActivitySummary(e.op, files), files, undone: undone.has(e.opId), undoable });
+      }
+      return { ok: true, code: 'OK', items };
     },
 
     /** Snapshots of a scene, newest first. */

@@ -12,6 +12,7 @@ export {
   splitScene,
   mergeScenes,
   restoreOp,
+  opUndoable,
 } from './structure.mjs';
 export { createEntry, setEntryFields, changeEntrySlug, archiveEntry, restoreEntry, createCodexType, replaceFrontMatterBlock, entryFolder, fieldLabels, ENTRY_STATUSES } from './codex.mjs';
 export { setLabels } from './labels.mjs';

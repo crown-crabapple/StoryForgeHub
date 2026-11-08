@@ -1,5 +1,6 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
+import { AI_LEVELS } from '@storyforge/format';
 import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, planningZip, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
@@ -98,6 +99,11 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'backup' && d === undefined) return handleBackup(repository, b, params);
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
+    }
+    // M12 AI Activity: what AI connections (plugin tokens) changed in this book, newest first, from the op journal (read-only; Undo is the ops restore route)
+    if (c === 'ai-activity' && d === undefined) {
+      const r = await repository.listAiActivity(b);
+      return r.ok ? { status: 200, body: { activity: (r.items ?? []).map(({ opId, at, actor, op, summary, files, undone, undoable }) => ({ opId, at, actor, route: op, summary, files, undone, undoable })) } } : NOT_FOUND;
     }
     // M05-J01: continuity findings, computed from the files on every call (read-only)
     if (c === 'continuity' && d === undefined) {
@@ -655,6 +661,8 @@ export function matchWriteRoute(method, pathname) {
   // M03-J04
   if (method === 'POST' && c === 'activity' && d === 'session' && e === undefined) return { route: 'activity-session', bookId: b };
   if (method === 'POST' && c === 'goal' && d === undefined) return { route: 'goal', bookId: b };
+  // M12: the book's (or its library's default) AI level, saved as the `ai.level` project preference
+  if (method === 'POST' && c === 'ai-level' && d === undefined) return { route: 'book-ai-level', bookId: b };
   // M07-J02: goals file, revision tasks
   if (method === 'POST' && c === 'goals' && d === undefined) return { route: 'goal-set', bookId: b };
   if (method === 'DELETE' && c === 'goals' && d !== undefined && e === undefined) return { route: 'goal-remove', bookId: b, goalId: d };
@@ -968,6 +976,12 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
       }
       const r = await repository.setDailyGoal(bookId, body.daily_word_goal);
       return respond(r, 200, (x) => ({ ok: true, daily_word_goal: x.daily_word_goal }));
+    }
+    case 'book-ai-level': {
+      if (body.level !== null && !AI_LEVELS.includes(/** @type {any} */ (body.level))) return badRequest(`expected { level: ${AI_LEVELS.join(' | ')} | null, scope?: 'book' | 'library' }`);
+      if (body.scope !== undefined && body.scope !== 'book' && body.scope !== 'library') return badRequest("scope must be 'book' or 'library'");
+      const r = await repository.setAiLevel(bookId, body.level, { scope: body.scope ?? 'book' });
+      return respond(r, 200, (x) => ({ ok: true, level: x.level, scope: x.scope }));
     }
     case 'revision-save': {
       if (body.label !== undefined && typeof body.label !== 'string') return badRequest('label must be a string');
