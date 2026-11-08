@@ -10,6 +10,7 @@ import { parseView } from './planning/model.js';
 import { noticeText, parseSelect } from './tasks/model.js';
 import { usePrefs } from './prefs/PrefsContext.jsx';
 import { PlanningWorkspace, ViewSwitch } from './planning/PlanningWorkspace.jsx';
+import { ReadView } from './reading/ReadView.jsx';
 import { Link, useLocation } from './router.jsx';
 import { SceneInspector } from './shell/Inspector.jsx';
 import { Workspace } from './shell/Workspace.jsx';
@@ -151,14 +152,15 @@ function AiWorkshopButton() {
 
 export { Outline };
 
-/** Three-column book page: outline rail, main column, inspector. `onChanged` runs after a structure command wrote. `openPanel` (tests): the drawer that starts open. */
-export function BookLayout({ book, activeId, inspector, onChanged, openPanel = null, children }) {
+/** Three-column book page: outline rail, main column, inspector. `onChanged` runs after a structure command wrote. `openPanel` (tests): the drawer that starts open.
+ * `onPickScene` (the Read view): a plain click on a scene in the rail calls it instead of opening the scene in the editor. */
+export function BookLayout({ book, activeId, inspector, onChanged, openPanel = null, onPickScene = null, children }) {
   return (
     <EditorBridgeProvider>
       <AiProvider key={book.id} book={book}>
         <WritingProvider key={book.id} bookId={book.id}>
           <InvalidBanner book={book} />
-          <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} />} inspector={inspector} openPanel={openPanel}>
+          <Workspace rail={<Outline key={book.id} book={book} activeId={activeId} onChanged={onChanged} onPickScene={onPickScene} />} inspector={inspector} openPanel={openPanel}>
             <AiWorkshopButton />
             <CoverDraftsButton book={book} />
             {children}
@@ -178,11 +180,13 @@ export function BookView({ bookId, sceneId, file }) {
   // the Board and Threads views follow their modules (M07-J04): with one off its address shows the manuscript
   const view = (parsedView.view === 'board' || parsedView.view === 'threads') && !prefs.moduleOn(parsedView.view) ? 'write' : parsedView.view;
   const [bump, setBump] = useState(0);
+  const [readAt, setReadAt] = useState(null); // the Read view: the scene being read (the rail marks it)
+  const [jumpTo, setJumpTo] = useState(null); // the Read view: a scene picked in the rail
   const version = `${bookVersion(status, bookId)}|${bump}`;
   const { data: book, error, loading } = useApi(`/api/books/${encodeURIComponent(bookId)}`, version);
   const allScenes = book ? book.acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes)) : [];
   const activeId = sceneId && allScenes.some((s) => s.id === sceneId) ? sceneId : (allScenes[0]?.id ?? null);
-  const showScene = Boolean(book) && !file && activeId !== null;
+  const showScene = Boolean(book) && !file && activeId !== null && view !== 'read';
   const sceneUrl = showScene ? `/api/books/${encodeURIComponent(bookId)}/scenes/${encodeURIComponent(activeId)}` : null;
   const { data: scene, error: sceneError, loading: sceneLoading } = useApi(sceneUrl, version);
   const { data: items, error: diagError, loading: diagLoading } = useApi(book ? `/api/books/${encodeURIComponent(bookId)}/diagnostics` : null, version);
@@ -208,6 +212,28 @@ export function BookView({ bookId, sceneId, file }) {
     );
   }
   const onChanged = () => setBump((n) => n + 1);
+  if (view === 'read' && !file) {
+    const at = readAt && allScenes.some((s) => s.id === readAt) ? readAt : null;
+    return (
+      <BookLayout
+        book={book}
+        activeId={at}
+        onChanged={onChanged}
+        onPickScene={(id) => setJumpTo({ id })}
+        inspector={<SceneInspector book={book} scene={null} diagnostics={{ items, error: diagError, loading: diagLoading }} objects={objects} onChanged={onChanged} />}
+      >
+        <ReadView
+          key={book.id}
+          book={book}
+          version={version}
+          initialScene={sceneId}
+          jumpTo={jumpTo}
+          onCurrent={setReadAt}
+          viewSwitch={<ViewSwitch bookId={book.id} view="read" scene={at} />}
+        />
+      </BookLayout>
+    );
+  }
   if (view !== 'write' && !file) {
     return (
       <PlanningWorkspace

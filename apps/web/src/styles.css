@@ -5710,3 +5710,122 @@ kbd {
   border-style: double;
   border-width: 3px;
 }
+
+/* ---- Read view: the whole manuscript as one continuous page ---- */
+.read-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s4);
+  max-width: calc(var(--measure) + 2 * clamp(16px, 5vw, 72px));
+  margin: 0 auto var(--s3);
+  padding: var(--s2) var(--s3);
+  background: var(--bg);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-control);
+  font-size: var(--fs-13);
+}
+.read-jump select {
+  min-height: 32px;
+  max-width: 22rem;
+  padding: 0 var(--s2);
+}
+.read-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.read-progress {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.read-paper {
+  border-radius: 4px;
+}
+.read-head {
+  margin-bottom: var(--s8);
+}
+.read-act-title {
+  margin: var(--s8) 0 var(--s4);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.read-chapter {
+  padding-top: var(--s8);
+}
+.read-chapter + .read-chapter {
+  margin-top: var(--s8);
+  border-top: 1px solid var(--divider);
+}
+.read-chapter-title {
+  margin: 0 0 var(--s6);
+  color: var(--text);
+  font-size: var(--fs-h2);
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.read-scene {
+  position: relative;
+  scroll-margin-top: 72px;
+}
+.read-scene-title {
+  margin: 0 0 var(--s3);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-12);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.read-edit {
+  position: absolute;
+  top: 0;
+  right: calc(-1 * var(--paper-pad) + 8px);
+  opacity: 0;
+  font-family: var(--font-ui);
+  transition: opacity 120ms;
+}
+.read-scene:hover .read-edit,
+.read-edit:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .read-edit {
+    position: static;
+    float: right;
+    opacity: 1;
+  }
+}
+.read-break {
+  margin: var(--s6) 0;
+  border: 0;
+  text-align: center;
+}
+.read-break::after {
+  content: '* * *';
+  color: var(--muted);
+  letter-spacing: 0.6em;
+}
+.read-placeholder {
+  border-radius: var(--r-control);
+  background: repeating-linear-gradient(var(--surface-2) 0 1em, transparent 1em 1.7em);
+  opacity: 0.5;
+}
+.read-end {
+  margin-top: var(--s8);
+}
+@media (prefers-reduced-motion: reduce) {
+  .read-edit {
+    transition: none;
+  }
+}

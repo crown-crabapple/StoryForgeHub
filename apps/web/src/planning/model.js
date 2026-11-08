@@ -41,31 +41,32 @@ export const VIEWS = [
   { key: 'board', label: 'Board' },
   { key: 'outline', label: 'Outline' },
   { key: 'threads', label: 'Threads' },
+  { key: 'read', label: 'Read' },
 ];
 
 /**
- * The view of the Manuscript tab from the query string: ?view=board|outline|threads (anything else is Write); on Threads `show=matrix`
+ * The view of the Manuscript tab from the query string: ?view=board|outline|threads|read (anything else is Write); on Threads `show=matrix`
  * opens the scene-by-thread matrix and `thread=` selects a thread of the list.
  * @param {string} [search]
- * @returns {{ view: 'write' | 'board' | 'outline' | 'threads', mode: 'list' | 'matrix', thread: string | null }}
+ * @returns {{ view: 'write' | 'board' | 'outline' | 'threads' | 'read', mode: 'list' | 'matrix', thread: string | null }}
  */
 export function parseView(search = '') {
   const p = new URLSearchParams(search);
   const v = p.get('view');
-  const view = v === 'board' || v === 'outline' || v === 'threads' ? v : 'write';
+  const view = v === 'board' || v === 'outline' || v === 'threads' || v === 'read' ? v : 'write';
   return { view, mode: view === 'threads' && p.get('show') === 'matrix' ? 'matrix' : 'list', thread: view === 'threads' && p.get('thread') ? p.get('thread') : null };
 }
 
 /**
- * The URL of a view. Write keeps the open scene (`scene`) in the URL; Threads takes `mode` ('matrix') and `thread`.
+ * The URL of a view. Write and Read keep the open scene (`scene`) in the URL; Threads takes `mode` ('matrix') and `thread`.
  * @param {string} bookId @param {string} view @param {{ scene?: string | null, mode?: string, thread?: string | null }} [opts]
  */
 export function viewHref(bookId, view, { scene = null, mode = 'list', thread = null } = {}) {
   const p = new URLSearchParams();
-  if (view === 'board' || view === 'outline' || view === 'threads') p.set('view', view);
+  if (view === 'board' || view === 'outline' || view === 'threads' || view === 'read') p.set('view', view);
   if (view === 'threads' && mode === 'matrix') p.set('show', 'matrix');
   if (view === 'threads' && mode !== 'matrix' && thread) p.set('thread', thread);
-  if (view === 'write' && scene) p.set('scene', scene);
+  if ((view === 'write' || view === 'read') && scene) p.set('scene', scene);
   const qs = p.toString();
   return `/books/${encodeURIComponent(bookId)}${qs ? `?${qs}` : ''}`;
 }
