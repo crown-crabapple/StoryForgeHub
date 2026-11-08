@@ -1311,7 +1311,7 @@ async function handleStructure(repository, match, body) {
       return respond(r, 200, structureBody);
     }
     case 'chapters-renumber': {
-      const r = await repository.renumberChapters(bookId, { step: body.step, dryRun });
+      const r = await repository.renumberChapters(bookId, { step: body.step, ...(body.start !== undefined ? { start: body.start } : {}), dryRun });
       return respond(r, 200, structureBody);
     }
     case 'act-create': {

@@ -1,6 +1,7 @@
 // moveChapter: a whole chapter into another act (or elsewhere in its own act). salt-orchard has act 1 = chapters 0, 1, 2 and
 // act 2 = chapter 3. Book order follows chapter numbers and an act may not come after a later act (E206), so the chapter
-// keeps its number when that fits its new place, takes a free one when there is one, and otherwise every chapter is renumbered.
+// keeps its number when that fits its new place; otherwise a book numbered without gaps is renumbered in the new order (so it stays
+// without gaps), and a book that already has gaps gives the chapter a free number when there is one.
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
 import * as M from '../src/index.mjs';
@@ -42,13 +43,14 @@ describe('moveChapter', () => {
     await assertClean(dir);
   });
 
-  it('to the end of a later act: takes the next number after that act, files and chapter.md follow', async () => {
+  it('to the end of a later act: the book stays numbered without gaps, files and chapter.md follow', async () => {
     const dir = copyFixture(SALT);
     const r = await M.moveChapter(dir, 2, { act: 2 });
     assert.equal(r.ok, true, JSON.stringify(r));
-    assert.deepEqual(r.mapping, { 2: 4 });
-    assert.ok(exists(dir, `${A2}/ch-004-the-grafting/0010-ferry.md`));
-    assert.match(read(dir, `${A2}/ch-004-the-grafting/chapter.md`), /^chapter: 4$/m);
+    assert.deepEqual(r.mapping, { 2: 3, 3: 2 });
+    assert.ok(exists(dir, `${A2}/ch-003-the-grafting/0010-ferry.md`));
+    assert.match(read(dir, `${A2}/ch-003-the-grafting/chapter.md`), /^chapter: 3$/m);
+    assert.ok(exists(dir, `${A2}/ch-002-the-wall/0010-low-tide.md`));
     assert.deepEqual(await orderIds(dir), [PROLOGUE, ARRIVAL, KEY, LOWTIDE, WALL, FERRY, GRAFTING]);
     assert.equal((await rowOf(dir, FERRY)).act, 2);
     await assertClean(dir);
@@ -58,9 +60,10 @@ describe('moveChapter', () => {
     const dir = copyFixture(SALT);
     const r = await M.moveChapter(dir, 1, { act: 2 });
     assert.equal(r.ok, true, JSON.stringify(r));
-    const alt = read(dir, `${A2}/ch-004-the-drowned-rows/0020-the-key-alt.md`);
+    assert.deepEqual(r.mapping, { 1: 3, 2: 1, 3: 2 });
+    const alt = read(dir, `${A2}/ch-003-the-drowned-rows/0020-the-key-alt.md`);
     assert.match(alt, /^act: 2$/m);
-    assert.match(alt, /^chapter: 4$/m);
+    assert.match(alt, /^chapter: 3$/m);
     assert.ok(!exists(dir, `${CH1}/0020-the-key-alt.md`));
     assert.ok(alt.includes(`variant_of: ${KEY}`));
     assert.ok(VARIANT);
@@ -80,6 +83,27 @@ describe('moveChapter', () => {
     await assertClean(dir);
   });
 
+  it('one by one into a later act (as when splitting a book into acts): numbers stay 0..N with no gaps', async () => {
+    const dir = copyFixture(SALT);
+    // chapter 1 then chapter 2 to the end of act 2: the old rule gave 4 and 5 and left 1 and 2 empty
+    assert.equal((await M.moveChapter(dir, 1, { act: 2 })).ok, true);
+    const r = await M.moveChapter(dir, 1, { act: 2 }); // the old chapter 2 is now chapter 1
+    assert.equal(r.ok, true, JSON.stringify(r));
+    const nums = [...new Set((await orderRows(dir)).map((row) => row.chapter))];
+    assert.deepEqual(nums, [0, 1, 2, 3]);
+    assert.deepEqual(await orderIds(dir), [PROLOGUE, LOWTIDE, WALL, ARRIVAL, KEY, FERRY, GRAFTING]);
+    await assertClean(dir);
+  });
+
+  it('a book that already has gaps keeps them: the chapter takes a free number and nothing else is renumbered', async () => {
+    const dir = copyFixture(SALT);
+    assert.equal((await M.renumberChapters(dir, { step: 10 })).ok, true); // 0, 10, 20, 30
+    const r = await M.moveChapter(dir, 20, { act: 2 });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual(r.mapping, { 20: 31 });
+    await assertClean(dir);
+  });
+
   it('back into its own place is a no-op (nothing written)', async () => {
     const dir = copyFixture(SALT);
     const before = snapshot(dir);
@@ -95,7 +119,7 @@ describe('moveChapter', () => {
     const r = await M.moveChapter(dir, 2, { act: 2, dryRun: true });
     assert.equal(r.ok, true, JSON.stringify(r));
     assert.equal(r.dryRun, true);
-    assert.ok(r.changes.some((c) => c.to === `${A2}/ch-004-the-grafting/0010-ferry.md`));
+    assert.ok(r.changes.some((c) => c.to === `${A2}/ch-003-the-grafting/0010-ferry.md`));
     assert.deepEqual(diffSnap(before, snapshot(dir), { trash: true }), NOTHING);
   });
 

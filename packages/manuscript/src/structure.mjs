@@ -246,21 +246,23 @@ export function setChapterFields(bookRoot, chapter, args = {}) {
 }
 
 /**
- * Renumber chapters so they run 0/1..N in the current order (0 stays 0): chapter lines of every scene and
- * chapter.md, folder names, and any other file in a moved chapter folder. Bodies are untouched.
- * @param {string} bookRoot @param {{step?:number, dryRun?:boolean}} args
+ * Renumber chapters so they run 0/1..N in the current order (0 stays 0 unless `start` says otherwise): chapter lines of every
+ * scene and chapter.md, folder names, and any other file in a moved chapter folder. Bodies are untouched.
+ * @param {string} bookRoot @param {{step?:number, start?:0|1, dryRun?:boolean}} args
  */
 export function renumberChapters(bookRoot, args = {}) {
   return guarded(async () => {
-    const { step = 1, dryRun = false } = args ?? {};
+    const { step = 1, start, dryRun = false } = args ?? {};
     if (!isInt(step, 1)) return fail('REFUSED_BAD_ARGS', 'step must be an integer >= 1');
+    if (start !== undefined && start !== 0 && start !== 1) return fail('REFUSED_BAD_ARGS', 'start must be 0 or 1');
     const prep = await prepare(bookRoot);
     if (prep.result) return prep.result;
     const { lb, store } = prep;
     const meta = await scanMeta(store);
     const nums = [...new Set([...lb.book.order.map((s) => s.chapter), ...meta.chapters.map((c) => c.n)])].sort((a, b) => a - b);
-    const hasZero = nums[0] === 0;
-    const mapping = new Map(nums.map((n, i) => [n, (hasZero ? i : i + 1) * step]));
+    // the first chapter is 0 when asked (a prologue as chapter 0) or when the book already starts at 0, else 1
+    const base = start ?? (nums[0] === 0 ? 0 : 1);
+    const mapping = new Map(nums.map((n, i) => [n, (base + i) * step]));
     const newOf = (n) => mapping.get(n) ?? n;
 
     const mapDir = (dir) => {
@@ -305,17 +307,20 @@ export function renumberChapters(bookRoot, args = {}) {
         changes.push({ from: rel, to: `${mapDir(dir)}/${e.name}`, content: before, before });
       }
     }
-    return finish({
+    const res = await finish({
       bookRoot,
       store,
       lb,
       op: 'renumberChapters',
-      args: { step },
+      args: { step, ...(start !== undefined ? { start } : {}) },
       changes,
       dryRun,
       withDiff: true,
       extra: { mapping: Object.fromEntries([...mapping].filter(([a, b]) => a !== b)) },
     });
+    // a chapter folder the renumbering emptied is removed (only an empty one can be); undo recreates it
+    if (res.ok && !dryRun) for (const dir of moved) await store.removeEmptyDir(dir);
+    return res;
   });
 }
 
@@ -324,9 +329,10 @@ export function renumberChapters(bookRoot, args = {}) {
  * `after` is a chapter number in the target act (null = first in the act; omitted = last in the act).
  *
  * Book order follows chapter numbers and an act may never come after a later act (E206), so the chapter
- * takes a number that fits its new place: it keeps its own when that already fits, else the first free number
- * between its new neighbours, else every chapter is renumbered 1..N (0..N-1 when the book has a chapter 0) in
- * the new order. Every file of the moved chapter's folder (scenes, chapter.md, variants, anything else) goes
+ * takes a number that fits its new place: it keeps its own when that already fits; otherwise a book numbered without
+ * gaps is renumbered 1..N (0..N-1 when the book has a chapter 0) in the new order, so it stays without gaps, and a
+ * book that already has gaps gives the chapter the first free number between its new neighbours when there is one
+ * (else it too is renumbered in full). Every file of the moved chapter's folder (scenes, chapter.md, variants, anything else) goes
  * to the target act's folder; scenes get the new `act` (and `chapter`) line. Bodies are never touched.
  * @param {string} bookRoot @param {number} chapter
  * @param {{act:number, after?:number|null, dryRun?:boolean}} args
@@ -374,19 +380,20 @@ export function moveChapter(bookRoot, chapter, args = {}) {
       if (next[i].act < next[i - 1].act) return fail('REFUSED_BAD_ANCHOR', `that place would put act ${next[i].act} after act ${next[i - 1].act}`);
     }
 
-    // numbers: keep everyone's if the mover fits (or a free number does) between its new neighbours, else renumber all
+    // numbers: keep everyone's if the mover fits between its new neighbours. Otherwise a book numbered without gaps stays that way
+    // (every chapter renumbered in the new order, from the same first number); a book that already has gaps gives the mover a free
+    // number between its neighbours when there is one, else is renumbered in full.
     const prev = next[at - 1]?.n;
     const following = next[at + 1]?.n;
     const lo = prev === undefined ? 0 : prev + 1;
     const hi = following === undefined ? Infinity : following - 1;
+    const first = order[0].n === 0 ? 0 : 1;
+    const gapless = order.every((c, i) => c.n === order[0].n + i);
     /** @type {Map<number, number>} old number -> new number */
     const mapping = new Map(order.map((c) => [c.n, c.n]));
     if (chapter < lo || chapter > hi) {
-      if (lo <= hi) mapping.set(chapter, prev === undefined && hi >= 1 ? Math.max(1, lo) : lo);
-      else {
-        const hasZero = order[0].n === 0;
-        next.forEach((c, i) => mapping.set(c.n, hasZero ? i : i + 1));
-      }
+      if (!gapless && lo <= hi) mapping.set(chapter, prev === undefined && hi >= 1 ? Math.max(1, lo) : lo);
+      else next.forEach((c, i) => mapping.set(c.n, first + i));
     }
     const newOf = (n) => mapping.get(n) ?? n;
     const actAfter = (n) => (n === chapter ? act : actOf.get(n));

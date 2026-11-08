@@ -388,7 +388,7 @@ export function Outline({ book, activeId = null, onChanged }) {
     <div className="outline" ref={root} onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} onDragLeave={onDragLeave} onDragEnd={endDrag}>
       <div className="rail-head">
         <h2 className="rail-heading">{book.title ?? book.slug ?? book.id}</h2>
-        <RowMenu name={book.title ?? book.slug ?? book.id} items={[{ label: 'Tidy file names...', run: () => start({ type: 'tidy' }) }]} />
+        <RowMenu name={book.title ?? book.slug ?? book.id} items={[{ label: 'Renumber chapters...', run: () => start({ type: 'renumber' }) }, { label: 'Tidy file names...', run: () => start({ type: 'tidy' }) }]} />
       </div>
       <BookCount book={book} />
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="move-live">
@@ -456,6 +456,7 @@ export function Outline({ book, activeId = null, onChanged }) {
                             { label: 'Add scene', run: () => start({ type: 'add-scene', chapter: ch.chapter, act: act.act, after: lastScene ? lastScene.id : null }) },
                             { label: 'Add chapter after', run: () => start({ type: 'add-chapter', act: act.act, after: ch.chapter }) },
                             { label: 'Move to act...', run: () => start({ type: 'move-chapter', chapter: ch, name: cName }) },
+                            { label: 'Renumber chapters...', run: () => start({ type: 'renumber' }) },
                             { label: 'Archive chapter', run: () => start({ type: 'archive-chapter', chapter: ch, name: cName }) },
                           ]}
                         />

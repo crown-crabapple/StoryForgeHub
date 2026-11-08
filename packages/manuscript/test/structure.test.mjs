@@ -518,6 +518,24 @@ describe('createChapter / renumberChapters (acceptance 6)', () => {
     assert.deepEqual(diffSnap(before, snapshot(dir), { trash: true }), NOTHING);
   });
 
+  it('renumberChapters({ start }): 1 makes a chapter-0 book start at 1, 0 makes it start at 0 again; a bad start is refused', async () => {
+    const dir = copyFixture(SALT); // 0, 1, 2, 3
+    const idsBefore = await orderIds(dir);
+    const one = await call('renumberChapters', dir, { step: 1, start: 1 });
+    assert.equal(one.ok, true, JSON.stringify(one));
+    assert.deepEqual([...new Set((await orderRows(dir)).map((x) => x.chapter))], [1, 2, 3, 4]);
+    assert.deepEqual(await orderIds(dir), idsBefore, 'order unchanged');
+    assert.deepEqual(await errorsOf(dir), []);
+    assert.ok(!exists(dir, 'manuscript/act-01-low-water/ch-000-prologue'), 'the emptied folder is removed');
+    const zero = await call('renumberChapters', dir, { step: 1, start: 0 });
+    assert.equal(zero.ok, true, JSON.stringify(zero));
+    assert.deepEqual([...new Set((await orderRows(dir)).map((x) => x.chapter))], [0, 1, 2, 3]);
+    const before = snapshot(dir);
+    const bad = await call('renumberChapters', dir, { step: 1, start: 5 });
+    assert.equal(bad.code, 'REFUSED_BAD_ARGS');
+    assert.deepEqual(diffSnap(before, snapshot(dir), { trash: true }), NOTHING);
+  });
+
   it('a book already contiguous is a no-op (salt-orchard)', async () => {
     const dir = copyFixture(SALT);
     const before = snapshot(dir);
