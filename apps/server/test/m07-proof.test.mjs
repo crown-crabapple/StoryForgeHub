@@ -152,6 +152,7 @@ const SAMPLES = {
   'ledger-knowledge-record': ['POST', `${b}/knowledge`],
   'ledger-state-record': ['POST', `${b}/state-events`],
   'activity-ai-log': ['POST', `${b}/activity/ai-words`],
+  'scene-ai-draft': ['PUT', `${b}/scenes/${SCENE}/ai-draft`],
   'workspace-doc-save': ['POST', `${b}/workspace/docs`],
   'workspace-doc-append': ['POST', `${b}/workspace/docs/append`],
   'workspace-doc-lock': ['POST', `${b}/workspace/docs/lock`],
@@ -214,7 +215,7 @@ const matchOf = (method, url) => {
   const p = url.split('?')[0];
   return matchSharedRoute(method, p) ?? matchWriteRoute(method, p);
 };
-const bodyFor = (route) => (route === 'body' || route === 'scene-raw' ? { body: `${SECRET_PROSE}\n`, base_sha256: 'a'.repeat(64) } : {});
+const bodyFor = (route) => (route === 'body' || route === 'scene-raw' || route === 'scene-ai-draft' ? { body: `${SECRET_PROSE}\n`, base_sha256: 'a'.repeat(64) } : {});
 
 /** GET paths per class (the class is what classifyRead says; the sample lists are what the sweep covers). */
 const GET_SAMPLES = {
@@ -225,14 +226,14 @@ const GET_SAMPLES = {
     `${b}/receipts`, `${b}/receipts/verify`, `${b}/suggestions`, `${b}/comments`, `${b}/notes`, `${b}/scene-notes`, `${S}/revisions`, `${b}/activity`,
     `${b}/raw?path=book.md`, `${b}/ai/status`, `${b}/presence`, `${b}/objects`,
     `${b}/links`, `${b}/links/key-therefore-ferry`, `${b}/flow`, `${b}/scene-plans/${SCENE}`, `${b}/story-plan`, `${b}/plan-overview`, `${b}/arcs`, `${b}/arcs/maren-hollis`, `${b}/structures`, `${b}/structures/main-three-act`, `${b}/structure-templates`, `${b}/relationships`, `${b}/relationships/maren-hollis-and-pell`, `${b}/plan-badges`, `${b}/synopses`, `${b}/synopses/one-page`, `${b}/synopses/one-page/extract`,
-    `${b}/clues`, `${b}/clues/sea-gate-key`, `${b}/series-plan`, `${b}/export/planning`, `${b}/ai-activity`,
+    `${b}/clues`, `${b}/clues/sea-gate-key`, `${b}/series-plan`, `${b}/export/planning`, `${b}/ai-activity`, `${b}/context?chapter=1`,
     `/api/books/${OTHER_BOOK}`, `/api/books/${OTHER_BOOK}/scenes/${SCENE}`,
   ],
   export: [`${b}/export?format=markdown`, `/api/books/${OTHER_BOOK}/export?format=markdown`],
   admin: ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/plugins', '/api/webhooks', '/api/ai/profiles', '/api/recover/last', '/api/library/recent', `${b}/backup`, `${b}/repair/plan`],
   auth: ['/api/auth/me'],
 };
-const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview', 'arcs', 'structures', 'relationships', 'plan-badges', 'synopses', 'synopses/one-page/extract', 'clues', 'series-plan', 'export/planning', 'ai-activity'].map((x) => `${b}/${x}`);
+const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview', 'arcs', 'structures', 'relationships', 'plan-badges', 'synopses', 'synopses/one-page/extract', 'clues', 'series-plan', 'export/planning', 'ai-activity', 'context?chapter=1'].map((x) => `${b}/${x}`);
 
 const PRINCIPALS = ['owner', 'editor', 'reviewer', 'viewer', 'share', 'exportShare', 'anonymous'];
 /** The principal object allowed() takes for each caller kind of the sweep. */

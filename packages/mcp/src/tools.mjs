@@ -1,4 +1,4 @@
-// The MCP tool table (M08 MCP service). Each tool is a name, a JSON Schema for its arguments, the permission it needs ('read', 'propose', 'canvas', 'plan' or 'workspace') and a run() that talks to the
+// The MCP tool table (M08 MCP service). Each tool is a name, a JSON Schema for its arguments, the permission it needs ('read', 'propose', 'canvas', 'plan', 'workspace' or 'draft') and a run() that talks to the
 // plugin API /api/v1 only, through the `api` helper the protocol layer builds over the server's `call`. Nothing here touches a file or the network, and no tool can change
 // prose or a canonical file: the propose tools create a suggestion the author accepts or rejects in StoryForge. The one exception is the canvas tools (permission 'canvas'),
 // which change only planning/canvases/*.canvas files, and the plan tools (permission 'plan', M11), which write only Story Planner files under planning/ through the app's own
@@ -17,7 +17,7 @@ export class ToolError extends Error {
 /**
  * @typedef {{ get: (path: string, query?: Record<string, string>) => Promise<any>, post: (path: string, body?: unknown) => Promise<any>, put: (path: string, body?: unknown) => Promise<any>, origin: string }} Api
  * @typedef {{ content: { type: 'text', text: string }[], structuredContent: Record<string, unknown> }} ToolResult
- * @typedef {{ name: string, title: string, description: string, need: 'read' | 'propose' | 'canvas' | 'plan' | 'workspace', inputSchema: Record<string, any>,
+ * @typedef {{ name: string, title: string, description: string, need: 'read' | 'propose' | 'canvas' | 'plan' | 'workspace' | 'draft', inputSchema: Record<string, any>,
  *   annotations: { readOnlyHint: boolean, destructiveHint: false, idempotentHint: boolean, openWorldHint: false },
  *   run: (args: Record<string, any>, api: Api) => Promise<ToolResult> }} Tool
  */
@@ -638,6 +638,69 @@ const CONTINUITY_TOOLS = [
   },
 ];
 
+// ---- M12 W6 co-writer tools (permission 'draft', book AI level cowriter) and the context pack. New scenes are drafts marked as AI; an existing scene of the author is never changed by these tools.
+const DRAFT = { readOnlyHint: false, destructiveHint: /** @type {const} */ (false), idempotentHint: false, openWorldHint: /** @type {const} */ (false) };
+const DRAFT_NOTE = 'New chapters and scenes are drafts marked as AI; the author can archive them in StoryForge (AI Activity). The author accepts a draft by changing its status from drafting. Scenes the author wrote or accepted can only be changed with codex_propose_edit.';
+
+/** @type {Tool[]} */
+const COWRITER_TOOLS = [
+  {
+    name: 'codex_get_context',
+    title: 'Get the context pack for a chapter',
+    description: `Returns everything needed to write one chapter in a single call, trimmed to a character budget (default 24000) in this priority order: the workspace book and style docs; the story plan (logline, premise, protagonist goal); the chapter's scene plans with the beats they sit in; the cast (name, type, summary); what each pov or appearing character knows at the end of the previous chapter; open promises, questions and clues planted before the chapter; state events up to the previous chapter; the latest state docs; the last ~1500 characters of the previous chapter; continuity findings that touch the chapter. "truncated" names every section that was cut. Read only. ${BOOK_DOC}`,
+    need: 'read',
+    inputSchema: schema({ book: bookArg, chapter: chapterNo('The chapter number you are about to write.'), budget: { type: 'integer', minimum: 500, maximum: 200000, description: 'The most characters the pack may take (default 24000).' } }, ['book', 'chapter']),
+    annotations: READ,
+    async run(args, api) {
+      const pack = await api.get(`${bookPath(args.book)}/context`, { chapter: String(args.chapter), ...(args.budget !== undefined ? { budget: String(args.budget) } : {}) });
+      return result(pack);
+    },
+  },
+  {
+    name: 'codex_create_chapter',
+    title: 'Create a chapter',
+    description: `Creates a new, empty chapter (with one empty placeholder scene) after chapter "after", or as the first chapter of act "act" when "after" is left out. Nothing existing is changed. Add prose with codex_create_scene. ${DRAFT_NOTE} ${BOOK_DOC}`,
+    need: 'draft',
+    inputSchema: schema({ book: bookArg, title: { type: 'string', minLength: 1, maxLength: 300, description: 'The chapter title.' }, after: chapterNo('Insert after this chapter number.'), act: { type: 'integer', minimum: 0, description: 'The act (required when after is left out).' } }, ['book', 'title']),
+    annotations: DRAFT,
+    async run(args, api) {
+      const r = await api.post(`${bookPath(args.book)}/chapters`, given(args, ['title', 'after', 'act']));
+      return result({ chapter: r.chapter, act: r.act, scene: r.sceneId, opId: r.opId ?? null, note: DRAFT_NOTE });
+    },
+  },
+  {
+    name: 'codex_create_scene',
+    title: 'Create a draft scene',
+    description: `Creates a new scene in a chapter with your prose as its body. The scene is a draft marked as AI (origin ai, status drafting) whatever you pass; it goes after the scene "after" (a scene id), or at the end of the chapter when "after" is left out. The words are logged as AI words. Replace your own draft later with codex_save_draft. ${DRAFT_NOTE} ${BOOK_DOC}`,
+    need: 'draft',
+    inputSchema: schema({
+      book: bookArg,
+      chapter: chapterNo('The chapter number the scene goes in.'),
+      title: { type: 'string', minLength: 1, maxLength: 300, description: 'The scene title.' },
+      body: { type: 'string', description: 'The scene prose, in markdown.' },
+      summary: { type: 'string', maxLength: 2000, description: 'One line about the scene (optional).' },
+      after: { type: ['string', 'null'], description: 'The scene id (scene_...) to put it after; null for the start of the chapter. Leave out for the end.' },
+    }, ['book', 'chapter', 'title', 'body']),
+    annotations: DRAFT,
+    async run(args, api) {
+      const r = await api.post(`${bookPath(args.book)}/scenes`, given(args, ['chapter', 'title', 'body', 'summary', 'after']));
+      return result({ id: r.id, path: r.path, note: DRAFT_NOTE });
+    },
+  },
+  {
+    name: 'codex_save_draft',
+    title: 'Revise your own draft scene',
+    description: `Replaces the whole body of a scene that you created and the author has not accepted (origin ai, status drafting). base_sha256 is required: pass the sha256 from codex_get_scene or from the last save; a stale sha256 is a conflict, so read the scene again. If the author wrote the scene or changed its status from drafting, this is refused (NOT_AI_DRAFT): use codex_propose_edit instead. The added words are logged as AI words. ${BOOK_DOC}`,
+    need: 'draft',
+    inputSchema: schema({ book: bookArg, scene: sceneId('The scene id (scene_...).'), body: { type: 'string', description: 'The complete new body of the scene.' }, base_sha256: { type: 'string', minLength: 64, maxLength: 64, description: 'The sha256 of the scene file as you read it.' } }, ['book', 'scene', 'body', 'base_sha256']),
+    annotations: DRAFT,
+    async run(args, api) {
+      const r = await api.put(`${bookPath(args.book)}/scenes/${seg(args.scene)}/draft`, given(args, ['body', 'base_sha256']));
+      return result({ sha256: r.sha256, words: r.words, note: DRAFT_NOTE });
+    },
+  },
+];
+
 /** @type {Tool[]} */
 export const TOOLS = [
   {
@@ -1171,11 +1234,12 @@ export const TOOLS = [
   ...PLAN_WRITE_TOOLS,
   ...WORKSPACE_TOOLS,
   ...CONTINUITY_TOOLS,
+  ...COWRITER_TOOLS,
 ];
 
 /** Names an author of the original Codex MCP might ask for that v2 has no plugin route for. */
 export const NOT_OFFERED = [
-  'codex_create_chapter', 'codex_push_files', 'codex_delete_ledger_item', 'codex_delete_knowledge',
+  'codex_push_files', 'codex_delete_ledger_item', 'codex_delete_knowledge',
   'codex_delete_state_event',
   // the continuity thresholds and severities are the author's own (continuity settings in StoryForge); there is no plugin route for them
   'codex_set_continuity_thresholds',

@@ -127,11 +127,11 @@ export async function placementNeighbours(store, list, place) {
 /**
  * @param {string} bookRoot
  * @param {{chapter:number, act?:number, after:string|null, title:string, slug:string, body:string,
- *          status?:string, summary?:string, id?:string, dryRun?:boolean}} args
+ *          status?:string, summary?:string, origin?:'ai'|'author', id?:string, dryRun?:boolean}} args
  */
 export function insertScene(bookRoot, args = {}) {
   return guarded(async () => {
-    const { chapter, act, after, title, slug, body, status = 'drafting', summary, id, dryRun = false } = args ?? {};
+    const { chapter, act, after, title, slug, body, status = 'drafting', summary, origin, id, dryRun = false } = args ?? {};
     if (!isInt(chapter)) return fail('REFUSED_BAD_ARGS', 'chapter must be an integer >= 0');
     if (act !== undefined && !isInt(act)) return fail('REFUSED_BAD_ARGS', 'act must be an integer >= 0');
     if (after === undefined || (after !== null && typeof after !== 'string')) {
@@ -147,6 +147,7 @@ export function insertScene(bookRoot, args = {}) {
       return fail('REFUSED_BAD_ARGS', 'summary must be a single line of text without line breaks (max 2000)');
     }
     if (id !== undefined && (typeof id !== 'string' || !SCENE_ID_RE.test(id))) return fail('REFUSED_BAD_ARGS', 'id is not a valid scene id');
+    if (origin !== undefined && origin !== 'ai' && origin !== 'author') return fail('REFUSED_BAD_ARGS', 'origin must be ai or author');
 
     const prep = await prepare(bookRoot);
     if (prep.result) return prep.result;
@@ -170,7 +171,7 @@ export function insertScene(bookRoot, args = {}) {
     const to = resolver.scenePath(sceneAct, chapter, nb.moverSequence, slug);
     const text =
       `---\nschema: storyforge.scene/v1\nid: ${newId}\ntitle: ${yamlQuote(title)}\nact: ${sceneAct}\n` +
-      `chapter: ${chapter}\nsequence: ${nb.moverSequence}\nstatus: ${status}\n${summary !== undefined && summary !== '' ? `summary: ${formatYamlText(summary)}\n` : ''}---\n`;
+      `chapter: ${chapter}\nsequence: ${nb.moverSequence}\nstatus: ${status}\n${origin !== undefined ? `origin: ${origin}\n` : ''}${summary !== undefined && summary !== '' ? `summary: ${formatYamlText(summary)}\n` : ''}---\n`;
     const content = Buffer.concat([Buffer.from(text, 'utf8'), Buffer.from(body, 'utf8')]);
     const changes = [...nb.changes, { from: null, to, content, before: null }];
 

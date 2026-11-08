@@ -1,7 +1,7 @@
 // Plugin access policy (contract M08-J02 sections 2-3). A request with `Authorization: Bearer` is a plugin request: it may reach only /api/v1/*, only
 // what its grant's permissions allow, and only the books it was granted. It never reaches the member routes, writes, admin, AI, export, backup or receipts.
 // Writes: with 'canvas' it may change a canvas (planning/canvases/*.canvas) of a granted book; with 'plan' (M11) the Story Planner files of a granted book; with 'workspace' (M12) the workspace docs under planning/.
-// Both go through the same store, sha checks and module gates as the app. Nothing a token does can change prose, scenes or Codex entries.
+// Both go through the same store, sha checks and module gates as the app. M12 W6: with 'draft' (book AI level cowriter) it may create chapters and scenes (always AI drafts) and replace the body of its own unaccepted drafts. Nothing a token does can change prose the author wrote or accepted, or Codex entries.
 // Decided before (and instead of) the member policy; a bearer request never carries a member's cookie authority.
 
 /** The v1 routes and the permission each needs. Anything else under /api/v1 is refused. */
@@ -52,6 +52,12 @@ const V1 = [
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/continuity$/, need: 'read', book: true },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/continuity\/exceptions$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/continuity\/exceptions\/[a-z0-9-]{1,120}\/archive$/, need: 'workspace', book: true, level: 'planner' },
+  // M12 W6: the chapter context pack (a read), and the co-writer routes. Writing needs 'draft' at book AI level cowriter and runs the app's own routes: a new chapter, a new scene (the server forces
+  // origin ai and status drafting), and a replacement of the body of such a scene while it is still an unaccepted AI draft (403 NOT_AI_DRAFT otherwise). Nothing here changes a scene the author wrote or accepted.
+  { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/context$/, need: 'read', book: true },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/chapters$/, need: 'draft', book: true, level: 'cowriter' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/scenes$/, need: 'draft', book: true, level: 'cowriter' },
+  { method: 'PUT', re: /^\/api\/v1\/books\/([^/]+)\/scenes\/[^/]{1,120}\/draft$/, need: 'draft', book: true, level: 'cowriter' },
   { method: 'GET', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'POST', re: /^\/api\/v1\/webhooks$/, need: 'events', book: false },
   { method: 'DELETE', re: /^\/api\/v1\/webhooks\/[^/]+$/, need: 'events', book: false },

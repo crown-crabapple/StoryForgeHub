@@ -1,5 +1,6 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
+import { DEFAULT_BUDGET, MAX_BUDGET, MIN_BUDGET } from '@storyforge/core';
 import { AI_LEVELS } from '@storyforge/format';
 import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, planningZip, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
@@ -103,7 +104,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     // M12 AI Activity: what AI connections (plugin tokens) changed in this book, newest first, from the op journal (read-only; Undo is the ops restore route)
     if (c === 'ai-activity' && d === undefined) {
       const r = await repository.listAiActivity(b);
-      return r.ok ? { status: 200, body: { activity: (r.items ?? []).map(({ opId, at, actor, op, summary, files, undone, undoable }) => ({ opId, at, actor, route: op, summary, files, undone, undoable })) } } : NOT_FOUND;
+      return r.ok ? { status: 200, body: { activity: (r.items ?? []).map(({ opId, at, actor, op, summary, files, undone, undoable, archivable, target }) => ({ opId, at, actor, route: op, summary, files, undone, undoable, archivable: archivable === true, target: target ?? null })) } } : NOT_FOUND;
     }
     // M05-J01: continuity findings, computed from the files on every call (read-only)
     if (c === 'continuity' && d === undefined) {
@@ -256,6 +257,13 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       if (chapter !== null && chapter !== 'all' && !/^[0-9]{1,6}$/.test(chapter)) return badRequest('chapter must be a chapter number or all');
       const events = await repository.getStateEvents(b, chapter !== null && chapter !== 'all' ? { chapter: Number(chapter) } : {});
       return events ? { status: 200, body: events } : NOT_FOUND;
+    }
+    // M12 W6: the chapter context pack (?chapter=N, optional ?budget=<characters>); reads only
+    if (c === 'context' && d === undefined) {
+      const parsed = parseContextQuery(params);
+      if (parsed.error) return badRequest(parsed.error);
+      const pack = await repository.getContext(b, { chapter: parsed.chapter, budget: parsed.budget });
+      return pack ? { status: 200, body: pack } : NOT_FOUND;
     }
     if (c === 'tasks' && d !== undefined && e === undefined) {
       const r = await repository.getTask(b, d);
@@ -645,6 +653,18 @@ async function fromIndex(read) {
   }
 }
 
+/**
+ * M12 W6: the query of the context pack, ?chapter=N (required, a chapter number) and ?budget=<characters> (optional, MIN_BUDGET to MAX_BUDGET; the default when left out).
+ * @param {URLSearchParams} params @returns {{ chapter: number, budget: number, error?: undefined } | { error: string }}
+ */
+export function parseContextQuery(params) {
+  const chapter = params.get('chapter');
+  if (chapter === null || !/^[0-9]{1,6}$/.test(chapter)) return { error: 'chapter is required and must be a chapter number' };
+  const budget = params.get('budget');
+  if (budget !== null && (!/^[0-9]{1,7}$/.test(budget) || Number(budget) < MIN_BUDGET || Number(budget) > MAX_BUDGET)) return { error: `budget must be a number of characters from ${MIN_BUDGET} to ${MAX_BUDGET}` };
+  return { chapter: Number(chapter), budget: budget === null ? DEFAULT_BUDGET : Number(budget) };
+}
+
 // ---------------------------------------------------------------- write routes
 
 /**
@@ -722,6 +742,8 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f === undefined) return { route: 'revision-save', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f !== undefined && g === 'restore') return { route: 'revision-restore', bookId: b, sceneId: d, file: f };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'body') return { route: 'body', bookId: b, sceneId: d };
+  // M12 W6: replace the body of a scene the AI made and the author has not accepted (front matter origin: ai and status drafting); any other scene is refused (403 NOT_AI_DRAFT)
+  if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'ai-draft') return { route: 'scene-ai-draft', bookId: b, sceneId: d };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'raw') return { route: 'scene-raw', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d === undefined) return { route: 'create', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'archive') return { route: 'archive', bookId: b, sceneId: d };
@@ -1125,11 +1147,18 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
       }
       return respond(r, 200, (x) => ({ sha256: x.sha256 }));
     }
+    case 'scene-ai-draft': {
+      if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string' || body.base_sha256 === '') return badRequest('expected { body: string, base_sha256: string }');
+      const r = await repository.updateAiDraftBody(bookId, /** @type {string} */ (match.sceneId), body.body, { baseSha256: body.base_sha256 });
+      if (!r.ok && r.code === 'NOT_AI_DRAFT') return { status: 403, body: { error: 'forbidden', code: 'NOT_AI_DRAFT', message: r.message } };
+      return respond(r, 200, (x) => ({ sha256: x.sha256, words: x.words }));
+    }
     case 'create': {
-      const { chapter, act, after, title, slug, body: text, status, summary } = body;
+      const { chapter, act, after, title, slug, body: text, status, summary, origin } = body;
       if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      if (origin !== undefined && origin !== 'ai' && origin !== 'author') return badRequest("origin must be 'ai' or 'author'");
       const dryRun = body.dryRun === true;
-      const r = await repository.createScene(bookId, { chapter, act, after, title, slug, body: text, ...(status !== undefined ? { status } : {}), ...(summary !== undefined ? { summary } : {}), dryRun });
+      const r = await repository.createScene(bookId, { chapter, act, after, title, slug, body: text, ...(status !== undefined ? { status } : {}), ...(summary !== undefined ? { summary } : {}), ...(origin !== undefined ? { origin } : {}), dryRun });
       return dryRun ? respond(r, 200, structureBody) : respond(r, 201, (x) => ({ id: x.id, path: x.path }));
     }
     case 'archive': {

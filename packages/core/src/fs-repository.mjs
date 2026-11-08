@@ -20,6 +20,7 @@ import { createWorldMethods, fieldDefsOf, labelDefsOf, labelsOfDoc } from './fs-
 import { createGoalMethods } from './fs-goals.mjs';
 import { createTaskMethods } from './fs-tasks.mjs';
 import { createLedgerMethods } from './fs-ledger.mjs';
+import { createContextMethods } from './fs-context.mjs';
 import { createInsightReads } from './fs-insights.mjs';
 import { registerReceiptEngine } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
@@ -300,6 +301,7 @@ export function createFsRepository(libraryRoot, options = {}) {
           pov: str(fm.pov),
           word_count: countWords(body),
           path: s.path,
+          ...(fm.origin === 'ai' ? { origin: 'ai' } : {}),
           ...(labelsOfDoc(fm).length > 0 ? { labels: labelsOfDoc(fm) } : {}),
         };
         return { summary, fm, body, sha256 };
@@ -1301,6 +1303,7 @@ export function createFsRepository(libraryRoot, options = {}) {
   Object.assign(repository, createGoalMethods({ root, activity, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook }));
   Object.assign(repository, createTaskMethods({ root, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook, now: options.clock }));
   Object.assign(repository, createLedgerMethods({ repository, readValidate, activity })); // M12 W3: ledgers, chapter cast, knowledge and state events, AI words
+  Object.assign(repository, createContextMethods({ repository })); // M12 W6: the chapter context pack (reads only; every repository method it uses is on `repository` by the time it runs)
   Object.assign(repository, createInsightReads({ root, manager, readValidate, activity, now: options.clock }));
   // M09-J01: canvases (planning/canvases/*.canvas). Read from the files on every call; this module lists and reads for them.
   Object.assign(

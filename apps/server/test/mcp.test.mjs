@@ -29,6 +29,8 @@ const READ_TOOLS = ['codex_status', 'codex_list_books', 'codex_list_chapters', '
   'codex_get_ledger', 'codex_get_cast', 'codex_knowledge_at', 'codex_get_state_events', 'codex_get_tasks',
   // M12 W4: the continuity check
   'codex_continuity_check',
+  // M12 W6: the chapter context pack (a read)
+  'codex_get_context',
   // the ChatGPT connector pair
   'search', 'fetch'];
 const CANVAS_TOOLS = ['codex_create_canvas', 'codex_save_canvas', 'codex_edit_canvas', 'codex_archive_canvas', 'codex_restore_canvas', 'codex_add_plan_cards'];
@@ -62,15 +64,15 @@ test('initialize names the server "storyforge" and answers with a supported prot
   assert.notEqual(other.json.result.protocolVersion, '1999-01-01');
 });
 
-test('tools/list: a read+propose token sees 35 tools, read+propose+canvas all 41, a read-only token the 32 read tools and no codex_save_*', async () => {
+test('tools/list: a read+propose token sees 37 tools, read+propose+canvas all 43, a read-only token the 34 read tools and no codex_save_*', async () => {
   const t = await bootPersonal();
   const both = (await t.grant({ plugin: 'both', permissions: ['read', 'propose'] })).token;
   const ro = (await t.grant({ plugin: 'ro', permissions: ['read'] })).token;
   const all = (await rpc(t, both, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(all.length, 36);
+  assert.equal(all.length, 37);
   assert.deepEqual([...all].sort(), [...READ_TOOLS, ...PROPOSE_TOOLS].sort());
   const some = (await rpc(t, ro, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(some.length, 33);
+  assert.equal(some.length, 34);
   assert.deepEqual([...some].sort(), [...READ_TOOLS].sort());
   assert.equal(some.some((n) => n.startsWith('codex_save_')), false);
 });

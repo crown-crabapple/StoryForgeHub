@@ -131,6 +131,11 @@ function SceneRow({ book, scene, next, activeId, chapterNode, act, start, dropMa
             can't be read
           </span>
         )}
+        {scene.origin === 'ai' && scene.status === 'drafting' && (
+          <span className="badge" title="Written by an AI and not accepted yet. Change its status to accept it.">
+            AI draft
+          </span>
+        )}
         <span className="outline-words">{scene.word_count}w</span>
         <PovChip pov={scene.pov} />
       </Link>

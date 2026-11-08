@@ -71,7 +71,7 @@ test('M11: plan tools are listed only with the plan permission, as non-destructi
     assert.deepEqual(t.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }, n);
     assert.match(t.description, /the author can Undo it in StoryForge/, n);
   }
-  assert.equal(withPlan.length, 33 + 30, 'read + plan');
+  assert.equal(withPlan.length, 34 + 30, 'read + plan');
   // the plan read tools need only read
   const ro = (await setup(['read']).rpc('tools/list')).result.tools.map((t) => t.name);
   for (const n of ['codex_get_scene_plan', 'codex_get_plan_check', 'codex_list_structure_templates']) assert.ok(ro.includes(n), n);

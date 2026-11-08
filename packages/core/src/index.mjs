@@ -15,3 +15,4 @@ export { acquireLock, releaseLock, releaseLockSync, updateLock, writeNewTree } f
 export { readUserConfig, userConfigDir, writeUserConfig } from '@storyforge/store';
 export { listTemplates } from '@storyforge/templates';
 export { runAs, currentBy } from './actor.mjs';
+export { assembleContext, normalizeBudget, tailOf, DEFAULT_BUDGET, MIN_BUDGET, MAX_BUDGET, TAIL_CHARS } from './context-pack.mjs';

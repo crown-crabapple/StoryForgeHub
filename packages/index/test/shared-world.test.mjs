@@ -195,7 +195,7 @@ test('an index of schema_version 2 is stale and is rebuilt', async () => {
   assert.equal(b.idx.status().state, 'stale');
   assert.ok((await b.idx.rebuild()).ok);
   assert.equal(b.idx.status().state, 'fresh');
-  assert.equal(b.idx.status().schema_version, 3);
+  assert.equal(b.idx.status().schema_version, 4);
 });
 
 test('the independent resolver imports nothing but yaml and node:fs / node:path, and runs as a command', async () => {
