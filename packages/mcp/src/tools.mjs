@@ -706,14 +706,14 @@ export const TOOLS = [
   {
     name: 'codex_status',
     title: 'StoryForge status',
-    description: 'Shows the StoryForge server and API version and lists the books in the library with their scene and word counts. Start here to find the book slugs.',
+    description: 'Shows the StoryForge server and API version and lists the books in the library with their scene and word counts and the AI level of each book (ai_level: off = read only, advisor = also suggest edits, tasks and checks, planner = also the plan, canvas, workspace docs and ledgers, cowriter = also new chapters and scenes as drafts). Start here to find the book slugs and what you may do in each.',
     need: 'read',
     inputSchema: schema({}, []),
     annotations: READ,
     async run(_args, api) {
       const root = await api.get('/api/v1');
       const { books } = await api.get('/api/v1/books');
-      return result({ api: root.api, server: root.server, books: books.map((/** @type {any} */ b) => ({ slug: b.slug, title: b.title, scenes: b.scenes, words: b.words })) });
+      return result({ api: root.api, server: root.server, books: books.map((/** @type {any} */ b) => ({ slug: b.slug, title: b.title, scenes: b.scenes, words: b.words, ai_level: b.ai_level ?? null })) });
     },
   },
   {

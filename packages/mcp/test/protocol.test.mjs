@@ -109,7 +109,7 @@ test('Story Planner M8: a read token is offered the seven planner tools, all rea
 test('read tools', async () => {
   const { tool } = setup();
   const status = await tool('codex_status', {});
-  assert.deepEqual(status.structuredContent.books[0], { slug: 'salt-orchard', title: 'Salt Orchard', scenes: 3, words: 9 });
+  assert.deepEqual(status.structuredContent.books[0], { slug: 'salt-orchard', title: 'Salt Orchard', scenes: 3, words: 9, ai_level: null });
   assert.equal(status.structuredContent.api.major, 1);
   assert.equal(JSON.parse(status.content[0].text).books.length, 2);
 

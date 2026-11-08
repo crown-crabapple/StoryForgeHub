@@ -147,7 +147,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     if (c === undefined && !book) {
       // GET /books: the granted books whose integrations module is on
       const listed = [];
-      for (const b of books) if ((grant.books === 'all' || grant.books.includes(b.slug)) && (await moduleOn(repository, state, 'integrations', { bookId: b.id }))) listed.push(bookOut(b));
+      for (const b of books) if ((grant.books === 'all' || grant.books.includes(b.slug)) && (await moduleOn(repository, state, 'integrations', { bookId: b.id }))) listed.push({ ...bookOut(b), ai_level: await aiLevelOf(repository, state, { bookId: b.id }) }); // M12: what an AI may do in this book
       return out(200, { books: listed }, grant);
     }
     const bk = /** @type {any} */ (book);

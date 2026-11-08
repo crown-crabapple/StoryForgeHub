@@ -86,7 +86,7 @@ test('read: root, books, book tree, scene, entries, threads, events, search, gra
   assert.equal(typeof root.server, 'string');
   const books = await g('/books');
   assert.deepEqual(books.books.map((b) => b.slug), [SLUG]);
-  assert.deepEqual(Object.keys(books.books[0]).sort(), ['id', 'language', 'scenes', 'series', 'series_number', 'slug', 'status', 'title', 'words']);
+  assert.deepEqual(Object.keys(books.books[0]).sort(), ['ai_level', 'id', 'language', 'scenes', 'series', 'series_number', 'slug', 'status', 'title', 'words']);
   const book = await g(`/books/${SLUG}`);
   assert.equal(book.id, BOOK);
   const scenes = book.acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes));
