@@ -90,7 +90,8 @@ export function makeQueries(db) {
     },
 
     scenes() {
-      return all('SELECT id, title, position, act, chapter, sequence, status, pov, word_count, path FROM scenes ORDER BY position');
+      // `origin` is only on a row for a scene the AI created (M12 W6), so every other row keeps its old shape
+      return all('SELECT id, title, position, act, chapter, sequence, status, pov, word_count, path, origin FROM scenes ORDER BY position').map(({ origin, ...row }) => (origin ? { ...row, origin } : row));
     },
 
     excluded() {

@@ -54,7 +54,8 @@
  *   pov: string | null,
  *   word_count: number,
  *   path: string,
- * }} SceneSummary
+ *   origin?: 'ai',
+ * }} SceneSummary  `origin` is only present for a scene the AI created (front matter `origin: ai`)
  */
 
 /**

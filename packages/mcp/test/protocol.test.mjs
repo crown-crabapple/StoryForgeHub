@@ -72,14 +72,14 @@ test('ping answers with an empty result', async () => {
   assert.deepEqual((await setup().rpc('ping')).result, {});
 });
 
-test('tools/list shows 35 tools with read+propose, 41 with canvas too, and 32 read-only tools without', async () => {
+test('tools/list shows 36 tools with read+propose, 42 with canvas too, and 33 read-only tools without', async () => {
   const all = (await setup().rpc('tools/list')).result.tools;
-  assert.equal(all.length, 35);
+  assert.equal(all.length, 36);
   assert.deepEqual(Object.keys(all[0]).sort(), ['annotations', 'description', 'inputSchema', 'name', 'title']);
   const ro = (await setup(['read']).rpc('tools/list')).result.tools;
-  assert.equal(ro.length, 32);
-  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 41);
-  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 38);
+  assert.equal(ro.length, 33);
+  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 42);
+  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 39);
   assert.ok(ro.every((t) => t.annotations.readOnlyHint === true));
   assert.equal(TOOLS.filter((t) => t.need === 'propose').length, 3);
   assert.equal(TOOLS.filter((t) => t.need === 'canvas').length, 6);
@@ -190,7 +190,7 @@ test('argument validation names the bad argument', async () => {
 
 test('NOT_OFFERED tools get an explanation, unknown tools a JSON-RPC error', async () => {
   const { tool, rpc } = setup();
-  assert.equal(NOT_OFFERED.length, 9);
+  assert.equal(NOT_OFFERED.length, 8);
   const r = await tool('codex_delete_ledger_item', {});
   assert.equal(r.isError, true);
   assert.match(r.content[0].text, /codex_delete_ledger_item is not available in StoryForge v2's MCP service/);

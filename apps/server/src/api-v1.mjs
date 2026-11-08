@@ -4,11 +4,12 @@
 // review. Reads are projections with stable field names (within API major 1 fields are only added). Who may call what is decided by plugin-policy.mjs first.
 import { checkWebhookUrl } from '@storyforge/integrations';
 import { aiLevelReaches, loadPlugins } from '@storyforge/format';
+import { countWords } from '@storyforge/core';
 import { runAsActor } from '@storyforge/store';
 import pkg from '../package.json' with { type: 'json' };
 import { decidePlugin } from './plugin-policy.mjs';
 import { aiLevelOf, aiLevelRefused, moduleOff, moduleOn } from './preferences.mjs';
-import { handleWrite, matchWriteRoute } from './router.mjs';
+import { handleWrite, matchWriteRoute, parseContextQuery } from './router.mjs';
 
 export const API_MAJOR = 1;
 const NOT_FOUND = { status: 404, body: { error: 'not_found' } };
@@ -18,6 +19,9 @@ const MAX_HUNKS = 200;
 /** M12 W3: the app write routes a workspace write of a plugin may reach (see memberWrite): threads, the chapter cast, ledgers (knowledge, state events), tasks and the AI writing log. Never scene-body or scene-fields. */
 const WORKSPACE_ROUTES = ['thread-', 'scene-cast', 'ledger-', 'task-', 'activity-ai-log'];
 const MAX_TEXT = 4 * 1024 * 1024;
+
+/** A scene slug from a title: lowercase letters and digits joined by single hyphens, at most 60 characters (the rule of the app's own slugs). @param {string} title */
+const slugFromTitle = (title) => title.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/g, '');
 
 /** @param {string} s @returns {string | null} */
 function decode(s) {
@@ -38,7 +42,10 @@ export function v1RouteOf(method, pathname) {
   if (a !== 'books') return 'other';
   if (parts.length === 3) return 'books';
   if (c === undefined) return 'book';
-  if (c === 'scenes' && d !== undefined) return parts[6] === 'cast' ? 'scene-cast' : 'scene';
+  if (c === 'scenes' && d !== undefined) return parts[6] === 'cast' ? 'scene-cast' : parts[6] === 'draft' ? 'scene-draft' : 'scene';
+  if (c === 'scenes') return 'scene-create';
+  if (c === 'chapters') return 'chapter-create';
+  if (c === 'context') return 'context';
   if (c === 'entries') return d === undefined ? 'entries' : 'entry';
   if (c === 'ledger') return method === 'GET' ? 'ledger' : d === 'threads' && parts[6] === undefined ? 'ledger-thread-create' : 'ledger-thread-update';
   if (c === 'cast' || c === 'knowledge' || c === 'state-events') return method === 'GET' ? c : c === 'knowledge' ? 'knowledge-record' : 'state-record';
@@ -155,6 +162,21 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
           })),
         },
       });
+    }
+    // M12 W6: the co-writer. A new chapter, a new scene (always marked AI and a draft), a replacement of the body of such a draft the author has not accepted, and the context pack.
+    // No route here can change a scene the author wrote or accepted, and none deletes anything.
+    if (c === 'context') {
+      const q = parseContextQuery(params);
+      if (q.error) return done(badRequest(q.error));
+      const pack = await repository.getContext(bk.id, { chapter: q.chapter, budget: q.budget });
+      return done(pack ? { status: 200, body: pack } : NOT_FOUND);
+    }
+    if (c === 'chapters') return done(await memberWrite(bk, 'POST', ['chapters'], ['chapter-create']), `${target}/chapters`);
+    if (c === 'scenes' && method === 'POST' && d2 === undefined) {
+      return done(await memberWrite(bk, 'POST', ['scenes'], ['create'], undefined, { shape: (b) => aiSceneBody(bk, b), after: (r, b) => logAiWords(bk, r, b, 'created') }), `${target}/scenes`);
+    }
+    if (c === 'scenes' && method === 'PUT') {
+      return done(await memberWrite(bk, 'PUT', ['scenes', /** @type {string} */ (d2), 'ai-draft'], ['scene-ai-draft'], undefined, { after: (r) => logAiWords(bk, r, {}, 'saved') }), `${target}/${d2}`);
     }
     // M12 W3: ledgers, chapter cast, knowledge, state events, tasks, the AI writing log. Writes map onto the app's own routes by name (see memberWrite); nothing here writes prose.
     if (c === 'scenes' && method === 'POST') return done(await memberWrite(bk, 'POST', ['scenes', /** @type {string} */ (d2), 'cast'], WORKSPACE_ROUTES), `${target}/${d2}`);
@@ -328,8 +350,10 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
    * plugin-policy.mjs has already checked the token's permission, book and the book's AI level for the v1 path.
    * @param {any} bk @param {string} verb the member route's method @param {string[]} segments the member path after /api/books/:id @param {string[]} allowed route-name prefixes
    * @param {(body: Record<string, unknown>) => { status: number, body: unknown } | null} [guard] a refusal decided from the request body before the route runs (null: go ahead)
+   * @param {{ shape?: (body: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>, after?: (result: { status: number, body: any }, body: Record<string, unknown>) => Promise<void> }} [hooks]
+   *   `shape` decides the body the route receives from the one the plugin sent (M12 W6 forces origin and status that way); `after` runs once the route has answered, with its result and that body
    */
-  async function memberWrite(bk, verb, segments, allowed, guard) {
+  async function memberWrite(bk, verb, segments, allowed, guard, hooks = {}) {
     const memberPath = ['', 'api', 'books', bk.id, ...segments].map((x) => (x === '' ? '' : encodeURIComponent(x))).join('/');
     const match = matchWriteRoute(verb, memberPath);
     if (!match || typeof match.route !== 'string' || !allowed.some((p) => match.route.startsWith(p))) return NOT_FOUND;
@@ -338,7 +362,42 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     if (!isObject(read.value)) return badRequest('body must be a JSON object');
     const refused = guard ? guard(/** @type {Record<string, unknown>} */ (read.value)) : null;
     if (refused) return refused;
-    return asActor(() => handleWrite(repository, match, read.value, state, { principal: { kind: 'plugin', id: grant.id, display_name: grant.plugin } }));
+    const sent = hooks.shape ? await hooks.shape(/** @type {Record<string, unknown>} */ (read.value)) : read.value;
+    const result = await asActor(() => handleWrite(repository, match, sent, state, { principal: { kind: 'plugin', id: grant.id, display_name: grant.plugin } }));
+    if (hooks.after && result.status >= 200 && result.status < 300) await hooks.after(/** @type {any} */ (result), /** @type {Record<string, unknown>} */ (sent));
+    return result;
+  }
+
+  /**
+   * M12 W6: the body POST /scenes sends to the app's create route. Whatever the plugin sent, the scene is an AI draft (origin ai, status drafting); only the fields of a new scene are
+   * passed on (no id, no other front matter). Without a slug one is made from the title; without `after` the scene goes at the end of its chapter.
+   * @param {any} bk @param {Record<string, unknown>} b
+   */
+  async function aiSceneBody(bk, b) {
+    const out = /** @type {Record<string, unknown>} */ ({});
+    for (const k of ['chapter', 'act', 'after', 'title', 'slug', 'body', 'summary', 'dryRun']) if (b[k] !== undefined) out[k] = b[k];
+    if (out.slug === undefined && typeof out.title === 'string') out.slug = slugFromTitle(out.title) || 'scene';
+    if (out.after === undefined && Number.isInteger(out.chapter)) {
+      const full = await repository.getBook(bk.id);
+      const inChapter = (full?.acts ?? []).flatMap((/** @type {any} */ a) => a.chapters).filter((/** @type {any} */ c) => c.chapter === out.chapter).flatMap((/** @type {any} */ c) => c.scenes);
+      out.after = inChapter.length > 0 ? inChapter[inChapter.length - 1].id : null;
+    }
+    return { ...out, origin: 'ai', status: 'drafting' };
+  }
+
+  /**
+   * M12 W6: after a scene was created or its draft replaced, add the words the AI wrote to today's AI words (the writing log). A dry run writes nothing and logs nothing; a failure here never
+   * changes the answer. @param {any} bk @param {{ status: number, body: any }} r @param {Record<string, unknown>} sent @param {'created' | 'saved'} what
+   */
+  async function logAiWords(bk, r, sent, what) {
+    if (sent.dryRun === true) return;
+    const words = what === 'created' ? countWords(typeof sent.body === 'string' ? sent.body : '') : Number(r.body?.words?.added ?? 0);
+    if (!Number.isInteger(words) || words < 1) return;
+    try {
+      await repository.recordAiWords(bk.id, { words, ...(Number.isInteger(sent.chapter) && /** @type {number} */ (sent.chapter) >= 0 ? { chapter: /** @type {number} */ (sent.chapter) } : {}) });
+    } catch {
+      // the log is a record, not part of the write; the scene is already saved
+    }
   }
 
   /**

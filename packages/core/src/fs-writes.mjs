@@ -84,6 +84,7 @@ import { recordProvenance } from './provenance.mjs';
 import { createSnapshotTracker, planRetention, splitRevision } from './revisions.mjs';
 import { localDate } from './writing-log.mjs';
 import { wordDelta } from './word-delta.mjs';
+import { parseFrontMatter } from './fm.mjs';
 
 const CONTROL_RE = new RegExp(`[\x00-\x1f\x7f]`);
 const fail = (code, extra = {}) => ({ ok: false, code, ...extra });
@@ -252,11 +253,32 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
   async function createSceneImpl(bookId, args = {}) {
     const found = await findBook(bookId);
     if (!found) return fail('NOT_FOUND');
-    const { chapter, act, after, title, slug, body, status, summary, dryRun } = args ?? {};
-    const r = await insertScene(bookRootOf(found.book), { chapter, act, after, title, slug, body, ...(status !== undefined ? { status } : {}), ...(summary !== undefined ? { summary } : {}), dryRun: dryRun === true });
+    const { chapter, act, after, title, slug, body, status, summary, origin, dryRun } = args ?? {};
+    const r = await insertScene(bookRootOf(found.book), { chapter, act, after, title, slug, body, ...(status !== undefined ? { status } : {}), ...(summary !== undefined ? { summary } : {}), ...(origin !== undefined ? { origin } : {}), dryRun: dryRun === true });
     if (!r.ok) return r;
     if (!r.dryRun) afterWrite(found.book.path);
     return { ...r, path: toLibRel(found.book, r.path) };
+  }
+
+  /**
+   * M12 W6: the live scene or chapter an insertScene / createChapter op created, { kind: 'scene', id } or { kind: 'chapter', id: <chapter number> }; null when it is gone (archived or moved).
+   * @param {any} book @param {any} store @param {{ op?: string, files?: { rel: string, before_sha256: string | null }[] }} e a journal entry
+   */
+  async function createdTarget(book, store, e) {
+    const created = (Array.isArray(e.files) ? e.files : []).filter((f) => f && f.before_sha256 === null && typeof f.rel === 'string');
+    if (created.length === 0) return null;
+    const sceneOf = (/** @type {string} */ rel) => book.order.find((/** @type {any} */ x) => toBookRel(book, x.path) === rel);
+    if (e.op === 'insertScene') {
+      for (const f of created) {
+        const s = sceneOf(f.rel);
+        if (s) return { kind: 'scene', id: s.id };
+      }
+      return null;
+    }
+    const file = created.find((f) => f.rel.endsWith('/chapter.md'));
+    const cur = file ? await store.read(file.rel) : null;
+    const n = cur ? parseFrontMatter(cur.bytes.toString('utf8')).fm.chapter : null;
+    return Number.isInteger(n) ? { kind: 'chapter', id: n } : null;
   }
 
   const PLANNER_CODES = ['REFUSED_UNKNOWN_SCENE', 'REFUSED_UNKNOWN_ENTRY'];
@@ -307,7 +329,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     return fail(r.code, r.message ? { message: r.message } : {});
   }
 
-  return {
+  const methods = {
     async updateSceneBody(bookId, sceneId, body, { baseSha256, count = true } = {}) {
       if (typeof body !== 'string') return fail('BAD_ARGS', { message: 'body must be a string' });
       const found = await findBook(bookId);
@@ -341,6 +363,34 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       }
       if (r.code === 'CONFLICT') return conflict(r, bookId, sceneId);
       return fail(r.code, r.message ? { message: r.message } : {});
+    },
+
+    /**
+     * M12 W6: replace the body of a scene the AI made and the author has not accepted: front matter `origin: ai` and status `drafting`. Anything else is NOT_AI_DRAFT and nothing
+     * is written (an author scene, or an AI scene the author moved on from drafting). `baseSha256` is required. The check reads the file the write is compared with: the write only
+     * succeeds when the file still has exactly the bytes that were checked (CONFLICT otherwise), so a scene the author accepts in between is never overwritten.
+     * @returns {Promise<any>} like updateSceneBody (`words`: { added, removed })
+     */
+    async updateAiDraftBody(bookId, sceneId, body, { baseSha256 } = {}) {
+      if (typeof body !== 'string') return fail('BAD_ARGS', { message: 'body must be a string' });
+      if (typeof baseSha256 !== 'string' || baseSha256 === '') return fail('BAD_ARGS', { message: 'base_sha256 is required' });
+      const found = await findBook(bookId);
+      const entry = found?.book.order.find((/** @type {any} */ s) => s.id === sceneId);
+      if (!found || !entry) return fail('NOT_FOUND');
+      const rel = toBookRel(found.book, entry.path);
+      if (rel === null) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book));
+      const cur = await store.read(rel);
+      if (!cur) return fail('NOT_FOUND');
+      const end = frontMatterEnd(cur.bytes);
+      if (end < 0) return fail('NOT_A_SCENE', { message: 'front matter is not terminated' });
+      const fm = parseFrontMatter(cur.bytes.subarray(0, end).toString('utf8')).fm;
+      if (fm.origin !== 'ai' || fm.status !== 'drafting') {
+        return fail('NOT_AI_DRAFT', { message: 'the author has accepted or written this scene; propose an edit instead' });
+      }
+      // count: false keeps these words out of the author's writing log; the delta is returned so the caller can log it as AI words
+      const r = await methods.updateSceneBody(bookId, sceneId, body, { baseSha256, count: false });
+      return r.ok ? { ...r, words: wordDelta(cur.bytes.subarray(end).toString('utf8'), body) } : r;
     },
 
     /**
@@ -489,7 +539,15 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
             undoable = false;
           }
         }
-        items.push({ opId: e.opId, at: e.at, actor: { kind: e.actor.kind, id: e.actor.id, name: e.actor.name }, op: e.op, summary: aiActivitySummary(e.op, files), files, undone: undone.has(e.opId), undoable });
+        // M12 W6: a scene or chapter the AI created cannot be undone (a created file is not restorable); it is archived instead, through the existing archive routes
+        let archivable = false;
+        let target = null;
+        if ((e.op === 'insertScene' || e.op === 'createChapter') && !undone.has(e.opId)) {
+          target = await createdTarget(found.book, store, e);
+          archivable = target !== null;
+          if (archivable) undoable = false;
+        }
+        items.push({ opId: e.opId, at: e.at, actor: { kind: e.actor.kind, id: e.actor.id, name: e.actor.name }, op: e.op, summary: aiActivitySummary(e.op, files), files, undone: undone.has(e.opId), undoable, archivable, target });
       }
       return { ok: true, code: 'OK', items };
     },
@@ -931,4 +989,5 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
       return report;
     },
   };
+  return methods;
 }

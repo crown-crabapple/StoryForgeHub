@@ -46,7 +46,7 @@ export const KINDS = {
       title: 'str', act: 'int', chapter: 'int', sequence: 'int1',
       status: ['outline', 'drafting', 'revised', 'final'],
       pov: 'str', characters: 'list', locations: 'list', plot_threads: 'list', summary: 'str',
-      variant_of: 'str', events: 'list', cast: 'list',
+      variant_of: 'str', events: 'list', cast: 'list', origin: ['ai', 'author'],
     },
   },
   entry: {

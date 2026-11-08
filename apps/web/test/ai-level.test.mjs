@@ -145,6 +145,20 @@ describe('AI Activity', () => {
     assert.match(t, /This change cannot be undone automatically\./);
   });
 
+  test('a scene or chapter the AI created shows Archive instead of Undo; other items keep Undo', () => {
+    const items = [
+      ITEM({ opId: '1', summary: 'Insert scene: manuscript/x.md', undoable: false, archivable: true, target: { kind: 'scene', id: 'scene_X' } }),
+      ITEM({ opId: '2', summary: 'Create chapter: manuscript/ch-004/chapter.md', undoable: false, archivable: true, target: { kind: 'chapter', id: 4 } }),
+      ITEM({ opId: '3' }),
+    ];
+    const out = html(h(activity.AiActivityView, { items }));
+    assert.equal((out.match(/>Archive</g) ?? []).length, 2);
+    assert.equal((out.match(/>Undo</g) ?? []).length, 1);
+    assert.match(out, /aria-label="Archive: Insert scene: manuscript\/x\.md"/);
+    assert.doesNotMatch(out, /aria-label="Undo: Insert scene/);
+    assert.match(text(html(h(activity.AiActivityView, { items: [items[0]], busy: '1' }))), /Archiving…/);
+  });
+
   test('empty, loading, error, message and busy states', () => {
     assert.match(text(html(h(activity.AiActivityView, { items: [] }))), /No AI connection has changed this book yet\./);
     assert.match(text(html(h(activity.AiActivityView, { items: null }))), /Loading/);

@@ -45,7 +45,7 @@ test('the workspace tools: five read tools need only read, eight write tools nee
     assert.equal(rw.some((t) => t.name === n), false);
   }
   for (const n of [...READS, ...WRITES]) assert.equal(NOT_OFFERED.includes(n), false, `${n} is offered now`);
-  assert.equal(TOOLS.length, 83);
+  assert.equal(TOOLS.length, 87);
 });
 
 test('a token without workspace is refused a write tool, with no request', async () => {

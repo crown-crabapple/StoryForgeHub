@@ -1,7 +1,7 @@
 // Table definitions for index.sqlite. Bump SCHEMA_VERSION when anything here changes: an index with
 // a different version is treated as stale and rebuilt from the files.
 
-export const SCHEMA_VERSION = 3; // 2: graph table (M04-J01); 3: world_nodes (series shared entries, cross-book targets) and shared_files (M07-J01)
+export const SCHEMA_VERSION = 4; // 4: scenes.origin (M12 W6); 2: graph table (M04-J01); 3: world_nodes (series shared entries, cross-book targets) and shared_files (M07-J01)
 export const FORMAT = 'storyforge-format/1';
 export const INDEX_FILE = 'index.sqlite';
 
@@ -22,7 +22,7 @@ CREATE TABLE objects (
 );
 CREATE TABLE scenes (
   id TEXT NOT NULL, position INTEGER NOT NULL, act INTEGER, chapter INTEGER, sequence INTEGER,
-  act_label TEXT, chapter_label TEXT, title TEXT, status TEXT, pov TEXT, word_count INTEGER NOT NULL, path TEXT NOT NULL
+  act_label TEXT, chapter_label TEXT, title TEXT, status TEXT, pov TEXT, word_count INTEGER NOT NULL, path TEXT NOT NULL, origin TEXT
 );
 CREATE INDEX scenes_id ON scenes (id);
 CREATE TABLE excluded (id TEXT, path TEXT NOT NULL, reason TEXT NOT NULL);

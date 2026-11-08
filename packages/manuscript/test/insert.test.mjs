@@ -141,3 +141,20 @@ describe('insertScene with no gap (acceptance 3)', () => {
     for (const p of all) assert.ok(p.startsWith(`${CH2}/`), p);
   });
 });
+
+describe('insertScene origin (M12 W6)', () => {
+  it('writes origin: ai after the status line, validates, and refuses any other origin before writing', async () => {
+    const dir = copyFixture(SALT);
+    const before = snapshot(dir);
+    const bad = await insertScene(dir, { chapter: 1, after: ARRIVAL, title: 'X', slug: 'x', body: 'x\n', origin: 'robot' });
+    assert.equal(bad.ok, false);
+    assert.equal(bad.code, 'REFUSED_BAD_ARGS');
+    assert.deepEqual(diffSnap(before, snapshot(dir)), { added: [], removed: [], changed: [] });
+    const r = await insertScene(dir, { chapter: 1, after: ARRIVAL, title: 'Machine', slug: 'machine', body: BODY, status: 'drafting', origin: 'ai' });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.match(read(dir, r.path), /^status: drafting\r?\norigin: ai\r?\n/m);
+    assert.deepEqual(await errorsOf(dir), []);
+    const plain = await insertScene(dir, { chapter: 1, after: ARRIVAL, title: 'Plain', slug: 'plain', body: BODY });
+    assert.doesNotMatch(read(dir, plain.path), /origin:/);
+  });
+});

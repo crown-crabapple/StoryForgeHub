@@ -50,6 +50,8 @@ export const WRITE_CLASSES = Object.freeze({
   'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
   // M12 W3: a scene's chapter cast (its `cast` key only), knowledge and state items on a chapter's state event, the AI words of the writing log (never prose)
   'scene-cast': 'write', 'ledger-knowledge-record': 'write', 'ledger-state-record': 'write', 'activity-ai-log': 'write',
+  // M12 W6: the body of a scene the AI made and the author has not accepted (origin: ai, status drafting); anything else is refused by the route itself
+  'scene-ai-draft': 'write',
   // M07-J04 profiles: per-machine appearance settings of the server process, so in shared mode only the owner changes them
   'profile-save': 'admin', 'profile-switch': 'admin', 'profile-delete': 'admin',
   // shared-mode administration (shared-routes.mjs)

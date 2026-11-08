@@ -151,7 +151,7 @@ export async function buildReconciled(p, { prev }) {
 /** Columns copied unchanged from the last valid projection. */
 const KEPT = {
   objects: ['id', 'kind', 'slug', 'title', 'type', 'status', 'path', 'archived'],
-  scenes: ['id', 'position', 'act', 'chapter', 'sequence', 'act_label', 'chapter_label', 'title', 'status', 'pov', 'word_count', 'path'],
+  scenes: ['id', 'position', 'act', 'chapter', 'sequence', 'act_label', 'chapter_label', 'title', 'status', 'pov', 'word_count', 'path', 'origin'],
   excluded: ['id', 'path', 'reason'],
   links: ['src_id', 'src_path', 'location', 'raw', 'target_id', 'target_kind', 'resolution'],
   mentions: ['entry_id', 'scene_id', 'count'],
@@ -259,13 +259,13 @@ async function project({ bookPath, files, shared, book, rel, diagnostics, result
     }
 
     const insScene = db.prepare(
-      'INSERT INTO scenes (id, position, act, chapter, sequence, act_label, chapter_label, title, status, pov, word_count, path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO scenes (id, position, act, chapter, sequence, act_label, chapter_label, title, status, pov, word_count, path, origin) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
     for (const s of book.order) {
       const p = rel(s.path);
       const doc = docByRel.get(p);
       const fm = doc?.fm ?? {};
-      insScene.run(s.id, s.position, s.act, s.chapter, s.sequence, s.act_label, s.chapter_label, s.title, str(fm.status), str(fm.pov), countWords(doc?.body ?? ''), p);
+      insScene.run(s.id, s.position, s.act, s.chapter, s.sequence, s.act_label, s.chapter_label, s.title, str(fm.status), str(fm.pov), countWords(doc?.body ?? ''), p, fm.origin === 'ai' ? 'ai' : null);
     }
 
     const insExcluded = db.prepare('INSERT INTO excluded (id, path, reason) VALUES (?, ?, ?)');
