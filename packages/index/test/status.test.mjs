@@ -32,7 +32,7 @@ test('status after rebuild is fresh with schema_version, built_at and file_count
   const { idx, root } = await built();
   const st = plain(await idx.status());
   assert.equal(st.state, 'fresh');
-  assert.equal(st.schema_version, 3); // M07-J01 contract section 6: shared and external graph nodes
+  assert.equal(st.schema_version, 4); // 4: scenes.origin (M12 W6); 3: shared and external graph nodes (M07-J01 contract section 6)
   assert.ok(st.built_at);
   assert.deepEqual(st.stale_paths, []);
   assert.ok(st.file_count >= 30, `file_count counts the book's .md files, got ${st.file_count}`);
@@ -146,5 +146,5 @@ test('a different schema_version is not served; rebuild restores it', async () =
   assert.equal((await idx.rebuild()).ok, true);
   const st = plain(await idx.status());
   assert.equal(st.state, 'fresh');
-  assert.equal(st.schema_version, 3); // M07-J01 contract section 6: shared and external graph nodes
+  assert.equal(st.schema_version, 4); // 4: scenes.origin (M12 W6); 3: shared and external graph nodes (M07-J01 contract section 6)
 });

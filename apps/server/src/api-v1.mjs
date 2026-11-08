@@ -3,18 +3,27 @@
 // check as the app, never a dry run): a proposal becomes a suggestion (source: plugin) that changes nothing until the author accepts a hunk in the normal
 // review. Reads are projections with stable field names (within API major 1 fields are only added). Who may call what is decided by plugin-policy.mjs first.
 import { checkWebhookUrl } from '@storyforge/integrations';
-import { loadPlugins } from '@storyforge/format';
+import { aiLevelReaches, loadPlugins } from '@storyforge/format';
+import { countWords } from '@storyforge/core';
+import { runAsActor } from '@storyforge/store';
 import pkg from '../package.json' with { type: 'json' };
 import { decidePlugin } from './plugin-policy.mjs';
-import { moduleOff, moduleOn } from './preferences.mjs';
-import { handleWrite, matchWriteRoute } from './router.mjs';
+import { aiLevelOf, aiLevelRefused, moduleOff, moduleOn } from './preferences.mjs';
+import { continuityOptions, handleWrite, matchWriteRoute, parseContextQuery } from './router.mjs';
 
 export const API_MAJOR = 1;
 const NOT_FOUND = { status: 404, body: { error: 'not_found' } };
 const badRequest = (/** @type {string} */ message, code = 'BAD_ARGS') => ({ status: 400, body: { error: 'bad_request', code, message } });
 const isObject = (/** @type {unknown} */ v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const MAX_HUNKS = 200;
+/** M12 W3: the app write routes a workspace write of a plugin may reach (see memberWrite): threads, the chapter cast, ledgers (knowledge, state events), tasks and the AI writing log. Never scene-body or scene-fields. */
+const WORKSPACE_ROUTES = ['thread-', 'scene-cast', 'ledger-', 'task-', 'activity-ai-log'];
+/** M12 W4: the only app write routes the continuity dismiss and restore calls reach: the exception create and archive routes (never the author's continuity settings). */
+const CONTINUITY_ROUTES = ['continuity-exception-'];
 const MAX_TEXT = 4 * 1024 * 1024;
+
+/** A scene slug from a title: lowercase letters and digits joined by single hyphens, at most 60 characters (the rule of the app's own slugs). @param {string} title */
+const slugFromTitle = (title) => title.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/g, '');
 
 /** @param {string} s @returns {string | null} */
 function decode(s) {
@@ -35,8 +44,16 @@ export function v1RouteOf(method, pathname) {
   if (a !== 'books') return 'other';
   if (parts.length === 3) return 'books';
   if (c === undefined) return 'book';
-  if (c === 'scenes' && d !== undefined) return 'scene';
+  if (c === 'scenes' && d !== undefined) return parts[6] === 'cast' ? 'scene-cast' : parts[6] === 'draft' ? 'scene-draft' : 'scene';
+  if (c === 'scenes') return 'scene-create';
+  if (c === 'chapters') return 'chapter-create';
+  if (c === 'context') return 'context';
   if (c === 'entries') return d === undefined ? 'entries' : 'entry';
+  if (c === 'ledger') return method === 'GET' ? 'ledger' : d === 'threads' && parts[6] === undefined ? 'ledger-thread-create' : 'ledger-thread-update';
+  if (c === 'cast' || c === 'knowledge' || c === 'state-events') return method === 'GET' ? c : c === 'knowledge' ? 'knowledge-record' : 'state-record';
+  if (c === 'tasks') return method === 'GET' ? 'tasks' : d === undefined ? 'task-create' : 'task-status';
+  if (c === 'activity') return 'activity-ai-log';
+  if (c === 'continuity') return method === 'GET' ? 'continuity' : parts[7] === 'archive' ? 'continuity-restore' : 'continuity-dismiss';
   if (['threads', 'events', 'search', 'graph', 'diagnostics'].includes(c)) return c;
   if (c === 'proposals') return 'proposals';
   if (c === 'plan') return d === undefined ? 'plan' : method === 'POST' ? `plan-${d}-write` : `plan-${d}`;
@@ -45,6 +62,13 @@ export function v1RouteOf(method, pathname) {
     if (parts[6] === undefined) return method === 'GET' ? 'canvas' : method === 'PUT' ? 'canvas-save' : 'other';
     if (method === 'POST' && parts[6] === 'archive') return 'canvas-archive';
     if (method === 'POST' && parts[6] === 'restore') return 'canvas-restore';
+  }
+  if (c === 'workspace') {
+    if (d === 'setup') return method === 'POST' ? 'workspace-setup' : 'other';
+    if (d === 'docs') {
+      if (parts[6] === undefined) return method === 'GET' ? 'workspace-docs' : method === 'POST' ? 'workspace-doc-save' : 'other';
+      if (method === 'POST' && ['append', 'lock', 'archive', 'restore'].includes(parts[6])) return `workspace-doc-${parts[6]}`;
+    }
   }
   return 'other';
 }
@@ -95,6 +119,8 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
   }
   const books = /** @type {any[]} */ (grant ? await repository.listBooks() : []); // an unknown or revoked token is refused before anything is read
   const slugOf = (/** @type {string} */ x) => books.find((b) => b.slug === x || b.id === x)?.slug ?? null;
+  // M12 AI Activity: every write made through this token records who made it (its grant) in the op journal; reads record nothing
+  const asActor = (/** @type {() => Promise<any>} */ fn) => (method === 'GET' ? fn() : runAsActor({ kind: 'plugin', id: grant.id, name: grant.plugin }, fn));
   const d = decidePlugin(grant, method, pathname, slugOf);
   if (!d.ok) return out(d.status, d.body, grant);
   const book = d.book ? books.find((b) => b.slug === d.book) : null;
@@ -102,6 +128,14 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
   if (!(await moduleOn(repository, state, 'integrations', book ? { bookId: book.id } : {}))) {
     const off = moduleOff('integrations');
     return out(off.status, off.body, grant, target);
+  }
+  // M12: the book's AI level caps what any token may do in it, whatever the token was granted
+  if (book && d.level !== 'off') {
+    const level = await aiLevelOf(repository, state, { bookId: book.id });
+    if (!aiLevelReaches(level, d.level)) {
+      const refused = aiLevelRefused(level, d.level);
+      return out(refused.status, refused.body, grant, target);
+    }
   }
   const parts = pathname.split('/').filter(Boolean).map(decode);
   if (parts.some((x) => x === null)) return out(404, NOT_FOUND.body, grant, target);
@@ -113,7 +147,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     if (c === undefined && !book) {
       // GET /books: the granted books whose integrations module is on
       const listed = [];
-      for (const b of books) if ((grant.books === 'all' || grant.books.includes(b.slug)) && (await moduleOn(repository, state, 'integrations', { bookId: b.id }))) listed.push(bookOut(b));
+      for (const b of books) if ((grant.books === 'all' || grant.books.includes(b.slug)) && (await moduleOn(repository, state, 'integrations', { bookId: b.id }))) listed.push({ ...bookOut(b), ai_level: await aiLevelOf(repository, state, { bookId: b.id }) }); // M12: what an AI may do in this book
       return out(200, { books: listed }, grant);
     }
     const bk = /** @type {any} */ (book);
@@ -131,6 +165,71 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
           })),
         },
       });
+    }
+    // M12 W6: the co-writer. A new chapter, a new scene (always marked AI and a draft), a replacement of the body of such a draft the author has not accepted, and the context pack.
+    // No route here can change a scene the author wrote or accepted, and none deletes anything.
+    if (c === 'context') {
+      const q = parseContextQuery(params);
+      if (q.error) return done(badRequest(q.error));
+      const pack = await repository.getContext(bk.id, { chapter: q.chapter, budget: q.budget });
+      return done(pack ? { status: 200, body: pack } : NOT_FOUND);
+    }
+    if (c === 'chapters') return done(await memberWrite(bk, 'POST', ['chapters'], ['chapter-create']), `${target}/chapters`);
+    if (c === 'scenes' && method === 'POST' && d2 === undefined) {
+      return done(await memberWrite(bk, 'POST', ['scenes'], ['create'], undefined, { shape: (b) => aiSceneBody(bk, b), after: (r, b) => logAiWords(bk, r, b, 'created') }), `${target}/scenes`);
+    }
+    if (c === 'scenes' && method === 'PUT') {
+      return done(await memberWrite(bk, 'PUT', ['scenes', /** @type {string} */ (d2), 'ai-draft'], ['scene-ai-draft'], undefined, { after: (r) => logAiWords(bk, r, {}, 'saved') }), `${target}/${d2}`);
+    }
+    // M12 W3: ledgers, chapter cast, knowledge, state events, tasks, the AI writing log. Writes map onto the app's own routes by name (see memberWrite); nothing here writes prose.
+    if (c === 'scenes' && method === 'POST') return done(await memberWrite(bk, 'POST', ['scenes', /** @type {string} */ (d2), 'cast'], WORKSPACE_ROUTES), `${target}/${d2}`);
+    if (c === 'ledger') {
+      if (method === 'POST') return done(await memberWrite(bk, 'POST', d2 === 'threads' && parts[6] === undefined ? ['threads'] : ['threads', /** @type {string} */ (parts[6]), 'fields'], WORKSPACE_ROUTES), `${target}/ledger`);
+      const ledger = await repository.getLedger(bk.id);
+      return done(ledger ? { status: 200, body: planOut(ledger) } : NOT_FOUND);
+    }
+    if (c === 'cast') {
+      const chapter = params.get('chapter');
+      if (chapter !== null && !/^[0-9]{1,6}$/.test(chapter)) return done(badRequest('chapter must be a chapter number'));
+      const cast = await repository.getCast(bk.id, chapter !== null ? { chapter: Number(chapter) } : {});
+      return done(cast ? { status: 200, body: { cast } } : NOT_FOUND);
+    }
+    if (c === 'knowledge') {
+      if (method === 'POST') return done(await memberWrite(bk, 'POST', ['knowledge'], WORKSPACE_ROUTES));
+      const character = params.get('character');
+      const at = params.get('at');
+      if (character === null || character === '') return done(badRequest('character is required (an entry id or slug)'));
+      if (at !== null && !/^[0-9]{1,6}$/.test(at)) return done(badRequest('at must be a chapter number'));
+      const r = await repository.knowledgeAt(bk.id, { character, ...(at !== null ? { at: Number(at) } : {}) });
+      if (r.ok) return done({ status: 200, body: { character: r.character, at: r.at, facts: r.facts } });
+      return done(r.code === 'NOT_FOUND' ? NOT_FOUND : badRequest(r.message ?? 'bad request'));
+    }
+    if (c === 'state-events') {
+      if (method === 'POST') return done(await memberWrite(bk, 'POST', ['state-events'], WORKSPACE_ROUTES));
+      const chapter = params.get('chapter');
+      if (chapter !== null && chapter !== 'all' && !/^[0-9]{1,6}$/.test(chapter)) return done(badRequest('chapter must be a chapter number or all'));
+      const events = await repository.getStateEvents(bk.id, chapter !== null && chapter !== 'all' ? { chapter: Number(chapter) } : {});
+      return done(events ? { status: 200, body: { events } } : NOT_FOUND);
+    }
+    if (c === 'tasks') {
+      if (method === 'POST') return done(await memberWrite(bk, 'POST', d2 === undefined ? ['tasks'] : ['tasks', d2, 'status'], WORKSPACE_ROUTES));
+      const status = params.get('status');
+      const forWho = params.get('for');
+      if (status !== null && !['open', 'doing', 'done', 'dropped'].includes(status)) return done(badRequest('status must be open, doing, done or dropped'));
+      if (forWho !== null && !['ai', 'author'].includes(forWho)) return done(badRequest('for must be ai or author'));
+      const r = await repository.listTasks(bk.id, { ...(status !== null ? { status } : {}), ...(forWho !== null ? { for: forWho } : {}) });
+      return done(r.ok ? { status: 200, body: planOut({ tasks: r.tasks, counts: r.counts }) } : NOT_FOUND);
+    }
+    if (c === 'activity') return done(await memberWrite(bk, 'POST', ['activity', 'ai-words'], WORKSPACE_ROUTES), `${target}/activity`);
+    if (c === 'continuity') {
+      // M12 W4: the continuity module must be on. GET: all findings (?chapter=N, &cast=<entry>:<role>,... for a planned chapter), the dismissed ones and the stale exceptions.
+      // POST exceptions { fingerprint, reason }: dismiss one finding; POST exceptions/<slug>/archive: restore it. Both need 'workspace' at level planner (plugin-policy.mjs).
+      if (!(await moduleOn(repository, state, 'continuity', { bookId: bk.id }))) return done(moduleOff('continuity'));
+      if (method === 'POST') return done(await continuityWrite(bk, parts[6] ?? undefined), `${target}/continuity`);
+      const q = continuityOptions(params);
+      if (q.error) return done(badRequest(q.error));
+      const all = await repository.getContinuity(bk.id, q.opts);
+      return done(all ? { status: 200, body: { findings: all.findings, suppressed: all.suppressed, stale_exceptions: all.stale_exceptions, settings: all.settings } } : NOT_FOUND);
     }
     if (c === 'scenes') {
       const s = await repository.getScene(bk.id, d2);
@@ -176,8 +275,14 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     }
     if (c === 'canvases') {
       if (!(await moduleOn(repository, state, 'board', { bookId: bk.id })) && !(await moduleOn(repository, state, 'planner', { bookId: bk.id }))) return done(moduleOff('board')); // M10: on with the board or the planner
-      const r = await canvasRoute(bk, d2, parts[6] ?? undefined);
+      const r = await asActor(() => canvasRoute(bk, d2, parts[6] ?? undefined));
       return done(r.res, r.target ?? target);
+    }
+    if (c === 'workspace') {
+      // M12 W2: workspace docs. Reads need 'read', writes 'workspace' at level planner (plugin-policy.mjs); the workspace module must be on for both.
+      if (!(await moduleOn(repository, state, 'workspace', { bookId: bk.id }))) return done(moduleOff('workspace'));
+      if (method === 'POST') return done(await workspaceWrite(bk, d2, parts[6] ?? undefined), `${target}/workspace/${[d2, parts[6]].filter(Boolean).join('/')}`);
+      return done(await workspaceRead(bk), `${target}/workspace/docs`);
     }
     if (c === 'plan') {
       // Story Planner M8 (ADR 0003): read only; refused with the planner module off
@@ -208,7 +313,7 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       return done({ status: 200, body: planOut(r) }, `${target}/${d2}`);
     }
     if (c === 'proposals') {
-      const r = await propose(bk);
+      const r = await asActor(() => propose(bk));
       return done(r.res, r.target ? `${target}/${r.target}` : target, r.res.status === 201 ? { by: r.by, proposal: r.proposal } : {});
     }
     return out(404, NOT_FOUND.body, grant, target);
@@ -225,13 +330,104 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
   async function planWrite(bk, rest) {
     const segment = PLAN_WRITE_SEGMENT[/** @type {keyof typeof PLAN_WRITE_SEGMENT} */ (rest[0])];
     if (!segment) return NOT_FOUND;
-    const memberPath = ['', 'api', 'books', bk.id, segment, ...rest.slice(1)].map((x) => (x === '' ? '' : encodeURIComponent(x))).join('/');
-    const match = matchWriteRoute('POST', memberPath);
-    if (!match || typeof match.route !== 'string' || !match.route.startsWith('planner-')) return NOT_FOUND;
+    return memberWrite(bk, 'POST', [segment, ...rest.slice(1)], ['planner-']);
+  }
+
+  /** GET /api/v1/books/:b/workspace/docs[?path=<address>]: the list, or one doc with its body and sha256 (pass it back as base_sha256 to change it). @param {any} bk */
+  async function workspaceRead(bk) {
+    const addr = params.get('path');
+    if (addr === null) {
+      const list = await repository.listWorkspaceDocs(bk.id);
+      return list ? { status: 200, body: list } : NOT_FOUND;
+    }
+    const doc = await repository.getWorkspaceDoc(bk.id, addr);
+    return doc ? { status: 200, body: { ...doc, body: lf(doc.body) } } : NOT_FOUND;
+  }
+
+  /**
+   * M12 W2: a workspace write (permission 'workspace', level planner, both checked before this runs), through the app's own workspace-* route (sha check, locks, store, op journal).
+   * A plugin may lock a doc but never unlock one: only the author unlocks (403 AUTHOR_ONLY, nothing runs).
+   * @param {any} bk @param {string | undefined} what 'docs' or 'setup' @param {string | undefined} action append | lock | archive | restore
+   */
+  async function workspaceWrite(bk, what, action) {
+    const segments = what === 'setup' ? ['workspace', 'setup'] : ['workspace', 'docs', ...(action === undefined ? [] : [action])];
+    const guard = action === 'lock'
+      ? (/** @type {Record<string, unknown>} */ b) => (b.locked === false ? { status: 403, body: { error: 'forbidden', code: 'AUTHOR_ONLY', message: 'only the author can unlock a workspace doc; nothing was changed' } } : null)
+      : undefined;
+    return memberWrite(bk, 'POST', segments, ['workspace-'], guard);
+  }
+
+  /**
+   * M12 W4: dismiss a finding (POST /continuity/exceptions { fingerprint, reason } -> the app's continuity-exception-create with the reason as its rationale) or restore it
+   * (POST /continuity/exceptions/<slug>/archive -> continuity-exception-archive). Both through the app's own routes, so the same checks, store and Undo.
+   * @param {any} bk @param {string | undefined} slug the exception's slug, for a restore
+   */
+  async function continuityWrite(bk, slug) {
+    if (slug !== undefined) return memberWrite(bk, 'DELETE', ['continuity', 'exceptions', slug], CONTINUITY_ROUTES);
+    const guard = (/** @type {Record<string, unknown>} */ b) => {
+      if (typeof b.fingerprint !== 'string' || b.fingerprint === '') return badRequest('fingerprint must be the fingerprint of a current finding');
+      if (typeof b.reason !== 'string' || b.reason.trim() === '') return badRequest('reason is required (why this is fine)', 'RATIONALE_REQUIRED');
+      b.rationale = b.reason;
+      delete b.reason;
+      return null;
+    };
+    return memberWrite(bk, 'POST', ['continuity', 'exceptions'], CONTINUITY_ROUTES, guard);
+  }
+
+  /**
+   * M12: run one of the app's own write routes for a plugin request (the route the v1 path maps onto), with the same validation, sha checks, store, module gate and
+   * op journal (Undo) as the app. Only a route whose name starts with one of `allowed` is reachable this way; anything else is a 404 and nothing runs.
+   * plugin-policy.mjs has already checked the token's permission, book and the book's AI level for the v1 path.
+   * @param {any} bk @param {string} verb the member route's method @param {string[]} segments the member path after /api/books/:id @param {string[]} allowed route-name prefixes
+   * @param {(body: Record<string, unknown>) => { status: number, body: unknown } | null} [guard] a refusal decided from the request body before the route runs (null: go ahead)
+   * @param {{ shape?: (body: Record<string, unknown>) => Promise<Record<string, unknown>> | Record<string, unknown>, after?: (result: { status: number, body: any }, body: Record<string, unknown>) => Promise<void> }} [hooks]
+   *   `shape` decides the body the route receives from the one the plugin sent (M12 W6 forces origin and status that way); `after` runs once the route has answered, with its result and that body
+   */
+  async function memberWrite(bk, verb, segments, allowed, guard, hooks = {}) {
+    const memberPath = ['', 'api', 'books', bk.id, ...segments].map((x) => (x === '' ? '' : encodeURIComponent(x))).join('/');
+    const match = matchWriteRoute(verb, memberPath);
+    if (!match || typeof match.route !== 'string' || !allowed.some((p) => match.route.startsWith(p))) return NOT_FOUND;
     const read = await readJson();
     if (!read.ok) return { status: read.status, body: read.body };
     if (!isObject(read.value)) return badRequest('body must be a JSON object');
-    return handleWrite(repository, match, read.value, state, { principal: { kind: 'plugin', id: grant.id, display_name: grant.plugin } });
+    const refused = guard ? guard(/** @type {Record<string, unknown>} */ (read.value)) : null;
+    if (refused) return refused;
+    const sent = hooks.shape ? await hooks.shape(/** @type {Record<string, unknown>} */ (read.value)) : read.value;
+    const result = await asActor(() => handleWrite(repository, match, sent, state, { principal: { kind: 'plugin', id: grant.id, display_name: grant.plugin } }));
+    if (hooks.after && result.status >= 200 && result.status < 300) await hooks.after(/** @type {any} */ (result), /** @type {Record<string, unknown>} */ (sent));
+    return result;
+  }
+
+  /**
+   * M12 W6: the body POST /scenes sends to the app's create route. Whatever the plugin sent, the scene is an AI draft (origin ai, status drafting); only the fields of a new scene are
+   * passed on (no id, no other front matter). Without a slug one is made from the title; without `after` the scene goes at the end of its chapter.
+   * @param {any} bk @param {Record<string, unknown>} b
+   */
+  async function aiSceneBody(bk, b) {
+    const out = /** @type {Record<string, unknown>} */ ({});
+    for (const k of ['chapter', 'act', 'after', 'title', 'slug', 'body', 'summary', 'dryRun']) if (b[k] !== undefined) out[k] = b[k];
+    if (out.slug === undefined && typeof out.title === 'string') out.slug = slugFromTitle(out.title) || 'scene';
+    if (out.after === undefined && Number.isInteger(out.chapter)) {
+      const full = await repository.getBook(bk.id);
+      const inChapter = (full?.acts ?? []).flatMap((/** @type {any} */ a) => a.chapters).filter((/** @type {any} */ c) => c.chapter === out.chapter).flatMap((/** @type {any} */ c) => c.scenes);
+      out.after = inChapter.length > 0 ? inChapter[inChapter.length - 1].id : null;
+    }
+    return { ...out, origin: 'ai', status: 'drafting' };
+  }
+
+  /**
+   * M12 W6: after a scene was created or its draft replaced, add the words the AI wrote to today's AI words (the writing log). A dry run writes nothing and logs nothing; a failure here never
+   * changes the answer. @param {any} bk @param {{ status: number, body: any }} r @param {Record<string, unknown>} sent @param {'created' | 'saved'} what
+   */
+  async function logAiWords(bk, r, sent, what) {
+    if (sent.dryRun === true) return;
+    const words = what === 'created' ? countWords(typeof sent.body === 'string' ? sent.body : '') : Number(r.body?.words?.added ?? 0);
+    if (!Number.isInteger(words) || words < 1) return;
+    try {
+      await repository.recordAiWords(bk.id, { words, ...(Number.isInteger(sent.chapter) && /** @type {number} */ (sent.chapter) >= 0 ? { chapter: /** @type {number} */ (sent.chapter) } : {}) });
+    } catch {
+      // the log is a record, not part of the write; the scene is already saved
+    }
   }
 
   /**

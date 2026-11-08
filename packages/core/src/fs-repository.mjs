@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'yaml';
-import { checkContinuity } from '@storyforge/continuity';
+import { checkContinuity, readSettings } from '@storyforge/continuity';
 import { discover, escapesRoot, extractDocs, extractShared, isFile, loadDoc, loadPrompts, validate, walkMarkdown } from '@storyforge/format';
 import { bookFacts, buildGraph, subGraph } from '@storyforge/index';
 import { MAX_ATTACHMENT_BYTES, applyRepair, fieldLabels, planRepair } from '@storyforge/manuscript';
@@ -19,11 +19,14 @@ import { createWriteMethods } from './fs-writes.mjs';
 import { createWorldMethods, fieldDefsOf, labelDefsOf, labelsOfDoc } from './fs-world.mjs';
 import { createGoalMethods } from './fs-goals.mjs';
 import { createTaskMethods } from './fs-tasks.mjs';
+import { createLedgerMethods } from './fs-ledger.mjs';
+import { createContextMethods } from './fs-context.mjs';
 import { createInsightReads } from './fs-insights.mjs';
 import { registerReceiptEngine } from './provenance.mjs';
 import { createReceiptEngine } from './receipts.mjs';
 import { createTimelineReads } from './fs-timeline.mjs';
 import { createCanvasMethods } from './fs-canvas.mjs';
+import { createWorkspaceMethods } from './fs-workspace.mjs';
 import { createPlannerMethods } from './fs-planner.mjs';
 import { countWords } from './word-count.mjs';
 
@@ -298,6 +301,7 @@ export function createFsRepository(libraryRoot, options = {}) {
           pov: str(fm.pov),
           word_count: countWords(body),
           path: s.path,
+          ...(fm.origin === 'ai' ? { origin: 'ai' } : {}),
           ...(labelsOfDoc(fm).length > 0 ? { labels: labelsOfDoc(fm) } : {}),
         };
         return { summary, fm, body, sha256 };
@@ -1165,9 +1169,17 @@ export function createFsRepository(libraryRoot, options = {}) {
       return big ? await oversized(book.path, image) : null;
     },
 
-    async getContinuity(bookId) {
+    async getContinuity(bookId, opts = {}) {
       const book = await bookById(bookId);
-      return book ? checkContinuity(abs(book.path)) : null;
+      return book ? checkContinuity(abs(book.path), opts) : null;
+    },
+
+    async getContinuitySettings(bookId) {
+      const result = await readValidate();
+      const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
+      if (!book) return null;
+      const doc = extractDocs(result, book.path).find((d) => d.kind === 'continuity-settings' && !d.archived);
+      return { exists: Boolean(doc), file: doc ? doc.rel : 'planning/continuity/settings.md', ...readSettings(doc?.fm) };
     },
 
     async continuityBooks() {
@@ -1290,6 +1302,8 @@ export function createFsRepository(libraryRoot, options = {}) {
   const reconcileBook = (p) => manager.reconcile(p, 'write', { full: true });
   Object.assign(repository, createGoalMethods({ root, activity, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook }));
   Object.assign(repository, createTaskMethods({ root, afterWrite: (p) => manager.afterWrite(p), reconcile: reconcileBook, now: options.clock }));
+  Object.assign(repository, createLedgerMethods({ repository, readValidate, activity })); // M12 W3: ledgers, chapter cast, knowledge and state events, AI words
+  Object.assign(repository, createContextMethods({ repository })); // M12 W6: the chapter context pack (reads only; every repository method it uses is on `repository` by the time it runs)
   Object.assign(repository, createInsightReads({ root, manager, readValidate, activity, now: options.clock }));
   // M09-J01: canvases (planning/canvases/*.canvas). Read from the files on every call; this module lists and reads for them.
   Object.assign(
@@ -1305,6 +1319,26 @@ export function createFsRepository(libraryRoot, options = {}) {
           return [];
         }
       },
+      async readFileAt(libRel) {
+        try {
+          const real = await realpath(abs(libRel));
+          const rel = path.relative(await realpath(root), real);
+          if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
+          const [bytes, st] = await Promise.all([readFile(real), stat(real)]);
+          return st.isFile() ? { bytes, mtimeMs: st.mtimeMs } : null;
+        } catch {
+          return null;
+        }
+      },
+    }),
+  );
+  // M12 W2: workspace docs (planning/workspace, planning/state, planning/development). Read from the validated documents and the files on every call.
+  Object.assign(
+    repository,
+    createWorkspaceMethods({
+      root,
+      readValidate,
+      afterWrite: (p) => manager.afterWrite(p),
       async readFileAt(libRel) {
         try {
           const real = await realpath(abs(libRel));

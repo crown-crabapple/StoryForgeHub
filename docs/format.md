@@ -17,7 +17,7 @@ my-library/                  any folder; holds one or more books
           0010-arrival.md    one scene per file
           0020-the-key.md
     codex/                   characters, locations, factions, objects, lore (one file each)
-    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/, arcs/, structures/, relationships/, synopses/ and clues/ hold Story Planner files, and story.md is the story plan
+    planning/                plot threads, timeline events, plans; canvases/ holds visual boards (.canvas, JSON Canvas); links/, scene-plans/, arcs/, structures/, relationships/, synopses/ and clues/ hold Story Planner files, and story.md is the story plan; workspace/, state/chapter-NN/ and development/ hold AI workspace docs; continuity/ holds continuity exceptions and settings.md; tasks/ holds revision tasks
     research/                research notes and sources
     assets/                  images and attachments (assets/drafts/ holds AI cover drafts, only if you generated any)
     activity/                writing log, goals and sessions; ai-usage.md (AI token counts) only if you turned it on
@@ -51,7 +51,7 @@ Scenes marked as an alternate version of another scene (`variant_of`) are kept b
 | --- | --- |
 | Scenes in `manuscript/` | `research/` notes (canon only if a note says `canon: true`) |
 | `codex/` entries | `suggestions/` until you accept them |
-| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/`, `planning/structures/`, `planning/relationships/`, `planning/synopses/`, `planning/clues/` and `planning/story.md` |
+| `planning/` threads and events | `ai/` records and `provenance/` receipts (records, never text); `planning/canvases/` boards, `planning/links/`, `planning/scene-plans/`, `planning/arcs/`, `planning/structures/`, `planning/relationships/`, `planning/synopses/`, `planning/clues/` and `planning/story.md`; `planning/development/` (AI proposals, never canon) |
 | `book.md`, `act.md`, `chapter.md` | `archive/` (left out of order, counts and export) |
 | `assets/` the book uses | `legacy/` (see below) |
 
@@ -344,6 +344,91 @@ Why the author accepts this finding.
 - One file suppresses the one finding with that `fingerprint`, and nothing else. Removing or archiving the file brings the finding back.
 - `intentional` is optional and must be `true` or `false`; any other value is `E102`. `true` means "this is on purpose"; no key means "acknowledged". Both suppress the same way. StoryForge writes the key only as `true`.
 - Planner findings (`PL1` to `PL4`) use the same files.
+
+## AI workspace files
+
+M12 adds a few files and fields, all additive within format v1. None is story text, and none changes a scene's prose. An AI connection can write them only within the book's AI level (see [mcp.md](mcp.md)); the author can edit any of them by hand.
+
+### A workspace doc: `planning/workspace/style.md`
+
+```yaml
+---
+schema: storyforge.doc/v1
+id: note_01S60000000000000000000001
+title: Style guide
+workspace: style
+locked: true
+---
+Free markdown.
+```
+
+- Docs live at `planning/workspace/<name>.md`, `planning/state/chapter-NN/<name>.md` (`<name>` is `situation`, `characters`, `knowledge` or `inventory`; `NN` is 2 or 3 digits) and `planning/development/<name>.md`. `<name>` is lower-case letters, digits and `-`, up to 60 characters. The path under `planning/`, without `.md`, is the doc's address (`state/chapter-04/knowledge`).
+- Required: `title`. Optional: `workspace` (`book`, `style`, `state` or `other`; StoryForge writes `book` for `workspace/book`, `style` for `workspace/style`, `state` for a chapter state doc and `other` for the rest), `chapter` (the number of a state doc's chapter) and `locked` (`true` or `false`). Any other value of `workspace` is `E102`.
+- A locked doc refuses changes from an AI connection. Only the author unlocks it (the app writes `locked: false`).
+- Archive moves the file to `archive/planning/<address>.md`. Restore moves it back.
+- `workspace/book` is the book's settings (title, language, point of view, chapter length, notes used as sources); `workspace/style` is the style guide; `state/chapter-NN/…` is what is true after chapter NN; `state/chapter-00/…` is the state before chapter 1. `development/` is for proposals that are never canon.
+
+### A scene's cast and origin
+
+```yaml
+cast:
+  - entry: maren-hollis
+    role: pov
+  - entry: pell
+    role: appears
+origin: ai
+```
+
+- `cast` is an optional list of mappings with `entry` (a Codex entry id or slug) and `role` (`pov`, `appears` or `mentioned`). A scene has at most one `pov`. An item that is not a mapping with both keys, an unknown `role` or a second `pov` is `E102` (at `cast[i]`, `cast[i].entry` or `cast[i].role`). An `entry` that does not resolve is `E301` or `E302`.
+- Use `mentioned` for a memory, a letter or a flashback; the rules `CS1` and `CS2` look only at `pov` and `appears`.
+- `origin` is optional: `ai` (a scene an AI connection created) or `author`. A scene with no `origin` is the author's. Any other value is `E102`. An AI scene starts with `status: drafting`; the author accepts it by changing the status, and from then on a connection can no longer replace its text.
+
+### A task's `for`
+
+A task file (`planning/tasks/`) may carry `for: ai` or `for: author`. `ai` marks a task the author wants an AI to do. StoryForge writes the line only for `ai`; a task with no `for` is for the author. Any other value is `E102`.
+
+### What a character learns
+
+A timeline event's `state` item with `event: learns` (or `knows`) keeps a slug-shaped key in `value`, and may carry `fact`, the full wording as one line of text:
+
+```yaml
+state:
+  - slug: maren-hollis
+    event: learns
+    value: the-harbour-key-opens-the-sea-gate
+    fact: The harbour key opens the sea gate.
+```
+
+`fact` is optional. It must be one line (a blank line or control characters is `E102`), and it is allowed only on `learns` and `knows` (on any other event word it is `E102`). AI workspace tools put these items on an event titled `Chapter N (state)`, one per chapter.
+
+### The AI words column
+
+`activity/writing-log.md` may have a last column, `AI words`: the words an AI connection wrote that day.
+
+```text
+| Date | Words added | Words removed | Minutes | Sessions | AI words |
+|---|---|---|---|---|---|
+| 2026-11-07 | 1200 | 80 | 95 | 2 | 640 |
+```
+
+StoryForge adds the column to the header and separator once, and only to a row with AI words. A file without the column reads as 0 AI words. The author's own `Words added` never includes AI words.
+
+### Continuity settings: `planning/continuity/settings.md`
+
+```yaml
+---
+schema: storyforge.continuity-settings/v1
+id: note_01S60000000000000000000002
+overdue_chapters: 12
+severity:
+  TH2: info
+---
+```
+
+- One file per book; nothing is required.
+- `overdue_chapters` is a whole number of 1 or more (default 12): how many chapters a promise or question may stay open before `TH2` reports it.
+- `severity` maps a rule id (two capital letters and digits, such as `CS1`) to `error`, `warning`, `info` or `off`. `off` hides the rule's findings; any other word replaces its severity. A key that is not a rule id, or any other word, is `E102` (at `severity.<key>`); the continuity engine ignores that entry.
+- Only the author changes this file; no AI connection can.
 
 ## `.storyforge/` is disposable
 

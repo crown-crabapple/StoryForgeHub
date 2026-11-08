@@ -54,7 +54,8 @@
  *   pov: string | null,
  *   word_count: number,
  *   path: string,
- * }} SceneSummary
+ *   origin?: 'ai',
+ * }} SceneSummary  `origin` is only present for a scene the AI created (front matter `origin: ai`)
  */
 
 /**
@@ -119,7 +120,9 @@
  *   getCover(bookId: string): Promise<{ bytes: Buffer, contentType: string, sha256: string } | { error: 'too_large' } | null>,
  *   getScene(bookId: string, sceneId: string): Promise<SceneDoc | null>,
  *   getDiagnostics(bookId?: string): Promise<Diagnostic[]>,
- *   getContinuity(bookId: string): Promise<import('@storyforge/continuity').ContinuityResult | null>,
+ *   getContinuity(bookId: string, opts?: { chapter?: number, cast?: { entry: string, role: string }[] }): Promise<import('@storyforge/continuity').ContinuityResult | null>,
+ *   getContinuitySettings(bookId: string): Promise<{ exists: boolean, file: string, overdue_chapters: number, severity: Record<string, string> } | null>,
+ *   saveContinuitySettings(bookId: string, args: { overdue_chapters?: number, severity?: Record<string, string>, dryRun?: boolean }): Promise<WriteResult & Record<string, any>>,
  *   createContinuityException(bookId: string, args: { fingerprint: string, rationale: string, title?: string, intentional?: boolean, dryRun?: boolean }): Promise<WriteResult & Record<string, any>>,
  *   archiveContinuityException(bookId: string, slug: string, args?: { dryRun?: boolean }): Promise<WriteResult & Record<string, any>>,
  *   getContinuityContext(bookId: string, args: { file?: unknown, line?: unknown, radius?: unknown }): Promise<WriteResult & { lines?: { n: number, text: string }[] }>,
@@ -164,11 +167,22 @@
  *   removeGoal(bookId: string, id: string): Promise<WriteResult & { removed?: string }>,
  *   recordSessionRow(bookId: string, body: { start: string, end: string, kind: string, scenes?: string[] }): Promise<WriteResult & { row?: any, path?: string }>,
  *   getInsights(bookId: string, opts?: { from?: 'files' }): Promise<WriteResult & { insights?: any, source?: 'index' | 'files' }>,
- *   listTasks(bookId: string, filter?: { status?: string, label?: string, source?: string }): Promise<WriteResult & { tasks?: any[], counts?: any, labels?: string[] }>,
+ *   listTasks(bookId: string, filter?: { status?: string, label?: string, source?: string, for?: string }): Promise<WriteResult & { tasks?: any[], counts?: any, labels?: string[] }>,
  *   getTask(bookId: string, ref: string): Promise<WriteResult & { task?: any, notes?: string, targets?: any[] }>,
  *   createTask(bookId: string, args: Record<string, any>): Promise<WriteResult & Record<string, any>>,
- *   setTaskStatus(bookId: string, ref: string, status: string): Promise<WriteResult & Record<string, any>>,
+ *   setTaskStatus(bookId: string, ref: string, status: string, opts?: { for?: string }): Promise<WriteResult & Record<string, any>>,
+ *   getLedger(bookId: string): Promise<{ promises: any[], questions: any[], clues: any[], counts: any } | null>,  (M12 W3)
+ *   getCast(bookId: string, opts?: { chapter?: number }): Promise<{ scene: string, title: string | null, chapter: number, cast: any[] }[] | null>,
+ *   setSceneCast(bookId: string, sceneId: string, args: { cast: { entry: string, role: string }[], baseSha256?: string, dryRun?: boolean }): Promise<StructureResult>,
+ *   knowledgeAt(bookId: string, args: { character: string, at?: number }): Promise<WriteResult & { character?: any, facts?: any[] }>,
+ *   getStateEvents(bookId: string, opts?: { chapter?: number }): Promise<any[] | null>,
+ *   recordKnowledge(bookId: string, args: { character: string, fact: string, chapter: number, dryRun?: boolean }): Promise<WriteResult & Record<string, any>>,
+ *   recordStateEvents(bookId: string, args: { chapter: number, items: any[], dryRun?: boolean }): Promise<WriteResult & Record<string, any>>,
+ *   recordEventState(bookId: string, args: { chapter: number, items: any[], allowKnowledge?: boolean, dryRun?: boolean }): Promise<StructureResult>,
+ *   recordAiWords(bookId: string, args: { words: number, chapter?: number, note?: string }): Promise<WriteResult & Record<string, any>>,
  *   setDailyGoal(bookId: string, goal: number | null): Promise<WriteResult & { daily_word_goal?: number }>,
+ *   setAiLevel(bookId: string, level: string | null, opts?: { scope?: 'book' | 'library' }): Promise<WriteResult & { level?: string | null, scope?: string }>,  (M12: preferences.ai.level in book.md or library.md)
+ *   listAiActivity(bookId: string, opts?: { limit?: number }): Promise<WriteResult & { items?: { opId: string, at: string, actor: { kind: string, id: string, name: string }, op: string, summary: string, files: string[], undone: boolean, undoable: boolean }[] }>,  (M12: what plugin tokens changed, newest first)
  *   listRevisions(bookId: string, sceneId: string): Promise<WriteResult & { revisions?: any[] }>,
  *   getRevision(bookId: string, sceneId: string, file: string): Promise<WriteResult & { revision?: any }>,
  *   saveRevision(bookId: string, sceneId: string, opts?: { label?: string, reason?: 'manual' | 'external' }): Promise<WriteResult & { stored?: boolean, revision?: any }>,
@@ -226,6 +240,14 @@
  *   saveCanvas(bookId: string, slug: string, args: { canvas: unknown, baseSha256: string }): Promise<WriteResult & { sha256?: string, current?: { sha256: string, canvas: any } }>,
  *   archiveCanvas(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
  *   restoreCanvas(bookId: string, slug: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
+ *   listWorkspaceDocs(bookId: string): Promise<{ docs: any[], archived: any[] } | null>,  (M12 W2: planning/workspace, planning/state, planning/development; each row = { path (address, no .md), title, workspace: 'book' | 'style' | 'state' | 'other', chapter: number | null, locked, sha256, updated_at })
+ *   getWorkspaceDoc(bookId: string, path: string): Promise<{ path: string, title: string, workspace: string, chapter: number | null, locked: boolean, sha256: string, body: string } | null>,
+ *   saveWorkspaceDoc(bookId: string, args: { path: string, title?: string, body: string, baseSha256?: string | null, dryRun?: boolean }): Promise<StructureResult & { path?: string, sha256?: string, created?: boolean, current?: { sha256: string, body: string } }>,  (an existing doc needs baseSha256: CONFLICT; a locked doc: LOCKED)
+ *   appendWorkspaceDoc(bookId: string, args: { path: string, text: string, dryRun?: boolean }): Promise<StructureResult & { path?: string, sha256?: string, created?: boolean }>,
+ *   lockWorkspaceDocs(bookId: string, args: { path?: string, prefix?: string, locked: boolean, dryRun?: boolean }): Promise<StructureResult & { locked?: boolean, changed?: string[], matched?: string[] }>,
+ *   archiveWorkspaceDoc(bookId: string, args: { path: string, baseSha256?: string, dryRun?: boolean }): Promise<StructureResult & { path?: string }>,
+ *   restoreWorkspaceDoc(bookId: string, args: { path: string, baseSha256?: string, dryRun?: boolean }): Promise<StructureResult & { path?: string }>,
+ *   setupWorkspace(bookId: string, args?: { dryRun?: boolean }): Promise<StructureResult & { created?: string[], existing?: string[] }>,
  *   listLinks(bookId: string): Promise<{ links: Link[], archived: Link[] } | null>,  (Story Planner M1: planning/links/*.md; Link = { id, slug, path, from, to, relation, branch: string | null (M8: a what-if label; null = the main plan), rationale, created, sha256, from_title, to_title, from_kind, to_kind, problems: { code, message }[] }, titles null when the end is not live; M5: an end may be a beat id of a live structure, then from_kind / to_kind is 'beat' (else 'scene') and the title is "<structure name>: <beat name>")
  *   getLink(bookId: string, slug: string): Promise<(Link & { archived: boolean }) | null>,  (live first, then archive)
  *   getScenePlan(bookId: string, sceneId: string): Promise<{ scene_id: string, path: string | null, sha256: string | null, fields: Record<string, string | null>, characters: string[], body: string } | null>,  (null for an unknown book or live scene; no sidecar: path and sha256 null, all fields null)

@@ -1,6 +1,6 @@
 // Preferences, profiles and modules for the API (M07-J04). A profile is per-machine user config (never author data): choosing or saving one writes
 // `<config>/profiles/<name>.json` through @storyforge/store and nothing in any library. The library and book layers are read from `library.md` / `book.md`.
-import { MODULE_IDS, PREFERENCE_KEYS, moduleOfRoute, profileProblems, resolveModules, resolvePreferences } from '@storyforge/format';
+import { AI_LEVELS, DEFAULT_AI_LEVEL, MODULE_IDS, PREFERENCE_KEYS, moduleOfRoute, profileProblems, resolveModules, resolvePreferences } from '@storyforge/format';
 import { DEFAULT_PROFILE, deleteProfile, isProfileName, listProfiles, readProfile, writeProfile } from '@storyforge/store';
 
 /** The profile name a server run uses: `--profile <name>`, else `STORYFORGE_PROFILE`, else `default`. Throws an Error with a usable message for a bad name.
@@ -38,6 +38,24 @@ export async function moduleStates(repository, state, which = {}) {
   const profile = await readProfile(profileNameOf(state));
   return resolveModules({ profile: layerOf(profile), library: project.library, book: project.book });
 }
+
+/**
+ * M12: the AI level of a book (or of no book): off | advisor | planner | cowriter, resolved like any project key (built-in < profile < library < book).
+ * @param {any} repository @param {any} state @param {{ bookId?: string, bookPath?: string }} [which] @returns {Promise<string>}
+ */
+export async function aiLevelOf(repository, state, which = {}) {
+  const project = typeof repository.getPreferences === 'function' ? await repository.getPreferences(which) : { library: null, book: null };
+  if (project === null) return DEFAULT_AI_LEVEL;
+  const profile = await readProfile(profileNameOf(state));
+  const level = resolvePreferences({ profile: layerOf(profile), library: project.library, book: project.book }).values?.ai?.level;
+  return AI_LEVELS.includes(level) ? level : DEFAULT_AI_LEVEL;
+}
+
+/** M12: the refusal for an AI request above the book's AI level. Nothing was written. @param {string} level @param {string} min */
+export const aiLevelRefused = (level, min) => ({
+  status: 403,
+  body: { error: 'forbidden', code: 'AI_LEVEL', level, needs: min, message: `the AI level of this book is "${level}"; this needs "${min}" or higher (the author sets it in the book's settings); nothing was written` },
+});
 
 /** Is `moduleId` on? Unknown books count as on (the route itself answers 404). @param {any} repository @param {any} state @param {string} moduleId @param {{ bookId?: string, bookPath?: string }} [which] */
 export async function moduleOn(repository, state, moduleId, which = {}) {

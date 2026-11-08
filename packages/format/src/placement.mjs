@@ -16,6 +16,8 @@ export function checkPlacement(docs, add) {
       add('W201', d.file, 'schema', 'thread file is not under planning/threads/');
     } else if (d.kind === 'continuity-exception' && !logical.startsWith('planning/continuity/')) {
       add('W201', d.file, 'schema', 'continuity exception is not under planning/continuity/');
+    } else if (d.kind === 'continuity-settings' && logical !== 'planning/continuity/settings.md') {
+      add('W201', d.file, 'schema', 'continuity settings are not at planning/continuity/settings.md');
     } else if (d.kind === 'ai-record' && !logical.startsWith('ai/')) {
       add('W201', d.file, 'schema', 'AI record is not under ai/');
     } else if (d.kind === 'asset-note' && !logical.startsWith('assets/drafts/')) {

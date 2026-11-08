@@ -7,6 +7,12 @@ const base = (bookId) => `/api/books/${enc(bookId)}/continuity`;
 /** GET: the findings. @param {string} bookId */
 export const continuityUrl = (bookId) => base(bookId);
 
+/** GET: the author's continuity settings ({ exists, overdue_chapters, severity }). @param {string} bookId */
+export const settingsUrl = (bookId) => `${base(bookId)}/settings`;
+
+/** POST: save planning/continuity/settings.md. @param {string} bookId @param {{ overdue_chapters: number, severity: Record<string, string> }} v */
+export const saveSettingsRequest = (bookId, { overdue_chapters, severity }) => ({ method: /** @type {const} */ ('POST'), url: settingsUrl(bookId), body: { overdue_chapters, severity } });
+
 /** GET: the lines around a finding's evidence ({ lines: [{ n, text }] }). @param {string} bookId @param {{ file: string, line: number }} source @param {number} [radius] */
 export const contextUrl = (bookId, source, radius = 3) => `${base(bookId)}/context?file=${enc(source.file)}&line=${source.line}&radius=${radius}`;
 

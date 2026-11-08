@@ -29,6 +29,12 @@ export const RULES = Object.freeze([
     description: 'A clue (kind clue) has planted scenes, no revealed scene and is not a red herring. Fingerprint: PL5, the clue, the clue, "unrevealed|clue id".' },
   { id: 'PL6', version: 1, title: 'Revealed before it is planted', severity: 'warning',
     description: 'The revealed scene of a clue comes before its first planted scene in reading order. Fingerprint: PL6, the clue, the revealed scene and the first planted scene, "order|clue id".' },
+  { id: 'CS1', version: 1, title: 'Dead on the page', severity: 'error',
+    description: 'A character entry has a died state item (and no later revived) and then appears as pov or appears in the cast of a scene in a later chapter. Fingerprint: CS1, the character, the died event and the scene, "dead|slug|scene id".' },
+  { id: 'CS2', version: 1, title: 'Gone object used', severity: 'error',
+    description: 'An entry has a destroyed or lost state item (and no later found) and then appears as pov or appears in the cast of a scene in a later chapter. Fingerprint: CS2, the entry, the destroyed or lost event and the scene, "gone|slug|scene id".' },
+  { id: 'TH2', version: 1, title: 'Promise overdue', severity: 'warning',
+    description: 'A promise or question thread is set up in chapter X, is not paid or dropped, and the last chapter of the book with scenes is more than overdue_chapters (settings, default 12) after X. Fingerprint: TH2, the thread, the thread, "overdue|thread id".' },
 ]);
 
 /**

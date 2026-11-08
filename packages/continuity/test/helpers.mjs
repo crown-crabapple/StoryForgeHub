@@ -42,14 +42,15 @@ const chDir = (ch) => `ch-${String(ch).padStart(3, '0')}-c${ch}`;
 /**
  * Build a synthetic one-act book.
  *  entries: [{ slug, type, name?, aliases?, fields?: {Label: 'v'}, body? }]
- *  scenes:  [{ n, ch?, title?, pov?, characters?, locations?, variantOf?, archived?, body }]
+ *  scenes:  [{ n, ch?, title?, pov?, characters?, locations?, cast?: [{ entry: slug, role }], variantOf?, archived?, body }]
  *           `n` is the scene number (id) and ordering: sequence = n*10 inside chapter `ch` (default 1).
  *  events:  [{ n, slug, order, date?, scenes?: [n], characters?, locations?, state?: ['yaml flow map', ...] }]
- *  threads: [{ n, slug, status, setup?: [n], develop?: [n], payoff?: [n] }]
+ *  threads: [{ n, slug, status, kind?, setup?: [n], develop?: [n], payoff?: [n] }]
+ *  settings: raw front-matter text (without schema and id) for planning/continuity/settings.md
  *  notes:   [{ n, title?, canon?, links?, body }]
  *  types:   [{ n, type, fields: ['Eyes'], values?: 'raw yaml line for values' }]
  */
-export function buildBook({ entries = [], scenes = [], events = [], threads = [], notes = [], types = [] } = {}) {
+export function buildBook({ entries = [], scenes = [], events = [], threads = [], notes = [], types = [], settings = null } = {}) {
   const root = path.join(tmp(), 'book');
   put(root, 'book.md', `---
 schema: storyforge.book/v1
@@ -103,7 +104,7 @@ act: 1
 chapter: ${ch}
 sequence: ${seq}
 status: drafting
-${s.pov ? `pov: ${s.pov}\n` : ''}${s.characters ? `characters: ${yamlList(s.characters)}\n` : ''}${s.locations ? `locations: ${yamlList(s.locations)}\n` : ''}${s.variantOf ? `variant_of: ${id('scene', s.variantOf)}\n` : ''}---
+${s.pov ? `pov: ${s.pov}\n` : ''}${s.characters ? `characters: ${yamlList(s.characters)}\n` : ''}${s.locations ? `locations: ${yamlList(s.locations)}\n` : ''}${s.cast ? `cast:\n${s.cast.map((c) => `  - entry: ${c.entry}\n    role: ${c.role}`).join('\n')}\n` : ''}${s.variantOf ? `variant_of: ${id('scene', s.variantOf)}\n` : ''}---
 ${s.body}
 `);
   }
@@ -125,7 +126,7 @@ schema: storyforge.thread/v1
 id: ${id('thread', t.n)}
 slug: ${t.slug}
 title: ${t.slug}
-kind: mystery
+kind: ${t.kind ?? 'mystery'}
 status: ${t.status}
 ${t.setup ? `setup: ${ids(t.setup)}\n` : ''}${t.develop ? `develop: ${ids(t.develop)}\n` : ''}${t.payoff ? `payoff: ${ids(t.payoff)}\n` : ''}---
 Thread.
@@ -151,6 +152,9 @@ fields: ${yamlList(t.fields)}
 ${t.values ?? ''}---
 Type.
 `);
+  }
+  if (settings !== null) {
+    put(root, 'planning/continuity/settings.md', `---\nschema: storyforge.continuity-settings/v1\nid: ${id('note', 900)}\n${settings}---\n`);
   }
   return root;
 }

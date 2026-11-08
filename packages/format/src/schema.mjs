@@ -46,7 +46,7 @@ export const KINDS = {
       title: 'str', act: 'int', chapter: 'int', sequence: 'int1',
       status: ['outline', 'drafting', 'revised', 'final'],
       pov: 'str', characters: 'list', locations: 'list', plot_threads: 'list', summary: 'str',
-      variant_of: 'str', events: 'list',
+      variant_of: 'str', events: 'list', cast: 'list', origin: ['ai', 'author'],
     },
   },
   entry: {
@@ -83,6 +83,12 @@ export const KINDS = {
     prefix: 'note',
     required: ['slug', 'fingerprint', 'rule', 'title'],
     fields: { slug: 'slug', fingerprint: 'str', rule: 'str', title: 'str', created: 'any', intentional: 'bool' },
+  },
+  // Added 2026-11-07, M12 W4 (additive within v1): the author's continuity settings, one file: planning/continuity/settings.md. `overdue_chapters` is how many chapters a promise or question may stay open (TH2); `severity` maps a rule id to error, warning, info or off.
+  'continuity-settings': {
+    prefix: 'note',
+    required: [],
+    fields: { overdue_chapters: 'int1', severity: 'map' },
   },
   // Added 2026-11-02, M05-J04 (additive within v1): one saved AI chat or rewrite, under ai/<YYYY>/.
   'ai-record': {
@@ -133,7 +139,7 @@ export const KINDS = {
   task: {
     prefix: 'note',
     required: ['slug', 'title', 'status'],
-    fields: { slug: 'slug', title: 'str', status: ['open', 'doing', 'done', 'dropped'], source: 'map', targets: 'list', created: 'any' },
+    fields: { slug: 'slug', title: 'str', status: ['open', 'doing', 'done', 'dropped'], source: 'map', targets: 'list', created: 'any', for: ['ai', 'author'] },
   },
   // Added 2026-11-05, Story Planner M1 (ADR 0003, additive within v1): one causal link between two scenes, under planning/links/. Never story text or canon.
   link: {
@@ -201,7 +207,8 @@ export const KINDS = {
   doc: {
     prefix: 'note',
     required: ['title'],
-    fields: { title: 'str', locked: 'bool' },
+    // M12 W2 (additive within v1): a workspace doc (planning/workspace/, planning/state/chapter-NN/, planning/development/) says which kind it is; `chapter` is the state doc's chapter.
+    fields: { title: 'str', locked: 'bool', workspace: ['book', 'style', 'state', 'other'], chapter: 'int' },
   },
   research: {
     prefix: 'note',
@@ -238,6 +245,12 @@ export const STATE_EVENTS = {
   died: 'none', revived: 'none', destroyed: 'none', lost: 'none', found: 'none',
   holder: 'link', location: 'link', learns: 'fact', knows: 'fact',
 };
+
+/** M12 W4: the words a continuity settings file may give a rule's severity. */
+export const SETTINGS_SEVERITIES = ['error', 'warning', 'info', 'off'];
+
+/** M12 chapter cast: the roles a scene's `cast` items may give an entry. At most one `pov` per scene. */
+export const CAST_ROLES = ['pov', 'appears', 'mentioned'];
 
 /** Exception fingerprint shape (spec 6.4). */
 export const FINGERPRINT_RE = /^[a-z0-9]{2,4}-[0-9a-f]{16}$/;
@@ -318,6 +331,10 @@ function checkState(state, file, add) {
     }
     const need = STATE_EVENTS[item.event];
     const has = !isAbsent(item.value);
+    if (item.fact !== undefined) {
+      if (need !== 'fact') add('E102', file, `state[${i}].fact`, `${item.event} takes no fact wording`);
+      else if (typeof item.fact !== 'string' || item.fact.trim() === '' || /[\x00-\x1f\x7f]/.test(item.fact)) add('E102', file, `state[${i}].fact`, 'fact must be one line of text');
+    }
     if (need === 'none') {
       if (has) add('E102', file, `state[${i}].value`, `${item.event} takes no value`);
     } else if (!has) {
@@ -329,6 +346,25 @@ function checkState(state, file, add) {
     } else if (item.event === 'location' && item.value === '') {
       add('E102', file, `state[${i}].value`, 'location needs a location slug');
     }
+  });
+}
+
+/**
+ * Scene `cast` items (M12): E102 for shape problems and for a second pov. Whether `entry` resolves (E301, E302) is checked with the links.
+ * @param {any[]} cast
+ * @param {string} file
+ * @param {(code:string,file:string,loc:string,msg:string)=>void} add
+ */
+function checkCast(cast, file, add) {
+  let pov = 0;
+  cast.forEach((item, i) => {
+    if (!isPlainMap(item)) {
+      add('E102', file, `cast[${i}]`, 'cast item must be a mapping with entry and role');
+      return;
+    }
+    if (typeof item.entry !== 'string' || item.entry.trim() === '') add('E102', file, `cast[${i}].entry`, 'cast item needs an entry id or slug');
+    if (typeof item.role !== 'string' || !CAST_ROLES.includes(item.role)) add('E102', file, `cast[${i}].role`, `role must be one of ${CAST_ROLES.join(', ')}`);
+    else if (item.role === 'pov' && ++pov === 2) add('E102', file, `cast[${i}].role`, 'a scene has at most one pov in its cast');
   });
 }
 
@@ -581,12 +617,20 @@ export function checkFields(doc, ctx, add) {
   }
 
   if (doc.kind === 'event' && Array.isArray(fm.state)) checkState(fm.state, file, add);
+  if (doc.kind === 'scene' && Array.isArray(fm.cast)) checkCast(fm.cast, file, add);
 
   if (doc.kind === 'codex-type' && isPlainMap(fm.values)) {
     for (const [label, words] of Object.entries(fm.values)) {
       if (!Array.isArray(words) || words.some((w) => typeof w !== 'string')) {
         add('E102', file, 'values', `values.${label} must be a list of words`);
       }
+    }
+  }
+
+  if (doc.kind === 'continuity-settings' && isPlainMap(fm.severity)) {
+    for (const [rule, word] of Object.entries(fm.severity)) {
+      if (!/^[A-Z]{2}[0-9]+$/.test(rule)) add('E102', file, `severity.${rule}`, 'severity key must be a rule id such as CS1');
+      else if (typeof word !== 'string' || !SETTINGS_SEVERITIES.includes(word)) add('E102', file, `severity.${rule}`, `severity must be one of ${SETTINGS_SEVERITIES.join(', ')}`);
     }
   }
 

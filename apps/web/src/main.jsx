@@ -11,6 +11,7 @@ import { App } from './App.jsx';
 import './styles.css';
 import './insights/insights.css';
 import './canvas/canvas.css';
+import './workspace/workspace.css';
 import './responsive.css';
 
 installFocusRestore();

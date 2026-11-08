@@ -16,7 +16,7 @@ export const WRITE_CLASSES = Object.freeze({
   // manuscript, structure and planning edits
   'act-create': 'write', 'act-fields': 'write', 'activity-session': 'write', archive: 'write', 'attachment-upload': 'write', body: 'write',
   'chapter-archive': 'write', 'chapter-create': 'write', 'chapter-fields': 'write', 'chapter-move': 'write', 'chapters-renumber': 'write', 'check-scene': 'write',
-  'codex-type-create': 'write', 'continuity-exception-archive': 'write', 'continuity-exception-create': 'write', create: 'write',
+  'codex-type-create': 'write', 'continuity-exception-archive': 'write', 'continuity-exception-create': 'write', 'continuity-settings-save': 'write', create: 'write',
   'entry-archive': 'write', 'entry-body': 'write', 'entry-create': 'write', 'entry-fields': 'write', 'entry-restore': 'write', 'entry-slug': 'write',
   'event-archive': 'write', 'event-body': 'write', 'event-create': 'write', 'event-fields': 'write', 'event-restore': 'write', goal: 'write',
   'index-rebuild': 'write', 'note-archive': 'write', 'note-body': 'write', 'note-create': 'write', 'note-fields': 'write', 'note-restore': 'write',
@@ -37,6 +37,8 @@ export const WRITE_CLASSES = Object.freeze({
   'entry-move-to-series': 'write', 'entry-copy-to-book': 'write', 'labels-set': 'write', 'template-save': 'admin',
   // M09-J01 canvases (planning/canvases/*.canvas; planning material, never prose)
   'canvas-create': 'write', 'canvas-save': 'write', 'canvas-archive': 'write', 'canvas-restore': 'write',
+  // M12 W2 workspace docs (planning/workspace, planning/state, planning/development; planning material, never prose). Lock and unlock are write too: owner and editor.
+  'workspace-doc-save': 'write', 'workspace-doc-append': 'write', 'workspace-doc-lock': 'write', 'workspace-doc-archive': 'write', 'workspace-doc-restore': 'write', 'workspace-setup': 'write',
   // Story Planner M1 (ADR 0003): planning/links/*.md and planning/scene-plans/*.md only; never a scene file
   'planner-link-create': 'write', 'planner-link-update': 'write', 'planner-link-archive': 'write', 'planner-link-restore': 'write', 'planner-scene-plan-save': 'write', 'planner-story-plan-save': 'write',
   'planner-arc-create': 'write', 'planner-arc-update': 'write', 'planner-arc-milestones': 'write', 'planner-arc-archive': 'write', 'planner-arc-restore': 'write',
@@ -46,6 +48,10 @@ export const WRITE_CLASSES = Object.freeze({
   'planner-synopsis-create': 'write', 'planner-synopsis-update': 'write', 'planner-synopsis-archive': 'write', 'planner-synopsis-restore': 'write',
   // M07-J02 goals and revision tasks (book files; never prose)
   'goal-set': 'write', 'goal-remove': 'write', 'task-create': 'write', 'task-status': 'write',
+  // M12 W3: a scene's chapter cast (its `cast` key only), knowledge and state items on a chapter's state event, the AI words of the writing log (never prose)
+  'scene-cast': 'write', 'ledger-knowledge-record': 'write', 'ledger-state-record': 'write', 'activity-ai-log': 'write',
+  // M12 W6: the body of a scene the AI made and the author has not accepted (origin: ai, status drafting); anything else is refused by the route itself
+  'scene-ai-draft': 'write',
   // M07-J04 profiles: per-machine appearance settings of the server process, so in shared mode only the owner changes them
   'profile-save': 'admin', 'profile-switch': 'admin', 'profile-delete': 'admin',
   // shared-mode administration (shared-routes.mjs)
@@ -53,6 +59,8 @@ export const WRITE_CLASSES = Object.freeze({
   'shared-share-create': 'admin', 'shared-share-revoke': 'admin', 'shared-settings': 'admin',
   // M08-J02 plugin access tokens and webhook subscriptions: a token or a webhook reaches the author's book, so in shared mode only the owner grants them
   'plugin-grant': 'admin', 'plugin-revoke': 'admin', 'webhook-create': 'admin', 'webhook-revoke': 'admin',
+  // M12: how much AI a book allows (it caps every token), so in shared mode only the owner sets it
+  'book-ai-level': 'admin',
 });
 
 /**

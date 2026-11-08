@@ -142,11 +142,11 @@ describe('Settings -> Webhooks', () => {
 });
 
 describe('Settings page and modules', () => {
-  test('Settings shows both panels (personal mode), and the integrations module is listed last, like the server', () => {
+  test('Settings shows both panels (personal mode), and the integrations module is listed just before workspace, like the server', () => {
     const t = text(html(h(m.settings.SettingsView)));
     assert.match(t, /Plugins/);
     assert.match(t, /Webhooks/);
-    assert.equal(m.prefs.MODULES.at(-1).id, 'integrations');
+    assert.equal(m.prefs.MODULES.at(-2).id, 'integrations'); // M12: the workspace module comes after it
   });
 
   test('no control has a positive tab index, so the keyboard walk is the page order', () => {

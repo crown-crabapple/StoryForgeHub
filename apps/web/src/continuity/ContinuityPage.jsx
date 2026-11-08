@@ -211,10 +211,11 @@ function CloseButton({ label, onClose }) {
  * @param {{ bookId: string, result: any, filter?: { status: string, rule: string | null, subject: string | null, family?: 'facts' | 'plan' | null }, selectedFp?: string | null, version?: string,
  *   handlers?: { onFilter?: (patch: Record<string, any>) => void, onSelect?: (fp: string) => void, onClose?: () => void, onAcknowledge?: (f: any) => void, onRestore?: (slug: string) => void, onRemove?: (slug: string) => void },
  *   suggestions?: any[] | null, selectedSuggestion?: any | null, selectedSuggestionId?: string | null,
+ *   settingsPanel?: import('react').ReactNode (M12: the Continuity settings panel, for owners and editors),
  *   suggestionHandlers?: { busy?: boolean, error?: string | null, onSelect?: (id: string) => void, onAccept?: (hunkId: string) => void, onDecline?: (hunkId: string) => void, onAcceptAll?: () => void, onDeclineAll?: () => void } }} props
  *   `suggestions` (GET /suggestions) adds the "Suggestions" group to the sidebar (M05-J06); the selected one (GET /suggestions/:id) is reviewed in the dialog instead of a finding.
  */
-export function ContinuityPage({ bookId, result, filter = { status: 'all', rule: null, subject: null, family: null }, selectedFp = null, version = '', handlers = {}, suggestions = null, selectedSuggestion = null, selectedSuggestionId = null, suggestionHandlers = {} }) {
+export function ContinuityPage({ bookId, result, filter = { status: 'all', rule: null, subject: null, family: null }, selectedFp = null, version = '', handlers = {}, suggestions = null, selectedSuggestion = null, selectedSuggestionId = null, suggestionHandlers = {}, settingsPanel = null }) {
   const model = queueModel(result, filter);
   const selected = findByFingerprint(result, selectedFp);
   const set = (patch) => handlers.onFilter?.(patch);
@@ -270,6 +271,7 @@ export function ContinuityPage({ bookId, result, filter = { status: 'all', rule:
           <span className="codex-counts">{model.rows.length === 1 ? '1 finding' : `${model.rows.length} findings`}</span>
         </div>
         <p className="muted cf-advice">Continuity findings are advice. Nothing here changes your prose, Codex or timeline.</p>
+        {settingsPanel}
         {model.rows.length === 0 ? (
           <div className="empty-state">
             <h2>{filter.status === 'acknowledged' ? 'Nothing acknowledged.' : 'No findings.'}</h2>

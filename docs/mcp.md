@@ -1,19 +1,21 @@
 # Connecting Claude (MCP)
 
-StoryForge speaks the Model Context Protocol (MCP), so Claude Code and Claude Desktop can read your books and suggest changes. MCP is a front for the [plugin API](api.md): it uses the same access tokens, the same permissions and the same book grants. Nothing Claude does changes a file, with two exceptions: with the `canvas` permission it can create and edit canvases (planning boards), and with the `plan` permission it can change your Story Plan (the Story Planner files under `planning/`). Neither ever touches your prose, scenes or Codex entries. Every other write is a suggestion you accept or decline in StoryForge.
+StoryForge speaks the Model Context Protocol (MCP), so Claude Code and Claude Desktop can read your books and suggest changes. MCP is a front for the [plugin API](api.md): it uses the same access tokens, the same permissions and the same book grants. Nothing Claude does changes a file, with these exceptions: with the `canvas` permission it can create and edit canvases (planning boards); with the `plan` permission it can change your Story Plan (the Story Planner files under `planning/`); with the `workspace` permission it can write workspace docs, ledgers, a scene's cast, state events, tasks and the writing log; and with the `draft` permission it can add new chapters and scenes as AI drafts. None of them ever changes a scene you wrote or accepted, or a Codex entry. Every other write is a suggestion you accept or decline in StoryForge. The book's [AI level](#ai-level) limits all of these.
 
 ## 1. Get a token
 
-Open Settings, then **AI connections (MCP)**. Pick the AI client (Claude Code, Claude Desktop on your own computer, or any other MCP client), give the connection a name, pick the books, and choose whether the AI may suggest changes, whether it may edit canvases and whether it may change the plan (the last two are off by default). The token is shown once, with ready-to-copy setup for that client: the Claude Code command, the Claude Desktop config, or the address and `Authorization` header for any other client that speaks MCP over Streamable HTTP.
+Open Settings, then **AI connections (MCP)**. Pick the AI client (Claude Code, Claude Desktop on your own computer, or any other MCP client), give the connection a name, pick the books, and choose whether the AI may suggest changes, whether it may edit canvases, whether it may change the plan, whether it may write workspace docs and ledgers, and whether it may create chapters and scenes (all but the first are off by default). The token is shown once, with ready-to-copy setup for that client: the Claude Code command, the Claude Desktop config, or the address and `Authorization` header for any other client that speaks MCP over Streamable HTTP.
 
 Make one connection per client or computer, as many as you like. Each has its own token, books and permissions, and the list shows when each was last used. Revoke cuts one off at once without affecting the others. Two live connections cannot share a name (the server answers 409 `NAME_TAKEN`); revoke the old one first to reuse its name. In shared mode only the owner sees this section.
 
 You can also make a token by hand: Settings, then Plugins, then **Grant access to another plugin** (see [plugins.md](plugins.md)).
 
-- `read` allows the 25 read tools (23 `codex_*` tools plus `search` and `fetch`).
+- `read` allows the 34 read tools (32 `codex_*` tools plus `search` and `fetch`).
 - `propose` allows the 3 propose tools.
 - `canvas` allows the 6 canvas write tools. It changes only canvas files (`planning/canvases/*.canvas`), never prose.
 - `plan` allows the 30 plan write tools. It changes only Story Planner files under `planning/` (links, scene plans, the story plan, structures, arcs, relationships, clues, synopses), never prose, scenes or Codex entries. Each change can be undone in StoryForge. Off by default.
+- `workspace` allows the 14 workspace write tools. It changes only workspace docs, ledger threads, a scene's cast, state events, tasks, the writing log and continuity dismissals, never prose, scenes or Codex entries. Each change can be undone in StoryForge. Off by default.
+- `draft` allows the 3 draft tools. It creates new chapters and scenes, always marked as AI drafts, and replaces the body of an AI draft (a scene marked as AI whose status is still `drafting`). Off by default.
 
 The **Integrations** module must be on for the book. If it is off, every call is refused.
 
@@ -98,8 +100,8 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 
 | Tool | What it does | Permission |
 |---|---|---|
-| `codex_status` | Server and API version, and the books with scene and word counts. | read |
-| `codex_list_books` | Every book: id, slug, title, status, series, language, counts. | read |
+| `codex_status` | Server and API version, and the books with scene and word counts and each book's `ai_level`. | read |
+| `codex_list_books` | Every book: id, slug, title, status, series, language, counts, `ai_level`. | read |
 | `codex_list_chapters` | A book's acts, chapters and scenes. | read |
 | `codex_get_chapter` | Every scene of one chapter, with body and sha256. Takes `chapter`, and `act` if the number repeats. | read |
 | `codex_get_scene` | One scene: metadata, front matter, sha256, body. | read |
@@ -121,6 +123,15 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 | `codex_get_plan_check` | The plan check, rules PL1 to PL6: rule, severity, title, message, subject, `related` ids. | read |
 | `codex_list_structure_templates` | The structure templates (three-act and so on) with their beats. | read |
 | `codex_get_canvas` | One canvas (`canvas` is its slug): the JSON Canvas, sha256, `refs` and `targets` (what a story card can link to). | read |
+| `codex_list_docs` | The workspace docs of a book (and archived ones): path, title, kind, chapter, locked, sha256. | read |
+| `codex_get_doc` | One workspace doc by `path`: title, locked, body, sha256. | read |
+| `codex_get_ledger` | The promises, questions and clues ledger. | read |
+| `codex_get_cast` | The cast of each scene (pov, appears, mentioned); `chapter` keeps one chapter. | read |
+| `codex_knowledge_at` | What a `character` knows by the end of chapter `at` (all of it without `at`). | read |
+| `codex_get_state_events` | The state events (died, revived, destroyed, lost, found, holder, location); `chapter` keeps one chapter. | read |
+| `codex_get_tasks` | The revision tasks and counts; filter by `status` or `for` (`ai` or `author`). | read |
+| `codex_continuity_check` | The continuity findings, the dismissed ones and stale dismissals. `chapter` keeps one chapter; with `chapter` and `cast` (`[{ entry, role }]`) it also checks a planned cast. | read |
+| `codex_get_context` | The context pack for writing chapter `chapter`, trimmed to `budget` characters (default 24000). | read |
 | `codex_save_chapter` | Propose the whole new body of one scene (`scene`, `markdown`). | propose |
 | `codex_save_entry` | Propose the whole new body of one codex entry (`entry`, `markdown`). | propose |
 | `codex_propose_edit` | Propose a change to a scene, entry, thread or event, as `text` or as `hunks`, not both. | propose |
@@ -148,6 +159,23 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 | `codex_archive_clue`, `codex_restore_clue` | Archive a clue or bring it back. | plan |
 | `codex_create_synopsis`, `codex_update_synopsis` | Start a synopsis of a type, or change its name, target and text. | plan |
 | `codex_archive_synopsis`, `codex_restore_synopsis` | Archive a synopsis or bring it back. | plan |
+| `codex_save_doc` | Create a workspace doc, or replace the whole body of one (`path`, `body`, `title?`; `base_sha256` required for an existing doc). A locked doc is refused (`LOCKED`). | workspace |
+| `codex_append_doc` | Append `text` to a doc (created when missing). No `base_sha256` needed. | workspace |
+| `codex_lock_docs` | Lock one doc (`path`) or a chapter's state docs (`prefix`, for example `state/chapter-04`). There is no unlock tool. | workspace |
+| `codex_setup_workspace` | Create the starter docs that do not exist yet. | workspace |
+| `codex_save_ledger_item` | Create a promise or question (`title`, `kind`), or update one by `slug` (`status`, `setup`, `develop`, `payoff`, `characters`). Retire it with status `paid` or `dropped`. | workspace |
+| `codex_set_chapter_cast` | Set the whole cast of one scene (`scene`, `cast`: `[{ entry, role }]`). | workspace |
+| `codex_record_knowledge` | Record that a `character` learns a `fact` in a `chapter`. | workspace |
+| `codex_record_state_events` | Record state events of a `chapter` (`items`: `[{ subject, kind, value? }]`). | workspace |
+| `codex_create_task` | Create a task (`title`, `notes?`, `labels?`, `for?`). | workspace |
+| `codex_update_task` | Change a task's `status` and/or `for`. | workspace |
+| `codex_complete_task` | Mark a task done. | workspace |
+| `codex_log_writing` | Add `words` an AI wrote to today's AI words in the writing log. | workspace |
+| `codex_dismiss_finding` | Dismiss a continuity finding (`fingerprint`) with a `reason`. | workspace |
+| `codex_restore_finding` | Bring a dismissed finding back (`finding`: fingerprint or dismissal slug). | workspace |
+| `codex_create_chapter` | Create a new empty chapter (`title`, `after` or `act`). | draft |
+| `codex_create_scene` | Create a new AI draft scene (`chapter`, `title`, `body`, `summary?`, `after?`). | draft |
+| `codex_save_draft` | Replace the body of an unaccepted AI draft (`scene`, `body`, `base_sha256`). | draft |
 
 The propose tools also take `rationale` (shown in the review) and `base_sha256`. Pass the sha256 you read: if the file changed since, the suggestion is marked stale instead of landing on the wrong text. A propose tool answers with the suggestion and a note that nothing was changed. The suggestion appears in the normal review with `source: plugin`.
 
@@ -156,6 +184,14 @@ The canvas tools change the canvas file directly (there is no review step) and a
 The planner read tools (`codex_get_plan`, `codex_get_scene_plan`, `codex_get_plan_check`, `codex_list_structure_templates` and the `codex_list_*` tools for links, arcs, structures, relationships, synopses and clues) need the **Story Planner** module on for the book, and are refused when it is off. Their answers carry each item's `sha256` but no file paths.
 
 The plan write tools (permission `plan`) run the app's own planner routes, so they follow the same rules as the Plan tab: a stale `base_sha256` is a conflict (read the item again), and a refused value is refused with the app's words. Pass `base_sha256` from the get or list tool: it is required to change an existing item (the story plan and a scene plan need none while they have no file yet). The `set_*` tools (`codex_set_beats`, `codex_set_arc_milestones`, `codex_set_relationship_developments`, `codex_set_clue_knowers`) replace the whole list, so read it first and send it back with your change; keep each beat's `id`. The plan tools offer no dry run and no scene plan notes. They answer with the app's result (including `opId`) and a note that the author can Undo the change in StoryForge. They need the **Story Planner** module on too.
+
+The workspace tools (permission `workspace`) run the app's own routes too. A doc address is `workspace/<name>` (`workspace/book` and `workspace/style` are the book settings and style guide), `state/chapter-NN/<name>` where `<name>` is `situation`, `characters`, `knowledge` or `inventory`, or `development/<name>` for proposals that are never canon. Changing an existing doc needs the `base_sha256` from `codex_get_doc` or `codex_list_docs`; a stale one is a conflict, so read it again. A locked doc is refused; only you unlock it, in StoryForge. Nothing is deleted: retire a ledger item by status, end a state with a later state event, dismiss a finding with a reason (you can restore it). The **AI Workspace** module must be on for the book for docs, cast, knowledge, state events and the writing log; ledger threads also need **Threads**, tasks need **Tasks**, and finding dismissals need **Continuity**.
+
+The draft tools (permission `draft`, book level `cowriter`) make scenes that are drafts marked as AI (`origin: ai`, status `drafting`) whatever the call says, and add the words to the AI words of the writing log. `codex_save_draft` works only on such a scene while its status is still `drafting`; otherwise it is refused (`NOT_AI_DRAFT`) and the change must go through `codex_propose_edit`. You accept a draft by changing its status. A chapter or scene an AI created is archived, not undone: AI Activity shows an **Archive** button for it.
+
+### AI level
+
+Each book has an AI level that caps every connection, whatever permissions its token holds: `off` (read only), `advisor` (suggest edits, create tasks), `planner` (also plan, canvases, workspace docs, ledgers, state, the writing log, finding dismissals) and `cowriter` (also create chapters and scenes). A book that sets none is `planner`. Only you set it, in Settings, **AI level**, or as `preferences: { ai: { level: ... } }` in `book.md` (or `library.md` for the default). A call above the level is refused with `AI_LEVEL` and nothing is written; a call whose permission the token lacks is refused with `PLUGIN_SCOPE`. `codex_status` shows each book's `ai_level`. See [contracts/M12-ai-workspace.md](contracts/M12-ai-workspace.md).
 
 ### Example: a canvas for a character
 
@@ -172,13 +208,15 @@ Steps 2 to 4 need only `canvas`; `plan` is for changing the plan itself (for exa
 
 These legacy names have no plugin route in v2. Calling one returns a clear "not available" message that tells the caller to do it in the StoryForge app.
 
-`codex_create_chapter`, `codex_push_files`, `codex_list_docs`, `codex_get_doc`, `codex_save_doc`, `codex_append_doc`, `codex_lock_docs`, `codex_get_ledger`, `codex_save_ledger_item`, `codex_delete_ledger_item`, `codex_get_cast`, `codex_set_chapter_cast`, `codex_knowledge_at`, `codex_record_knowledge`, `codex_delete_knowledge`, `codex_continuity_check`, `codex_get_state_events`, `codex_record_state_events`, `codex_delete_state_event`, `codex_dismiss_finding`, `codex_restore_finding`, `codex_set_continuity_thresholds`, `codex_get_tasks`, `codex_update_task`, `codex_complete_task`, `codex_create_task`, `codex_log_writing`.
+`codex_push_files`, `codex_delete_ledger_item`, `codex_delete_knowledge`, `codex_delete_state_event`, `codex_set_continuity_thresholds`.
+
+Nothing is deleted through MCP (retire or end instead, see above). The continuity thresholds and severities, the AI level and unlocking a doc are yours alone.
 
 ## Security
 
 - Only a plugin bearer token is accepted. Cookies are never read on `/mcp`.
 - A request with an `Origin` header is refused (`403`), so a web page cannot call `/mcp`. Only `POST` is allowed; the body must be `application/json`.
-- The token is checked again on every tool call, and each call goes through the same rules as the plugin API: permission, granted books and the Integrations module. A book outside the grant is not visible.
+- The token is checked again on every tool call, and each call goes through the same rules as the plugin API: permission, granted books, the Integrations module and the book's AI level. A book outside the grant is not visible.
 - A shared server audits each tool's underlying call as `plugin.<route>`.
 - Revoke the token in Settings, then Plugins, and access stops at once.
 - Store the token like a password. Claude's config files hold it in plain text.

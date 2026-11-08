@@ -3,6 +3,7 @@ import { useApi } from '../api.js';
 import { Link } from '../router.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
+import { AiActivityPanel } from './AiActivityPanel.jsx';
 import { GoalDialog } from './GoalsPanel.jsx';
 import { InsightsPage } from './InsightsPage.jsx';
 import { insightsUrl, parseInsightsSearch } from './model.js';
@@ -77,11 +78,14 @@ export function InsightsView({ bookId, search = '' }) {
         cell={cell}
         goalHandlers={{ onAdd: () => setDialog({ error: null }), onRemove: remove }}
         extra={
-          notice ? (
-            <p className="muted" role="status">
-              {notice}
-            </p>
-          ) : null
+          <>
+            {notice && (
+              <p className="muted" role="status">
+                {notice}
+              </p>
+            )}
+            <AiActivityPanel bookId={bookId} version={version} />
+          </>
         }
       />
       {dialog && <GoalDialog scopes={data.progress.scopes ?? []} error={dialog.error} busy={busy} onSubmit={add} onClose={() => setDialog(null)} />}

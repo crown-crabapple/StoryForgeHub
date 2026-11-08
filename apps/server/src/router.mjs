@@ -1,5 +1,7 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
+import { DEFAULT_BUDGET, MAX_BUDGET, MIN_BUDGET } from '@storyforge/core';
+import { AI_LEVELS } from '@storyforge/format';
 import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, planningZip, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
@@ -99,10 +101,23 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
     }
+    // M12 AI Activity: what AI connections (plugin tokens) changed in this book, newest first, from the op journal (read-only; Undo is the ops restore route)
+    if (c === 'ai-activity' && d === undefined) {
+      const r = await repository.listAiActivity(b);
+      return r.ok ? { status: 200, body: { activity: (r.items ?? []).map(({ opId, at, actor, op, summary, files, undone, undoable, archivable, target }) => ({ opId, at, actor, route: op, summary, files, undone, undoable, archivable: archivable === true, target: target ?? null })) } } : NOT_FOUND;
+    }
     // M05-J01: continuity findings, computed from the files on every call (read-only)
     if (c === 'continuity' && d === undefined) {
-      const continuity = await repository.getContinuity(b);
+      // M12 W4: ?chapter=N keeps the findings that touch that chapter; &cast=<entry>:<role>,... also checks that planned cast (CS1, CS2) as if it were in chapter N
+      const q = continuityOptions(params);
+      if (q.error) return badRequest(q.error);
+      const continuity = await repository.getContinuity(b, q.opts);
       return continuity ? { status: 200, body: continuity } : NOT_FOUND;
+    }
+    // M12 W4: the author's continuity settings (planning/continuity/settings.md): { exists, file, overdue_chapters, severity }
+    if (c === 'continuity' && d === 'settings' && e === undefined) {
+      const settings = await repository.getContinuitySettings(b);
+      return settings ? { status: 200, body: settings } : NOT_FOUND;
     }
     // M05-J02: the lines around a finding's evidence ("Show both"): ?file=<book-relative>&line=N&radius=3 (radius at most 10)
     if (c === 'continuity' && d === 'context' && e === undefined) {
@@ -194,8 +209,8 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       if (daysParam !== null && (!/^[0-9]+$/.test(daysParam) || Number(daysParam) < 1 || Number(daysParam) > 366)) return badRequest('days must be an integer from 1 to 366');
       const r = await repository.getActivity(b, daysParam !== null ? { days: Number(daysParam) } : {});
       if (!r.ok) return NOT_FOUND;
-      const { added, removed, net, minutes, sessions } = r.today;
-      return { status: 200, body: { goal: r.goal, today: { added, removed, net, minutes, sessions }, days: r.days, streak: r.streak } };
+      const { added, removed, net, minutes, sessions, ai_words: aiWords } = r.today;
+      return { status: 200, body: { goal: r.goal, today: { added, removed, net, minutes, sessions, ai_words: aiWords }, days: r.days, streak: r.streak, totals: r.totals } };
     }
     // M07-J02: the Insights numbers (one JSON, computed from the index when fresh, else from the files), goals, revision tasks (list; one task opened = its targets located)
     if (c === 'insights' && d === undefined) {
@@ -212,8 +227,43 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       if (status !== null && !['open', 'doing', 'done', 'dropped'].includes(status)) return badRequest('status must be open, doing, done or dropped');
       if (source !== null && !['continuity', 'check', 'manual'].includes(source)) return badRequest('source must be continuity, check or manual');
       const label = params.get('label');
-      const r = await repository.listTasks(b, { ...(status !== null ? { status } : {}), ...(source !== null ? { source } : {}), ...(label !== null && label !== '' ? { label } : {}) });
+      const forWho = params.get('for');
+      if (forWho !== null && !['ai', 'author'].includes(forWho)) return badRequest('for must be ai or author');
+      const r = await repository.listTasks(b, { ...(status !== null ? { status } : {}), ...(source !== null ? { source } : {}), ...(label !== null && label !== '' ? { label } : {}), ...(forWho !== null ? { for: forWho } : {}) });
       return r.ok ? { status: 200, body: { tasks: r.tasks, counts: r.counts, labels: r.labels } } : NOT_FOUND;
+    }
+    // M12 W3: the promises / questions ledger, the chapter cast, what a character knows by a chapter, the state events (reads; nothing here writes)
+    if (c === 'ledger' && d === undefined) {
+      const ledger = await repository.getLedger(b);
+      return ledger ? { status: 200, body: ledger } : NOT_FOUND;
+    }
+    if (c === 'cast' && d === undefined) {
+      const chapter = params.get('chapter');
+      if (chapter !== null && !/^[0-9]{1,6}$/.test(chapter)) return badRequest('chapter must be a chapter number');
+      const cast = await repository.getCast(b, chapter !== null ? { chapter: Number(chapter) } : {});
+      return cast ? { status: 200, body: cast } : NOT_FOUND;
+    }
+    if (c === 'knowledge' && d === undefined) {
+      const character = params.get('character');
+      const at = params.get('at');
+      if (character === null || character === '') return badRequest('character is required (an entry id or slug)');
+      if (at !== null && !/^[0-9]{1,6}$/.test(at)) return badRequest('at must be a chapter number');
+      const r = await repository.knowledgeAt(b, { character, ...(at !== null ? { at: Number(at) } : {}) });
+      if (r.ok) return { status: 200, body: { character: r.character, at: r.at, facts: r.facts } };
+      return r.code === 'NOT_FOUND' ? NOT_FOUND : badRequest(r.message ?? 'bad request');
+    }
+    if (c === 'state-events' && d === undefined) {
+      const chapter = params.get('chapter');
+      if (chapter !== null && chapter !== 'all' && !/^[0-9]{1,6}$/.test(chapter)) return badRequest('chapter must be a chapter number or all');
+      const events = await repository.getStateEvents(b, chapter !== null && chapter !== 'all' ? { chapter: Number(chapter) } : {});
+      return events ? { status: 200, body: events } : NOT_FOUND;
+    }
+    // M12 W6: the chapter context pack (?chapter=N, optional ?budget=<characters>); reads only
+    if (c === 'context' && d === undefined) {
+      const parsed = parseContextQuery(params);
+      if (parsed.error) return badRequest(parsed.error);
+      const pack = await repository.getContext(b, { chapter: parsed.chapter, budget: parsed.budget });
+      return pack ? { status: 200, body: pack } : NOT_FOUND;
     }
     if (c === 'tasks' && d !== undefined && e === undefined) {
       const r = await repository.getTask(b, d);
@@ -263,6 +313,16 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'canvases' && d !== undefined && e === undefined) {
       const canvas = await repository.getCanvas(b, d);
       return canvas ? { status: 200, body: canvas } : NOT_FOUND;
+    }
+    // M12 W2: workspace docs (planning/workspace, planning/state, planning/development); reads are not module-gated, like every read
+    if (c === 'workspace' && d === 'docs' && e === undefined) {
+      const addr = params.get('path');
+      if (addr === null) {
+        const list = await repository.listWorkspaceDocs(b);
+        return list ? { status: 200, body: list } : NOT_FOUND;
+      }
+      const doc = await repository.getWorkspaceDoc(b, addr);
+      return doc ? { status: 200, body: doc } : NOT_FOUND;
     }
     // Story Planner M1 (ADR 0003 D05): causal links, scene plans and the flow projection (reads are not module-gated, like every read)
     if (c === 'links' && d === undefined) {
@@ -593,6 +653,18 @@ async function fromIndex(read) {
   }
 }
 
+/**
+ * M12 W6: the query of the context pack, ?chapter=N (required, a chapter number) and ?budget=<characters> (optional, MIN_BUDGET to MAX_BUDGET; the default when left out).
+ * @param {URLSearchParams} params @returns {{ chapter: number, budget: number, error?: undefined } | { error: string }}
+ */
+export function parseContextQuery(params) {
+  const chapter = params.get('chapter');
+  if (chapter === null || !/^[0-9]{1,6}$/.test(chapter)) return { error: 'chapter is required and must be a chapter number' };
+  const budget = params.get('budget');
+  if (budget !== null && (!/^[0-9]{1,7}$/.test(budget) || Number(budget) < MIN_BUDGET || Number(budget) > MAX_BUDGET)) return { error: `budget must be a number of characters from ${MIN_BUDGET} to ${MAX_BUDGET}` };
+  return { chapter: Number(chapter), budget: budget === null ? DEFAULT_BUDGET : Number(budget) };
+}
+
 // ---------------------------------------------------------------- write routes
 
 /**
@@ -655,14 +727,23 @@ export function matchWriteRoute(method, pathname) {
   // M03-J04
   if (method === 'POST' && c === 'activity' && d === 'session' && e === undefined) return { route: 'activity-session', bookId: b };
   if (method === 'POST' && c === 'goal' && d === undefined) return { route: 'goal', bookId: b };
+  // M12: the book's (or its library's default) AI level, saved as the `ai.level` project preference
+  if (method === 'POST' && c === 'ai-level' && d === undefined) return { route: 'book-ai-level', bookId: b };
   // M07-J02: goals file, revision tasks
   if (method === 'POST' && c === 'goals' && d === undefined) return { route: 'goal-set', bookId: b };
   if (method === 'DELETE' && c === 'goals' && d !== undefined && e === undefined) return { route: 'goal-remove', bookId: b, goalId: d };
   if (method === 'POST' && c === 'tasks' && d === undefined) return { route: 'task-create', bookId: b };
   if (method === 'POST' && c === 'tasks' && d !== undefined && e === 'status' && f === undefined) return { route: 'task-status', bookId: b, taskId: d };
+  // M12 W3: chapter cast, knowledge and state events (the chapter's state event), the AI words of the writing log
+  if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'cast' && f === undefined) return { route: 'scene-cast', bookId: b, sceneId: d };
+  if (method === 'POST' && c === 'knowledge' && d === undefined) return { route: 'ledger-knowledge-record', bookId: b };
+  if (method === 'POST' && c === 'state-events' && d === undefined) return { route: 'ledger-state-record', bookId: b };
+  if (method === 'POST' && c === 'activity' && d === 'ai-words' && e === undefined) return { route: 'activity-ai-log', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f === undefined) return { route: 'revision-save', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'revisions' && f !== undefined && g === 'restore') return { route: 'revision-restore', bookId: b, sceneId: d, file: f };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'body') return { route: 'body', bookId: b, sceneId: d };
+  // M12 W6: replace the body of a scene the AI made and the author has not accepted (front matter origin: ai and status drafting); any other scene is refused (403 NOT_AI_DRAFT)
+  if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'ai-draft') return { route: 'scene-ai-draft', bookId: b, sceneId: d };
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'raw') return { route: 'scene-raw', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d === undefined) return { route: 'create', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'archive') return { route: 'archive', bookId: b, sceneId: d };
@@ -713,6 +794,8 @@ export function matchWriteRoute(method, pathname) {
   // M05-J02 continuity exceptions
   if (method === 'POST' && c === 'continuity' && d === 'exceptions' && e === undefined) return { route: 'continuity-exception-create', bookId: b };
   if (method === 'DELETE' && c === 'continuity' && d === 'exceptions' && e !== undefined && f === undefined) return { route: 'continuity-exception-archive', bookId: b, slug: e };
+  // M12 W4: the author's continuity settings (the app only; there is no plugin route for it)
+  if (method === 'POST' && c === 'continuity' && d === 'settings' && e === undefined) return { route: 'continuity-settings-save', bookId: b };
   // M05-J06 suggestions: decide one hunk or every pending hunk; check one scene (read-only report)
   if (method === 'POST' && c === 'suggestions' && d !== undefined && e === undefined) return { route: 'suggestion-decide', bookId: b, suggestionId: d };
   if (method === 'POST' && c === 'suggestions' && d !== undefined && e === 'hunks' && f !== undefined) return { route: 'suggestion-hunk-decide', bookId: b, suggestionId: d, hunkId: f };
@@ -731,6 +814,13 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'PUT' && c === 'canvases' && d !== undefined && e === undefined) return { route: 'canvas-save', bookId: b, slug: d };
   if (method === 'POST' && c === 'canvases' && d !== undefined && e === 'archive') return { route: 'canvas-archive', bookId: b, slug: d };
   if (method === 'POST' && c === 'canvases' && d !== undefined && e === 'restore') return { route: 'canvas-restore', bookId: b, slug: d };
+  // M12 W2 workspace docs: save (create or update), append, lock / unlock, archive, restore; and the starter docs
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === undefined) return { route: 'workspace-doc-save', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === 'append') return { route: 'workspace-doc-append', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === 'lock') return { route: 'workspace-doc-lock', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === 'archive') return { route: 'workspace-doc-archive', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'docs' && e === 'restore') return { route: 'workspace-doc-restore', bookId: b };
+  if (method === 'POST' && c === 'workspace' && d === 'setup' && e === undefined) return { route: 'workspace-setup', bookId: b };
   // Story Planner M1 (ADR 0003 D05): causal links and scene plans, flat under the book
   if (method === 'POST' && c === 'links' && d === undefined) return { route: 'planner-link-create', bookId: b };
   if (method === 'POST' && c === 'links' && d !== undefined && e === undefined) return { route: 'planner-link-update', bookId: b, slug: d };
@@ -796,6 +886,13 @@ function respondPlanner(r, okStatus) {
   return respond(r, okStatus, structureBody);
 }
 
+/** Like respond(), with the workspace refusals named by their codes: 409 LOCKED, 409 conflict (with the current sha256 and body). */
+function respondWorkspace(r, okStatus, okBody) {
+  if (!r.ok && r.code === 'LOCKED') return { status: 409, body: { error: 'conflict', code: 'LOCKED', message: r.message, ...(r.path ? { path: r.path } : {}) } };
+  if (!r.ok && r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', code: 'CONFLICT', ...(r.message ? { message: r.message } : {}), current: r.current ?? null } };
+  return respond(r, okStatus, okBody);
+}
+
 /**
  * The shape check of a beats list (M4): an array of objects whose values are strings or null, except `scenes`, an array of strings. Returns an error message or null.
  * The values themselves (lengths, ids, states, known scenes) are checked by setStructureBeats.
@@ -812,6 +909,31 @@ function plannerBeats(v) {
     }
   }
   return null;
+}
+
+/**
+ * M12 W4: the ?chapter=N and ?cast=<entry>:<role>,... of a continuity check. `cast` needs `chapter`. Entry is an entry id or slug; role is pov, appears or mentioned.
+ * @param {URLSearchParams} params @returns {{ error: string, opts?: undefined } | { error?: undefined, opts: { chapter?: number, cast?: { entry: string, role: string }[] } }}
+ */
+export function continuityOptions(params) {
+  const chapter = params.get('chapter');
+  const cast = params.get('cast');
+  if (chapter !== null && !/^[0-9]{1,6}$/.test(chapter)) return { error: 'chapter must be a chapter number' };
+  if (cast !== null && chapter === null) return { error: 'cast needs a chapter' };
+  /** @type {{ entry: string, role: string }[] | undefined} */
+  let list;
+  if (cast !== null) {
+    list = [];
+    for (const part of cast.split(',').filter((x) => x !== '')) {
+      const at = part.lastIndexOf(':');
+      const entry = at > 0 ? part.slice(0, at).trim() : '';
+      const role = at > 0 ? part.slice(at + 1).trim() : '';
+      if (entry === '' || !['pov', 'appears', 'mentioned'].includes(role)) return { error: 'cast must be <entry>:<role> pairs separated by commas; role is pov, appears or mentioned' };
+      list.push({ entry, role });
+    }
+    if (list.length > 200) return { error: 'cast has too many entries' };
+  }
+  return { opts: { ...(chapter !== null ? { chapter: Number(chapter) } : {}), ...(list ? { cast: list } : {}) } };
 }
 
 /** Like respond(), with the continuity refusals named by their codes: 404 FINDING_NOT_FOUND, 409 ALREADY_EXCEPTED, 400 RATIONALE_REQUIRED. */
@@ -959,8 +1081,34 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
     }
     case 'task-status': {
       if (typeof body.status !== 'string') return badRequest("expected { status: 'open' | 'doing' | 'done' | 'dropped' }");
-      const r = await repository.setTaskStatus(bookId, /** @type {string} */ (match.taskId), body.status);
-      return respond(r, 200, (x) => ({ ok: true, id: x.id, slug: x.slug, status: x.status, path: x.path }));
+      if (body.for !== undefined && !['ai', 'author'].includes(/** @type {any} */ (body.for))) return badRequest('for must be ai or author');
+      const r = await repository.setTaskStatus(bookId, /** @type {string} */ (match.taskId), body.status, body.for !== undefined ? { for: /** @type {string} */ (body.for) } : {});
+      return respond(r, 200, (x) => ({ ok: true, id: x.id, slug: x.slug, status: x.status, for: x.for, path: x.path }));
+    }
+    // ---- M12 W3. scene-cast writes only the scene's `cast` key (never prose); the ledger routes only append state items to the chapter's "Chapter N (state)" event; activity-ai-log adds AI words to today's row.
+    case 'scene-cast': {
+      if (!Array.isArray(body.cast)) return badRequest('expected { cast: [{ entry, role }], base_sha256?: string }');
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.setSceneCast(bookId, /** @type {string} */ (match.sceneId), { cast: body.cast, baseSha256: body.base_sha256, dryRun: body.dryRun === true });
+      return respond(r, 200, structureBody);
+    }
+    case 'ledger-knowledge-record': {
+      if (typeof body.character !== 'string' || typeof body.fact !== 'string' || !Number.isInteger(body.chapter)) return badRequest('expected { character: entry id or slug, fact: string, chapter: integer >= 0 }');
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.recordKnowledge(bookId, { character: body.character, fact: body.fact, chapter: /** @type {number} */ (body.chapter), dryRun: body.dryRun === true });
+      return respond(r, 200, structureBody);
+    }
+    case 'ledger-state-record': {
+      if (!Number.isInteger(body.chapter) || !Array.isArray(body.items)) return badRequest('expected { chapter: integer >= 0, items: [{ subject, kind, value? }] }');
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.recordStateEvents(bookId, { chapter: /** @type {number} */ (body.chapter), items: body.items, dryRun: body.dryRun === true });
+      return respond(r, 200, structureBody);
+    }
+    case 'activity-ai-log': {
+      if (!Number.isInteger(body.words)) return badRequest('expected { words: integer >= 1, chapter?: integer, note?: string }');
+      const r = await repository.recordAiWords(bookId, { words: /** @type {number} */ (body.words), ...(body.chapter !== undefined ? { chapter: /** @type {any} */ (body.chapter) } : {}), ...(body.note !== undefined ? { note: /** @type {any} */ (body.note) } : {}) });
+      return respond(r, 200, structureBody);
     }
     case 'goal': {
       if (body.daily_word_goal === undefined || (body.daily_word_goal !== null && !Number.isInteger(body.daily_word_goal))) {
@@ -968,6 +1116,12 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
       }
       const r = await repository.setDailyGoal(bookId, body.daily_word_goal);
       return respond(r, 200, (x) => ({ ok: true, daily_word_goal: x.daily_word_goal }));
+    }
+    case 'book-ai-level': {
+      if (body.level !== null && !AI_LEVELS.includes(/** @type {any} */ (body.level))) return badRequest(`expected { level: ${AI_LEVELS.join(' | ')} | null, scope?: 'book' | 'library' }`);
+      if (body.scope !== undefined && body.scope !== 'book' && body.scope !== 'library') return badRequest("scope must be 'book' or 'library'");
+      const r = await repository.setAiLevel(bookId, body.level, { scope: body.scope ?? 'book' });
+      return respond(r, 200, (x) => ({ ok: true, level: x.level, scope: x.scope }));
     }
     case 'revision-save': {
       if (body.label !== undefined && typeof body.label !== 'string') return badRequest('label must be a string');
@@ -993,11 +1147,18 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
       }
       return respond(r, 200, (x) => ({ sha256: x.sha256 }));
     }
+    case 'scene-ai-draft': {
+      if (typeof body.body !== 'string' || typeof body.base_sha256 !== 'string' || body.base_sha256 === '') return badRequest('expected { body: string, base_sha256: string }');
+      const r = await repository.updateAiDraftBody(bookId, /** @type {string} */ (match.sceneId), body.body, { baseSha256: body.base_sha256 });
+      if (!r.ok && r.code === 'NOT_AI_DRAFT') return { status: 403, body: { error: 'forbidden', code: 'NOT_AI_DRAFT', message: r.message } };
+      return respond(r, 200, (x) => ({ sha256: x.sha256, words: x.words }));
+    }
     case 'create': {
-      const { chapter, act, after, title, slug, body: text, status, summary } = body;
+      const { chapter, act, after, title, slug, body: text, status, summary, origin } = body;
       if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      if (origin !== undefined && origin !== 'ai' && origin !== 'author') return badRequest("origin must be 'ai' or 'author'");
       const dryRun = body.dryRun === true;
-      const r = await repository.createScene(bookId, { chapter, act, after, title, slug, body: text, ...(status !== undefined ? { status } : {}), ...(summary !== undefined ? { summary } : {}), dryRun });
+      const r = await repository.createScene(bookId, { chapter, act, after, title, slug, body: text, ...(status !== undefined ? { status } : {}), ...(summary !== undefined ? { summary } : {}), ...(origin !== undefined ? { origin } : {}), dryRun });
       return dryRun ? respond(r, 200, structureBody) : respond(r, 201, (x) => ({ id: x.id, path: x.path }));
     }
     case 'archive': {
@@ -1299,6 +1460,37 @@ async function handleStructure(repository, match, body) {
       const r = await call(bookId, /** @type {string} */ (match.slug), { dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
     }
+    // ---- M12 W2 workspace docs: the only files these routes write are planning/workspace/*.md, planning/state/chapter-NN/*.md and planning/development/*.md (archive/ when archived)
+    case 'workspace-doc-save': {
+      if (typeof body.path !== 'string' || typeof body.body !== 'string') return badRequest('expected { path: string, title?: string, body: string, base_sha256?: string }');
+      if (body.title !== undefined && typeof body.title !== 'string') return badRequest('title must be a string');
+      if (body.base_sha256 !== undefined && body.base_sha256 !== null && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.saveWorkspaceDoc(bookId, { path: body.path, ...(body.title !== undefined ? { title: body.title } : {}), body: body.body, baseSha256: body.base_sha256 ?? null, dryRun });
+      return respondWorkspace(r, r.created ? created : 200, (x) => ({ ok: true, path: x.path, sha256: x.sha256, created: x.created === true, opId: x.opId ?? null, ...(x.dryRun ? { dryRun: true, changes: x.changes } : {}) }));
+    }
+    case 'workspace-doc-append': {
+      if (typeof body.path !== 'string' || typeof body.text !== 'string') return badRequest('expected { path: string, text: string }');
+      const r = await repository.appendWorkspaceDoc(bookId, { path: body.path, text: body.text, dryRun });
+      return respondWorkspace(r, r.created ? created : 200, (x) => ({ ok: true, path: x.path, sha256: x.sha256, created: x.created === true, opId: x.opId ?? null }));
+    }
+    case 'workspace-doc-lock': {
+      if (typeof body.locked !== 'boolean') return badRequest('expected { path: string } or { prefix: string }, and locked: true | false');
+      if ((typeof body.path === 'string') === (typeof body.prefix === 'string')) return badRequest('give exactly one of path and prefix (a string)');
+      const r = await repository.lockWorkspaceDocs(bookId, { ...(typeof body.path === 'string' ? { path: body.path } : { prefix: body.prefix }), locked: body.locked, dryRun });
+      return respondWorkspace(r, 200, (x) => ({ ok: true, locked: x.locked, changed: x.changed, matched: x.matched, opId: x.opId ?? null }));
+    }
+    case 'workspace-doc-archive':
+    case 'workspace-doc-restore': {
+      if (typeof body.path !== 'string') return badRequest('expected { path: string }');
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const call = match.route === 'workspace-doc-archive' ? repository.archiveWorkspaceDoc : repository.restoreWorkspaceDoc;
+      const r = await call.call(repository, bookId, { path: body.path, baseSha256: body.base_sha256, dryRun });
+      return respondWorkspace(r, 200, (x) => ({ ok: true, path: x.path, file: x.file, opId: x.opId ?? null }));
+    }
+    case 'workspace-setup': {
+      const r = await repository.setupWorkspace(bookId, { dryRun });
+      return respondWorkspace(r, r.created?.length ? created : 200, (x) => ({ ok: true, created: x.created, existing: x.existing, opId: x.opId ?? null }));
+    }
     // ---- Story Planner M1 (ADR 0003): the only files these routes write are planning/links/<slug>.md, planning/scene-plans/<slug>.md and planning/story.md (archive/ when archived)
     case 'planner-link-create':
     case 'planner-link-update': {
@@ -1488,6 +1680,13 @@ async function handleStructure(repository, match, body) {
       if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
       const r = await repository.archiveContinuityException(bookId, /** @type {string} */ (match.slug), { dryRun: body.dryRun === true });
       return respondContinuity(r, 200, (x) => (x.dryRun ? { ok: true, dryRun: true, archived: x.archived, changes: x.changes } : { ok: true, archived: x.archived, opId: x.opId ?? null, undo: x.undo ?? null }));
+    }
+    case 'continuity-settings-save': {
+      if (body.overdue_chapters !== undefined && !Number.isInteger(body.overdue_chapters)) return badRequest('overdue_chapters must be a whole number');
+      if (body.severity !== undefined && (body.severity === null || typeof body.severity !== 'object' || Array.isArray(body.severity))) return badRequest('severity must be an object of rule id to error, warning, info or off');
+      if (body.dryRun !== undefined && typeof body.dryRun !== 'boolean') return badRequest('dryRun must be a boolean');
+      const r = await repository.saveContinuitySettings(bookId, { overdue_chapters: /** @type {number | undefined} */ (body.overdue_chapters), severity: /** @type {Record<string, string> | undefined} */ (body.severity), dryRun: body.dryRun === true });
+      return respondContinuity(r, 200, (x) => (x.dryRun ? { ok: true, dryRun: true, file: x.file, text: x.text, changes: x.changes } : { ok: true, file: x.file, opId: x.opId ?? null, undo: x.undo ?? null }));
     }
     case 'op-restore': {
       const r = await repository.restoreOp(bookId, /** @type {string} */ (match.opId), { dryRun });

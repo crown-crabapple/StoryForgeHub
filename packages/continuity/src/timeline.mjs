@@ -16,7 +16,7 @@ const has = (value, type) => value && value.fm.type === type;
  * @param {import('./model.mjs').Model} model
  * @returns {StateItem[]}
  */
-function stateItems(model) {
+export function stateItems(model) {
   /** @type {StateItem[]} */
   const out = [];
   for (const event of model.events) {

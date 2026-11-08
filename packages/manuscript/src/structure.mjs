@@ -742,6 +742,21 @@ export function mergeScenes(bookRoot, firstId, secondId, args = {}) {
 const CREATION_UNDOABLE = new Set(['createContinuityException', 'decideSuggestion', 'createLink', 'saveScenePlan', 'saveStoryPlan', 'createArc', 'createStructure', 'createRelationship', 'createSynopsis', 'createClue']); // Story Planner M1-M8: a new link, scene plan, story plan, arc, structure, relationship, synopsis or clue is planning data only, so undo may remove it again (to the trash)
 
 /**
+ * Could restoreOp undo this recorded operation (`trash/<opId>/op.json`), judging by what it recorded alone? The same test restoreOp starts with; whether the files
+ * are still as the operation left them is only known when the undo is tried. M12 AI Activity uses it to show Undo only where it can work.
+ * @param {any} record the parsed op.json @returns {boolean}
+ */
+export function opUndoable(record) {
+  const all = Array.isArray(record?.changes) ? record.changes : [];
+  const recorded = all.filter((c) => !(typeof c.to === 'string' && c.to.startsWith('provenance/')));
+  if (recorded.length === 0) return false;
+  const froms = recorded.map((c) => c.from).filter((f) => f !== null);
+  const tos = recorded.map((c) => c.to);
+  if (!CREATION_UNDOABLE.has(record?.op) && recorded.some((c) => c.from === null)) return false;
+  return new Set(froms).size === froms.length && new Set(tos).size === tos.length;
+}
+
+/**
  * Undo one earlier operation from its trash copies, but only if every file it wrote still has the hash the
  * operation gave it. Operations that created files, or touched one path twice, are not undoable this way.
  * Receipts (M05-J07) are records and are never undone: the files under provenance/ that the operation wrote are left as they are, and when the operation

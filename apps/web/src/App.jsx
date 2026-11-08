@@ -10,6 +10,7 @@ import { CanvasView } from './canvas/CanvasView.jsx';
 import { TimelineView } from './timeline/TimelineView.jsx';
 import { InsightsView } from './insights/InsightsView.jsx';
 import { TasksView } from './tasks/TasksView.jsx';
+import { WorkspaceView } from './workspace/WorkspaceView.jsx';
 import { TimerProvider } from './writing/TimerProvider.jsx';
 import { useApi } from './api.js';
 import { SettingsView } from './ai/SettingsView.jsx';
@@ -110,6 +111,7 @@ function Routes() {
     else if (route.tab === 'plan') view = <CanvasView bookId={route.bookId} search={search} />;
     else if (route.tab === 'insights') view = <InsightsView bookId={route.bookId} search={search} />;
     else if (route.tab === 'tasks') view = <TasksView bookId={route.bookId} search={search} />;
+    else if (route.tab === 'workspace') view = <WorkspaceView bookId={route.bookId} search={search} />;
     else view = <CodexView bookId={route.bookId} search={search} places={route.tab === 'places'} />;
   } else {
     view = (

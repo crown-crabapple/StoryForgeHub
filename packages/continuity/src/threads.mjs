@@ -1,14 +1,18 @@
-// TH1: thread lifecycle in book order (contract 3.5).
+// TH1: thread lifecycle in book order (contract 3.5). TH2 (M12): a promise or question left open too many chapters after its setup.
 import { fingerprintOf } from './rules.mjs';
+import { DEFAULT_OVERDUE_CHAPTERS } from './settings.mjs';
+
+const CLOSED = ['paid', 'dropped', 'abandoned'];
 
 /**
  * @param {import('./model.mjs').Model} model
  * @returns {Promise<import('./engine.mjs').Finding[]>}
  */
-export async function threadFindings(model) {
+export async function threadFindings(model, { overdueChapters = DEFAULT_OVERDUE_CHAPTERS } = {}) {
   /** @type {import('./engine.mjs').Finding[]} */
   const findings = [];
   const last = model.scenes.length ? model.scenes[model.scenes.length - 1].position : 0;
+  const lastChapter = model.scenes.reduce((m, s) => (Number.isInteger(s.doc.fm.chapter) ? Math.max(m, s.doc.fm.chapter) : m), 0);
 
   for (const thread of model.threads) {
     const title = String(thread.fm.title ?? thread.fm.slug);
@@ -36,6 +40,22 @@ export async function threadFindings(model) {
         subject,
         sources: [await at(setup), await at(payoff)],
       });
+    }
+
+    // TH2 promise or question still open long after its setup
+    if (['promise', 'question'].includes(thread.fm.kind) && !CLOSED.includes(thread.fm.status) && setup && Number.isInteger(setup.doc.fm.chapter)) {
+      const x = setup.doc.fm.chapter;
+      if (lastChapter - x > overdueChapters) {
+        findings.push({
+          fingerprint: fingerprintOf('TH2', thread.fm.id, [thread.fm.id], `overdue|${thread.fm.id}`),
+          rule: 'TH2', rule_version: 1, severity: 'warning',
+          title: `"${title}" is overdue`,
+          message: `The ${thread.fm.kind} "${title}" is set up in chapter ${x} ("${setup.doc.fm.title}") and is still ${thread.fm.status}; the book now runs to chapter ${lastChapter}, ${lastChapter - x} chapters later (the limit is ${overdueChapters}). Pay it off, drop it or raise the limit in the continuity settings.`,
+          subject,
+          sources: [await model.fmSource(thread, 'thread', 'thread', 'status', ['status']), await model.fmSource(setup.doc, 'text', 'scene', 'title', ['title'])],
+          related: [setup.doc.fm.id],
+        });
+      }
     }
 
     // TH1b never resolved
