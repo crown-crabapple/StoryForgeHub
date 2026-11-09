@@ -243,10 +243,10 @@ function ConnectForm({ books, taken, mode, busy, error, onCreate }) {
 
 /**
  * The panel from the server's answer (also used by tests).
- * @param {{ data: any, loadError?: string | null, moduleOff?: boolean, mode?: string | null, origin?: string, created?: { token: string, plugin: string, client?: string } | null,
+ * @param {{ data: any, loadError?: string | null, moduleOff?: boolean, mode?: string | null, origin?: string, serverAddress?: string, created?: { token: string, plugin: string, client?: string } | null,
  *   busy?: boolean, error?: string | null, formKey?: number, onCreate?: (g: any) => void, onRevoke?: (g: any) => void, onDone?: () => void }} props
  */
-export function ClaudeView({ data, loadError = null, moduleOff = false, mode = null, origin = '', created = null, busy = false, error = null, formKey = 0, onCreate = () => {}, onRevoke = () => {}, onDone = () => {} }) {
+export function ClaudeView({ data, loadError = null, moduleOff = false, mode = null, origin = '', serverAddress = '', created = null, busy = false, error = null, formKey = 0, onCreate = () => {}, onRevoke = () => {}, onDone = () => {} }) {
   const grants = (data?.grants ?? []).filter((/** @type {any} */ g) => g.plugin.startsWith(PREFIX) && !g.revoked);
   const books = data?.books ?? [];
   const taken = grants.map((/** @type {any} */ g) => g.plugin);
@@ -257,6 +257,12 @@ export function ClaudeView({ data, loadError = null, moduleOff = false, mode = n
         Let {mode === 'shared' ? 'Claude Code' : 'Claude Code, Claude Desktop'} or another MCP client read your books. Make one key for each client or computer, as many as you need: each has its own books and permissions, and you can revoke one without affecting the
         others. An AI never changes your prose: a suggestion changes nothing until you accept it. Only if you tick them below may it edit your canvases, change your plan, edit workspace docs or create new chapters and scenes.
       </p>
+      {serverAddress && mode === 'shared' && (
+        <p className="muted">
+          claude.ai, ChatGPT and Claude Code can sign in instead of using a key: add a custom connector (in Claude Code, <code>claude mcp add --transport http storyforge {serverAddress}</code>) with the address{' '}
+          <code>{serverAddress}</code>. The app opens a StoryForge page where you choose its name, books and permissions, and the connection then shows in the list below like any other.
+        </p>
+      )}
       {moduleOff && <p className="field-warning">The Integrations module is off, so no AI client can reach your books. Turn it on under Modules above.</p>}
       {loadError && (
         <p role="alert" className="field-error">
@@ -330,6 +336,7 @@ export function ClaudeSettings({ mode = null }) {
       moduleOff={!integrationsOn}
       mode={mode}
       origin={created?.origin ?? ''}
+      serverAddress={typeof window === 'undefined' ? '' : `${window.location.origin}/mcp`}
       created={created}
       busy={busy}
       error={error}

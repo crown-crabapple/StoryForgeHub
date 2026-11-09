@@ -104,18 +104,12 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
   /** @param {number} status @param {unknown} body @param {any} [grant] @param {string} [target] @param {Record<string, unknown>} [more] */
   const out = (status, body, grant = null, target = undefined, more = {}) => ({ status, body, grant, book: null, event: { actor: grant ? grant.id : 'plugin:unknown', event: `plugin.${route}`, ...(target ? { target } : {}) }, ...more });
 
-  /** @type {Awaited<ReturnType<typeof service.tokens>>} */
-  let tokens;
-  try {
-    tokens = await service.tokens();
-  } catch {
-    return out(503, { error: 'unavailable', code: 'PLUGINS_UNAVAILABLE', message: 'the plugin tokens cannot be read on this server' });
-  }
+  // a plugin token, or (only for the in-process calls of POST /mcp: server.mjs refuses them on /api/v1) an OAuth access token naming its AI connection
   let grant;
   try {
-    grant = await tokens.resolve(bearer);
+    grant = await service.resolveBearer(bearer);
   } catch {
-    return out(500, { error: 'internal' });
+    return out(503, { error: 'unavailable', code: 'PLUGINS_UNAVAILABLE', message: 'the plugin tokens cannot be read on this server' });
   }
   const books = /** @type {any[]} */ (grant ? await repository.listBooks() : []); // an unknown or revoked token is refused before anything is read
   const slugOf = (/** @type {string} */ x) => books.find((b) => b.slug === x || b.id === x)?.slug ?? null;

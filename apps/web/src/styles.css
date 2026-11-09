@@ -4467,6 +4467,13 @@ label.form-check {
 
 /* ---------- optional shared mode (M07-J03a): sign-in pages, the account menu, Members and sharing, the read-only share reader ---------- */
 
+.oauth-consent-who {
+  font-size: var(--fs-14);
+  line-height: 1.55;
+}
+.oauth-consent .dialog-actions {
+  margin-top: var(--s4);
+}
 .auth-page {
   max-width: 440px;
 }

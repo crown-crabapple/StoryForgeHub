@@ -700,6 +700,11 @@ export function matchWriteRoute(method, pathname) {
   if (a === 'profile' && b === undefined && method === 'PUT') return { route: 'profile-save' };
   if (a === 'profile' && b === 'switch' && c === undefined && method === 'POST') return { route: 'profile-switch' };
   if (a === 'profiles' && b !== undefined && c === undefined && method === 'DELETE') return { route: 'profile-delete', name: b };
+  // OAuth for MCP: the consent page's answer (oauth-routes.mjs; server.mjs answers these itself, owner only in shared mode)
+  if (a === 'oauth' && c === undefined && method === 'POST') {
+    if (b === 'approve') return { route: 'oauth-approve' };
+    if (b === 'deny') return { route: 'oauth-deny' };
+  }
   // M08-J02 plugin access tokens and webhook subscriptions (Settings; owner only in shared mode)
   if (a === 'plugins' && b === 'grants') {
     if (method === 'POST' && c === undefined) return { route: 'plugin-grant' };

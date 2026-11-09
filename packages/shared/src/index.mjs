@@ -8,3 +8,4 @@ export { openSharedData, SharedDataError, ROLES, USERNAME_RE, INVITE_DEFAULT_MS,
 export { createAudit } from './audit.mjs';
 export { openSettings, settingsProblem } from './settings.mjs';
 export { openPluginTokens, PLUGIN_PERMISSIONS } from './plugin-tokens.mjs';
+export { openOAuth, isAccessToken, redirectProblem, s256, ACCESS_TTL_MS, REFRESH_TTL_MS, CODE_TTL_MS, MAX_CLIENTS, AUTH_METHODS } from './oauth.mjs';

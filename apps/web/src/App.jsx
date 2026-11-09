@@ -30,6 +30,10 @@ import { SetupPage } from './shared/SetupPage.jsx';
 import { ShareEntry } from './shared/ShareEntry.jsx';
 import { ShareReader } from './shared/ShareReader.jsx';
 import { postJson } from './api.js';
+import { OAuthConsentPage } from './integrations/OAuthConsent.jsx';
+
+/** The consent page an AI app sends the owner to when it signs in with OAuth (shown without the app shell). */
+const OAUTH_PATH = '/oauth/authorize';
 
 /** Shown when the startup recovery pass rolled an interrupted save back or needs the author's eyes. */
 function RecoverBanner() {
@@ -152,14 +156,14 @@ function Workspace() {
 }
 
 /**
- * Personal mode (GET /api/auth/me is 404) shows the app exactly as before. Shared mode adds the pages for people who are not signed in: login, /setup, /invite and /s
+ * Personal mode (GET /api/auth/me is 404) shows the app exactly as before. /oauth/authorize is the OAuth consent page in both modes. Shared mode adds the pages for people who are not signed in: login, /setup, /invite and /s
  * (a read-only share link), and a read-only reader for a share session.
  */
 function SessionGate() {
   const session = useSession();
   const { pathname } = useLocation();
   if (session.mode === 'loading') return null;
-  if (session.mode === 'personal') return <Workspace />;
+  if (session.mode === 'personal') return pathname === OAUTH_PATH ? <OAuthConsentPage /> : <Workspace />;
   if (session.share) {
     return (
       <ShareReader
@@ -171,7 +175,8 @@ function SessionGate() {
       />
     );
   }
-  if (session.user) return <Workspace />;
+  // signed out, the login page below keeps this address, so the consent page shows as soon as the owner has signed in
+  if (session.user) return pathname === OAUTH_PATH ? <OAuthConsentPage /> : <Workspace />;
   if (pathname === '/setup') return <SetupPage onDone={session.refresh} />;
   if (pathname === '/invite') return <InvitePage onDone={session.refresh} />;
   if (pathname === '/s') return <ShareEntry onOpened={session.refresh} />;

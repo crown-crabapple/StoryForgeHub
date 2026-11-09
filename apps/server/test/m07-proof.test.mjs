@@ -206,6 +206,9 @@ const SAMPLES = {
   // M08-J02: plugin access tokens and webhook subscriptions (owner only)
   'plugin-grant': ['POST', '/api/plugins/grants'],
   'plugin-revoke': ['DELETE', '/api/plugins/grants/tok_X'],
+  // OAuth for MCP: the consent page's answer (owner only)
+  'oauth-approve': ['POST', '/api/oauth/approve'],
+  'oauth-deny': ['POST', '/api/oauth/deny'],
   // M12: the book's AI level (owner only)
   'book-ai-level': ['POST', `${b}/ai-level`],
   'webhook-create': ['POST', '/api/webhooks'],
@@ -230,7 +233,7 @@ const GET_SAMPLES = {
     `/api/books/${OTHER_BOOK}`, `/api/books/${OTHER_BOOK}/scenes/${SCENE}`,
   ],
   export: [`${b}/export?format=markdown`, `/api/books/${OTHER_BOOK}/export?format=markdown`],
-  admin: ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/plugins', '/api/webhooks', '/api/ai/profiles', '/api/recover/last', '/api/library/recent', `${b}/backup`, `${b}/repair/plan`],
+  admin: ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/plugins', '/api/webhooks', '/api/oauth/request', '/api/ai/profiles', '/api/recover/last', '/api/library/recent', `${b}/backup`, `${b}/repair/plan`],
   auth: ['/api/auth/me'],
 };
 const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview', 'arcs', 'structures', 'relationships', 'plan-badges', 'synopses', 'synopses/one-page/extract', 'clues', 'series-plan', 'export/planning', 'ai-activity', 'context?chapter=1'].map((x) => `${b}/${x}`);

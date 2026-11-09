@@ -55,6 +55,7 @@ Shared mode keeps accounts, members, sessions, invites, shares, plugin tokens, s
 
 - A file with a version or shape the running StoryForge does not understand is refused with a clear error and is never overwritten or guessed at.
 - A new version of a shared-data file is introduced only with a documented, explicit upgrade step; the release notes name it.
+- New shared-data files may be added within a minor: `oauth.json` (OAuth clients and token hashes for MCP, `"version": 1`) is one. An older StoryForge ignores it.
 - The audit log is an append-only hash chain. Its line format and its head anchor (`audit-head.json`) are stable across minors; `audit verify` reads logs from older versions.
 
 ## Other files

@@ -59,6 +59,8 @@ export const WRITE_CLASSES = Object.freeze({
   'shared-share-create': 'admin', 'shared-share-revoke': 'admin', 'shared-settings': 'admin',
   // M08-J02 plugin access tokens and webhook subscriptions: a token or a webhook reaches the author's book, so in shared mode only the owner grants them
   'plugin-grant': 'admin', 'plugin-revoke': 'admin', 'webhook-create': 'admin', 'webhook-revoke': 'admin',
+  // OAuth for MCP (oauth-routes.mjs): approving a client makes an AI connection, so it is the owner's, like plugin-grant
+  'oauth-approve': 'admin', 'oauth-deny': 'admin',
   // M12: how much AI a book allows (it caps every token), so in shared mode only the owner sets it
   'book-ai-level': 'admin',
 });
@@ -77,6 +79,7 @@ export function classifyRead(pathname) {
   if (a === 'status' && parts.length === 2) return { cls: 'read' };
   if (a === 'auth') return { cls: 'auth' };
   if (a === 'shared') return { cls: 'admin' }; // members, invites, shares, audit
+  if (a === 'oauth' && b === 'request' && parts.length === 3) return { cls: 'admin' }; // the OAuth consent page: only the owner connects an AI app
   if ((a === 'plugins' || a === 'webhooks') && parts.length === 2) return { cls: 'admin' }; // M08-J02: the manifests, grants and subscriptions (never a token or a secret)
   if (a === 'recover' || (a === 'ai' && b === 'profiles') || (a === 'library' && b === 'recent')) return { cls: 'admin' };
   if (a === 'library' && parts.length === 2) return { cls: 'read' };

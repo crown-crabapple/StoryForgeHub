@@ -2,11 +2,13 @@
 import http from 'node:http';
 import { createKeystore } from '@storyforge/ai';
 import { createLibraryHost, runAs } from '@storyforge/core';
+import { isAccessToken } from '@storyforge/shared';
 import { userConfigDir } from '@storyforge/store';
 import { handlePluginRequest } from './api-v1.mjs';
 import { createAiService } from './ai-routes.mjs';
 import { bearerOf } from './plugin-policy.mjs';
 import { handleMcpRequest } from './mcp-route.mjs';
+import { createOAuthLimiter, handleOAuthDecision, handleOAuthPublic, handleOAuthRequestInfo, isOAuthPublicPath, mcpChallenge } from './oauth-routes.mjs';
 import { guardSeriesWrite, scopeRead } from './book-scope.mjs';
 import { createPluginService } from './plugin-service.mjs';
 import { createPresence } from './presence.mjs';
@@ -28,8 +30,10 @@ export const MAX_RESTORE_BYTES = 512 * 1024 * 1024;
  * @param {import('node:http').ServerResponse} res
  * @param {number} status
  * @param {unknown} body
+ * @param {string[]} [setCookie]
+ * @param {Record<string, string>} [extra] more headers (the OAuth endpoints: CORS, WWW-Authenticate)
  */
-function sendJson(res, status, body, setCookie) {
+function sendJson(res, status, body, setCookie, extra) {
   const text = JSON.stringify(body);
   /** @type {Record<string, string | number | string[]>} */
   const headers = {
@@ -38,6 +42,7 @@ function sendJson(res, status, body, setCookie) {
     'cache-control': 'no-store',
   };
   if (setCookie && setCookie.length > 0) headers['set-cookie'] = setCookie;
+  if (extra) Object.assign(headers, extra);
   res.writeHead(status, headers);
   res.end(text);
 }
@@ -182,6 +187,10 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
     integrations: createPluginService({ shared, keystore, enabled: (/** @type {string} */ bookId) => moduleOn(current(), state, 'integrations', { bookId }), dispatcher: integrations }),
   };
   const hookEvents = createWebhookEvents({ service: state.integrations });
+  // OAuth for the MCP service (oauth-routes.mjs): this server is its own authorization server. Its issuer is the public address in shared mode, else the address
+  // the client reached (personal mode: this computer only).
+  const oauthLimiter = createOAuthLimiter();
+  const issuerOf = (/** @type {import('node:http').IncomingMessage} */ req) => (shared?.publicUrl ? new URL(shared.publicUrl).origin : publicOrigin(req));
   /** @type {WeakSet<object>} repositories that already know which modules are on (M07-J04: receipts are asked per book) */
   const gated = new WeakSet();
   const current = () => {
@@ -209,6 +218,24 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
       // M08-J02: a request with an Authorization header is a plugin request. It is decided by its own policy BEFORE the shared-mode gate and the member routes
       // (a bearer request carries no cookies, so the Origin and write-header checks do not apply and cookies are never read), and /api/v1 is reached only this way.
       const bearer = bearerOf(req);
+      // OAuth (oauth-routes.mjs): the metadata, client registration, token and revocation endpoints. Like /mcp they are called by AI services, not by our pages,
+      // so they come before the shared-mode Origin and cookie checks; they read no cookie and change nothing but oauth.json (and, on revoke, the connection).
+      if (isOAuthPublicPath(pathname)) {
+        if (gate && !gate.hostOk(req, port)) {
+          req.resume();
+          return sendJson(res, 403, { error: 'forbidden' });
+        }
+        const issuer = issuerOf(req);
+        const r = await handleOAuthPublic({
+          req, pathname, issuer, service: state.integrations, readBody: () => readBody(req), limiter: oauthLimiter,
+          audit: gate && shared?.audit ? shared.audit : null,
+        });
+        if (r && r.status === 204) {
+          res.writeHead(204, r.headers);
+          return res.end();
+        }
+        if (r) return sendJson(res, r.status, r.body, undefined, r.headers);
+      }
       // MCP over Streamable HTTP (mcp-route.mjs): the same bearer token and the same /api/v1 policy, one JSON-RPC message per POST. MCP clients are not
       // web pages, so a request that carries an Origin header is refused (no browser page can drive the tools with a token it was given), except ChatGPT's own
       // origins (MCP_ORIGINS): its connector servers may send one. The key is still required on every request.
@@ -222,7 +249,8 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         }
         if (!bearer) {
           req.resume();
-          return sendJson(res, 401, { error: 'unauthorized', code: 'TOKEN', message: 'MCP needs an Authorization: Bearer plugin token (a session cookie is never accepted here)' });
+          // RFC 9728: the challenge names the metadata, so an OAuth client (claude.ai, ChatGPT) finds the sign-in from here
+          return sendJson(res, 401, { error: 'unauthorized', code: 'TOKEN', message: 'MCP needs an Authorization: Bearer token: an AI connection key, or an OAuth access token (a session cookie is never accepted here)' }, undefined, { 'www-authenticate': mcpChallenge(issuerOf(req), bearer === '') });
         }
         const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
         if (type !== 'application/json') {
@@ -245,6 +273,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
           origin: publicOrigin(req),
         });
         seen.reply = /** @type {any} */ (r.body);
+        if (r.status === 401) return sendJson(res, 401, r.body, undefined, { 'www-authenticate': mcpChallenge(issuerOf(req), true) });
         if (r.status === 202) {
           res.writeHead(202, { 'cache-control': 'no-store', 'content-length': 0 });
           return res.end();
@@ -256,6 +285,11 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         if (bearer === null) {
           if (req.method !== 'GET') req.resume();
           return sendJson(res, 401, { error: 'unauthorized', code: 'TOKEN', message: 'API v1 needs an Authorization: Bearer token (a session cookie is never accepted here)' });
+        }
+        // an OAuth access token's audience is the MCP service (resource <origin>/mcp); it is never a key for API v1
+        if (isAccessToken(bearer)) {
+          if (req.method !== 'GET') req.resume();
+          return sendJson(res, 401, { error: 'unauthorized', code: 'TOKEN', message: 'an OAuth access token works only at /mcp; API v1 needs an AI connection or plugin key' });
         }
         const readJson = async () => {
           const type = String(req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
@@ -356,6 +390,21 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         }
         const match = matchWriteRoute(req.method ?? '', pathname);
         if (!match) return sendJson(res, 405, { error: 'read_only' });
+        // the OAuth consent page's answer (owner only in shared mode; the gate decided that above). It needs the issuer, which only this file knows.
+        if (match.route === 'oauth-approve' || match.route === 'oauth-deny') {
+          if (!hasWriteHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
+          const read = await readBody(req);
+          if (read.tooLarge) return sendJson(res, 413, { error: 'too_large' });
+          let parsed;
+          try {
+            parsed = JSON.parse(read.buffer.toString('utf8') || '{}');
+          } catch {
+            return sendJson(res, 400, { error: 'bad_request', message: 'body is not valid JSON' });
+          }
+          const { status, body } = await handleOAuthDecision(match, parsed && typeof parsed === 'object' ? parsed : {}, { repository: current(), service: state.integrations, issuer: issuerOf(req) });
+          await record(status);
+          return sendJson(res, status, body);
+        }
         if (match.route === 'attachment-upload') {
           if (!hasUploadHeaders(req)) return sendJson(res, 403, { error: 'forbidden' });
           const off = await checkModule(current(), state, match);
@@ -406,6 +455,10 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         void hookEvents.afterWrite(current(), match, status, body, parsed, principal?.kind === 'user' ? { name: String(principal.display_name ?? principal.id) } : null).catch(() => {});
         return sendJson(res, status, body);
       }
+      if (pathname === '/api/oauth/request') {
+        const { status, body } = await handleOAuthRequestInfo(new URLSearchParams(queryString), { repository: current(), service: state.integrations, issuer: issuerOf(req) });
+        return sendJson(res, status, body);
+      }
       if (isApiPath(pathname)) {
         // per-book access (book-scope.mjs): a member limited to some books sees only those books in the reads that cover the library
         const scope = gate ? scopeRead(principal, pathname, new URLSearchParams(queryString)) : { ok: /** @type {const} */ (true), narrow: null };
@@ -422,7 +475,9 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         return sendJson(res, status, body);
       }
       const file = await serveStatic(webRoot, pathname);
-      res.writeHead(file.status, { 'content-type': file.type, 'content-length': Buffer.byteLength(file.body) });
+      // the OAuth consent page is never shown inside another site's frame (clickjacking an Allow); personal mode has no SameSite cookie to stop that on its own
+      const frame = pathname === '/oauth/authorize' ? { 'x-frame-options': 'DENY', 'content-security-policy': "frame-ancestors 'none'", 'cache-control': 'no-store' } : {};
+      res.writeHead(file.status, { 'content-type': file.type, 'content-length': Buffer.byteLength(file.body), ...frame });
       return res.end(file.body);
     } catch {
       if (!res.headersSent) return sendJson(res, 500, { error: 'internal' });
