@@ -56,9 +56,9 @@ export const asMember = (port, method, pathname, body) => raw(port, method, path
 
 /**
  * A personal-mode server over a copy of `fixture`. `profile` names the profile of the run (a fresh name keeps module settings out of other tests).
- * @param {{ fixture?: string, profile?: string, integrations?: object, manifests?: Record<string, string>, root?: string }} [o]
+ * @param {{ fixture?: string, profile?: string, integrations?: object, manifests?: Record<string, string>, root?: string, webRoot?: string }} [o] `webRoot`: a built web app to serve (default none)
  */
-export async function bootPersonal({ fixture = 'valid/salt-orchard', profile, integrations, manifests } = {}) {
+export async function bootPersonal({ fixture = 'valid/salt-orchard', profile, integrations, manifests, webRoot } = {}) {
   // a fresh user config folder for this server (tests in a file run one after another, so the environment can be pointed at it): tokens, webhooks and profiles
   const config = await fs.mkdtemp(path.join(os.tmpdir(), 'sf-j02-config-'));
   Object.assign(process.env, { APPDATA: path.join(config, 'AppData'), XDG_CONFIG_HOME: path.join(config, 'xdg') });
@@ -69,7 +69,7 @@ export async function bootPersonal({ fixture = 'valid/salt-orchard', profile, in
     await fs.writeFile(path.join(root, '_plugins', name, 'plugin.md'), text);
   }
   const repository = createFsRepository(root, { watch: false, pollMs: 0 });
-  const server = createServer({ repository, profile: profile ?? `j02-${process.hrtime.bigint()}`, ...(integrations ? { integrations } : {}) });
+  const server = createServer({ repository, profile: profile ?? `j02-${process.hrtime.bigint()}`, ...(integrations ? { integrations } : {}), ...(webRoot ? { webRoot } : {}) });
   const port = await listen(server);
   live.push(async () => {
     await close(server);

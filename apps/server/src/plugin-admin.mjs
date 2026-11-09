@@ -80,6 +80,8 @@ export async function handleIntegrationsWrite(repository, match, body, state) {
       }
       case 'plugin-revoke': {
         const r = await (await service.tokens()).revoke(/** @type {string} */ (match.tokenId));
+        // an AI connection made by OAuth: its access and refresh tokens are already useless (they name a revoked grant); drop them from oauth.json too
+        if (r.ok) await service.oauth?.().then((/** @type {any} */ o) => o.forgetGrant(/** @type {string} */ (match.tokenId))).catch(() => {});
         return r.ok ? { status: 200, body: { ok: true } } : NOT_FOUND;
       }
       case 'webhook-create': {

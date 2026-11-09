@@ -1,5 +1,6 @@
 // MCP over Streamable HTTP: POST /mcp (personal and shared mode). One JSON-RPC message in, one JSON reply out (202 and no body for a notification); no SSE,
-// no session. Authentication is the plugin bearer token (M08-J02) and nothing else: an unknown or revoked token is refused here, before any MCP method runs.
+// no session. Authentication is a bearer: a plugin token (M08-J02), or an OAuth access token (oauth-routes.mjs) that names the AI connection the owner approved. An
+// unknown, expired or revoked one is refused here, before any MCP method runs.
 // Every tool call becomes an in-process /api/v1 request through handlePluginRequest, so plugin-policy.mjs decides each one (permission, granted books, the
 // integrations module), the token is resolved again on every call (a revocation takes effect at once), and shared mode audits each call as plugin.<route>.
 // The propose tools create a suggestion through POST /api/v1/books/:b/proposals and write nothing; the canvas tools (token permission 'canvas') change only canvases.
@@ -19,7 +20,7 @@ export async function handleMcpRequest({ bearer, message, repository, state, ser
   };
   let grant;
   try {
-    grant = await (await service.tokens()).resolve(bearer);
+    grant = await service.resolveBearer(bearer);
   } catch {
     return { status: 503, body: { error: 'unavailable', code: 'PLUGINS_UNAVAILABLE', message: 'the plugin tokens cannot be read on this server' } };
   }

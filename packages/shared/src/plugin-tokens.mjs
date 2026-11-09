@@ -100,6 +100,22 @@ export async function openPluginTokens(dir, { now = Date.now } = {}) {
       return publicOf(t);
     },
 
+    /**
+     * The live grant with this id, or null (unknown or revoked). An OAuth access token (oauth.mjs) names its grant this way; last_used is kept as for a token.
+     * @param {unknown} id
+     * @returns {Promise<PluginGrant | null>}
+     */
+    async resolveId(id) {
+      const t = typeof id === 'string' ? data.tokens.find((x) => x.id === id) : undefined;
+      if (!t || t.revoked) return null;
+      const n = now();
+      if (t.last_used === null || n - t.last_used >= TOUCH_MS) {
+        t.last_used = n;
+        await save();
+      }
+      return publicOf(t);
+    },
+
     flush() {
       return queue;
     },

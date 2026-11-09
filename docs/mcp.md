@@ -2,7 +2,14 @@
 
 StoryForge speaks the Model Context Protocol (MCP), so Claude Code and Claude Desktop can read your books and suggest changes. MCP is a front for the [plugin API](api.md): it uses the same access tokens, the same permissions and the same book grants. Nothing Claude does changes a file, with these exceptions: with the `canvas` permission it can create and edit canvases (planning boards); with the `plan` permission it can change your Story Plan (the Story Planner files under `planning/`); with the `workspace` permission it can write workspace docs, ledgers, a scene's cast, state events, tasks and the writing log; and with the `draft` permission it can add new chapters and scenes as AI drafts. None of them ever changes a scene you wrote or accepted, or a Codex entry. Every other write is a suggestion you accept or decline in StoryForge. The book's [AI level](#ai-level) limits all of these.
 
-## 1. Get a token
+## 1. Sign in or get a token
+
+There are two ways to give an AI client access, and both make an entry in Settings, **AI connections (MCP)**, with its own books and permissions:
+
+- **Sign in with OAuth** (claude.ai and ChatGPT connectors, Claude Code, and any client that follows the MCP authorization spec). Give the client the address `https://<your domain>/mcp` and nothing else. It opens a StoryForge page where you (the owner, in shared mode) choose the connection's name, books and permissions, then click **Allow**. See [section 4](#4-oauth).
+- **A key** made in Settings, pasted into the client. Every client that can send an `Authorization` header can use one.
+
+### A key
 
 Open Settings, then **AI connections (MCP)**. Pick the AI client (Claude Code, Claude Desktop on your own computer, or any other MCP client), give the connection a name, pick the books, and choose whether the AI may suggest changes, whether it may edit canvases, whether it may change the plan, whether it may write workspace docs and ledgers, and whether it may create chapters and scenes (all but the first are off by default). The token is shown once, with ready-to-copy setup for that client: the Claude Code command, the Claude Desktop config, or the address and `Authorization` header for any other client that speaks MCP over Streamable HTTP.
 
@@ -26,7 +33,7 @@ ChatGPT's regular connectors and deep research use only two tools, by these exac
 - `search` takes `query` and looks in every book the token may read. It returns `{"results": [{"id", "title", "text", "url"}]}`, where `text` is a snippet and `url` opens the item in StoryForge. It returns scenes, codex entries, plot threads and timeline events.
 - `fetch` takes an `id` from `search` (`<book slug>/<item id>`). It returns `{"id", "title", "text", "url", "metadata"}`: the full text of a scene or entry, or the details of a thread or event.
 
-Add the connector with the address `https://<your domain>/mcp` and the header `Authorization: Bearer <token>`. In ChatGPT's developer mode every tool is offered, as for Claude.
+Add the connector with the address `https://<your domain>/mcp` and choose OAuth: ChatGPT signs in through StoryForge (section 4). In ChatGPT's developer mode every tool is offered, as for Claude.
 
 ## 2. Pick a way in
 
@@ -92,7 +99,9 @@ Claude Desktop, in `claude_desktop_config.json`:
 
 Restart Claude Desktop after you edit the file.
 
-claude.ai custom connectors are not supported yet. They need an OAuth sign-in, and plugin tokens are static bearer tokens.
+### claude.ai
+
+In claude.ai, open Settings, Connectors, **Add custom connector**, and give it the address `https://<your domain>/mcp`. Leave the OAuth client ID and secret empty: Claude registers itself. Claude opens StoryForge to sign in (section 4).
 
 ## 3. The tools
 
@@ -211,6 +220,21 @@ These legacy names have no plugin route in v2. Calling one returns a clear "not 
 `codex_push_files`, `codex_delete_ledger_item`, `codex_delete_knowledge`, `codex_delete_state_event`, `codex_set_continuity_thresholds`.
 
 Nothing is deleted through MCP (retire or end instead, see above). The continuity thresholds and severities, the AI level and unlocking a doc are yours alone.
+
+## 4. OAuth
+
+StoryForge is its own OAuth 2.1 authorization server for the MCP service, as the MCP authorization spec describes. It is meant for a shared server with a public `https` address (`STORYFORGE_PUBLIC_URL`); in personal mode it answers on this computer only.
+
+1. The client calls `POST /mcp` without a token and gets `401` with `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp"`.
+2. It reads that document (RFC 9728), which names the resource `<origin>/mcp` and this server as its authorization server, then `/.well-known/oauth-authorization-server` (RFC 8414).
+3. It registers itself at `POST /oauth/register` (RFC 7591). Redirect URIs must be `https`, or `http` to `127.0.0.1`, `[::1]` or `localhost`. Registration is limited to 10 an hour per address and 30 an hour in all, and at most 200 clients are kept; registering grants nothing.
+4. It sends you to `/oauth/authorize`. You sign in if needed. The page names the app and the site you return to, and you choose the connection's name, books and permissions (`read` always; `propose` is ticked; `canvas`, `plan`, `workspace` and `draft` are off unless you tick them). In shared mode only the owner can see or answer it. **Deny** returns `access_denied` to the app.
+5. **Allow** makes an ordinary AI connection (`mcp-<name>`) and sends the browser back with a one-time code (10 minutes). The client exchanges it at `POST /oauth/token` with its PKCE verifier; only `S256` is accepted.
+6. The access token lasts one hour and works only at `/mcp` (API v1 refuses it). The refresh token lasts 90 days and is replaced at each refresh; a used one stops working.
+
+Revoke the connection in Settings and every token of it stops at once. When the app disconnects and revokes its refresh token (`POST /oauth/revoke`, RFC 7009), the connection is revoked too. The book's AI level and the Integrations module apply exactly as for a key.
+
+Public clients (no secret, the usual case) and clients with a secret (`client_secret_post` or `client_secret_basic`) are both accepted. Clients, and the hashes of access and refresh tokens, are kept in `oauth.json` next to `plugin-tokens.json`; codes are kept in memory only, so a restart in the middle of a sign-in means signing in again. Shared mode audits registrations, token issues and refreshes, and revocations (`oauth.*`) and the owner's answer (`admin.oauth-approve`, `admin.oauth-deny`).
 
 ## Security
 

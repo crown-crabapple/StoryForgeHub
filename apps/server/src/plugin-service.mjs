@@ -2,7 +2,7 @@
 // config folder in personal mode, the shared-data folder in shared mode; never a library), and the webhook dispatcher. Nothing is opened, read or written until a
 // plugin request, a Settings call or a webhook event needs it; with no subscription an event costs one lookup and no network traffic.
 import { createDispatcher, openWebhooks } from '@storyforge/integrations';
-import { openPluginTokens } from '@storyforge/shared';
+import { isAccessToken, openOAuth, openPluginTokens } from '@storyforge/shared';
 import { userConfigDir } from '@storyforge/store';
 
 /**
@@ -17,6 +17,8 @@ export function createPluginService({ shared = null, keystore = null, enabled, d
   let tokensP = null;
   /** @type {Promise<Awaited<ReturnType<typeof openWebhooks>>> | null} */
   let hooksP = null;
+  /** @type {Promise<Awaited<ReturnType<typeof openOAuth>>> | null} */
+  let oauthP = null;
   /** @template T @param {() => Promise<T>} open @param {Promise<T> | null} cur @param {(p: Promise<T> | null) => void} set */
   const lazy = (open, cur, set) => {
     if (cur) return cur;
@@ -31,6 +33,24 @@ export function createPluginService({ shared = null, keystore = null, enabled, d
       const d = dir();
       if (d === null) return Promise.reject(new Error('no shared-data folder'));
       return lazy(() => openPluginTokens(d), tokensP, (p) => (tokensP = p));
+    },
+    /** The OAuth clients and tokens (oauth.json, beside plugin-tokens.json). @returns {Promise<Awaited<ReturnType<typeof openOAuth>>>} */
+    oauth() {
+      const d = dir();
+      if (d === null) return Promise.reject(new Error('no shared-data folder'));
+      return lazy(() => openOAuth(d), oauthP, (p) => (oauthP = p));
+    },
+    /**
+     * The live grant a bearer stands for: a plugin token (an AI connection's key), or an OAuth access token, which names the grant of the connection the owner
+     * approved. Null for anything unknown, expired or revoked. Throws when a store cannot be read.
+     * @param {unknown} bearer
+     */
+    async resolveBearer(bearer) {
+      if (isAccessToken(bearer)) {
+        const at = (await service.oauth()).resolveAccess(bearer);
+        return at ? (await service.tokens()).resolveId(at.grant) : null;
+      }
+      return (await service.tokens()).resolve(bearer);
     },
     /** @returns {Promise<Awaited<ReturnType<typeof openWebhooks>>>} */
     webhooks() {
