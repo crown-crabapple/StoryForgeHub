@@ -25,10 +25,11 @@ export function StatusChip({ entry }) {
  * One card of the grid: avatar, name, role (or type), a one-line blurb, "First seen Ch N", "N scenes" and the status. The whole card is a
  * button that selects the entry (`aria-pressed`). Presentational.
  * @param {{ entry: any, chapters?: { chapter: number, scene_ids?: string[] }[], types?: { type: string, name: string }[], selected?: boolean,
- *   tabIndex?: number, onSelect?: (entry: any) => void, labelDefs?: any[] | null }} props
+ *   tabIndex?: number, onSelect?: (entry: any) => void, labelDefs?: any[] | null, pending?: number }} props
+ *   `pending`: how many suggestions wait on the entry (a small badge in the card's head when above 0).
  *   A shared entry of the series carries a "Shared · <series title>" badge; its labels show as chips.
  */
-export function CodexCard({ entry, chapters = [], types = [], selected = false, tabIndex = 0, onSelect, labelDefs = null }) {
+export function CodexCard({ entry, chapters = [], types = [], selected = false, tabIndex = 0, onSelect, labelDefs = null, pending = 0 }) {
   const seen = firstSeen(entry, chapters);
   const scenes = explicitScenes(entry).length;
   return (
@@ -39,6 +40,11 @@ export function CodexCard({ entry, chapters = [], types = [], selected = false, 
           <span className="codex-card-name">{entry.name}</span>
           <span className="codex-card-role">{roleLabel(entry, types)}</span>
         </span>
+        {pending > 0 && (
+          <span className="badge" aria-label={`${pending} pending ${pending === 1 ? 'suggestion' : 'suggestions'}`}>
+            {pending}
+          </span>
+        )}
         <StatusChip entry={entry} />
       </span>
       <span className="codex-card-blurb">{blurbOf(entry.sections)}</span>
