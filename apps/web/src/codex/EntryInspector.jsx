@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ProseView } from '../ProseView.jsx';
+import { MarkdownView } from '../MarkdownView.jsx';
 import { Link } from '../router.jsx';
 import { Avatar, StatusChip } from './CodexCard.jsx';
 import { LinkedText } from './LinkedText.jsx';
@@ -44,7 +44,7 @@ const TAB_KEYS = ['ArrowRight', 'ArrowLeft', 'Home', 'End'];
 /**
  * The details pane for one entry. Always on top: avatar, name, type and role, the shared notice, labels, then a bar with "Open in manuscript"
  * (the first scene that links it explicitly) and the buttons for Edit, Archive and so on (only those the page gives a handler for). Below,
- * a tablist ("Entry sections") with one tabpanel each: Details (facts, aliases, each `##` section), Mentions (presence by chapter, where it
+ * a tablist ("Entry sections") with one tabpanel each: Details (facts, aliases, each `##` section drawn as Markdown by MarkdownView), Mentions (presence by chapter, where it
  * appears; not for archived entries), Research (when `research` is given; not for archived), Relations, and Needs review (only when there are
  * problems, with a count). All panels are rendered; inactive ones are `hidden`. The chosen tab persists across entries; a tab that the entry
  * does not have falls back to Details. Presentational: `entry` is one entry of GET /codex/entries (or GET /entries/:id).
@@ -201,7 +201,7 @@ export function EntryInspector({ bookId, entry, chapters = [], types = [], resol
               {sections.map((s, i) => (
                 <Section key={`${s.heading}-${i}`} title={s.heading}>
                   <div className="codex-section-text">
-                    {(s.markdown ?? s.text ?? '') === '' ? <p className="muted">Nothing written yet.</p> : <ProseView source={s.markdown ?? s.text} linkOf={linkOf} />}
+                    {(s.markdown ?? s.text ?? '') === '' ? <p className="muted">Nothing written yet.</p> : <MarkdownView source={s.markdown ?? s.text} resolve={resolve} linkOf={linkOf} entryHref={(id) => codexHref(bookId, { entry: id })} />}
                   </div>
                 </Section>
               ))}

@@ -2616,6 +2616,93 @@ mark {
   font-size: var(--fs-14);
   line-height: 1.55;
 }
+.codex-section-text .md {
+  color: var(--text-2);
+  font-size: var(--fs-14);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+/* Markdown in a Codex section (MarkdownView): no browser margins, then even spacing between blocks (div.md outranks `.codex-detail-section p`); tables scroll sideways in the narrow pane */
+.md :where(p, ul, ol, blockquote, pre, hr, h3, h4, h5, h6) {
+  margin: 0;
+}
+div.md > * + *,
+div.md li > * + *,
+div.md blockquote > * + * {
+  margin-top: var(--s2);
+}
+.md ul,
+.md ol {
+  padding-left: var(--s5);
+}
+.md li + li {
+  margin-top: var(--s1);
+}
+.md li > ul,
+.md li > ol {
+  margin-top: var(--s1);
+}
+.md strong {
+  color: var(--text);
+  font-weight: 600;
+}
+div.md > * + .md-heading {
+  margin-top: var(--s3);
+}
+.md .md-heading {
+  color: var(--text);
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+.md blockquote {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: var(--s3);
+  border-left: 2px solid var(--divider);
+  color: var(--muted);
+}
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--divider);
+}
+.md .md-task input {
+  margin: 0 var(--s1) 0 0;
+  vertical-align: -2px;
+}
+.md li:has(> .md-task) {
+  list-style: none;
+}
+.md .md-link {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.md .md-link:hover {
+  color: var(--text);
+}
+.md .md-image {
+  color: var(--muted);
+  font-style: italic;
+}
+.md-table-wrap {
+  overflow-x: auto;
+}
+.md-table {
+  border-collapse: collapse;
+  font-size: var(--fs-12);
+}
+.md-table th,
+.md-table td {
+  padding: var(--s1) var(--s2);
+  border: 1px solid var(--divider);
+  text-align: left;
+  vertical-align: top;
+}
+.md-table th {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+}
 .codex-link {
   color: var(--text-2);
   text-decoration: underline dotted var(--accent);

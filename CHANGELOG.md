@@ -37,6 +37,10 @@ All notable changes to StoryForge are listed here. The format follows [Keep a Ch
 - **Canvas** (`/books/:id/canvas`): infinite visual boards for mood images, colour swatches, Markdown notes, to-do lists, web links, columns, groups and labelled arrows, plus live story cards for scenes, Codex entries, threads, events and notes that follow the book. Each canvas is a JSON Canvas file (`planning/canvases/<slug>.canvas`, Obsidian-compatible) saved through the store; the scroll wheel zooms; keys are in the shortcut registry. Contract: [docs/contracts/M09-J01-canvas.md](docs/contracts/M09-J01-canvas.md).
 - **Per-book access for members** (shared mode): All books with one role, or Only these books with a role per book, for members and invites. A limited member cannot open, search or list other books; shared series data needs all-books access to change.
 
+### Fixed
+
+- **Codex entries show their Markdown.** The Details tab of an entry drew each section's text as written, so lists, `**bold**`, `*italic*`, `###` headings and tables showed their Markdown marks. Sections are now drawn as Markdown (CommonMark with GFM tables, task lists and strikethrough, read only; raw HTML shows as text and images are not loaded). A `[[link]]` in a section now opens the entry, as it already did in the facts grid; a web link opens in a new tab.
+
 ## [0.1.0]
 
 The first release: milestones M00 to M08, grouped by feature family (F01 to F20 in the feature register). Known limits are in [docs/release-notes/0.1.0.md](docs/release-notes/0.1.0.md).
