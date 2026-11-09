@@ -3,14 +3,16 @@
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from '../router.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { SaveStatus } from '../shell/SaveStatus.jsx';
 import { abilities } from '../collab/model.js';
 import { PresenceNote, usePresence } from '../collab/Presence.jsx';
+import { useModule } from '../prefs/PrefsContext.jsx';
 import { useSession } from '../shared/session.jsx';
 import { SuggestionDialog } from '../suggestions/RailSuggestions.jsx';
+import { useInlineSuggestions } from '../suggestions/useInlineSuggestions.js';
 import { useSuggestionActions } from '../suggestions/useSuggestionActions.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { bookUrl, send, slugify } from '../structure/helpers.js';
@@ -25,6 +27,7 @@ import { caretLine, detectLineEnding, loadBuffer, normaliseLineEndings, normalis
 import { authorNote, bold, insertLink, italic, sceneBreak } from './commands.js';
 import { ConflictPanel } from './ConflictPanel.jsx';
 import { StalePanel } from './StalePanel.jsx';
+import { setSuggestionMarks, suggestionMarks } from './suggestion-marks.js';
 import { continuityMarks, setContinuityMarks } from './continuity-marks.js';
 import { createDraftStore, draftKey } from './draft-store.js';
 import { RESTORED_NOTICE, decideRestore, getOfflineQueue } from './offline-queue.js';
@@ -58,6 +61,24 @@ const writeShowMarks = (show) => {
   }
 };
 
+const INLINE_KEY = 'storyforge.showInlineSuggestions';
+
+/** The "Suggestions: N" inline choice, remembered per viewer in localStorage (every access guarded). */
+const readShowInline = () => {
+  try {
+    return globalThis.localStorage?.getItem(INLINE_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+};
+const writeShowInline = (show) => {
+  try {
+    globalThis.localStorage?.setItem(INLINE_KEY, String(show));
+  } catch {
+    // not remembered; the toggle still works for this visit
+  }
+};
+
 const formatTime = (iso) => new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
 /** @param {{ title: string, children: import('react').ReactNode, onClose: () => void, actions: import('react').ReactNode }} props */
@@ -73,14 +94,14 @@ function InfoDialog({ title, children, onClose, actions }) {
 
 /**
  * @param {{ book: any, scene: any, chapterLabel?: string | null, objects?: any[] | null, footerExtra?: import('react').ReactNode,
- *   onStructureChanged?: (info?: any) => void, resource?: { url: string, label: string, meta: string[], attach?: { noteId: string } } }} props
- *   `resource` makes the same editor edit something else with a body: a Codex entry (`scene` is then `{ id, title, body, sha256 }`, `url` is
+ *   onStructureChanged?: (info?: any) => void, resource?: { url: string, label: string, meta: string[], attach?: { noteId: string } }, targetKind?: 'scene' | 'entry' }} props
+ *   `targetKind`: what kind of document the suggestions shown inline in the text are for (default 'scene'; a Codex entry passes 'entry'). `resource` makes the same editor edit something else with a body: a Codex entry (`scene` is then `{ id, title, body, sha256 }`, `url` is
  *   GET /entries/:id, saved with PUT <url>/body). `label` names the text area, `meta` replaces the meta line under the title. `attach` (a note's text) adds "Attach file..." and drag-and-drop of files: each file is
  *   uploaded to the book and the returned Markdown link is inserted at the caret (or where it was dropped). `initialLine`: a 1-based line to put the caret on when the scene opens. `initialSelection` ({ from, to }, offsets in the text): select that range instead (a task's quote, M07-J02).
  *   Render with `key={scene.id}`: one editor (and one save controller) per open scene. `scene` is the GET scene answer; when its
  *   `sha256` changes later (the book was reconciled) the editor asks the server whether the file changed outside.
  */
-export function SceneEditorPage({ book, scene, chapterLabel = null, objects = null, footerExtra = null, onStructureChanged, resource = undefined, initialLine = null, initialSelection = null }) {
+export function SceneEditorPage({ book, scene, chapterLabel = null, objects = null, footerExtra = null, onStructureChanged, resource = undefined, targetKind = 'scene', initialLine = null, initialSelection = null }) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
   const ctlRef = useRef(null);
@@ -107,6 +128,15 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const sharedMode = session.mode === 'shared';
   const [reviewId, setReviewId] = useState(/** @type {string | null} */ (null));
   const suggestionActions = useSuggestionActions({ bookId: book.id, onChanged: onStructureChanged });
+  const suggestionsOn = useModule('suggestions');
+  const [showInline, setShowInline] = useState(readShowInline);
+  const inline = useInlineSuggestions({ bookId: book.id, target: { id: scene.id, kind: targetKind }, enabled: suggestionsOn, version: `${suggestionActions.stamp}|${scene.sha256 ?? ''}` });
+  const inlineCount = inline.marks.length + inline.fieldHunks + inline.staleCount;
+  const hiddenCount = inline.fieldHunks + inline.staleCount;
+  // the marks the editor should show now; kept in a ref so a reload (which rebuilds the editor state) can draw them again
+  const marksRef = useRef(/** @type {any[]} */ ([]));
+  const shownMarks = useMemo(() => (suggestionsOn && showInline ? inline.marks.map((m) => ({ ...m, canDecide: can.decide })) : []), [suggestionsOn, showInline, inline.marks, can.decide]);
+  const onDecideRef = useRef(/** @type {(id: string, decision: 'accept' | 'decline', hunkId: string) => Promise<boolean>} */ (async () => false));
   const others = usePresence({ bookId: book.id, sceneId: scene.id, enabled: can.present && !isEntry });
 
   const [snap, setSnap] = useState(null);
@@ -149,7 +179,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     const line = caretLine(view.state);
     const { state, lineEndings } = loadBuffer(text, extensionsRef.current);
     view.setState(state);
-    view.dispatch({ effects: setMarks(showMarksRef.current) });
+    view.dispatch({ effects: [setMarks(showMarksRef.current), setSuggestionMarks.of(marksRef.current)] });
     setLineKind(lineEndings.kind);
     setWords(countWords(text));
     writingRef.current.setLiveBody(text);
@@ -237,6 +267,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       keymap.of([...historyKeymap, ...defaultKeymap]),
       decoratedMarkdown(),
       continuityMarks(),
+      suggestionMarks((id, hunkId, decision) => onDecideRef.current(id, decision, hunkId)),
       marksExtension(readShowMarks()),
       placeholder('Start writing…'),
       ...(readOnlyRole ? [EditorState.readOnly.of(true)] : []),
@@ -389,6 +420,27 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one editor per scene id; later `scene` props are handled below
   }, [book.id, scene.id]);
+
+  // ---- pending suggestions drawn in the text: push the marks whenever they change (a reload draws the last ones again, see applyText)
+  useEffect(() => {
+    marksRef.current = shownMarks;
+    viewRef.current?.dispatch({ effects: setSuggestionMarks.of(shownMarks) });
+  }, [shownMarks]);
+  useEffect(() => {
+    onDecideRef.current = async (id, decision, hunkId) => {
+      const { saved } = await ctlRef.current.flush(); // the file must hold what the author sees before a hunk is applied to it
+      if (!saved) {
+        flash('The text has changes that could not be saved yet. Try again once it is saved.');
+        return false;
+      }
+      return suggestionActions.decide(id, decision, hunkId); // reloads the editor, then the marks are fetched again (the actions' stamp changes)
+    };
+  });
+  const toggleInline = () => {
+    const next = !showInline;
+    setShowInline(next);
+    writeShowInline(next);
+  };
 
   // ---- opened from a link to a line (the Scene notes list): put the caret there
   useEffect(() => {
@@ -744,6 +796,29 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
             </>
           )}
         </p>
+      )}
+      {suggestionActions.error && !reviewId && (
+        <p className="editor-flash" role="alert">
+          {suggestionActions.error}{' '}
+          <button type="button" className="btn row-button" onClick={suggestionActions.clearError}>
+            Dismiss
+          </button>
+        </p>
+      )}
+      {suggestionsOn && inlineCount > 0 && (
+        <div className="sg-inline-bar" role="region" aria-label="Suggestions in the text">
+          <button type="button" className="btn btn-small" aria-pressed={showInline} onClick={toggleInline}>
+            Suggestions: {inlineCount}
+          </button>
+          {hiddenCount > 0 && (
+            <>
+              <span className="muted">{`${hiddenCount} suggested ${hiddenCount === 1 ? 'change' : 'changes'} can't be shown in the text`}</span>
+              <button type="button" className="btn btn-small" onClick={() => setReviewId(inline.firstId)}>
+                Review
+              </button>
+            </>
+          )}
+        </div>
       )}
       <article className="paper editor-paper">
         <h1>{scene.title}</h1>

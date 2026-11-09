@@ -35,6 +35,7 @@ export function EntryBodyEditor({ bookId, entry, types = [], objects = null, onD
           book={{ id: bookId }}
           scene={{ id: data.id, title: data.name, body: data.body, sha256: data.sha256 }}
           objects={objects}
+          targetKind="entry"
           resource={{ url, label: 'Entry text', meta: [typeName, statusLabel(data.status)].filter(Boolean) }}
         />
       )}

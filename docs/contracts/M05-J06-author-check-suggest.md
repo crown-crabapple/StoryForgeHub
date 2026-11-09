@@ -50,6 +50,7 @@ Optional rationale (Markdown).
 - **Accept hunk:** locate the hunk's original lines in the target **now**: at `line` if the lines there hash to `original_sha256`; else the unique place where they do; none or several → 409 `SUGGESTION_STALE` (nothing written). Replace exactly those lines with the hunk's new lines, keeping the file's line ending; write the target through the store with `baseSha256` = current target hash (journaled, atomic); then update the suggestion's hunk status in the same store batch. Undo (restoreOp) restores both files byte-identically.
 - **Decline hunk:** only the suggestion file changes. The target is never read for writing.
 - Each decision calls `recordProvenance({ kind: 'suggestion.accept'|'suggestion.decline', suggestionId, hunkIds, target, before_sha256, after_sha256, diff })`.
+- `GET /api/books/:b/suggestions/:id` returns each hunk with `stale` and `body_line`: the 1-based line in the target's BODY (after the front matter) where a pending, non-stale hunk's original lines are now (for an insertion, the line the new lines go before); `null` when the hunk is stale, already decided, or touches the front matter. Lets the editor draw hunks inline.
 - Write-guarded like all write routes.
 
 ## 2. "Check my scene" in the app (mode `check`)

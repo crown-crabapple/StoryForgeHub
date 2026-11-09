@@ -4042,6 +4042,71 @@ label.form-check {
   text-underline-offset: 4px;
   cursor: help;
 }
+
+/* ---------- inline suggestions: struck original lines and a card with the proposal ---------- */
+
+.cm-line.cm-sugg-del {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.cm-sugg-card {
+  margin: var(--s1) 0 var(--s2);
+  padding: var(--s2) var(--s3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--ok);
+  border-radius: var(--r-input);
+  font-family: var(--font-ui);
+  font-size: var(--fs-13);
+}
+.cm-sugg-ins {
+  padding: 0 var(--s1);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+  color: var(--text);
+  font-family: var(--font-prose);
+  white-space: pre-wrap;
+}
+.cm-sugg-ins ins {
+  background: color-mix(in srgb, var(--ok) 28%, transparent);
+  text-decoration: underline;
+}
+.cm-sugg-none {
+  font-family: var(--font-ui);
+  font-style: italic;
+}
+.cm-sugg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s1);
+  color: var(--text-3);
+}
+.cm-sugg-label {
+  font-weight: 600;
+  color: var(--text-2);
+}
+.cm-sugg-why {
+  flex: 1 1 12ch;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cm-sugg-actions {
+  display: inline-flex;
+  gap: var(--s1);
+  margin-left: auto;
+}
+.sg-inline-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-13);
+}
 .btn-small {
   min-height: 28px;
   padding: 0 var(--s2);
