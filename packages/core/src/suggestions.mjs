@@ -207,7 +207,11 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
     return { ok: true, code: 'OK', suggestions: out };
   }
 
-  /** One suggestion with the text of every hunk; each pending hunk says whether it is `stale` against the target as it is now. */
+  /**
+ * One suggestion with the text of every hunk; each pending hunk says whether it is `stale` against the target as it is now, and `body_line` is the
+ * 1-based line of the target BODY (the text after the front matter) where its original lines are now (for an insertion, the line the new lines go before);
+ * null when the hunk is stale, not pending, or touches the front matter.
+ */
   async function getSuggestion(bookId, suggestionId) {
     const found = await findBook(bookId, true);
     if (!found || typeof suggestionId !== 'string') return fail('NOT_FOUND');
@@ -222,10 +226,18 @@ export function createSuggestionMethods({ root, afterWrite = () => {}, reconcile
     const targetDoc = s.target ? byId.get(s.target) : null;
     const targetNow = s.target === '' ? { bytes: Buffer.alloc(0) } : targetDoc ? await store.read(targetDoc.rel) : null;
     const targetBytes = targetNow ? targetNow.bytes : null;
+    const fmEnd = targetBytes ? frontMatterEnd(targetBytes) : -1;
+    let fmLines = 0; // lines up to and including the closing `---`
+    if (fmEnd > 0) for (let i = targetBytes.indexOf(0x0a); i >= 0 && i < fmEnd; i = targetBytes.indexOf(0x0a, i + 1)) fmLines++;
     const hunks = read.parsed.hunks.map((h) => {
       let stale = null;
-      if (h.status === 'pending' && targetBytes !== null) stale = !applyHunk(targetBytes, shifted(read.parsed, h.id), h.id).ok;
-      return { id: h.id, line: h.line, lines: h.lines, status: h.status, ...(h.decided ? { decided: h.decided } : {}), originalLines: h.originalLines, newLines: h.newLines, stale };
+      let bodyLine = null;
+      if (h.status === 'pending' && targetBytes !== null) {
+        const a = applyHunk(targetBytes, shifted(read.parsed, h.id), h.id);
+        stale = !a.ok;
+        if (a.ok && a.at > fmLines) bodyLine = a.at - fmLines; // no front matter: fmLines is 0 and the body is the whole file
+      }
+      return { id: h.id, line: h.line, lines: h.lines, status: h.status, ...(h.decided ? { decided: h.decided } : {}), originalLines: h.originalLines, newLines: h.newLines, stale, body_line: bodyLine };
     });
     return { ok: true, code: 'OK', suggestion: { ...s, hunks, new_file: s.target === '', text: read.cur.bytes.toString('utf8') } };
   }
