@@ -7,6 +7,8 @@ import { useWrites } from '../shell/writes.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
 import { send } from '../structure/helpers.js';
 import { PreviewDialog } from '../structure/PreviewDialog.jsx';
+import { RailSuggestions } from '../suggestions/RailSuggestions.jsx';
+import { suggestionsUrl } from '../suggestions/model.js';
 import { SHARED_NOTICE, crossBookTarget } from '../world/model.js';
 import { CodexPage } from './CodexPage.jsx';
 import { ChangeSlugDialog, EditFieldsDialog, NewEntryDialog, NewTypeDialog } from './dialogs.jsx';
@@ -37,6 +39,8 @@ export function CodexView({ bookId, search = '', places = false }) {
   const { data: notesData } = useApi(`${api}/notes`, version);
   const { data: labelData } = useApi(`${api}/labels`, version); // the label chips and the label filter
   const { data: targets } = useApi(`${api}/link-targets`, version); // where a link into another book leads
+  const suggestionsOn = prefs.moduleOn('suggestions');
+  const { data: openSuggestions } = useApi(suggestionsOn ? suggestionsUrl(bookId, { state: 'open' }) : null, version); // one list per book: the badges on the cards
 
   const [query, setQuery] = useState('');
   const [statusKey, setStatusKey] = useState('all');
@@ -169,6 +173,8 @@ export function CodexView({ bookId, search = '', places = false }) {
     );
   }
 
+  const pendingByEntry = {};
+  for (const s of openSuggestions?.suggestions ?? []) if (s.target) pendingByEntry[s.target] = (pendingByEntry[s.target] ?? 0) + 1;
   const editor = editing && entries.find((e) => e.id === editing && !e.archived);
   /** The buttons of the inspector for the entry it shows (the page decides which one that is). */
   const actionsFor = (entry) => ({
@@ -227,6 +233,14 @@ export function CodexView({ bookId, search = '', places = false }) {
         notes={notesData?.notes ?? null}
         lockedType={places ? 'location' : null}
         actions={actionsFor}
+        suggestionsPanel={
+          suggestionsOn
+            ? (entry) => (
+                <RailSuggestions key={entry.id} book={{ id: bookId }} target={{ id: entry.id, kind: 'entry', title: entry.name }} version={version} onChanged={() => setBump((n) => n + 1)} />
+              )
+            : null
+        }
+        pendingByEntry={suggestionsOn ? pendingByEntry : null}
         arcPanel={prefs.moduleOn('planner') ? (entry) => (entry.type === 'character' ? <ArcPanel key={entry.id} bookId={bookId} entry={entry} /> : null) : null}
         editor={
           editor ? (

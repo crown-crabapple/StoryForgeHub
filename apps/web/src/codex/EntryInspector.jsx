@@ -51,13 +51,14 @@ const TAB_KEYS = ['ArrowRight', 'ArrowLeft', 'Home', 'End'];
  * @param {{ bookId: string, entry: any | null, chapters?: { chapter: number, scene_ids?: string[] }[], types?: { type: string, name: string }[],
  *   resolve?: (ref: string) => { id: string } | null, onSelect?: (entryId: string) => void, onEdit?: () => void, onEditText?: () => void,
  *   onChangeSlug?: () => void, onArchive?: () => void, onRestore?: () => void, research?: { id: string, title: string | null }[] | null,
- *   onMoveToSeries?: () => void, onCopyIntoBook?: () => void, labelDefs?: any[] | null, initialTab?: string, linkOf?: (ref: string) => { href: string, name?: string | null } | null }} props
+ *   onMoveToSeries?: () => void, onCopyIntoBook?: () => void, labelDefs?: any[] | null, initialTab?: string, linkOf?: (ref: string) => { href: string, name?: string | null } | null, suggestions?: import('react').ReactNode }} props
  *   A shared entry shows its badge, the path of the series file and the notice that changes apply to every book of the series. `onMoveToSeries` is the menu entry
  *   "Move to series…" of a book's own entry, `onCopyIntoBook` "Copy into this book…" of a shared one.
  *   `initialTab`: the tab selected at first, one of 'details' (default), 'mentions', 'research', 'relations', 'needs-review'.
+ *   `suggestions`: a node drawn below the tab panels (the page gives the "Suggestions" section for the entry when the suggestions module is on).
  *   `research` (M04-J04): the research notes whose `links` name the entry; when given (even empty) the inspector shows a "Research" tab.
  */
-export function EntryInspector({ bookId, entry, chapters = [], types = [], resolve, onSelect, onEdit, onEditText, onChangeSlug, onArchive, onRestore, research = null, onMoveToSeries, onCopyIntoBook, labelDefs = null, initialTab, linkOf }) {
+export function EntryInspector({ bookId, entry, chapters = [], types = [], resolve, onSelect, onEdit, onEditText, onChangeSlug, onArchive, onRestore, research = null, onMoveToSeries, onCopyIntoBook, labelDefs = null, initialTab, linkOf, suggestions = null }) {
   const [tab, setTab] = useState(initialTab ?? 'details');
   const tablistRef = useRef(null);
   if (!entry) return <p className="muted">Select an entry to see its details.</p>;
@@ -259,6 +260,7 @@ export function EntryInspector({ bookId, entry, chapters = [], types = [], resol
           )}
         </div>
       ))}
+      {suggestions}
     </div>
   );
 }

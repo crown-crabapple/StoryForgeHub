@@ -3,12 +3,16 @@ import { useApi } from '../api.js';
 import { abilities } from '../collab/model.js';
 import { sendRequest } from '../continuity/requests.js';
 import { AiActivityPanel } from '../insights/AiActivityPanel.jsx';
+import { usePrefs } from '../prefs/PrefsContext.jsx';
 import { Link, useNavigate } from '../router.jsx';
 import { useSession } from '../shared/session.jsx';
 import { useWrites } from '../shell/writes.jsx';
 import { bookVersion, useStatus } from '../status.jsx';
+import { SuggestionDialog } from '../suggestions/RailSuggestions.jsx';
+import { suggestionsUrl } from '../suggestions/model.js';
+import { useSuggestionActions } from '../suggestions/useSuggestionActions.jsx';
 import { statusRequest } from '../tasks/model.js';
-import { AiTasksSection, DocsSection, LedgersSection, OverviewSection, SectionNav, StateSection } from './WorkspacePage.jsx';
+import { AiTasksSection, DocsSection, LedgersSection, OverviewSection, SectionNav, StateSection, SuggestionsSection } from './WorkspacePage.jsx';
 import {
   STATE_DOCS, aiTasksUrl, archiveDocRequest, castUrl, chapterNumbers, docUrl, docsUrl, explainWorkspaceFailure, findingsUrl, knowledgeUrl, ledgerUrl, levelUrl, lockRequest, overdueThreadIds,
   parseWorkspaceSearch, saveDocRequest, setupRequest, stateAddress, stateEventsUrl, statePrefix, workspaceHref,
@@ -23,7 +27,9 @@ export function WorkspaceView({ bookId, search = '' }) {
   const { status } = useStatus();
   const { track } = useWrites();
   const navigate = useNavigate();
-  const readOnly = abilities(useSession()).readOnly;
+  const can = abilities(useSession());
+  const readOnly = can.readOnly;
+  const suggestionsOn = usePrefs().moduleOn('suggestions');
   const [bump, setBump] = useState(0);
   const version = `${bookVersion(status, bookId)}|${bump}`;
   const url = parseWorkspaceSearch(search);
@@ -34,6 +40,8 @@ export function WorkspaceView({ bookId, search = '' }) {
   const [eventsChapter, setEventsChapter] = useState(/** @type {number | null} */ (null));
   const [character, setCharacter] = useState(/** @type {string | null} */ (null));
   const [knowledgeAt, setKnowledgeAt] = useState(/** @type {number | null} */ (null));
+  const [reviewId, setReviewId] = useState(/** @type {string | null} */ (null));
+  const suggestionActions = useSuggestionActions({ bookId, onChanged: () => setBump((n) => n + 1) });
 
   const { data: list, error: listError } = useApi(docsUrl(bookId), version);
   const { data: prefs } = useApi(section === 'overview' ? levelUrl(bookId) : null, version);
@@ -55,6 +63,7 @@ export function WorkspaceView({ bookId, search = '' }) {
   const { data: knowledge } = useApi(ledgerOn && character ? knowledgeUrl(bookId, character, knowledgeAt) : null, version);
   const { data: stateEvents } = useApi(ledgerOn ? stateEventsUrl(bookId, eventsChapter) : null, version);
   const { data: tasks } = useApi(section === 'tasks' ? aiTasksUrl(bookId) : null, version);
+  const { data: openSuggestions } = useApi(suggestionsOn && (section === 'suggestions' || section === 'overview') ? suggestionsUrl(bookId, { state: 'open' }) : null, `${version}|${suggestionActions.stamp}`);
 
   if (listError) {
     return (
@@ -155,11 +164,15 @@ export function WorkspaceView({ bookId, search = '' }) {
         onStatus={(t, to) => write(statusRequest(bookId, t.id, to), 'Status changed.', 'Not changed')}
       />
     );
+  } else if (section === 'suggestions' && suggestionsOn) {
+    body = <SuggestionsSection bookId={bookId} data={openSuggestions ?? null} onReview={setReviewId} />;
   } else if (section === 'activity') {
     body = <AiActivityPanel bookId={bookId} version={version} readOnly={readOnly} />;
   } else {
     body = (
       <OverviewSection
+        bookId={bookId}
+        pending={openSuggestions ? openSuggestions.suggestions.filter((s) => s.pending > 0).length : null}
         level={prefs ? (prefs.effective?.ai?.level ?? null) : null}
         source={prefs?.sources?.['ai.level']}
         list={list}
@@ -177,8 +190,10 @@ export function WorkspaceView({ bookId, search = '' }) {
       <p className="muted">
         Everything the AI keeps for this book: docs, chapter state, ledgers, tasks and what it changed. <Link to={`/books/${encodeURIComponent(bookId)}`}>Back to the manuscript</Link>
       </p>
-      <SectionNav bookId={bookId} active={section} />
+      <SectionNav bookId={bookId} active={section} suggestions={suggestionsOn} />
       {body}
+      {reviewId && <SuggestionDialog key={reviewId} bookId={bookId} suggestionId={reviewId} version={version} actions={suggestionActions} canDecide={can.decide} onClose={() => setReviewId(null)} />}
+      {suggestionActions.ui}
     </main>
   );
 }

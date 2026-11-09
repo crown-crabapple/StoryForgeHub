@@ -87,7 +87,7 @@ describe('tab and routes', () => {
 
   test('the section nav lists the six sections as links, the current one marked', () => {
     const markup = render('SectionNav', { active: 'ledgers' });
-    assert.deepEqual(text(markup).split(' ').length > 0 && [...markup.matchAll(/<a\b[^>]*>([^<]*)</g)].map((x) => x[1]), ['Overview', 'Docs', 'Chapter state', 'Ledgers', 'AI tasks', 'AI Activity']);
+    assert.deepEqual(text(markup).split(' ').length > 0 && [...markup.matchAll(/<a\b[^>]*>([^<]*)</g)].map((x) => x[1]), ['Overview', 'Docs', 'Chapter state', 'Ledgers', 'AI tasks', 'Suggestions', 'AI Activity']);
     assert.equal([...markup.matchAll(/aria-current="page"/g)].length, 1);
     assert.match(markup, /aria-current="page"[^>]*>Ledgers</);
   });

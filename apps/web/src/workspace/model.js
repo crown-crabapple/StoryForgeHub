@@ -3,8 +3,9 @@
 //   POST /api/books/:b/workspace/docs          { path, title?, body, base_sha256? }   (409 LOCKED | CONFLICT)
 //   POST /api/books/:b/workspace/docs/lock     { path | prefix, locked }   POST .../archive { path }   POST /api/books/:b/workspace/setup {}
 //   GET  /api/books/:b/ledger | cast?chapter= | knowledge?character=&at= | state-events?chapter= | tasks?for=ai | continuity
-import { codexHref } from '../codex/model.js';
+import { codexHref, sceneHref } from '../codex/model.js';
 import { viewHref } from '../planning/model.js';
+import { timelineHref } from '../timeline/model.js';
 
 const enc = encodeURIComponent;
 const api = (/** @type {string} */ bookId) => `/api/books/${enc(bookId)}`;
@@ -16,6 +17,7 @@ export const SECTIONS = [
   { key: 'state', label: 'Chapter state' },
   { key: 'ledgers', label: 'Ledgers' },
   { key: 'tasks', label: 'AI tasks' },
+  { key: 'suggestions', label: 'Suggestions' },
   { key: 'activity', label: 'AI Activity' },
 ];
 /** The four state docs of a chapter, in the order they are shown. */
@@ -106,3 +108,26 @@ export function explainWorkspaceFailure(status, json) {
   if (status === 404) return 'That doc is not there any more. Reload the page.';
   return json?.message ?? `The change was not made (${json?.code ?? status}).`;
 }
+
+/** What kind of thing a suggestion targets, in words. @type {Record<string, string>} */
+export const TARGET_KIND_LABEL = { scene: 'Scene', entry: 'Codex entry', thread: 'Thread', event: 'Event' };
+
+/** Where the target of a suggestion is opened (null when it is gone or has no page). @param {string} bookId @param {{ target?: string, target_kind?: string | null, target_missing?: boolean }} s */
+export function suggestionTargetHref(bookId, s) {
+  if (!s.target || s.target_missing) return null;
+  switch (s.target_kind) {
+    case 'scene':
+      return sceneHref(bookId, s.target);
+    case 'entry':
+      return entryHref(bookId, s.target);
+    case 'thread':
+      return threadHref(bookId, s.target);
+    case 'event':
+      return timelineHref(bookId, { event: s.target });
+    default:
+      return null;
+  }
+}
+
+/** "3 suggestions waiting for you" / "1 suggestion waiting for you". @param {number} n */
+export const waitingText = (n) => `${n} ${n === 1 ? 'suggestion' : 'suggestions'} waiting for you`;

@@ -2,11 +2,13 @@
 // fixture data. `readOnly` (a viewer or reviewer) turns every control off: the lists still read, nothing can be saved, locked, archived or changed.
 import { useId, useState } from 'react';
 import { sceneHref } from '../codex/model.js';
+import { SuggestionRow } from '../suggestions/RailSuggestions.jsx';
+import { groupByTarget, splitSuggestions } from '../suggestions/model.js';
 import { AI_LEVEL_CHOICES, DEFAULT_LEVEL, sourceText } from '../prefs/AiLevelSettings.jsx';
 import { Link } from '../router.jsx';
 import { statusActions, statusLabel, tasksPageHref } from '../tasks/model.js';
 import { timelineHref } from '../timeline/model.js';
-import { DEVELOPMENT_LABEL, SECTIONS, STATE_DOCS, chaptersText, entryHref, groupDocs, isDevelopment, missingStarters, stateAddress, threadHref, workspaceHref } from './model.js';
+import { DEVELOPMENT_LABEL, SECTIONS, STATE_DOCS, TARGET_KIND_LABEL, chaptersText, entryHref, groupDocs, isDevelopment, missingStarters, stateAddress, suggestionTargetHref, threadHref, waitingText, workspaceHref } from './model.js';
 
 const labelOf = (/** @type {string} */ id) => AI_LEVEL_CHOICES.find((c) => c.id === id)?.label ?? id;
 
@@ -28,12 +30,12 @@ function Notices({ error = null, message = null }) {
   );
 }
 
-/** The links between the sections: real links, the current one marked. @param {{ bookId: string, active: string }} props */
-export function SectionNav({ bookId, active }) {
+/** The links between the sections: real links, the current one marked. @param {{ bookId: string, active: string, suggestions?: boolean }} props `suggestions` false (the module is off) leaves out the Suggestions link */
+export function SectionNav({ bookId, active, suggestions = true }) {
   return (
     <nav aria-label="AI Workspace sections" className="project-nav workspace-nav">
       <ul>
-        {SECTIONS.map((s) => (
+        {SECTIONS.filter((s) => suggestions || s.key !== 'suggestions').map((s) => (
           <li key={s.key}>
             <Link to={workspaceHref(bookId, { section: s.key })} className="project-tab" aria-current={s.key === active ? 'page' : undefined}>
               {s.label}
@@ -47,9 +49,10 @@ export function SectionNav({ bookId, active }) {
 
 /**
  * Overview: the book's AI level, what it allows, and the setup button.
- * @param {{ level: string | null, source?: string, list: { docs?: any[] } | null, readOnly?: boolean, busy?: boolean, error?: string | null, message?: string | null, onSetup?: () => void }} props
+ * `pending`: how many suggestions wait in the book (null when unknown or the module is off); above 0 a line links to the Suggestions section.
+ * @param {{ bookId?: string, pending?: number | null, level: string | null, source?: string, list: { docs?: any[] } | null, readOnly?: boolean, busy?: boolean, error?: string | null, message?: string | null, onSetup?: () => void }} props
  */
-export function OverviewSection({ level, source, list, readOnly = false, busy = false, error = null, message = null, onSetup = () => {} }) {
+export function OverviewSection({ bookId = '', pending = null, level, source, list, readOnly = false, busy = false, error = null, message = null, onSetup = () => {} }) {
   const effective = level ?? DEFAULT_LEVEL;
   const missing = missingStarters(list);
   return (
@@ -68,6 +71,11 @@ export function OverviewSection({ level, source, list, readOnly = false, busy = 
         ))}
       </ul>
       <Notices error={error} message={message} />
+      {pending !== null && pending > 0 && (
+        <p>
+          <Link to={workspaceHref(bookId, { section: 'suggestions' })}>{waitingText(pending)}</Link>
+        </p>
+      )}
       {list !== null && missing.length > 0 && (
         <div>
           <p className="muted">These starter docs do not exist yet: {missing.join(', ')}.</p>
@@ -458,6 +466,50 @@ export function AiTasksSection({ bookId, data, readOnly = false, busy = false, e
             </li>
           ))}
         </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Suggestions: every pending suggestion of the book, grouped by what it targets (scene, Codex entry, thread or event), each with its source, date, a Review button and a link to the target.
+ * Accept and Decline are in the review window and only for roles that may decide; this list only reads.
+ * @param {{ bookId: string, data: { suggestions?: any[] } | null, onReview?: (suggestionId: string) => void }} props `data`: GET /suggestions?state=open
+ */
+export function SuggestionsSection({ bookId, data, onReview = () => {} }) {
+  const list = data?.suggestions ?? null;
+  const open = list === null ? [] : splitSuggestions(list).open;
+  const groups = groupByTarget(open);
+  return (
+    <section aria-labelledby="ws-suggestions-h">
+      <h2 id="ws-suggestions-h">Suggestions</h2>
+      <p className="muted">Changes proposed for your scenes, Codex entries, threads and events. Nothing changes until you accept it in the review.</p>
+      {list === null ? (
+        <p className="muted">Loading&hellip;</p>
+      ) : open.length === 0 ? (
+        <p className="muted">No pending suggestions.</p>
+      ) : (
+        groups.map((g) => {
+          const first = g.items[0];
+          const href = suggestionTargetHref(bookId, first);
+          return (
+            <div key={g.key} className="workspace-suggestion-group" role="group" aria-label={g.title}>
+              <h3>
+                {first.target_kind && <span className="tag">{TARGET_KIND_LABEL[first.target_kind] ?? first.target_kind}</span>} {g.title}{' '}
+                {href && (
+                  <Link to={href} aria-label={`Open ${g.title}`}>
+                    Open
+                  </Link>
+                )}
+              </h3>
+              <ul className="sg-rows">
+                {g.items.map((s) => (
+                  <SuggestionRow key={s.id} suggestion={s} onReview={onReview} />
+                ))}
+              </ul>
+            </div>
+          );
+        })
       )}
     </section>
   );

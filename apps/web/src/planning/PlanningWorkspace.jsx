@@ -6,6 +6,7 @@ import { send, slugify } from '../structure/helpers.js';
 import { PreviewDialog } from '../structure/PreviewDialog.jsx';
 import { useStructure } from '../structure/useStructure.jsx';
 import { usePrefs } from '../prefs/PrefsContext.jsx';
+import { RailSuggestions } from '../suggestions/RailSuggestions.jsx';
 import { BoardView } from './BoardView.jsx';
 import { validBadges } from './badges.js';
 import { CardDialog, NewThreadDialog } from './dialogs.jsx';
@@ -61,6 +62,7 @@ export function ViewSwitch({ bookId, view, mode = 'list', scene = null }) {
  *   render: (parts: { main: import('react').ReactNode, inspector: import('react').ReactNode }) => import('react').ReactNode }} props
  */
 export function PlanningWorkspace({ book, planning, objects = null, view, mode = 'list', threadId = null, outlineFilters = {}, version = '', fallbackInspector = null, onChanged, render }) {
+  const prefs = usePrefs();
   const navigate = useNavigate();
   const { track } = useWrites();
   const structure = useStructure({ book, activeId: null, onChanged });
@@ -210,6 +212,7 @@ export function PlanningWorkspace({ book, planning, objects = null, view, mode =
 
   const inspector =
     view === 'threads' ? (
+      <>
       <ThreadInspector
         bookId={bookId}
         thread={selected}
@@ -225,6 +228,8 @@ export function PlanningWorkspace({ book, planning, objects = null, view, mode =
           previewThread(`Change the characters of "${t.title}"`, threadCharactersRequest(bookId, t, list), 'Characters changed.')
         }
       />
+      {selected && prefs.moduleOn('suggestions') && <RailSuggestions key={selected.id} book={book} target={{ id: selected.id, kind: 'thread', title: selected.title }} version={version} onChanged={() => onChanged?.()} />}
+      </>
     ) : (
       fallbackInspector
     );

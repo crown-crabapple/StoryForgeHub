@@ -68,16 +68,21 @@ export function SuggestionDialog({ bookId, suggestionId, version = '', actions, 
   );
 }
 
+const KIND_WORD = { scene: 'scene', entry: 'entry', thread: 'thread', event: 'event' };
+
 /**
- * The "Suggestions" section of the editor rail (M05-J06): the open suggestions for the scene (count badge), each with Review; decided ones stay listed under "Decided" with
- * their outcome. Advice only: nothing here changes the scene until the author accepts a change in the review.
- * @param {{ book: any, scene: any, version?: string, onChanged?: () => void }} props
+ * The "Suggestions" section of an inspector (M05-J06): the open suggestions for one target (a scene, a Codex entry, a thread or an event; count badge), each with Review; decided
+ * ones stay listed under "Decided" with their outcome. Advice only: nothing here changes the target until the author accepts a change in the review.
+ * `scene` is the older way to name the target and still works. Accept / Decline are drawn only for roles that may decide.
+ * @param {{ book: any, target?: { id: string, kind?: string, title?: string } | null, scene?: { id: string } | null, version?: string, onChanged?: () => void }} props
  */
-export function RailSuggestions({ book, scene, version = '', onChanged }) {
+export function RailSuggestions({ book, target = null, scene = null, version = '', onChanged }) {
   const [openId, setOpenId] = useState(/** @type {string | null} */ (null));
   const can = abilities(useSession());
   const actions = useSuggestionActions({ bookId: book.id, onChanged });
-  const { data } = useApi(suggestionsUrl(book.id, { target: scene.id }), `${version}|${actions.stamp}`);
+  const subject = target ?? { id: /** @type {string} */ (scene?.id), kind: 'scene' };
+  const word = KIND_WORD[subject.kind ?? 'scene'] ?? 'item';
+  const { data } = useApi(suggestionsUrl(book.id, { target: subject.id }), `${version}|${actions.stamp}`);
   const list = data?.suggestions ?? null;
   const { open, decided } = splitSuggestions(list ?? []);
   const title = (
@@ -98,7 +103,7 @@ export function RailSuggestions({ book, scene, version = '', onChanged }) {
       {list === null ? (
         <p className="muted">Loading…</p>
       ) : open.length === 0 ? (
-        <p className="muted">No pending suggestions for this scene.</p>
+        <p className="muted">{`No pending suggestions for this ${word}.`}</p>
       ) : (
         <ul className="sg-rows" aria-label="Pending suggestions">
           {open.map((s) => (

@@ -32,6 +32,8 @@ import { SORTS, STATUS_FILTERS, filterEntries, headerCounts, nextCardIndex, next
  *   scope?: string, onScope?: (scope: string) => void,
  *   labelDefs?: any[] | null, label?: string, onLabel?: (name: string) => void, // the label chips and the label filter
  *   banner?: import('react').ReactNode,   // a message above the cards (for example the W309 of a copy)
+ *   suggestionsPanel?: ((entry: any) => import('react').ReactNode) | null, // the Suggestions section under the entry's tabs (the page gives it when the suggestions module is on)
+ *   pendingByEntry?: Record<string, number> | null, // pending suggestions per entry id: the badge on the cards
  *   arcPanel?: ((entry: any) => import('react').ReactNode) | null, // Story Planner: the Arc section under the inspector (the page gives it for a live entry; the callback decides which types)
  * }} props
  */
@@ -69,6 +71,8 @@ export function CodexPage({
   onLabel,
   banner = null,
   arcPanel = null,
+  suggestionsPanel = null,
+  pendingByEntry = null,
 }) {
   const gridRef = useRef(null);
   const tabsRef = useRef(null);
@@ -228,6 +232,7 @@ export function CodexPage({
                       selected={selected?.id === e.id}
                       tabIndex={(selected ?? shown[0]).id === e.id ? 0 : -1}
                       onSelect={() => onSelect?.(e.id)}
+                      pending={pendingByEntry?.[e.id] ?? 0}
                     />
                   ))}
                 </div>
@@ -254,6 +259,7 @@ export function CodexPage({
             onCopyIntoBook={selected && !selected.archived ? act.onCopyIntoBook : undefined}
             labelDefs={labelDefs}
             linkOf={linkOf}
+            suggestions={selected && suggestionsPanel ? suggestionsPanel(selected) : null}
           />
           {selected && !selected.archived && arcPanel ? arcPanel(selected) : null}
         </aside>
