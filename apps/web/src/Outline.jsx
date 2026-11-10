@@ -103,7 +103,7 @@ function Toggle({ collapsed, onToggle, name, children }) {
   );
 }
 
-function SceneRow({ book, scene, next, activeId, chapterNode, act, start, dropMark = null, dragging = false, onDragStart }) {
+function SceneRow({ book, scene, next, activeId, chapterNode, act, start, dropMark = null, dragging = false, onDragStart, selecting = false, checked = false, onCheck }) {
   const name = scene.title || 'Untitled scene';
   const items = [
     { label: 'Rename...', run: () => start({ type: 'rename-scene', scene }) },
@@ -117,12 +117,13 @@ function SceneRow({ book, scene, next, activeId, chapterNode, act, start, dropMa
   ];
   return (
     <li
-      className={`outline-scene-item${dragging ? ' is-dragging' : ''}`}
+      className={`outline-scene-item${dragging ? ' is-dragging' : ''}${checked ? ' is-selected' : ''}`}
       data-scene-id={scene.id}
-      draggable="true"
-      onDragStart={onDragStart ? (e) => onDragStart(e, scene) : undefined}
+      draggable={selecting ? undefined : 'true'}
+      onDragStart={onDragStart && !selecting ? (e) => onDragStart(e, scene) : undefined}
     >
       {dropMark && <span className="drop-line" data-position={dropMark} aria-hidden="true" />}
+      {selecting && <input type="checkbox" className="outline-check" checked={checked} aria-label={`Select ${name}`} onChange={() => {}} onClick={(e) => onCheck?.(scene.id, e.shiftKey)} />}
       <StatusDot status={scene.status} />
       <Link to={sceneHref(book.id, scene.id)} data-scene-link="" draggable={false} className="outline-row outline-scene" aria-current={scene.id === activeId ? 'page' : undefined}>
         <span className="outline-label">{scene.title || <span className="muted">Untitled scene</span>}</span>
@@ -141,6 +142,55 @@ function SceneRow({ book, scene, next, activeId, chapterNode, act, start, dropMa
       </Link>
       <RowMenu name={name} items={items} />
     </li>
+  );
+}
+
+/** In select mode: a checkbox on a chapter row that selects or clears all its scenes (mixed when only some are selected). */
+function ChapterCheck({ name, scenes, selected, onSet }) {
+  const ref = useRef(null);
+  const count = scenes.filter((s) => selected.has(s.id)).length;
+  const all = scenes.length > 0 && count === scenes.length;
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = count > 0 && !all;
+  }, [count, all]);
+  if (scenes.length === 0) return null;
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className="outline-check"
+      checked={all}
+      aria-label={`Select all scenes in ${name}`}
+      onChange={() => onSet(scenes.map((s) => s.id), !all)}
+    />
+  );
+}
+
+/** The bar shown while selecting scenes: how many are selected, Select all / Clear, Archive, Done. */
+export function SelectBar({ count, total, onAll, onClear, onArchive, onDone }) {
+  return (
+    <div className="outline-select-bar" role="group" aria-label="Selected scenes">
+      <span className="outline-select-count" aria-live="polite">
+        {count} of {total} selected
+      </span>
+      <div className="outline-select-actions">
+        {count < total ? (
+          <button type="button" className="btn row-button" onClick={onAll}>
+            Select all
+          </button>
+        ) : (
+          <button type="button" className="btn row-button" onClick={onClear}>
+            Clear
+          </button>
+        )}
+        <button type="button" className="btn row-button" disabled={count === 0} onClick={onArchive}>
+          {count > 1 ? `Archive ${count} scenes` : 'Archive'}
+        </button>
+        <button type="button" className="btn row-button" onClick={onDone}>
+          Done
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -187,6 +237,9 @@ export function Outline({ book, activeId = null, onChanged, onPickScene = null }
   const [dragChapter, setDragChapter] = useState(null);
   const [drop, setDrop] = useState(null);
   const [live, setLive] = useState('');
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const lastChecked = useRef(null);
   const root = useRef(null);
   const dragRef = useRef(null);
   const hover = useRef({ key: null, timer: null });
@@ -228,6 +281,38 @@ export function Outline({ book, activeId = null, onChanged, onPickScene = null }
   }, [book, collapsed]);
 
   useEffect(() => () => clearTimeout(hover.current.timer), []);
+
+  // ---- select mode (bulk archive): only ids still in the book count (one archived or merged elsewhere drops out on reload)
+  const allScenes = book.acts.flatMap((a) => a.chapters.flatMap((c) => c.scenes));
+  const chosen = allScenes.filter((s) => selected.has(s.id)); // book order
+  const endSelect = () => {
+    setSelecting(false);
+    setSelected(new Set());
+    lastChecked.current = null;
+  };
+  const setMany = (ids, on) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  /** A scene checkbox: toggles it; with Shift, every scene between it and the last one clicked takes the same state. */
+  const checkScene = (id, range) => {
+    const on = !selected.has(id);
+    const order = allScenes.map((s) => s.id);
+    const from = range && lastChecked.current ? order.indexOf(lastChecked.current) : -1;
+    const to = order.indexOf(id);
+    lastChecked.current = id;
+    if (from === -1 || to === -1) return setMany([id], on);
+    const [lo, hi] = from < to ? [from, to] : [to, from];
+    setMany(order.slice(lo, hi + 1), on);
+  };
+  const archiveSelected = () => {
+    if (chosen.length) start({ type: 'archive-scenes', scenes: chosen, after: endSelect });
+  };
 
   const clearHover = () => {
     clearTimeout(hover.current.timer);
@@ -352,6 +437,11 @@ export function Outline({ book, activeId = null, onChanged, onPickScene = null }
 
   /** outline.moveUp / outline.moveDown (Alt+Up / Alt+Down unless rebound) on a scene row: one slot up or down in book order. */
   function onKeyDown(e) {
+    if (selecting && e.key === 'Escape' && !(e.target instanceof Element && e.target.closest('[role="menu"], [role="dialog"]'))) {
+      e.preventDefault();
+      endSelect();
+      return;
+    }
     const command = shortcuts.commandFor(e.nativeEvent ?? e, 'outline');
     if (command === 'outline.moveUp' || command === 'outline.moveDown') {
       const el = e.target instanceof Element ? e.target : null;
@@ -386,7 +476,15 @@ export function Outline({ book, activeId = null, onChanged, onPickScene = null }
 
   /** The Read view: a plain click on a scene row scrolls the reading page there instead of opening the editor (a modified click still opens a new tab). */
   const pickScene = (e) => {
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (selecting) {
+      const link = e.target.closest?.('[data-scene-link]');
+      const id = link?.closest('[data-scene-id]')?.getAttribute('data-scene-id');
+      if (!id || e.button !== 0 || e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      checkScene(id, e.shiftKey);
+      return;
+    }
+    if (!onPickScene || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     const link = e.target.closest?.('[data-scene-link]');
     const id = link?.closest('[data-scene-id]')?.getAttribute('data-scene-id');
     if (!id) return;
@@ -395,11 +493,17 @@ export function Outline({ book, activeId = null, onChanged, onPickScene = null }
   };
 
   return (
-    <div className="outline" ref={root} onClickCapture={onPickScene ? pickScene : undefined} onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} onDragLeave={onDragLeave} onDragEnd={endDrag}>
+    <div className={selecting ? 'outline is-selecting' : 'outline'} ref={root} onClickCapture={onPickScene || selecting ? pickScene : undefined} onKeyDown={onKeyDown} onDragOver={onDragOver} onDrop={onDrop} onDragLeave={onDragLeave} onDragEnd={endDrag}>
       <div className="rail-head">
         <h2 className="rail-heading">{book.title ?? book.slug ?? book.id}</h2>
-        <RowMenu name={book.title ?? book.slug ?? book.id} items={[{ label: 'Renumber chapters...', run: () => start({ type: 'renumber' }) }, { label: 'Tidy file names...', run: () => start({ type: 'tidy' }) }]} />
+        <RowMenu name={book.title ?? book.slug ?? book.id} items={[
+            { label: 'Select scenes...', disabled: allScenes.length === 0, run: () => setSelecting(true) },
+            { label: 'Renumber chapters...', run: () => start({ type: 'renumber' }) },
+            { label: 'Tidy file names...', run: () => start({ type: 'tidy' }) },
+          ]}
+        />
       </div>
+      {selecting && <SelectBar count={chosen.length} total={allScenes.length} onAll={() => setMany(allScenes.map((s) => s.id), true)} onClear={() => setSelected(new Set())} onArchive={archiveSelected} onDone={endSelect} />}
       <BookCount book={book} />
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true" data-testid="move-live">
         {live}
@@ -437,10 +541,11 @@ export function Outline({ book, activeId = null, onChanged, onPickScene = null }
                       <div
                         className={`outline-row outline-chapter${endTarget === ch.chapter ? ' is-drop-target' : ''}`}
                         data-chapter-row={ch.chapter}
-                        draggable="true"
-                        onDragStart={(e) => beginChapterDrag(e, ch, cName)}
+                        draggable={selecting ? undefined : 'true'}
+                        onDragStart={selecting ? undefined : (e) => beginChapterDrag(e, ch, cName)}
                         {...(endTarget === ch.chapter ? { 'data-drop': 'end' } : {})}
                       >
+                        {selecting && <ChapterCheck name={cName} scenes={ch.scenes} selected={selected} onSet={setMany} />}
                         <Toggle collapsed={chCollapsed} onToggle={() => toggle(chapterKey(ch.chapter))} name={cName}>
                           <BookIcon width={15} height={15} />
                           <span className="outline-stack">
@@ -485,6 +590,9 @@ export function Outline({ book, activeId = null, onChanged, onPickScene = null }
                             dropMark={sceneDrop && !sceneDrop.noop && sceneDrop.indicator.sceneId === s.id ? sceneDrop.indicator.kind : null}
                             dragging={dragId === s.id}
                             onDragStart={beginDrag}
+                            selecting={selecting}
+                            checked={selected.has(s.id)}
+                            onCheck={checkScene}
                           />
                         ))}
                       </ul>

@@ -6,6 +6,7 @@ import { isMap, parseDocument } from 'yaml';
 import {
   archiveArc,
   archiveChapter,
+  archiveScenes,
   archiveEntry,
   archiveEvent,
   archiveLink,
@@ -698,6 +699,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     createChapter: (bookId, args = {}) => structure(bookId, (b) => createChapter(b, args ?? {})),
     setChapterFields: (bookId, chapter, args = {}) => structure(bookId, (b) => setChapterFields(b, chapter, args ?? {})),
     archiveChapter: (bookId, chapter, args = {}) => structure(bookId, (b) => archiveChapter(b, chapter, args ?? {})),
+    archiveScenes: (bookId, args = {}) => structure(bookId, (b) => archiveScenes(b, args ?? {})),
     renumberChapters: (bookId, args = {}) => structure(bookId, (b) => renumberChapters(b, args ?? {})),
     moveChapter: (bookId, chapter, args = {}) => structure(bookId, (b) => moveChapter(b, chapter, args ?? {})),
     createAct: (bookId, args = {}) => structure(bookId, (b) => createAct(b, args ?? {})),

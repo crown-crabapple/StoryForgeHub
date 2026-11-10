@@ -436,6 +436,38 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
         });
         break;
       }
+      case 'archive-scenes': {
+        // several scenes in one operation (one Undo); the open scene, when it is one of them, is saved first
+        const ids = c.scenes.map((s) => s.id);
+        if (ids.length === 0) break;
+        const label = ids.length === 1 ? `"${sceneName(c.scenes[0])}"` : `${ids.length} scenes`;
+        (async () => {
+          const open = bridge.current();
+          if (open && ids.includes(open.sceneId)) {
+            if (open.isConflict?.()) {
+              showToast({ message: 'Not archived: the open scene has a conflict with the file on disk. Resolve that first.' });
+              return;
+            }
+            const { saved } = await open.flush();
+            if (!saved) {
+              showToast({ message: 'Not archived: the open scene has changes that could not be saved yet. Resolve that first.' });
+              return;
+            }
+          }
+          await previewThenApply({
+            title: `Archive ${label}`,
+            url: bookUrl(bookId, '/scenes/archive'),
+            body: { scenes: ids },
+            done: `Archived ${label}.`,
+            undoable: true,
+            after: () => {
+              c.after?.();
+              if (activeId && ids.includes(activeId)) toBook();
+            },
+          });
+        })();
+        break;
+      }
       case 'restore-scene': {
         const { bookRel, libRel } = pathsOf(book, c.entry.path);
         localPreview(`Restore ${c.name}`, [{ from: bookRel, to: bookRel.replace(/^archive\//, '') }], async () => {

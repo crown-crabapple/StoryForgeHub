@@ -689,6 +689,38 @@ describe('chapter and act metadata commands', () => {
     assert.equal(ops.length, 1, 'a single op.json for the whole chapter');
   });
 
+  it('archiveScenes moves the chosen scenes (any chapters) into archive/ in one operation; chapter files stay', async () => {
+    const dir = copyFixture(SALT);
+    const hashes = allBodyHashes(dir);
+    const before = snapshot(dir);
+    const r = await call('archiveScenes', dir, { scenes: [LOWTIDE, KEY, KEY] });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual(r.scenes, [KEY, LOWTIDE], 'each scene once, in book order');
+    const d = diffSnap(before, snapshot(dir));
+    assert.deepEqual(d.removed, [P.KEY, P.LOWTIDE].sort());
+    assert.deepEqual(d.added, [P.KEY, P.LOWTIDE].map((f) => `archive/${f}`).sort());
+    assert.deepEqual(d.changed, []);
+    for (const f of [P.KEY, P.LOWTIDE]) assert.equal(sha256(Buffer.from(read(dir, `archive/${f}`))), before.get(f), 'moved bytes unchanged');
+    assert.deepEqual(await orderIds(dir), [PROLOGUE, ARRIVAL, FERRY, GRAFTING, WALL]);
+    assert.deepEqual(await errorsOf(dir), []);
+    assertNoBodyLost(dir, hashes, 'archiveScenes');
+    const ops = trashFiles(dir).filter((f) => f.endsWith('/op.json'));
+    assert.equal(ops.length, 1, 'a single op.json for all the scenes');
+  });
+
+  it('archiveScenes with an unknown scene, no scenes, or bad ids is refused; nothing is written', async () => {
+    const dir = copyFixture(SALT);
+    const before = snapshot(dir);
+    const unknown = await call('archiveScenes', dir, { scenes: [KEY, 'scene_01ZZZZZZZZZZZZZZZZZZZZZZZZ'] });
+    assert.equal(unknown.code, 'REFUSED_UNKNOWN_SCENE');
+    for (const args of [{ scenes: [] }, {}, { scenes: [KEY, 7] }, { scenes: 'x' }]) {
+      const r = await call('archiveScenes', dir, args);
+      assert.equal(r.ok, false, JSON.stringify(args));
+      assert.equal(r.code, 'REFUSED_BAD_ARGS');
+    }
+    assertUntouched(dir, before);
+  });
+
   it('archiveChapter on an unknown chapter is refused; nothing is written', async () => {
     const dir = copyFixture(SALT);
     const before = snapshot(dir);
@@ -714,6 +746,7 @@ describe('no scene body is ever lost (acceptance 2)', () => {
     ['createAct', () => copyFixture(SALT), (d) => call('createAct', d, { title: 'Ebb Tide' })],
     ['setActFields', () => copyFixture(SALT), (d) => call('setActFields', d, 2, { title: 'Higher Water' })],
     ['archiveChapter', () => copyFixture(SALT), (d) => call('archiveChapter', d, 1)],
+    ['archiveScenes', () => copyFixture(SALT), (d) => call('archiveScenes', d, { scenes: [ARRIVAL, WALL] })],
     ['renumberChapters', () => gapCopy(), (d) => call('renumberChapters', d, { step: 1 })],
     ['splitScene', () => copyFixture(SALT), (d) => call('splitScene', d, ARRIVAL, { atLine: 3 })],
     ['mergeScenes', () => copyFixture(SALT), (d) => call('mergeScenes', d, ARRIVAL, KEY)],
@@ -755,6 +788,7 @@ describe('no scene body is ever lost (acceptance 2)', () => {
       ['createAct', () => call('createAct', dir, { title: 'x' })],
       ['setActFields', () => call('setActFields', dir, 1, { title: 'x' })],
       ['archiveChapter', () => call('archiveChapter', dir, 1)],
+      ['archiveScenes', () => call('archiveScenes', dir, { scenes: [A] })],
       ['splitScene', () => call('splitScene', dir, A, { atLine: 1 })],
       ['mergeScenes', () => call('mergeScenes', dir, A, B)],
     ];
@@ -800,6 +834,7 @@ describe('dry runs write nothing and return the planned changes (acceptance 7, l
     ['createAct', () => copyFixture(SALT), (d) => call('createAct', d, { title: 'Dry', dryRun: true })],
     ['setActFields', () => copyFixture(SALT), (d) => call('setActFields', d, 1, { title: 'Dry', dryRun: true })],
     ['archiveChapter', () => copyFixture(SALT), (d) => call('archiveChapter', d, 2, { dryRun: true })],
+    ['archiveScenes', () => copyFixture(SALT), (d) => call('archiveScenes', d, { scenes: [KEY, LOWTIDE], dryRun: true })],
     ['splitScene', () => copyFixture(SALT), (d) => call('splitScene', d, ARRIVAL, { atLine: 3, dryRun: true })],
     ['mergeScenes', () => copyFixture(SALT), (d) => call('mergeScenes', d, ARRIVAL, KEY, { dryRun: true })],
   ];
@@ -821,6 +856,7 @@ describe('dry runs write nothing and return the planned changes (acceptance 7, l
       [() => copyFixture(SALT), (d, o) => call('mergeScenes', d, ARRIVAL, KEY, o)],
       [() => copyFixture(SALT), (d, o) => call('splitScene', d, ARRIVAL, { atLine: 3, ...o })],
       [() => copyFixture(SALT), (d, o) => call('archiveChapter', d, 2, o)],
+      [() => copyFixture(SALT), (d, o) => call('archiveScenes', d, { scenes: [KEY, LOWTIDE], ...o })],
       [() => gapCopy(), (d, o) => call('renumberChapters', d, { step: 1, ...o })],
     ]) {
       const dir = prep();
@@ -856,6 +892,7 @@ describe('restoreOp (acceptance 8)', () => {
     ['rename an act', () => copyFixture(SALT), (d) => call('setActFields', d, 1, { title: 'Undo Act' })],
     ['renumber chapters', () => gapCopy(), (d) => call('renumberChapters', d, { step: 1 })],
     ['archive a chapter', () => copyFixture(SALT), (d) => call('archiveChapter', d, 2)],
+    ['archive several scenes', () => copyFixture(SALT), (d) => call('archiveScenes', d, { scenes: [ARRIVAL, GRAFTING, WALL] })],
   ];
   for (const [name, prep, run] of UNDOABLE) {
     it(`${name}, then restoreOp: files are back byte-for-byte`, async () => {

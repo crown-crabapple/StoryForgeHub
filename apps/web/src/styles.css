@@ -1346,6 +1346,50 @@ mark {
 .row-menu-list button[aria-checked='true'] {
   color: var(--accent);
 }
+/* Select mode (bulk archive): a checkbox per scene and chapter, and the bar with the count and actions. */
+.outline-check {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+/* in the scene row's left indent, so the title keeps its width */
+.outline-scene-item > .outline-check {
+  left: 16px;
+}
+.outline.is-selecting .outline-chapter {
+  position: relative;
+  padding-left: calc(var(--s3) + 22px);
+}
+.outline-chapter > .outline-check {
+  left: var(--s3);
+}
+.outline-scene-item.is-selected .outline-scene {
+  background: var(--accent-soft);
+}
+.outline-select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  margin: var(--s2) 0;
+  padding: var(--s2);
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+}
+.outline-select-count {
+  color: var(--text-3);
+  font-size: var(--fs-13);
+}
+.outline-select-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
 .outline-archived {
   margin-top: var(--s4);
   padding-top: var(--s2);

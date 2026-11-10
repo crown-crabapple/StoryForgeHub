@@ -1,5 +1,5 @@
 // M03-J01 acceptance 7 (routes) and 9: the structure routes of contract section 4.
-//   POST /api/books/:b/scenes/:s/fields | /split      POST /api/books/:b/scenes/merge
+//   POST /api/books/:b/scenes/:s/fields | /split      POST /api/books/:b/scenes/merge | /scenes/archive
 //   POST /api/books/:b/chapters | /chapters/:n/fields | /chapters/:n/archive | /chapters/renumber
 //   POST /api/books/:b/acts | /acts/:n/fields
 // 7: every route with { dryRun: true } writes nothing and returns { ok, changes: [{ from, to, before_sha256,
@@ -104,6 +104,7 @@ const ROUTES = [
   { name: 'chapter create', url: (b) => u(b, 'chapters'), body: { act: 2, after: 3, title: 'Aftermath' } },
   { name: 'chapter fields', url: (b) => u(b, 'chapters/1/fields'), body: { title: 'The Flooded Rows' }, lineEdit: /title/ },
   { name: 'chapter archive', url: (b) => u(b, 'chapters/2/archive'), body: {} },
+  { name: 'scenes archive', url: (b) => u(b, 'scenes/archive'), body: { scenes: [ARRIVAL, LOWTIDE] }, unknownScene: { scenes: [ARRIVAL, UNKNOWN_SCENE] } },
   { name: 'chapter move', url: (b) => u(b, 'chapters/2/move'), body: { act: 2 } },
   { name: 'chapters renumber', url: (b) => u(b, 'chapters/renumber'), body: { step: 1 }, needsGap: true },
   { name: 'act create', url: (b) => u(b, 'acts'), body: { title: 'Ebb Tide' } },
