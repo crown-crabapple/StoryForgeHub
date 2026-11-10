@@ -105,6 +105,7 @@ const SAMPLES = {
   'scene-fields': ['POST', `${S}/fields`],
   'scene-merge': ['POST', `${b}/scenes/merge`],
   'scenes-archive': ['POST', `${b}/scenes/archive`],
+  'scenes-restore': ['POST', `${b}/scenes/restore`],
   'scene-move': ['POST', `${S}/move`],
   'scene-raw': ['PUT', `${S}/raw`],
   'scene-split': ['POST', `${S}/split`],

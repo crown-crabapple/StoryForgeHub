@@ -756,6 +756,7 @@ export function matchWriteRoute(method, pathname) {
   // M03-J01 structure commands (all POST; `dryRun: true` in the body previews without writing)
   if (method === 'POST' && c === 'scenes' && d === 'merge' && e === undefined) return { route: 'scene-merge', bookId: b };
   if (method === 'POST' && c === 'scenes' && d === 'archive' && e === undefined) return { route: 'scenes-archive', bookId: b };
+  if (method === 'POST' && c === 'scenes' && d === 'restore' && e === undefined) return { route: 'scenes-restore', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'fields') return { route: 'scene-fields', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'move') return { route: 'scene-move', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'split') return { route: 'scene-split', bookId: b, sceneId: d };
@@ -1298,6 +1299,12 @@ async function handleStructure(repository, match, body) {
       // { scenes: [sceneId, ...], dryRun? } -> every scene to archive/ in one operation (one Undo)
       if (!Array.isArray(body.scenes) || body.scenes.length === 0 || body.scenes.some((s) => typeof s !== 'string')) return badRequest('expected { scenes: [sceneId, ...] }');
       const r = await repository.archiveScenes(bookId, { scenes: body.scenes, dryRun });
+      return respond(r, 200, structureBody);
+    }
+    case 'scenes-restore': {
+      // { paths: [archivedPath, ...], dryRun? } -> every archived scene back to its place in one operation (one Undo)
+      if (!Array.isArray(body.paths) || body.paths.length === 0 || body.paths.some((p) => typeof p !== 'string')) return badRequest('expected { paths: [archivedPath, ...] }');
+      const r = await repository.restoreScenes(bookId, { paths: body.paths, dryRun });
       return respond(r, 200, structureBody);
     }
     case 'chapter-create': {

@@ -155,6 +155,7 @@
  *   setChapterFields(bookId: string, chapter: number, args: { title?: string, label?: string, dryRun?: boolean }): Promise<StructureResult>,
  *   archiveChapter(bookId: string, chapter: number, args?: { dryRun?: boolean }): Promise<StructureResult>,
  *   archiveScenes(bookId: string, args: { scenes: string[], dryRun?: boolean }): Promise<StructureResult & { scenes?: string[] }>,  (several live scenes to archive/ in one operation, one Undo; scenes = the ids archived, in book order)
+ *   restoreScenes(bookId: string, args: { paths: string[], dryRun?: boolean }): Promise<StructureResult & { paths?: string[] }>,  (archived scenes back to their place in one operation, one Undo; paths = the restored paths)
  *   renumberChapters(bookId: string, args?: { step?: number, start?: 0 | 1, dryRun?: boolean }): Promise<StructureResult>,
  *   moveChapter(bookId: string, chapter: number, args: { act: number, after?: number | null, dryRun?: boolean }): Promise<StructureResult>,
  *   createAct(bookId: string, args: { title: string, dryRun?: boolean }): Promise<StructureResult>,
