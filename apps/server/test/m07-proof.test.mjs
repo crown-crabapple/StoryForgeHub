@@ -104,6 +104,7 @@ const SAMPLES = {
   'revision-save': ['POST', `${S}/revisions`],
   'scene-fields': ['POST', `${S}/fields`],
   'scene-merge': ['POST', `${b}/scenes/merge`],
+  'scenes-archive': ['POST', `${b}/scenes/archive`],
   'scene-move': ['POST', `${S}/move`],
   'scene-raw': ['PUT', `${S}/raw`],
   'scene-split': ['POST', `${S}/split`],

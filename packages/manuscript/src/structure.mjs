@@ -512,6 +512,36 @@ export function archiveChapter(bookRoot, chapter, args = {}) {
   });
 }
 
+/** The most scenes one archiveScenes call takes. */
+export const MAX_ARCHIVE_SCENES = 500;
+
+/**
+ * Archive several scenes (any chapters) in one batch: each scene file moves to archive/<path>, bytes unchanged, one operation (one Undo).
+ * Chapter files and other scenes stay. Every id must be a live scene of the book order, else nothing is written.
+ * @param {string} bookRoot @param {{scenes: string[], dryRun?: boolean}} args
+ */
+export function archiveScenes(bookRoot, args = {}) {
+  return guarded(async () => {
+    const { scenes: ids, dryRun = false } = args ?? {};
+    if (!Array.isArray(ids) || ids.length === 0 || ids.some((id) => typeof id !== 'string')) return fail('REFUSED_BAD_ARGS', 'scenes must be a non-empty list of scene ids');
+    if (ids.length > MAX_ARCHIVE_SCENES) return fail('REFUSED_BAD_ARGS', `at most ${MAX_ARCHIVE_SCENES} scenes at once`);
+    const prep = await prepare(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store } = prep;
+    const wanted = new Set(ids);
+    const known = new Set(lb.book.order.map((s) => s.id));
+    const unknown = [...wanted].filter((id) => !known.has(id));
+    if (unknown.length) return fail('REFUSED_UNKNOWN_SCENE', `no scene ${unknown.join(', ')} in the book order`, { unknown });
+    const picked = lb.book.order.filter((s) => wanted.has(s.id)); // book order, each scene once
+    const changes = [];
+    for (const s of picked) {
+      const before = await readBytes(store, s.path);
+      changes.push({ from: s.path, to: `archive/${s.path}`, content: before, before });
+    }
+    return finish({ bookRoot, store, lb, op: 'archiveScenes', args: { scenes: picked.map((s) => s.id) }, changes, dryRun, withDiff: true, extra: { scenes: picked.map((s) => s.id) } });
+  });
+}
+
 // ------------------------------------------------------------------ acts
 
 /**

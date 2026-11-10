@@ -21,7 +21,7 @@ export const WRITE_CLASSES = Object.freeze({
   'event-archive': 'write', 'event-body': 'write', 'event-create': 'write', 'event-fields': 'write', 'event-restore': 'write', goal: 'write',
   'index-rebuild': 'write', 'note-archive': 'write', 'note-body': 'write', 'note-create': 'write', 'note-fields': 'write', 'note-restore': 'write',
   'op-restore': 'write', 'receipts-flush': 'write', restore: 'write', 'revision-restore': 'write', 'revision-save': 'write', 'scene-fields': 'write',
-  'scene-merge': 'write', 'scene-move': 'write', 'scene-raw': 'write', 'scene-split': 'write', 'suggestion-decide': 'write',
+  'scene-merge': 'write', 'scenes-archive': 'write', 'scene-move': 'write', 'scene-raw': 'write', 'scene-split': 'write', 'suggestion-decide': 'write',
   'suggestion-hunk-decide': 'write', 'thread-body': 'write', 'thread-create': 'write', 'thread-fields': 'write',
   // M07-J03b: comments and a reviewer's suggestion are open to reviewers; the presence heartbeat is advisory and read-only (it records nothing in the library)
   'comment-create': 'comment', 'comment-reply': 'comment', 'comment-resolve': 'comment', 'suggestion-create': 'suggest', presence: 'read',

@@ -7,6 +7,8 @@ export {
   renumberChapters,
   moveChapter,
   archiveChapter,
+  archiveScenes,
+  MAX_ARCHIVE_SCENES,
   createAct,
   setActFields,
   splitScene,
