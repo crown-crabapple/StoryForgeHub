@@ -7,6 +7,7 @@ import {
   archiveArc,
   archiveChapter,
   archiveScenes,
+  restoreScenes,
   archiveEntry,
   archiveEvent,
   archiveLink,
@@ -700,6 +701,14 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     setChapterFields: (bookId, chapter, args = {}) => structure(bookId, (b) => setChapterFields(b, chapter, args ?? {})),
     archiveChapter: (bookId, chapter, args = {}) => structure(bookId, (b) => archiveChapter(b, chapter, args ?? {})),
     archiveScenes: (bookId, args = {}) => structure(bookId, (b) => archiveScenes(b, args ?? {})),
+    /** `paths`: archived scene paths, library-relative (archive/... inside the book, as the book's `excluded` list gives them). */
+    async restoreScenes(bookId, args = {}) {
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const { paths, ...rest } = args ?? {};
+      const rels = Array.isArray(paths) ? paths.map((p) => (typeof p === 'string' ? toBookRel(found.book, p) ?? p : p)) : paths;
+      return structure(bookId, (b) => restoreScenes(b, { ...rest, paths: rels }));
+    },
     renumberChapters: (bookId, args = {}) => structure(bookId, (b) => renumberChapters(b, args ?? {})),
     moveChapter: (bookId, chapter, args = {}) => structure(bookId, (b) => moveChapter(b, chapter, args ?? {})),
     createAct: (bookId, args = {}) => structure(bookId, (b) => createAct(b, args ?? {})),

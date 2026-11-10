@@ -166,10 +166,10 @@ function ChapterCheck({ name, scenes, selected, onSet }) {
   );
 }
 
-/** The bar shown while selecting scenes: how many are selected, Select all / Clear, Archive, Done. */
-export function SelectBar({ count, total, onAll, onClear, onArchive, onDone }) {
+/** The bar shown while selecting scenes: how many are selected, Select all / Clear, Archive (or `verb`: Restore), Done. */
+export function SelectBar({ count, total, onAll, onClear, onArchive, onDone, verb = 'Archive', label = 'Selected scenes' }) {
   return (
-    <div className="outline-select-bar" role="group" aria-label="Selected scenes">
+    <div className="outline-select-bar" role="group" aria-label={label}>
       <span className="outline-select-count" aria-live="polite">
         {count} of {total} selected
       </span>
@@ -184,7 +184,7 @@ export function SelectBar({ count, total, onAll, onClear, onArchive, onDone }) {
           </button>
         )}
         <button type="button" className="btn row-button" disabled={count === 0} onClick={onArchive}>
-          {count > 1 ? `Archive ${count} scenes` : 'Archive'}
+          {count > 1 ? `${verb} ${count} scenes` : verb}
         </button>
         <button type="button" className="btn row-button" onClick={onDone}>
           Done
@@ -194,29 +194,101 @@ export function SelectBar({ count, total, onAll, onClear, onArchive, onDone }) {
   );
 }
 
-/** The Archived section: archived scenes of this book, each with Restore. Collapsed by default. */
-function ArchivedSection({ book, start }) {
-  const [open, setOpen] = useState(false);
+/**
+ * The Archived section: archived scenes of this book, each with Restore. Collapsed by default.
+ * "Select..." (two or more archived scenes) gives each a checkbox and a bar to restore the chosen ones in one operation (one Undo).
+ */
+export function ArchivedSection({ book, start, initialOpen = false, initialSelecting = false }) {
+  const [open, setOpen] = useState(initialOpen);
+  const [selecting, setSelecting] = useState(initialSelecting);
+  const [selected, setSelected] = useState(() => new Set());
+  const lastChecked = useRef(null);
   const entries = archivedScenes(book);
   if (entries.length === 0) return null;
+  // only paths still archived count (one restored elsewhere drops out on reload)
+  const chosen = entries.filter((e) => selected.has(e.path));
+  const endSelect = () => {
+    setSelecting(false);
+    setSelected(new Set());
+    lastChecked.current = null;
+  };
+  const setMany = (paths, on) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const p of paths) {
+        if (on) next.add(p);
+        else next.delete(p);
+      }
+      return next;
+    });
+  /** A checkbox: toggles it; with Shift, every entry between it and the last one clicked takes the same state. */
+  const check = (p, range) => {
+    const on = !selected.has(p);
+    const order = entries.map((e) => e.path);
+    const from = range && lastChecked.current ? order.indexOf(lastChecked.current) : -1;
+    const to = order.indexOf(p);
+    lastChecked.current = p;
+    if (from === -1 || to === -1) return setMany([p], on);
+    const [lo, hi] = from < to ? [from, to] : [to, from];
+    setMany(order.slice(lo, hi + 1), on);
+  };
+  const restoreSelected = () => {
+    if (chosen.length) start({ type: 'restore-scenes', entries: chosen.map((entry) => ({ entry, name: archivedName(entry.path) })), after: endSelect });
+  };
+  const onKeyDown = (e) => {
+    if (selecting && e.key === 'Escape' && !(e.target instanceof Element && e.target.closest('[role="menu"], [role="dialog"]'))) {
+      e.preventDefault();
+      e.stopPropagation(); // the rail's own select mode is a different one
+      endSelect();
+    }
+  };
   return (
-    <section className="outline-archived" aria-label="Archived scenes">
-      <button type="button" className="outline-toggle outline-archived-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <ChevronDownIcon width={13} height={13} className={open ? 'chevron' : 'chevron chevron-closed'} />
-        <span className="outline-label">Archived</span>
-        <span className="outline-words">{entries.length}</span>
-      </button>
+    <section className={selecting ? 'outline-archived is-selecting' : 'outline-archived'} aria-label="Archived scenes" onKeyDown={onKeyDown}>
+      <div className="outline-archived-head">
+        <button type="button" className="outline-toggle outline-archived-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+          <ChevronDownIcon width={13} height={13} className={open ? 'chevron' : 'chevron chevron-closed'} />
+          <span className="outline-label">Archived</span>
+          <span className="outline-words">{entries.length}</span>
+        </button>
+        {open && !selecting && entries.length > 1 && (
+          <button type="button" className="btn row-button" onClick={() => setSelecting(true)}>
+            Select...
+          </button>
+        )}
+      </div>
+      {open && selecting && (
+        <SelectBar
+          count={chosen.length}
+          total={entries.length}
+          verb="Restore"
+          label="Selected archived scenes"
+          onAll={() => setMany(entries.map((e) => e.path), true)}
+          onClear={() => setSelected(new Set())}
+          onArchive={restoreSelected}
+          onDone={endSelect}
+        />
+      )}
       <ul hidden={!open} className="outline-archived-list">
         {entries.map((entry) => {
           const name = archivedName(entry.path);
+          const checked = selected.has(entry.path);
           return (
-            <li key={entry.path} className="outline-row outline-archived-item">
-              <span className="outline-label" title={entry.path}>
-                {name}
-              </span>
-              <button type="button" className="btn row-button" aria-label={`Restore ${name}`} onClick={() => start({ type: 'restore-scene', entry, name })}>
-                Restore
-              </button>
+            <li key={entry.path} className={`outline-row outline-archived-item${checked ? ' is-selected' : ''}`}>
+              {selecting ? (
+                <label className="outline-archived-pick" title={entry.path}>
+                  <input type="checkbox" className="outline-archived-check" checked={checked} onChange={(e) => check(entry.path, Boolean(e.nativeEvent?.shiftKey))} />
+                  <span className="outline-label">{name}</span>
+                </label>
+              ) : (
+                <>
+                  <span className="outline-label" title={entry.path}>
+                    {name}
+                  </span>
+                  <button type="button" className="btn row-button" aria-label={`Restore ${name}`} onClick={() => start({ type: 'restore-scene', entry, name })}>
+                    Restore
+                  </button>
+                </>
+              )}
             </li>
           );
         })}

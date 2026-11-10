@@ -8,6 +8,7 @@ export {
   moveChapter,
   archiveChapter,
   archiveScenes,
+  restoreScenes,
   MAX_ARCHIVE_SCENES,
   createAct,
   setActFields,

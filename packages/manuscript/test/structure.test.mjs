@@ -721,6 +721,44 @@ describe('chapter and act metadata commands', () => {
     assertUntouched(dir, before);
   });
 
+  it('restoreScenes puts several archived scenes back in one operation, bytes unchanged', async () => {
+    const dir = copyFixture(SALT);
+    const before = snapshot(dir);
+    const a = await call('archiveScenes', dir, { scenes: [KEY, LOWTIDE, WALL] });
+    assert.equal(a.ok, true, JSON.stringify(a));
+    const opsBefore = trashFiles(dir).filter((f) => f.endsWith('/op.json')).length;
+    const r = await call('restoreScenes', dir, { paths: [`archive/${P.LOWTIDE}`, `archive/${P.KEY}`, `archive/${P.KEY}`] });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual([...r.paths].sort(), [P.KEY, P.LOWTIDE].sort());
+    for (const f of [P.KEY, P.LOWTIDE]) assert.equal(sha256(Buffer.from(read(dir, f))), before.get(f), 'restored bytes unchanged');
+    assert.equal(fs.existsSync(path.join(dir, `archive/${P.WALL}`)), true, 'the scene not chosen stays archived');
+    assert.deepEqual(await orderIds(dir), [PROLOGUE, ARRIVAL, KEY, FERRY, GRAFTING, LOWTIDE]);
+    assert.deepEqual(await errorsOf(dir), []);
+    assert.equal(trashFiles(dir).filter((f) => f.endsWith('/op.json')).length, opsBefore + 1, 'a single op for all the scenes');
+    const u = await call('restoreOp', dir, r.opId);
+    assert.equal(u.ok, true, JSON.stringify(u));
+    assert.deepEqual(await orderIds(dir), [PROLOGUE, ARRIVAL, FERRY, GRAFTING], 'one Undo sends them all back to the archive');
+  });
+
+  it('restoreScenes with an unknown path, a live scene, or bad args is refused; a taken target is refused; nothing is written', async () => {
+    const dir = copyFixture(SALT);
+    await call('archiveScenes', dir, { scenes: [KEY] });
+    const before = snapshot(dir);
+    for (const paths of [[`archive/${P.KEY}`, 'archive/manuscript/nope.md'], [P.ARRIVAL]]) {
+      const r = await call('restoreScenes', dir, { paths });
+      assert.equal(r.code, 'REFUSED_UNKNOWN_SCENE', JSON.stringify(paths));
+    }
+    for (const args of [{ paths: [] }, {}, { paths: [7] }, { paths: 'x' }]) {
+      const r = await call('restoreScenes', dir, args);
+      assert.equal(r.code, 'REFUSED_BAD_ARGS', JSON.stringify(args));
+    }
+    fs.writeFileSync(path.join(dir, P.KEY), 'someone put a file here\n');
+    const taken = await call('restoreScenes', dir, { paths: [`archive/${P.KEY}`] });
+    assert.equal(taken.ok, false);
+    fs.rmSync(path.join(dir, P.KEY));
+    assertUntouched(dir, before);
+  });
+
   it('archiveChapter on an unknown chapter is refused; nothing is written', async () => {
     const dir = copyFixture(SALT);
     const before = snapshot(dir);

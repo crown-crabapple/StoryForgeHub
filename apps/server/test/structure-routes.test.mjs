@@ -431,3 +431,45 @@ test('undo: dry run writes nothing; 403 without the guard header (also wrong typ
   }
   assert.deepEqual(await state(root), before, 'nothing written by any of them');
 });
+
+// ---------------------------------------------------------------- bulk restore of archived scenes
+
+test('scenes restore: archived scenes come back in one operation, a dry run writes nothing, one Undo archives them again', async () => {
+  const { root, port } = await fresh();
+  const a = await post(port, u(BOOK, 'scenes/archive'), { scenes: [ARRIVAL, KEY, LOWTIDE] });
+  assert.equal(a.status, 200, a.text);
+  const archivedPaths = a.json.changes.map((c) => c.to);
+  const live = await snapshot(root, { skipStoryforge: true });
+
+  const dry = await post(port, u(BOOK, 'scenes/restore'), { paths: archivedPaths.slice(0, 2), dryRun: true });
+  assert.equal(dry.status, 200, dry.text);
+  assert.equal(dry.json.changes.length, 2);
+  assert.deepEqual(await snapshot(root, { skipStoryforge: true }), live, 'dry run wrote nothing');
+
+  const r = await post(port, u(BOOK, 'scenes/restore'), { paths: archivedPaths.slice(0, 2) });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(typeof r.json.opId, 'string');
+  for (const c of r.json.changes) {
+    assert.ok(await fs.stat(path.join(root, c.to)).then(() => true, () => false), `${c.to} is back`);
+    assert.equal(await fs.stat(path.join(root, c.from)).then(() => true, () => false), false, `${c.from} left the archive`);
+  }
+  assert.ok(await fs.stat(path.join(root, archivedPaths[2])).then(() => true, () => false), 'the one not chosen stays archived');
+
+  const undo = await post(port, u(BOOK, `ops/${r.json.opId}/restore`), {});
+  assert.equal(undo.status, 200, undo.text);
+  assert.deepEqual(await snapshot(root, { skipStoryforge: true }), live, 'one Undo puts both back in the archive');
+});
+
+test('scenes restore: a path that is not an archived scene is refused and nothing is written; bad bodies are 400; 403 without the guard header', async () => {
+  const { root, port } = await fresh();
+  const before = await state(root);
+  const unknown = await post(port, u(BOOK, 'scenes/restore'), { paths: ['archive/manuscript/nope.md'] });
+  assert.equal(unknown.status, 404, unknown.text); // like every structure route: an unknown scene is 404
+  for (const body of [{}, { paths: [] }, { paths: [1] }, { paths: 'x' }]) {
+    const r = await post(port, u(BOOK, 'scenes/restore'), body);
+    assert.equal(r.status, 400, JSON.stringify(body));
+  }
+  const noGuard = await post(port, u(BOOK, 'scenes/restore'), { paths: ['archive/x.md'] }, { headers: { 'content-type': 'application/json' } });
+  assert.equal(noGuard.status, 403);
+  assert.deepEqual(await state(root), before);
+});

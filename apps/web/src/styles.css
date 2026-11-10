@@ -1410,6 +1410,38 @@ mark {
   color: var(--text-3);
   padding-left: 28px;
 }
+/* Select mode in the Archived section (bulk restore): the toggle keeps the row, Select... sits at its end. */
+.outline-archived-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.outline-archived-head > .outline-archived-toggle {
+  flex: 1;
+  min-width: 0;
+}
+.outline-archived.is-selecting .outline-archived-item {
+  padding-left: 10px;
+}
+.outline-archived-pick {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--s2);
+  cursor: pointer;
+}
+.outline-archived-check {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.outline-archived-item.is-selected {
+  background: var(--accent-soft);
+}
 .row-button {
   min-height: 28px;
   padding: 0 var(--s3);

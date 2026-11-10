@@ -44,7 +44,7 @@ New in `@storyforge/manuscript`: `editFrontMatterLine(bytes, key, value)`.
 
 `PATCH`-like actions are POSTs to keep the existing guard simple:
 
-`POST /api/books/:b/scenes/:s/fields` · `/split` · `POST /api/books/:b/scenes/merge` · `POST /api/books/:b/scenes/archive` (`{ scenes: [sceneId, ...] }`: several scenes to `archive/` in one operation, one Undo) · `POST /api/books/:b/chapters` · `/chapters/:n/fields` · `/chapters/:n/archive` · `POST /api/books/:b/chapters/renumber` · `POST /api/books/:b/acts` · `/acts/:n/fields`. Each accepts `{ ..., dryRun?: true }`; dry run returns `{ ok, changes: [{ from, to, before_sha256, after_sha256, diff }] }` where `diff` is a unified diff of text changes (front-matter only, except split/merge which show body moves).
+`POST /api/books/:b/scenes/:s/fields` · `/split` · `POST /api/books/:b/scenes/merge` · `POST /api/books/:b/scenes/archive` (`{ scenes: [sceneId, ...] }`: several scenes to `archive/` in one operation, one Undo) · `POST /api/books/:b/scenes/restore` (`{ paths: [archivedPath, ...] }`: several archived scenes back in one operation, one Undo) · `POST /api/books/:b/chapters` · `/chapters/:n/fields` · `/chapters/:n/archive` · `POST /api/books/:b/chapters/renumber` · `POST /api/books/:b/acts` · `/acts/:n/fields`. Each accepts `{ ..., dryRun?: true }`; dry run returns `{ ok, changes: [{ from, to, before_sha256, after_sha256, diff }] }` where `diff` is a unified diff of text changes (front-matter only, except split/merge which show body moves).
 
 ## 5. UI
 

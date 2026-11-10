@@ -468,6 +468,21 @@ export function useStructure({ book, activeId = null, onChanged, onMoved }) {
         })();
         break;
       }
+      case 'restore-scenes': {
+        // several archived scenes back to their places in one operation (one Undo)
+        const paths = c.entries.map((x) => pathsOf(book, x.entry.path).libRel);
+        if (paths.length === 0) break;
+        const label = paths.length === 1 ? c.entries[0].name : `${paths.length} scenes`;
+        previewThenApply({
+          title: `Restore ${label}`,
+          url: bookUrl(bookId, '/scenes/restore'),
+          body: { paths },
+          done: `Restored ${label}.`,
+          undoable: true,
+          after: () => c.after?.(),
+        });
+        break;
+      }
       case 'restore-scene': {
         const { bookRel, libRel } = pathsOf(book, c.entry.path);
         localPreview(`Restore ${c.name}`, [{ from: bookRel, to: bookRel.replace(/^archive\//, '') }], async () => {

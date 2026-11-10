@@ -542,6 +542,36 @@ export function archiveScenes(bookRoot, args = {}) {
   });
 }
 
+/**
+ * Restore several archived scenes in one batch: each archive/<path> moves back to <path>, bytes unchanged, one operation (one Undo).
+ * Every path must be an archived scene of the book (book-relative, archive/...), else nothing is written. A target that is
+ * taken again is REFUSED_PATH_TAKEN; a restore that would add manuscript errors (a duplicate id, say) rolls back.
+ * @param {string} bookRoot @param {{paths: string[], dryRun?: boolean}} args
+ */
+export function restoreScenes(bookRoot, args = {}) {
+  return guarded(async () => {
+    const { paths: rels, dryRun = false } = args ?? {};
+    if (!Array.isArray(rels) || rels.length === 0 || rels.some((p) => typeof p !== 'string')) return fail('REFUSED_BAD_ARGS', 'paths must be a non-empty list of archived scene paths');
+    if (rels.length > MAX_ARCHIVE_SCENES) return fail('REFUSED_BAD_ARGS', `at most ${MAX_ARCHIVE_SCENES} scenes at once`);
+    const prep = await prepare(bookRoot);
+    if (prep.result) return prep.result;
+    const { lb, store } = prep;
+    const wanted = new Set(rels);
+    const archived = lb.book.excluded.filter((e) => e.reason === 'archived' && e.path.startsWith('archive/'));
+    const known = new Set(archived.map((e) => e.path));
+    const unknown = [...wanted].filter((p) => !known.has(p));
+    if (unknown.length) return fail('REFUSED_UNKNOWN_SCENE', `not an archived scene of this book: ${unknown.join(', ')}`, { unknown });
+    const picked = archived.filter((e) => wanted.has(e.path)); // each once
+    const changes = [];
+    for (const e of picked) {
+      const before = await readBytes(store, e.path);
+      changes.push({ from: e.path, to: e.path.slice('archive/'.length), content: before, before });
+    }
+    const restored = picked.map((e) => e.path.slice('archive/'.length));
+    return finish({ bookRoot, store, lb, op: 'restoreScenes', args: { paths: picked.map((e) => e.path) }, changes, dryRun, withDiff: true, extra: { paths: restored } });
+  });
+}
+
 // ------------------------------------------------------------------ acts
 
 /**

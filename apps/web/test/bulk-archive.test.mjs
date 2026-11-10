@@ -57,3 +57,35 @@ test('rail outside select mode: no checkboxes and no select bar; scene rows stay
   assert.doesNotMatch(html, /Selected scenes/);
   assert.equal((html.match(/data-scene-id="[^"]+"[^>]*draggable="true"|draggable="true"[^>]*data-scene-id/g) ?? []).length, 2);
 });
+
+// ---- bulk restore: the Archived section's "Select..." mode
+const archivedBook = (n) => ({
+  id: 'book_x', slug: 'x', title: 'X', path: 'x', word_count: 0, acts: [],
+  excluded: Array.from({ length: n }, (_, i) => ({ id: `scene_${i}`, reason: 'archived', path: `x/archive/manuscript/ch-001-one/0${i + 1}0-scene-${i + 1}.md` })),
+});
+const archived = (n, props = {}) => render(h(m.ArchivedSection, { book: archivedBook(n), start: noop, initialOpen: true, ...props }));
+
+test('select bar with verb Restore: names how many scenes it restores, under its own label', () => {
+  const html = render(h(m.SelectBar, { count: 2, total: 4, verb: 'Restore', label: 'Selected archived scenes', onAll: noop, onClear: noop, onArchive: noop, onDone: noop }));
+  assert.match(html, /aria-label="Selected archived scenes"/);
+  assert.ok(button(html, 'Restore 2 scenes'));
+  assert.equal(button(html, 'Archive 2 scenes'), null);
+});
+
+test('archived section: Select... appears with two or more archived scenes; each row keeps its own Restore', () => {
+  const html = archived(3);
+  assert.ok(button(html, 'Select...'));
+  assert.equal((html.match(/aria-label="Restore [^"]+"/g) ?? []).length, 3);
+  assert.doesNotMatch(html, /type="checkbox"/);
+  assert.equal(button(archived(1), 'Select...'), null, 'one archived scene: nothing to select');
+});
+
+test('archived section in select mode: a checkbox per scene, the bar with Restore, no per-row Restore', () => {
+  const html = archived(3, { initialSelecting: true });
+  assert.equal((html.match(/type="checkbox"/g) ?? []).length, 3);
+  assert.match(html, /aria-label="Selected archived scenes"/);
+  assert.match(html, /0 of 3 selected/);
+  assert.match(button(html, 'Restore'), /disabled/);
+  assert.doesNotMatch(html, /aria-label="Restore [^"]+"/);
+  assert.equal(button(html, 'Select...'), null);
+});
