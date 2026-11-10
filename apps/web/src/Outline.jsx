@@ -123,7 +123,7 @@ function SceneRow({ book, scene, next, activeId, chapterNode, act, start, dropMa
       onDragStart={onDragStart && !selecting ? (e) => onDragStart(e, scene) : undefined}
     >
       {dropMark && <span className="drop-line" data-position={dropMark} aria-hidden="true" />}
-      {selecting && <input type="checkbox" className="outline-check" checked={checked} aria-label={`Select ${name}`} onChange={() => {}} onClick={(e) => onCheck?.(scene.id, e.shiftKey)} />}
+      {selecting && <input type="checkbox" className="outline-check" checked={checked} aria-label={`Select ${name}`} onChange={(e) => onCheck?.(scene.id, Boolean(e.nativeEvent?.shiftKey))} />}
       <StatusDot status={scene.status} />
       <Link to={sceneHref(book.id, scene.id)} data-scene-link="" draggable={false} className="outline-row outline-scene" aria-current={scene.id === activeId ? 'page' : undefined}>
         <span className="outline-label">{scene.title || <span className="muted">Untitled scene</span>}</span>
