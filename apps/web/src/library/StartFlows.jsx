@@ -2,6 +2,7 @@ import { useApi } from '../api.js';
 import { RestoreDialog } from '../export/RestoreDialog.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { NewBookDialog } from './NewBookDialog.jsx';
+import { NewSeriesDialog } from './NewSeriesDialog.jsx';
 import { OpenFolderDialog } from './OpenFolderDialog.jsx';
 
 /** A dialog that is waiting for data, or could not get it. */
@@ -44,6 +45,11 @@ export function NewBookFlow({ onClose }) {
       onCreated={(r) => window.location.assign(`/books/${encodeURIComponent(r.bookId)}`)}
     />
   );
+}
+
+/** The New series dialog. On success the page reloads, so the library lists the new series. */
+export function NewSeriesFlow({ onClose }) {
+  return <NewSeriesDialog onClose={onClose} onCreated={() => window.location.assign('/')} />;
 }
 
 /** The Restore from backup dialog. On success it opens the restored book (the server has already rescanned the library). */

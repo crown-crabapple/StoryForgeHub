@@ -113,14 +113,14 @@ const hasAttr = (attrs, name) => new RegExp(`\\b${name}\\b`).test(attrs);
 
 // ---------------------------------------------------------------- Start section
 
-test('library page: the Start section has exactly two real buttons, New book… and Open folder…', () => {
+test('library page: the Start section has exactly three real buttons, New book…, New series… and Open folder…', () => {
   const Page = unit('Page');
   const html = text(render(h(Page, { books: [{ id: 'b', title: 'Book', slug: 'book', status: 'drafting', scene_count: 1, word_count: 10, error_count: 0, warning_count: 0 }], error: null, loading: false })));
   const start = html.match(/<section aria-labelledby="start-heading"[\s\S]*?<\/section>/);
   assert.ok(start, 'Start something new section present');
   const buttons = [...start[0].matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)];
-  assert.equal(buttons.length, 2, `exactly two buttons: ${buttons.map((b) => plainText(b[2]))}`);
-  assert.deepEqual(buttons.map((b) => plainText(b[2])), ['New book\u2026', 'Open folder\u2026']);
+  assert.equal(buttons.length, 3, `exactly three buttons: ${buttons.map((b) => plainText(b[2]))}`);
+  assert.deepEqual(buttons.map((b) => plainText(b[2])), ['New book\u2026', 'New series\u2026', 'Open folder\u2026']);
   for (const b of buttons) assert.match(b[1], /type="button"/);
   assert.doesNotMatch(start[0], /<(a|input|select|textarea)\b/);
   assert.doesNotMatch(start[0], /arrives in the next update/);
@@ -131,7 +131,7 @@ test('library page: the Start section is present with no books too (empty librar
   const html = text(render(h(Page, { books: [], error: null, loading: false })));
   const start = html.match(/<section aria-labelledby="start-heading"[\s\S]*?<\/section>/);
   assert.ok(start);
-  assert.equal(count(start[0], /<button\b/g), 2);
+  assert.equal(count(start[0], /<button\b/g), 3);
 });
 
 // ---------------------------------------------------------------- New book dialog

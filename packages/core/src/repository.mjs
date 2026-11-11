@@ -201,7 +201,7 @@
  *   updateThreadBody(bookId: string, ref: string, body: string, opts: { baseSha256: string }): Promise<WriteResult & { sha256?: string, current?: { sha256: string, body: string } }>,
  *   getEntryImage(bookId: string, ref: string): Promise<{ bytes: Buffer, contentType: string, sha256: string } | null>,
  *   createEntry(bookId: string, args: { type: string, name: string, slug?: string, status?: string, fields?: any, dryRun?: boolean }): Promise<StructureResult>,
- *   setEntryFields(bookId: string, ref: string, args: { name?: string, status?: string, role?: string, aliases?: string[], fields?: any, related?: { to: string, as?: string }[], dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
+ *   setEntryFields(bookId: string, ref: string, args: { name?: string, status?: string, role?: string, aliases?: string[], fields?: any, related?: { to: string, as?: string }[], firstAppearance?: string | null, dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
  *   changeEntrySlug(bookId: string, ref: string, args: { slug: string, dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
  *   archiveEntry(bookId: string, ref: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
  *   restoreEntry(bookId: string, ref: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
@@ -217,6 +217,11 @@
  *   setModuleGate(fn: ((moduleId: string, ctx: { bookPath: string }) => boolean | Promise<boolean>) | null): void,  (M07-J04: receipts on or off per book)
  *   createBook(input: { title: string, slug?: string, template: string, seriesSlug?: string, seriesNumber?: number, penName?: string }):
  *     Promise<{ ok: true, bookId: string, path: string } | { ok: false, code: string, field: string | null, message: string, diagnostics?: any[] }>,
+ *   createSeries(input: { title: string, slug?: string, status?: 'planned' | 'active' | 'complete' | 'archived' }):
+ *     Promise<{ ok: true, seriesId: string, slug: string, path: string } | { ok: false, code: string, field: string | null, message: string, diagnostics?: any[] }>,
+ *   moveBookToSeries(bookId: string, input: { seriesSlug: string, seriesNumber?: number }):
+ *     Promise<{ ok: true, bookId: string, path: string, from: string, seriesSlug: string, seriesNumber: number, warning?: string } | { ok: false, code: string, field: string | null, message: string }>,
+ *   setBookTitle(bookId: string, title: string, opts?: { baseSha256?: string }): Promise<WriteResult & { title?: string, unchanged?: boolean }>,  (only the title line of book.md; folder and slug stay)
  *   search(q: string, opts?: { bookId?: string, kinds?: string[], limit?: number }):
  *     Promise<{ book_id: string | null, id: string, kind: string, title: string, path: string | null, snippet: string }[]>,
  *   getBacklinks(bookId: string, id: string): Promise<any[] | null>,

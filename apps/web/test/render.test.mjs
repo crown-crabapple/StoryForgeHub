@@ -229,7 +229,7 @@ test('book view: a file that cannot be read is shown raw, exactly as on disk', (
   assert.doesNotMatch(html, /prose-link/);
 });
 
-test('library page: Start something new has exactly two real buttons and nothing else interactive', () => {
+test('library page: Start something new has exactly three real buttons and nothing else interactive', () => {
   const html = text(render(h(m.LibraryPage, { books: [{ id: 'b', title: 'Book', slug: 'book', status: 'drafting', scene_count: 1, word_count: 10, error_count: 0, warning_count: 0 }], error: null, loading: false })));
   assert.match(html, /<h1>Library<\/h1>/);
   assert.match(html, /Start something new/);
@@ -237,7 +237,7 @@ test('library page: Start something new has exactly two real buttons and nothing
   const start = html.match(/<section aria-labelledby="start-heading"[\s\S]*?<\/section>/);
   assert.ok(start, 'Start something new section present');
   const buttons = [...start[0].matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((b) => b[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
-  assert.deepEqual(buttons, ['New book\u2026', 'Open folder\u2026']);
+  assert.deepEqual(buttons, ['New book\u2026', 'New series\u2026', 'Open folder\u2026']);
   assert.doesNotMatch(start[0], /<(a|input|select|textarea)\b/);
   assert.doesNotMatch(start[0], /arrives in the next update/);
 });

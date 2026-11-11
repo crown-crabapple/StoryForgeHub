@@ -123,6 +123,14 @@ export function createIndexManager(root, { readValidate = () => validate(root) }
   return {
     bookPaths,
     learn,
+    /** Drop everything held for a book folder that moved away (its open store, id, timings), once its reconciles are done. @param {string} bookPath */
+    async forget(bookPath) {
+      while (inflight.size > 0) await Promise.allSettled([...inflight]);
+      entries.delete(bookPath);
+      lastReconciled.delete(bookPath);
+      pendingWrites.delete(bookPath);
+      for (const [id, p] of [...idToPath]) if (p === bookPath) idToPath.delete(id);
+    },
     pathOf,
     /** Resolves once no reconcile is running (including ones that start while waiting). Never throws. */
     async drain() {

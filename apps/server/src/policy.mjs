@@ -63,6 +63,8 @@ export const WRITE_CLASSES = Object.freeze({
   'oauth-approve': 'admin', 'oauth-deny': 'admin',
   // M12: how much AI a book allows (it caps every token), so in shared mode only the owner sets it
   'book-ai-level': 'admin',
+  // renaming a book, creating a series and moving a book into one change the library's layout: owner only in shared mode
+  'book-title': 'admin', 'series-create': 'admin', 'book-move-to-series': 'admin',
 });
 
 /**

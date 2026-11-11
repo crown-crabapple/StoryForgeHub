@@ -77,6 +77,7 @@ import { countWords } from '@storyforge/index';
 import { openStore } from '@storyforge/store';
 import { recordPath, renderAiRecord, selectRange, spliceReplacement } from './ai-rewrite.mjs';
 import { createCheckMethods } from './check-scene.mjs';
+import { checkTitle } from './create-series.mjs';
 import { createContinuityExceptionMethods } from './continuity-exceptions.mjs';
 import { createCommentMethods } from './comments.mjs';
 import { createCoverMethods } from './cover-drafts.mjs';
@@ -490,6 +491,32 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     },
 
     /**
+     * Rename a book's title: only the `title:` line of book.md changes (the folder and slug stay). Same title rules as createBook.
+     * `baseSha256` (optional) is the book.md the author saw; a stale one gives CONFLICT.
+     * @param {string} bookId @param {string} title @param {{ baseSha256?: string }} [opts]
+     */
+    async setBookTitle(bookId, title, { baseSha256 } = {}) {
+      const t = checkTitle(title);
+      if (!t.ok) return fail(t.code, { field: t.field, message: t.message });
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book));
+      const cur = await store.read('book.md');
+      if (!cur) return fail('NOT_FOUND');
+      const edit = editFrontMatterLine(cur.bytes, 'title', t.title, { plain: true, anchors: ['slug', 'id'] });
+      if (!edit.ok) return fail(edit.code, { message: edit.message });
+      if (edit.changed) {
+        const r = await store.write('book.md', edit.buf, { baseSha256: baseSha256 ?? cur.sha256 });
+        if (!r.ok) return r.code === 'CONFLICT' ? fail('CONFLICT', { current: null }) : fail(r.code, r.message ? { message: r.message } : {});
+        if (reconcile) await reconcile(found.book.path);
+        else afterWrite(found.book.path);
+      } else if (baseSha256 !== undefined && baseSha256 !== cur.sha256) {
+        return fail('CONFLICT', { current: null });
+      }
+      return { ok: true, code: 'OK', title: t.title, ...(edit.changed ? {} : { unchanged: true }) };
+    },
+
+    /**
      * M12: set (or, with null, remove) `preferences.ai.level` in book.md (scope 'book') or in library.md (scope 'library', the default for every book that sets none).
      * Only that key changes (the rest of the front matter, its comments and the body stay as they are); one journaled store write, so it can be undone like any other.
      * @param {string} bookId @param {string | null} level one of AI_LEVELS, or null to remove the setting @param {{ scope?: 'book' | 'library' }} [opts]
@@ -717,7 +744,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
 
     // ---- M04-J02: Codex entries and types (canonical files only; dryRun previews with diffs)
     createEntry: (bookId, args = {}) => structure(bookId, (b) => createEntry(b, args ?? {})),
-    setEntryFields: (bookId, ref, args = {}) => structure(bookId, (b) => setEntryFields(b, ref, args ?? {})),
+    setEntryFields: (bookId, ref, args = {}) => structure(bookId, (b) => setEntryFields(b, ref, args ?? {}), ['REFUSED_UNKNOWN_SCENE']), // an unknown or archived scene is a refusal (400), not a missing entry
     changeEntrySlug: (bookId, ref, args = {}) => structure(bookId, (b) => changeEntrySlug(b, ref, args ?? {})),
     archiveEntry: (bookId, ref, args = {}) => structure(bookId, (b) => archiveEntry(b, ref, args ?? {})),
     /** `ref`: an archived entry's id or slug, or its archived path (library-relative, archive/codex/...). */
@@ -777,7 +804,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
 
     // ---- M04-J04: timeline events, research notes / planning docs / sources, attachments (canonical files only; dryRun previews with diffs)
     createEvent: (bookId, args = {}) => structure(bookId, (b) => createEvent(b, args ?? {})),
-    setEventFields: (bookId, ref, args = {}) => structure(bookId, (b) => setEventFields(b, ref, args ?? {})),
+    setEventFields: (bookId, ref, args = {}) => structure(bookId, (b) => setEventFields(b, ref, args ?? {}), ['REFUSED_UNKNOWN_SCENE']), // an unknown or archived scene is a refusal (400), not a missing event
     archiveEvent: (bookId, ref, args = {}) => structure(bookId, (b) => archiveEvent(b, ref, args ?? {})),
     /** `ref`: an archived event's id, slug or archived path (library-relative, archive/planning/timeline/...). */
     async restoreEvent(bookId, ref, args = {}) {

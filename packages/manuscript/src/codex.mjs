@@ -15,6 +15,7 @@ const TYPE_RE = /^[a-z]+$/;
 const CONTROL_RE = new RegExp(`[\x00-\x1f\x7f\x85${String.fromCharCode(0x2028, 0x2029)}]`);
 const isText = (v) => typeof v === 'string' && !CONTROL_RE.test(v);
 const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const SCENE_REF_RE = /^scene_[0-9A-HJKMNP-TV-Z]{26}$/;
 const RESERVED = new Set(['true', 'false', 'null', 'yes', 'no', 'on', 'off', 'y', 'n']);
 /** UTF-8 text as the latin1 string form used for byte-exact splicing. */
 const l1 = (t) => Buffer.from(t, 'utf8').toString('latin1');
@@ -265,14 +266,15 @@ export function createEntry(bookRoot, args = {}) {
  * Edit an entry's front matter. `name`, `status`, `role`: their own line. `aliases` (flow list), `fields` (block map) and `related`
  * (block list of { to, as }): that key's block is replaced, nothing else. A block with a comment, anchor or tag: REFUSED_UNSIMPLE_FIELD.
  * `slug` is never touched here (see changeEntrySlug).
+ * `firstAppearance`: a live (not archived) scene id of the book written to the `first_appearance` line (inserted when absent); null or '' removes the line.
  * @param {string} bookRoot @param {string} ref entry id or slug
- * @param {{ name?: string, status?: string, role?: string, aliases?: string[], fields?: Record<string, any> | { label: string, value: any }[], related?: { to: string, as?: string }[], dryRun?: boolean }} args
+ * @param {{ name?: string, status?: string, role?: string, aliases?: string[], fields?: Record<string, any> | { label: string, value: any }[], related?: { to: string, as?: string }[], firstAppearance?: string | null, dryRun?: boolean, baseSha256?: string }} args
  */
 export function setEntryFields(bookRoot, ref, args = {}) {
   return guarded(async () => {
-    const { name, status, role, aliases, fields, related, labels, dryRun = false, baseSha256, scope = 'book' } = args ?? {};
+    const { name, status, role, aliases, fields, related, labels, firstAppearance, dryRun = false, baseSha256, scope = 'book' } = args ?? {};
     if (typeof ref !== 'string' || ref === '') return fail('REFUSED_BAD_ARGS', 'the entry must be an id or slug');
-    if ([name, status, role, aliases, fields, related, labels].every((v) => v === undefined)) return fail('REFUSED_BAD_ARGS', 'nothing to change');
+    if ([name, status, role, aliases, fields, related, labels, firstAppearance].every((v) => v === undefined)) return fail('REFUSED_BAD_ARGS', 'nothing to change');
     if (name !== undefined && (!isText(name) || name.trim() === '' || name.length > 300)) return fail('REFUSED_BAD_ARGS', 'name must be a non-empty string without control characters (max 300)');
     if (status !== undefined && !ENTRY_STATUSES.includes(status)) return fail('REFUSED_BAD_ARGS', `status must be one of ${ENTRY_STATUSES.join(', ')}`);
     if (role !== undefined && (!isText(role) || role.length > 300)) return fail('REFUSED_BAD_ARGS', 'role must be a string without control characters (max 300)');
@@ -281,6 +283,9 @@ export function setEntryFields(bookRoot, ref, args = {}) {
     }
     if (labels !== undefined && (!Array.isArray(labels) || labels.length > 50 || labels.some((l) => !isText(l) || l.trim() === '' || l.length > 100))) {
       return fail('REFUSED_BAD_ARGS', 'labels must be a list of up to 50 label names');
+    }
+    if (firstAppearance !== undefined && firstAppearance !== null && firstAppearance !== '' && !(typeof firstAppearance === 'string' && SCENE_REF_RE.test(firstAppearance))) {
+      return fail('REFUSED_BAD_ARGS', 'first_appearance must be a scene id, or null to remove it');
     }
     let pairs;
     if (fields !== undefined) {
@@ -301,6 +306,10 @@ export function setEntryFields(bookRoot, ref, args = {}) {
       return raw ? notUsable(raw) : fail('REFUSED_UNKNOWN_ENTRY', `no entry ${ref}`);
     }
 
+    if (typeof firstAppearance === 'string' && firstAppearance !== '' && !docs.some((d) => d.kind === 'scene' && !d.archived && d.fm.id === firstAppearance)) {
+      return fail('REFUSED_UNKNOWN_SCENE', `no scene ${firstAppearance} in the book`, { scene: firstAppearance });
+    }
+
     const before = await readBytes(store, doc.rel);
     const changed = stale(before, baseSha256, doc.rel);
     if (changed) return changed;
@@ -314,6 +323,15 @@ export function setEntryFields(bookRoot, ref, args = {}) {
       return null;
     };
     for (const bad of [line('name', name, ['slug', 'type']), line('status', status, ['name']), line('role', role, ['status', 'name'])]) if (bad) return bad;
+
+    if (firstAppearance === null || firstAppearance === '') {
+      const r = removeFrontMatterLine(buf, 'first_appearance');
+      if (!r.ok) return fail(r.code, `${doc.rel}: ${r.message}`, { file: doc.rel, field: r.field });
+      buf = r.buf;
+    } else {
+      const bad = line('first_appearance', firstAppearance, ['role', 'status', 'name']);
+      if (bad) return bad;
+    }
 
     const block = (key, newLines, after) => {
       const r = replaceFrontMatterBlock(buf, key, newLines, { after });
@@ -340,8 +358,26 @@ export function setEntryFields(bookRoot, ref, args = {}) {
       if (bad) return bad;
     }
     const changes = buf.equals(before) ? [] : [{ from: doc.rel, to: doc.rel, content: buf, before }];
-    return finish({ bookRoot, store, lb, op: 'setEntryFields', args: { ref, name, status, role, aliases: aliases?.length, fields: pairs?.length, related: related?.length, labels: labels?.length, ...(scope === 'series' ? { scope } : {}) }, changes, dryRun, withDiff: true, extra: { id: doc.fm.id, path: doc.rel } });
+    return finish({ bookRoot, store, lb, op: 'setEntryFields', args: { ref, name, status, role, aliases: aliases?.length, fields: pairs?.length, related: related?.length, labels: labels?.length, firstAppearance, ...(scope === 'series' ? { scope } : {}) }, changes, dryRun, withDiff: true, extra: { id: doc.fm.id, path: doc.rel } });
   });
+}
+
+/** Remove the single-line scalar `key:` from the front matter (nothing to remove: unchanged). A multi-line or repeated key: REFUSED_UNSIMPLE_FIELD. @param {Buffer} bytes @param {string} key */
+function removeFrontMatterLine(bytes, key) {
+  const refuse = (message) => ({ ok: false, code: 'REFUSED_UNSIMPLE_FIELD', field: key, message });
+  const s = bytes.toString('latin1');
+  const range = frontMatterRange(s);
+  if (!range) return refuse('the file has no closed front matter');
+  const region = s.slice(range.start, range.end);
+  const re = new RegExp(`^${key}:[^\r\n]*(\r?\n|$)`, 'gm');
+  const hits = [...region.matchAll(re)];
+  if (hits.length === 0) return { ok: true, buf: bytes };
+  if (hits.length > 1) return refuse(`"${key}" appears more than once`);
+  const [hit] = hits;
+  const rest = region.slice(hit.index + hit[0].length);
+  if (/^[ 	]+\S/.test(rest) || /^[|>&*!]/.test(hit[0].slice(key.length + 1).trim()) || /(^|[ 	])#/.test(hit[0])) return refuse(`"${key}" is not a single-line scalar without comment, anchor or tag`);
+  const next = region.slice(0, hit.index) + rest;
+  return { ok: true, buf: Buffer.from(s.slice(0, range.start) + next + s.slice(range.end), 'latin1') };
 }
 
 /** The front-matter interior of a document, latin1. */

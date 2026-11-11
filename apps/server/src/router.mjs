@@ -682,6 +682,7 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && a === 'recover' && b === undefined) return { route: 'recover' };
   if (method === 'POST' && a === 'index' && b === 'rebuild' && c === undefined) return { route: 'index-rebuild' };
   if (method === 'POST' && a === 'books' && b === undefined) return { route: 'book-create' };
+  if (method === 'POST' && a === 'series' && b === undefined) return { route: 'series-create' };
   if (method === 'POST' && a === 'library' && b === 'open' && c === undefined) return { route: 'library-open' };
   if (method === 'POST' && a === 'library' && b === 'recent' && c === 'remove' && d === undefined) return { route: 'recent-remove' };
   if (method === 'POST' && a === 'library' && b === 'restore' && c === undefined) return { route: 'backup-restore' };
@@ -734,6 +735,9 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'goal' && d === undefined) return { route: 'goal', bookId: b };
   // M12: the book's (or its library's default) AI level, saved as the `ai.level` project preference
   if (method === 'POST' && c === 'ai-level' && d === undefined) return { route: 'book-ai-level', bookId: b };
+  // rename a book's title; put a standalone book into a series (owner only in shared mode)
+  if (method === 'POST' && c === 'title' && d === undefined) return { route: 'book-title', bookId: b };
+  if (method === 'POST' && c === 'move-to-series' && d === undefined) return { route: 'book-move-to-series', bookId: b };
   // M07-J02: goals file, revision tasks
   if (method === 'POST' && c === 'goals' && d === undefined) return { route: 'goal-set', bookId: b };
   if (method === 'DELETE' && c === 'goals' && d !== undefined && e === undefined) return { route: 'goal-remove', bookId: b, goalId: d };
@@ -995,6 +999,40 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
       return {
         status: taken ? 409 : mine ? 400 : 500,
         body: { ok: false, code: r.code, field: r.field ?? null, message: r.message ?? '', ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) },
+      };
+    }
+    case 'series-create': {
+      const r = await repository.createSeries(body);
+      if (r.ok) return { status: 201, body: { ok: true, seriesId: r.seriesId, slug: r.slug, path: r.path } };
+      const taken = ['FOLDER_EXISTS', 'SLUG_TAKEN'].includes(r.code);
+      const mine = ['BAD_TITLE', 'BAD_SLUG', 'BAD_STATUS', 'OUTSIDE_ROOT'].includes(r.code);
+      return {
+        status: taken ? 409 : mine ? 400 : 500,
+        body: { ok: false, code: r.code, field: r.field ?? null, message: r.message ?? '', ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) },
+      };
+    }
+    case 'book-title': {
+      if (typeof body.title !== 'string') return badRequest('expected { title: string, base_sha256?: string }');
+      if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
+      const r = await repository.setBookTitle(bookId, body.title, body.base_sha256 === undefined ? {} : { baseSha256: body.base_sha256 });
+      if (r.ok) return { status: 200, body: { ok: true, title: r.title, ...(r.unchanged ? { unchanged: true } : {}) } };
+      if (r.code === 'NOT_FOUND') return NOT_FOUND;
+      if (r.code === 'CONFLICT') return { status: 409, body: { error: 'conflict', code: 'CONFLICT', current: r.current ?? null } };
+      return {
+        status: r.code === 'BAD_TITLE' ? 400 : r.code === 'ROLLED_BACK' ? 500 : 400,
+        body: { ok: false, code: r.code, field: r.field ?? null, message: r.message ?? '' },
+      };
+    }
+    case 'book-move-to-series': {
+      if (typeof body.seriesSlug !== 'string') return badRequest('expected { seriesSlug: string, seriesNumber?: integer }');
+      const r = await repository.moveBookToSeries(bookId, { seriesSlug: body.seriesSlug, ...(body.seriesNumber === undefined || body.seriesNumber === null ? {} : { seriesNumber: body.seriesNumber }) });
+      if (r.ok) {
+        return { status: 200, body: { ok: true, bookId: r.bookId, path: r.path, from: r.from, seriesSlug: r.seriesSlug, seriesNumber: r.seriesNumber, ...(r.warning ? { warning: r.warning } : {}) } };
+      }
+      const mine = ['NO_SUCH_SERIES', 'SERIES_NUMBER_TAKEN', 'ALREADY_IN_SERIES', 'OUTSIDE_ROOT', 'BAD_ARGS'].includes(r.code);
+      return {
+        status: r.code === 'NOT_FOUND' ? 404 : r.code === 'FOLDER_EXISTS' ? 409 : mine ? 400 : 500,
+        body: { ok: false, code: r.code, field: r.field ?? null, message: r.message ?? '' },
       };
     }
     case 'library-open': {
@@ -1349,7 +1387,8 @@ async function handleStructure(repository, match, body) {
     }
     case 'entry-fields': {
       if (body.base_sha256 !== undefined && typeof body.base_sha256 !== 'string') return badRequest('base_sha256 must be a string');
-      const r = await repository.setEntryFields(bookId, /** @type {string} */ (match.entryId), { name: body.name, status: body.status, role: body.role, aliases: body.aliases, fields: body.fields, related: body.related, labels: body.labels, dryRun, baseSha256: body.base_sha256 });
+      if (body.first_appearance !== undefined && body.first_appearance !== null && typeof body.first_appearance !== 'string') return badRequest('first_appearance must be a scene id or null');
+      const r = await repository.setEntryFields(bookId, /** @type {string} */ (match.entryId), { name: body.name, status: body.status, role: body.role, aliases: body.aliases, fields: body.fields, related: body.related, labels: body.labels, firstAppearance: body.first_appearance, dryRun, baseSha256: body.base_sha256 });
       return respond(r, 200, structureBody);
     }
     case 'entry-slug': {
