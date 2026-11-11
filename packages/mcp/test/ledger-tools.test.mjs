@@ -6,7 +6,7 @@ import { createMcpServer, NOT_OFFERED, TOOLS } from '../src/index.mjs';
 
 const SHA = 'a'.repeat(64);
 const BOOK = '/api/v1/books/salt-orchard';
-const READS = ['codex_get_ledger', 'codex_get_cast', 'codex_knowledge_at', 'codex_get_state_events', 'codex_get_tasks'];
+const READS = ['codex_get_ledger', 'codex_get_cast', 'codex_knowledge_at', 'codex_get_state_events', 'codex_get_tasks', 'codex_get_task'];
 const WRITES = ['codex_save_ledger_item', 'codex_set_chapter_cast', 'codex_record_knowledge', 'codex_record_state_events', 'codex_create_task', 'codex_update_task', 'codex_complete_task', 'codex_log_writing'];
 
 function setup(permissions) {
@@ -25,7 +25,7 @@ function setup(permissions) {
   return { calls, rpc, tool };
 }
 
-test('the workspace tools: five read tools need only read, eight write tools need workspace; the delete tools stay in NOT_OFFERED', async () => {
+test('the workspace tools: six read tools need only read, eight write tools need workspace; the delete tools stay in NOT_OFFERED', async () => {
   const ws = TOOLS.filter((t) => t.need === 'workspace').map((t) => t.name);
   for (const n of WRITES) assert.ok(ws.includes(n), `${n} needs workspace`); // the workspace doc tools (W2) need it too
   for (const n of READS) assert.equal(TOOLS.find((t) => t.name === n)?.need, 'read', n);
@@ -45,7 +45,7 @@ test('the workspace tools: five read tools need only read, eight write tools nee
     assert.equal(rw.some((t) => t.name === n), false);
   }
   for (const n of [...READS, ...WRITES]) assert.equal(NOT_OFFERED.includes(n), false, `${n} is offered now`);
-  assert.equal(TOOLS.length, 92);
+  assert.equal(TOOLS.length, 93);
 });
 
 test('a token without workspace is refused a write tool, with no request', async () => {
@@ -70,6 +70,7 @@ test('the read tools call the v1 routes with their query', async () => {
     ['codex_get_state_events', {}, '/state-events', {}],
     ['codex_get_tasks', { status: 'open', for: 'ai' }, '/tasks', { status: 'open', for: 'ai' }],
     ['codex_get_tasks', {}, '/tasks', {}],
+    ['codex_get_task', { task: 'check tides/2' }, '/tasks/check%20tides%2F2', {}],
   ];
   for (const [name, args, path, query] of cases) {
     calls.length = 0;
@@ -79,6 +80,8 @@ test('the read tools call the v1 routes with their query', async () => {
     assert.deepEqual([calls[0].method, calls[0].path], ['GET', `${BOOK}${path}`], name);
     if (query !== undefined) assert.deepEqual(calls[0].query ?? {}, query, name);
   }
+  const missing = await tool('codex_get_task', {});
+  assert.equal(missing.isError, true, 'task is required');
 });
 
 const WS_WRITES = [

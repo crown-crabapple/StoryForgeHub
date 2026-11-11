@@ -389,7 +389,7 @@ const entryRef = (/** @type {string} */ words) => ({ type: 'string', minLength: 
 const taskRef = { type: 'string', minLength: 1, maxLength: 200, description: 'The task id or slug (see codex_get_tasks).' };
 const sceneIdList = (/** @type {string} */ words) => ({ type: 'array', items: { type: 'string' }, description: words });
 
-/** One workspace read: GET /api/v1/books/:b/<path>[?query]. @param {{ name: string, title: string, text: string, props?: Record<string, any>, required?: string[], path: string, query?: (args: Record<string, any>) => Record<string, string> }} d @returns {Tool} */
+/** One workspace read: GET /api/v1/books/:b/<path>[?query]. @param {{ name: string, title: string, text: string, props?: Record<string, any>, required?: string[], path: string | ((args: Record<string, any>) => string), query?: (args: Record<string, any>) => Record<string, string> }} d @returns {Tool} */
 const wsRead = ({ name, title, text, props = {}, required = [], path, query = () => ({}) }) => ({
   name,
   title,
@@ -398,7 +398,7 @@ const wsRead = ({ name, title, text, props = {}, required = [], path, query = ()
   inputSchema: schema({ book: bookArg, ...props }, ['book', ...required]),
   annotations: READ,
   async run(args, api) {
-    return result(await api.get(`${bookPath(args.book)}/${path}`, query(args)));
+    return result(await api.get(`${bookPath(args.book)}/${typeof path === 'function' ? path(args) : path}`, query(args)));
   },
 });
 
@@ -452,10 +452,18 @@ const WORKSPACE_TOOLS = [
   wsRead({
     name: 'codex_get_tasks',
     title: 'Read the tasks',
-    text: 'Lists the revision tasks with their status and who they are for (ai or author), and the counts. Filter by status or by for.',
+    text: 'Lists the revision tasks with their status and who they are for (ai or author), and the counts. Filter by status or by for. The list has no notes: read a task with codex_get_task for what it asks.',
     props: { status: { type: 'string', enum: TASK_STATUS_ENUM }, for: { type: 'string', enum: FOR_ENUM, description: 'Only tasks for the AI or for the author.' } },
     path: 'tasks',
     query: (a) => ({ ...(a.status !== undefined ? { status: a.status } : {}), ...(a.for !== undefined ? { for: a.for } : {}) }),
+  }),
+  wsRead({
+    name: 'codex_get_task',
+    title: 'Read one task',
+    text: 'Reads one task in full: its fields, its notes (the body of the task: what to do, and for a continuity or check task the finding and its evidence) and its targets (each scene or entry it points at, whether it is still found and the text to select). Read a task before doing it.',
+    props: { task: taskRef },
+    required: ['task'],
+    path: (a) => `tasks/${seg(a.task)}`,
   }),
   {
     name: 'codex_save_ledger_item',

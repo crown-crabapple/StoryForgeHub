@@ -56,7 +56,7 @@ export function v1RouteOf(method, pathname) {
   if (c === 'entries') return d === undefined ? 'entries' : 'entry';
   if (c === 'ledger') return method === 'GET' ? 'ledger' : d === 'threads' && parts[6] === undefined ? 'ledger-thread-create' : 'ledger-thread-update';
   if (c === 'cast' || c === 'knowledge' || c === 'state-events') return method === 'GET' ? c : c === 'knowledge' ? 'knowledge-record' : 'state-record';
-  if (c === 'tasks') return method === 'GET' ? 'tasks' : d === undefined ? 'task-create' : 'task-status';
+  if (c === 'tasks') return method === 'GET' ? (d === undefined ? 'tasks' : 'task') : d === undefined ? 'task-create' : 'task-status';
   if (c === 'activity') return 'activity-ai-log';
   if (c === 'timeline' && method === 'POST') return 'event-scenes';
   if (c === 'codex' && method === 'POST') return 'entry-first-appearance';
@@ -222,6 +222,12 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     }
     if (c === 'tasks') {
       if (method === 'POST') return done(await memberWrite(bk, 'POST', d2 === undefined ? ['tasks'] : ['tasks', d2, 'status'], WORKSPACE_ROUTES));
+      if (d2 !== undefined) {
+        // one task with its notes (the Markdown body of the task file) and where each target is now
+        if (parts[6] !== undefined) return done(NOT_FOUND);
+        const one = await repository.getTask(bk.id, d2);
+        return done(one.ok ? { status: 200, body: planOut({ task: one.task, notes: one.notes, targets: one.targets }) } : NOT_FOUND);
+      }
       const status = params.get('status');
       const forWho = params.get('for');
       if (status !== null && !['open', 'doing', 'done', 'dropped'].includes(status)) return done(badRequest('status must be open, doing, done or dropped'));

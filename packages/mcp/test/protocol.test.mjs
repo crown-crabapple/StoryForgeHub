@@ -72,14 +72,14 @@ test('ping answers with an empty result', async () => {
   assert.deepEqual((await setup().rpc('ping')).result, {});
 });
 
-test('tools/list shows 37 tools with read+propose, 43 with canvas too, and 34 read-only tools without', async () => {
+test('tools/list shows 38 tools with read+propose, 44 with canvas too, and 35 read-only tools without', async () => {
   const all = (await setup().rpc('tools/list')).result.tools;
-  assert.equal(all.length, 37);
+  assert.equal(all.length, 38);
   assert.deepEqual(Object.keys(all[0]).sort(), ['annotations', 'description', 'inputSchema', 'name', 'title']);
   const ro = (await setup(['read']).rpc('tools/list')).result.tools;
-  assert.equal(ro.length, 34);
-  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 43);
-  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 40);
+  assert.equal(ro.length, 35);
+  assert.equal((await setup(['read', 'propose', 'canvas']).rpc('tools/list')).result.tools.length, 44);
+  assert.equal((await setup(['read', 'canvas']).rpc('tools/list')).result.tools.length, 41);
   assert.ok(ro.every((t) => t.annotations.readOnlyHint === true));
   assert.equal(TOOLS.filter((t) => t.need === 'propose').length, 3);
   assert.equal(TOOLS.filter((t) => t.need === 'canvas').length, 6);

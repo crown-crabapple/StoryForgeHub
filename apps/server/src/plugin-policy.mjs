@@ -40,6 +40,7 @@ const V1 = [
   // M12 W3: ledgers, chapter cast, knowledge, state events, tasks and the AI writing log. Reads need 'read'; writes need 'workspace' and the book's AI level, and run the app's own routes
   // (thread-*, scene-cast, ledger-*, task-*, activity-ai-log), which write only a thread, a scene's `cast` key, state items of a chapter's state event, a task file or the writing log; never prose.
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/(ledger|cast|knowledge|state-events|tasks)$/, need: 'read', book: true },
+  { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/tasks\/[^/]{1,200}$/, need: 'read', book: true },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/ledger\/threads$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/ledger\/threads\/[^/]{1,120}$/, need: 'workspace', book: true, level: 'planner' },
   // repoint an event's scenes or an entry's first_appearance to live scenes (app routes event-fields / entry-fields, only those body keys: api-v1.mjs)

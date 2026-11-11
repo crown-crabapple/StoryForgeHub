@@ -13,7 +13,7 @@ A book whose author set no level is at `planner`.
 
 ## Advisor
 
-- Read: `codex_get_context`, `codex_get_doc`, `codex_list_docs`, `codex_get_ledger`, `codex_get_cast`, `codex_knowledge_at`, `codex_get_state_events`, `codex_get_tasks`, and the other read tools.
+- Read: `codex_get_context`, `codex_get_doc`, `codex_list_docs`, `codex_get_ledger`, `codex_get_cast`, `codex_knowledge_at`, `codex_get_state_events`, `codex_get_tasks`, `codex_get_task`, and the other read tools.
 - Check: `codex_continuity_check`, `codex_get_diagnostics`.
 - Write: `codex_propose_edit`, `codex_save_chapter`, `codex_save_entry` (all suggestions the author accepts), `codex_create_task`.
 - Show the chapter plan and outline in chat. Deliver the draft in chat.

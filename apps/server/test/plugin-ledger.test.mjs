@@ -33,7 +33,7 @@ test('the policy: reads need read, every write needs workspace and names its AI 
   const grant = (permissions) => ({ id: 'g1', plugin: 'p', permissions, books: 'all' });
   const slugOf = (x) => (x === BOOK || x === SLUG ? SLUG : null);
   const decide = (permissions, method, p) => decidePlugin(grant(permissions), method, `${base}${p}`, slugOf);
-  for (const what of ['ledger', 'cast', 'knowledge', 'state-events', 'tasks']) {
+  for (const what of ['ledger', 'cast', 'knowledge', 'state-events', 'tasks', 'tasks/check-the-tide-times']) {
     const d = decide(['read'], 'GET', `/${what}`);
     assert.deepEqual([d.ok, d.need, d.level], [true, 'read', 'off'], what);
   }
@@ -56,6 +56,9 @@ test('the policy: reads need read, every write needs workspace and names its AI 
   assert.equal(v1RouteOf('POST', `${base}/ledger/threads`), 'ledger-thread-create');
   assert.equal(v1RouteOf('POST', `${base}/ledger/threads/x`), 'ledger-thread-update');
   assert.equal(v1RouteOf('POST', `${base}/tasks/x/status`), 'task-status');
+  assert.equal(v1RouteOf('GET', `${base}/tasks`), 'tasks');
+  assert.equal(v1RouteOf('GET', `${base}/tasks/x`), 'task');
+  assert.equal(decidePlugin(grant(['read']), 'GET', `${base}/tasks/x/status`, slugOf).ok, false, 'no GET below one task');
   assert.equal(v1RouteOf('POST', `${base}/activity/ai-words`), 'activity-ai-log');
 });
 
@@ -151,8 +154,20 @@ test('the book AI level: advisor may create a task but a planner write is 403 AI
     assert.equal(r.json.needs, 'planner');
   }
   assert.deepEqual(await readAll(t.root), before, 'refused writes changed nothing');
-  const task = await t.plugin(rw, 'POST', `${base}/tasks`, { body: { title: 'Check the tide times', for: 'ai' } });
+  const task = await t.plugin(rw, 'POST', `${base}/tasks`, { body: { title: 'Check the tide times', for: 'ai', notes: 'Compare the tide tables in chapter 2.\n\nLow water is at dawn.' } });
   assert.equal(task.status, 201, task.text);
+  // one task with its notes, for a read-only token too; the list leaves the notes out; no file paths
+  const ro = (await t.grant({ plugin: 'level-reader', permissions: ['read'] })).token;
+  const listed = (await t.plugin(ro, 'GET', `${base}/tasks`)).json.tasks.find((x) => x.title === 'Check the tide times');
+  assert.equal(listed.notes, undefined);
+  for (const ref of [listed.slug, listed.id]) {
+    const one = await t.plugin(ro, 'GET', `${base}/tasks/${encodeURIComponent(ref)}`);
+    assert.equal(one.status, 200, one.text);
+    assert.deepEqual([one.json.task.id, one.json.task.for, one.json.task.notes, one.json.task.path], [listed.id, 'ai', undefined, undefined]);
+    assert.equal(one.json.notes.trim(), 'Compare the tide tables in chapter 2.\n\nLow water is at dawn.');
+    assert.ok(Array.isArray(one.json.targets));
+  }
+  assert.equal((await t.plugin(ro, 'GET', `${base}/tasks/no-such-task`)).status, 404);
   for (const what of ['ledger', 'cast', 'state-events', 'tasks']) assert.equal((await t.plugin(rw, 'GET', `${base}/${what}`)).status, 200, what);
   // a token that has more permissions than the level allows does not get more
   const rich = (await t.grant({ plugin: 'rich', permissions: ['read', 'propose', 'canvas', 'plan', 'workspace', 'draft'] })).token;

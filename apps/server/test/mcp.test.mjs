@@ -26,7 +26,7 @@ const READ_TOOLS = ['codex_status', 'codex_list_books', 'codex_list_chapters', '
   // M12 W2: workspace docs
   'codex_list_docs', 'codex_get_doc',
   // M12 W3: ledger, cast, knowledge, state events and tasks (reads)
-  'codex_get_ledger', 'codex_get_cast', 'codex_knowledge_at', 'codex_get_state_events', 'codex_get_tasks',
+  'codex_get_ledger', 'codex_get_cast', 'codex_knowledge_at', 'codex_get_state_events', 'codex_get_tasks', 'codex_get_task',
   // M12 W4: the continuity check
   'codex_continuity_check',
   // M12 W6: the chapter context pack (a read)
@@ -64,15 +64,15 @@ test('initialize names the server "storyforge" and answers with a supported prot
   assert.notEqual(other.json.result.protocolVersion, '1999-01-01');
 });
 
-test('tools/list: a read+propose token sees 37 tools, read+propose+canvas all 43, a read-only token the 34 read tools and no codex_save_*', async () => {
+test('tools/list: a read+propose token sees 38 tools, read+propose+canvas all 44, a read-only token the 35 read tools and no codex_save_*', async () => {
   const t = await bootPersonal();
   const both = (await t.grant({ plugin: 'both', permissions: ['read', 'propose'] })).token;
   const ro = (await t.grant({ plugin: 'ro', permissions: ['read'] })).token;
   const all = (await rpc(t, both, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(all.length, 37);
+  assert.equal(all.length, 38);
   assert.deepEqual([...all].sort(), [...READ_TOOLS, ...PROPOSE_TOOLS].sort());
   const some = (await rpc(t, ro, 'tools/list')).json.result.tools.map((x) => x.name);
-  assert.equal(some.length, 34);
+  assert.equal(some.length, 35);
   assert.deepEqual([...some].sort(), [...READ_TOOLS].sort());
   assert.equal(some.some((n) => n.startsWith('codex_save_')), false);
 });
