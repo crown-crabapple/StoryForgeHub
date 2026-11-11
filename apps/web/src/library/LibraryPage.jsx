@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { CoverCard, SkeletonCard } from './CoverCard.jsx';
 import { SORTS, STATUS_FILTERS, filterBooks, groupBooks } from './filter.js';
-import { NewBookFlow, OpenFolderFlow, RestoreFlow } from './StartFlows.jsx';
+import { NewBookFlow, NewSeriesFlow, OpenFolderFlow, RestoreFlow } from './StartFlows.jsx';
 
 const plural = (n, one) => `${n} ${n === 1 ? one : `${one}s`}`;
 const FILTER_LABEL = 'Filter by title, series or pen name';
@@ -64,6 +64,9 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
         <div className="start-actions">
           <button type="button" className="btn btn-primary" onClick={() => setDialog('new')}>
             New book…
+          </button>
+          <button type="button" className="btn" onClick={() => setDialog('new-series')}>
+            New series…
           </button>
           <button type="button" className="btn" onClick={() => setDialog('open')}>
             Open folder…
@@ -179,7 +182,8 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
       )}
 
       {dialog === 'new' && <NewBookFlow onClose={() => setDialog(null)} />}
-      {dialog === 'open' && <OpenFolderFlow onClose={() => setDialog(null)} />}
+      {dialog === 'new-series' && <NewSeriesFlow onClose={() => setDialog(null)} />}
+      {dialog === 'open' &&<OpenFolderFlow onClose={() => setDialog(null)} />}
       {dialog === 'restore' && <RestoreFlow onClose={() => setDialog(null)} />}
     </main>
   );

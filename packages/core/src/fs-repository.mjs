@@ -11,6 +11,8 @@ import { MAX_ATTACHMENT_BYTES, applyRepair, fieldLabels, planRepair } from '@sto
 import { onWrite } from '@storyforge/store';
 import { listTemplates } from '@storyforge/templates';
 import { createBookMethod } from './create-book.mjs';
+import { moveBookToSeriesMethod } from './move-book.mjs';
+import { createSeriesMethod } from './create-series.mjs';
 import { createActivity } from './activity.mjs';
 import { createIndexManager } from './index-manager.mjs';
 import { createWatcher } from './watcher.mjs';
@@ -876,6 +878,37 @@ export function createFsRepository(libraryRoot, options = {}) {
         if (bookId) manager.learn(bookPath, bookId);
         await manager.reconcile(bookPath, 'create');
         await watcher.rescan();
+      },
+    }),
+
+    /** Create a series folder with a series.md: see create-series.mjs. Resolves with { ok, seriesId, slug, path } or { ok: false, code, field, message }. */
+    createSeries: createSeriesMethod({
+      root,
+      probe: { ...createProbe, async seriesSlugs() { return (await seriesList()).map((s) => s.slug); } },
+      async afterCreate() {
+        await watcher.rescan();
+      },
+    }),
+
+    /**
+     * Put a standalone book into an existing series: see move-book.mjs. Resolves with
+     * { ok, bookId, path, from, seriesSlug, seriesNumber, warning? } or { ok: false, code, field, message }.
+     */
+    moveBookToSeries: moveBookToSeriesMethod({
+      root,
+      probe: createProbe,
+      bookById: (id) => bookById(id, true),
+      async beforeMove() {
+        await watcher.release();
+        await manager.drain();
+      },
+      async afterMove(oldPath, newPath, bookId, moved) {
+        if (moved) {
+          await manager.forget(oldPath);
+          manager.learn(newPath, bookId);
+          await manager.reconcile(newPath, 'create');
+        }
+        await watcher.rescan({ force: true });
       },
     }),
 

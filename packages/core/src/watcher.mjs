@@ -307,11 +307,22 @@ export function createWatcher({ root, manager, options = {}, onExternalChange, o
       return ready;
     },
     /** Look for books that appeared or went (after the app itself created one), now rather than at the next event or poll. */
-    async rescan() {
+    async rescan({ force = false } = {}) {
       await ready;
       if (closed) return;
-      if (mode === 'watch') await resync();
+      if (mode === 'watch') await resync(force);
       else await pollOnce();
+    },
+    /**
+     * Close every fs.watch handle (a folder with open watches cannot be renamed on Windows) until the next
+     * `rescan({ force: true })`. Events in that gap are caught by that rescan's resync and by the poll.
+     */
+    async release() {
+      await ready;
+      if (closed || mode !== 'watch') return;
+      setLive(false);
+      for (const h of handles) h.close();
+      handles = [];
     },
     /** True while fs.watch is delivering events for every book (false in poll mode, when degraded, before start and after close). */
     isLive() {

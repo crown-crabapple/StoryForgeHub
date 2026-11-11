@@ -98,6 +98,22 @@ async function settleTree(root, entry) {
   return { outcome, files: [entry.tree.target] };
 }
 
+/**
+ * Settle a pending moveTree entry. The move is one directory rename, so the folder is at exactly one place:
+ * at the new place means the rename landed before the crash; at the old place means it never happened.
+ * Neither (or both) cannot come from moveTree, so it is left for a person to look at.
+ * @returns {Promise<{ outcome: 'completed'|'rolledBack'|'needsAttention', files: string[], reason?: string }>}
+ */
+async function settleMove(root, entry) {
+  const { from, to } = entry.move;
+  const atNew = (await kindOf(absOf(root, to))) === 'dir';
+  const atOld = (await kindOf(absOf(root, from))) === 'dir';
+  if (atNew === atOld) return { outcome: 'needsAttention', files: [from, to], reason: atNew ? 'the folder exists at both places' : 'the folder is at neither place' };
+  const outcome = atNew ? 'completed' : 'rolledBack';
+  await writeJournal(root, { ...entry, state: outcome, settled_at: new Date().toISOString() });
+  return { outcome, files: [from, to] };
+}
+
 /** Staging folders no journal entry accounts for (e.g. a crash before the entry was written) go to the trash. */
 async function sweepStaging(root, report) {
   let names;
@@ -128,7 +144,9 @@ export async function recoverRoot(root) {
     if (entry.state !== 'pending') continue;
     let r;
     try {
-      r = entry.op === 'createTree' && entry.tree ? await settleTree(root, entry) : await settleEntry(root, entry);
+      r = entry.op === 'createTree' && entry.tree ? await settleTree(root, entry)
+        : entry.op === 'moveTree' && entry.move ? await settleMove(root, entry)
+          : await settleEntry(root, entry);
     } catch (e) {
       r = { outcome: 'needsAttention', files: entry.files.map((f) => f.rel), reason: String(e?.message ?? e) };
     }

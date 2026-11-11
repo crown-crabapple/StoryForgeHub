@@ -20,7 +20,12 @@ const MAX_HUNKS = 200;
 const WORKSPACE_ROUTES = ['thread-', 'scene-cast', 'ledger-', 'task-', 'activity-ai-log'];
 /** M12 W4: the only app write routes the continuity dismiss and restore calls reach: the exception create and archive routes (never the author's continuity settings). */
 const CONTINUITY_ROUTES = ['continuity-exception-'];
+/** The two narrow codex repoints (POST /timeline/events/:e and POST /codex/entries/:e/first-appearance): exactly these app routes and no other event or entry edit. */
+const EVENT_SCENES_ROUTES = ['event-fields'];
+const FIRST_APPEARANCE_ROUTES = ['entry-fields'];
 const MAX_TEXT = 4 * 1024 * 1024;
+/** Only the named keys of a request body, when present. @param {Record<string, unknown>} b @param {string[]} keys */
+const pick = (b, keys) => Object.fromEntries(keys.filter((k) => b[k] !== undefined).map((k) => [k, b[k]]));
 
 /** A scene slug from a title: lowercase letters and digits joined by single hyphens, at most 60 characters (the rule of the app's own slugs). @param {string} title */
 const slugFromTitle = (title) => title.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/g, '');
@@ -53,6 +58,8 @@ export function v1RouteOf(method, pathname) {
   if (c === 'cast' || c === 'knowledge' || c === 'state-events') return method === 'GET' ? c : c === 'knowledge' ? 'knowledge-record' : 'state-record';
   if (c === 'tasks') return method === 'GET' ? 'tasks' : d === undefined ? 'task-create' : 'task-status';
   if (c === 'activity') return 'activity-ai-log';
+  if (c === 'timeline' && method === 'POST') return 'event-scenes';
+  if (c === 'codex' && method === 'POST') return 'entry-first-appearance';
   if (c === 'continuity') return method === 'GET' ? 'continuity' : parts[7] === 'archive' ? 'continuity-restore' : 'continuity-dismiss';
   if (['threads', 'events', 'search', 'graph', 'diagnostics'].includes(c)) return c;
   if (c === 'proposals') return 'proposals';
@@ -181,6 +188,14 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
       if (method === 'POST') return done(await memberWrite(bk, 'POST', d2 === 'threads' && parts[6] === undefined ? ['threads'] : ['threads', /** @type {string} */ (parts[6]), 'fields'], WORKSPACE_ROUTES), `${target}/ledger`);
       const ledger = await repository.getLedger(bk.id);
       return done(ledger ? { status: 200, body: planOut(ledger) } : NOT_FOUND);
+    }
+    // Repoint a timeline event's scenes (POST /timeline/events/:e) or a codex entry's first_appearance (POST /codex/entries/:e/first-appearance): only the named body keys reach the app's own
+    // event-fields / entry-fields routes, so no other event or entry field can be edited this way (those stay proposal-only).
+    if (c === 'timeline' && method === 'POST') {
+      return done(await memberWrite(bk, 'POST', ['events', /** @type {string} */ (parts[6]), 'fields'], EVENT_SCENES_ROUTES, undefined, { shape: (b) => pick(b, ['scenes', 'add', 'remove', 'two_sided', 'base_sha256']) }), `${target}/timeline`);
+    }
+    if (c === 'codex' && method === 'POST') {
+      return done(await memberWrite(bk, 'POST', ['entries', /** @type {string} */ (parts[6]), 'fields'], FIRST_APPEARANCE_ROUTES, undefined, { shape: (b) => pick(b, ['first_appearance', 'base_sha256']) }), `${target}/codex`);
     }
     if (c === 'cast') {
       const chapter = params.get('chapter');

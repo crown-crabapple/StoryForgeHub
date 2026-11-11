@@ -42,6 +42,9 @@ const V1 = [
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)\/(ledger|cast|knowledge|state-events|tasks)$/, need: 'read', book: true },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/ledger\/threads$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/ledger\/threads\/[^/]{1,120}$/, need: 'workspace', book: true, level: 'planner' },
+  // repoint an event's scenes or an entry's first_appearance to live scenes (app routes event-fields / entry-fields, only those body keys: api-v1.mjs)
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/timeline\/events\/[^/]{1,120}$/, need: 'workspace', book: true, level: 'planner' },
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/codex\/entries\/[^/]{1,120}\/first-appearance$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/scenes\/[^/]{1,120}\/cast$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/(knowledge|state-events)$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/tasks$/, need: 'workspace', book: true, level: 'advisor' },

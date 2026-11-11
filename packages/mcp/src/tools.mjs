@@ -492,6 +492,46 @@ const WORKSPACE_TOOLS = [
       return result({ ...made, ...r, note: WORKSPACE_NOTE });
     },
   },
+  {
+    name: 'codex_update_event',
+    title: 'Repoint the scenes of a timeline event',
+    description: `Changes which scenes a timeline event points at: scenes replaces the whole list, add and remove change the current list. Give at least one of scenes, add, remove. Only scene ids of live scenes are accepted; an archived or unknown scene is refused. Use it to fix an event whose scenes point into archive/. Optional base_sha256 refuses the change if the event file changed since. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({
+      book: bookArg,
+      event: { type: 'string', minLength: 1, maxLength: 200, description: 'The timeline event: its id or slug.' },
+      scenes: sceneIdList('Scene ids the event points at (the whole list).'),
+      add: sceneIdList('Scene ids to add to the current list.'),
+      remove: sceneIdList('Scene ids to remove from the current list.'),
+      base_sha256: planShaOpt,
+    }, ['book', 'event']),
+    annotations: PLAN,
+    async run(args, api) {
+      const fields = given(args, ['scenes', 'base_sha256']);
+      if (args.scenes === undefined && args.add === undefined && args.remove === undefined) throw new ToolError('give at least one of scenes, add, remove');
+      const body = { ...fields, ...(args.add !== undefined ? { add: { scenes: args.add } } : {}), ...(args.remove !== undefined ? { remove: { scenes: args.remove } } : {}) };
+      const r = await api.post(`${bookPath(args.book)}/timeline/events/${seg(args.event)}`, body);
+      return result({ ...r, note: WORKSPACE_NOTE });
+    },
+  },
+  {
+    name: 'codex_set_first_appearance',
+    title: 'Set the first appearance of a Codex entry',
+    description: `Sets the scene where a Codex entry first appears (its first_appearance field), or clears it when scene is null. The scene must be a live scene; an archived or unknown scene is refused. Only that one field changes. Pass base_sha256 (from codex_get_entry) to refuse the change if the entry file changed since. ${WORKSPACE_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({
+      book: bookArg,
+      entry: entryRef('The Codex entry: its slug or id.'),
+      scene: { type: ['string', 'null'], description: 'The scene id (scene_...) of the first appearance, or null to clear it.' },
+      base_sha256: planShaOpt,
+    }, ['book', 'entry', 'scene']),
+    annotations: PLAN,
+    async run(args, api) {
+      if (args.scene !== null && (typeof args.scene !== 'string' || args.scene === '')) throw new ToolError('scene must be a scene id, or null to clear the first appearance');
+      const r = await api.post(`${bookPath(args.book)}/codex/entries/${seg(args.entry)}/first-appearance`, { first_appearance: args.scene, ...given(args, ['base_sha256']) });
+      return result({ ...r, note: WORKSPACE_NOTE });
+    },
+  },
   wsWrite({
     name: 'codex_set_chapter_cast',
     title: 'Set the cast of a scene',

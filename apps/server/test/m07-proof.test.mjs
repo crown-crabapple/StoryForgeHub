@@ -213,6 +213,9 @@ const SAMPLES = {
   'oauth-deny': ['POST', '/api/oauth/deny'],
   // M12: the book's AI level (owner only)
   'book-ai-level': ['POST', `${b}/ai-level`],
+  'book-title': ['POST', `${b}/title`],
+  'series-create': ['POST', '/api/series'],
+  'book-move-to-series': ['POST', `${b}/move-to-series`],
   'webhook-create': ['POST', '/api/webhooks'],
   'webhook-revoke': ['DELETE', '/api/webhooks/whk_X'],
 };
