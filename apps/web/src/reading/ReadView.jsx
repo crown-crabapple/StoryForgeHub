@@ -30,16 +30,31 @@ function storedPosition(bookId) {
   }
 }
 
+/** A jump: the scenes still waiting from the picked one onwards come first (so the chapter you picked shows at once), then the ones before it. @param {string[]} q @param {string | null} id */
+function frontFirst(q, id) {
+  const at = id ? q.indexOf(id) : -1;
+  if (at > 0) q.splice(0, q.length, ...q.slice(at), ...q.slice(0, at));
+}
+
 /**
- * Every scene of the book, fetched in reading order a few at a time. A refresh (`version`) fetches again but keeps showing what it has.
+ * Every scene of the book, fetched in reading order a few at a time, starting at `priority` (the scene being jumped to) when there is one.
+ * A refresh (`version`) fetches again but keeps showing what it has.
  * @returns {Map<string, any>} scene id -> GET /api/books/:b/scenes/:s, or { failed: true }
  */
-function useSceneBodies(bookId, ids, version) {
+function useSceneBodies(bookId, ids, version, priority = null) {
   const [scenes, setScenes] = useState(() => new Map());
   const idsKey = ids.join(',');
+  const queueRef = useRef(/** @type {string[]} */ ([]));
+  const priorityRef = useRef(priority);
+  useEffect(() => {
+    priorityRef.current = priority;
+    frontFirst(queueRef.current, priority);
+  }, [priority]);
   useEffect(() => {
     const ctrl = new AbortController();
     const queue = idsKey ? idsKey.split(',') : [];
+    frontFirst(queue, priorityRef.current);
+    queueRef.current = queue;
     const worker = async () => {
       while (queue.length > 0 && !ctrl.signal.aborted) {
         const id = queue.shift();
@@ -100,7 +115,6 @@ function ReadScene({ bookId, entry, scene, showTitle, showNotes, headingLevel })
 export function ReadView({ book, version = '', initialScene = null, jumpTo = null, onCurrent, viewSwitch = null }) {
   const order = useMemo(() => readingOrder(book), [book]);
   const ids = useMemo(() => order.scenes.map((s) => s.id), [order]);
-  const scenes = useSceneBodies(book.id, ids, version);
   const [prefs, setPrefs] = useState(loadPrefs);
   const [current, setCurrent] = useState(null);
   const known = (id) => Boolean(id) && ids.includes(id);
@@ -113,6 +127,7 @@ export function ReadView({ book, version = '', initialScene = null, jumpTo = nul
   useEffect(() => {
     targetRef.current = target;
   }, [target]);
+  const scenes = useSceneBodies(book.id, ids, version, target);
   // a jump from the rail (a new { id } object each time)
   const [seenJump, setSeenJump] = useState(jumpTo);
   if (jumpTo !== seenJump) {
@@ -127,18 +142,30 @@ export function ReadView({ book, version = '', initialScene = null, jumpTo = nul
       return next;
     });
 
-  // scroll to the target once it and everything before it has loaded (so nothing above it moves afterwards)
+  // a jump goes at once (scenes not loaded yet stand in at about their height), and stays on its scene while the scenes above it arrive and
+  // change height; it lets go once everything above it is in place, or as soon as you scroll yourself
   useEffect(() => {
     if (!target) return undefined;
     const i = ids.indexOf(target);
-    if (i !== -1 && !ids.slice(0, i + 1).every((id) => scenes.has(id))) return undefined;
     if (i !== -1) document.getElementById(`read-${target}`)?.scrollIntoView({ block: 'start' });
+    const settled = i === -1 || ids.slice(0, i + 1).every((id) => scenes.has(id));
     const frame = requestAnimationFrame(() => {
-      setTarget(null);
       if (i !== -1) setCurrent(target);
+      if (settled) setTarget(null);
     });
     return () => cancelAnimationFrame(frame);
   }, [target, ids, scenes]);
+  useEffect(() => {
+    const letGo = () => {
+      if (targetRef.current) setTarget(null);
+    };
+    window.addEventListener('wheel', letGo, { passive: true });
+    window.addEventListener('touchmove', letGo, { passive: true });
+    return () => {
+      window.removeEventListener('wheel', letGo);
+      window.removeEventListener('touchmove', letGo);
+    };
+  }, []);
 
   // which scene is being read: the last one whose top has passed a line a quarter of the way down the window
   useEffect(() => {
@@ -193,7 +220,8 @@ export function ReadView({ book, version = '', initialScene = null, jumpTo = nul
   }
 
   const progress = readingProgress(order, current ?? ids[0]);
-  const currentChapter = order.scenes.find((s) => s.id === (current ?? ids[0]))?.chapterKey ?? '';
+  // while a jump is on its way the picker already shows the chapter you picked
+  const currentChapter = order.scenes.find((s) => s.id === (target ?? current ?? ids[0]))?.chapterKey ?? '';
   const loaded = ids.filter((id) => scenes.has(id)).length;
   const hasActs = order.acts.some((a) => a.name);
   const chapterLevel = hasActs ? 3 : 2;

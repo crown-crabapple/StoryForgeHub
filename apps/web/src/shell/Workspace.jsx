@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { PanelSeparator } from '../prefs/PanelSeparator.jsx';
 import { usePrefs } from '../prefs/PrefsContext.jsx';
 import { useFocus } from '../writing/FocusContext.jsx';
@@ -13,7 +13,8 @@ import { useDrawer, useMedia } from './useDrawer.js';
  * M07-J04: the layout can hide either side panel (their slots stay, so switching layouts never remounts the page or loses an unsaved buffer) and
  * the panels are resized with a separator (mouse and keyboard).
  * M08-J04: below 1200 px the inspector is an off-canvas drawer ("Details" button) and below 900 px so is the rail ("Chapters"); only one is open at a time. An open drawer
- * has `aria-expanded` on its button, keeps Tab inside, closes on Escape or a tap outside, and gives focus back to its button. Opening and closing is announced politely.
+ * has `aria-expanded` on its button, keeps Tab inside, closes on Escape, a tap outside or its own Close button (the only way out on a phone, where it fills the screen),
+ * and gives focus back to its button. Picking a scene in the Chapters drawer closes it too. Opening and closing is announced politely.
  * `openPanel` (tests): the drawer that starts open. Below 900 px the two buttons are the tab switch between the text and its panels (the split editor and the pinned panel of M07-J04 are one panel at a time there).
  */
 export function Workspace({ rail, inspector, openPanel = null, children }) {
@@ -46,6 +47,25 @@ export function Workspace({ rail, inspector, openPanel = null, children }) {
   useDrawer({ active: railOpen && railOverlay, onClose: () => shut('rail', 'Chapters'), panel: railNode, toggle: railToggle });
   useDrawer({ active: inspectorOpen && inspectorOverlay, onClose: () => shut('inspector', 'Details'), panel: inspectorNode, toggle: inspectorToggle });
   const overlayOpen = (railOpen && railOverlay) || (inspectorOpen && inspectorOverlay);
+  // a drawer that fills the screen (phones) has nothing outside it to tap, so it carries its own Close button; picking a scene in the
+  // Chapters drawer also closes it, so you land on the scene
+  const closeBar = (which, name) => (
+    <div className="drawer-close-bar">
+      <button type="button" className="btn btn-small drawer-close" onClick={() => shut(which, name)}>
+        Close {name.toLowerCase()}
+      </button>
+    </div>
+  );
+  const railDrawer = railOpen && railOverlay;
+  useEffect(() => {
+    const nav = railNode.current;
+    if (!railDrawer || !nav) return undefined;
+    const onPick = (e) => {
+      if (e.target instanceof Element && e.target.closest('a[href]')) shut('rail', 'Chapters');
+    };
+    nav.addEventListener('click', onPick);
+    return () => nav.removeEventListener('click', onPick);
+  });
   return (
     <div className="workspace" data-focus={focus ? 'on' : 'off'} data-drawer={overlayOpen ? (railOpen ? 'rail' : 'inspector') : 'none'} ref={box}>
       {(showRail || showInspector) && (
@@ -65,6 +85,7 @@ export function Workspace({ rail, inspector, openPanel = null, children }) {
       {overlayOpen && <button type="button" className="drawer-scrim" aria-label="Close panel" tabIndex={-1} onClick={() => setOpen(null)} />}
       {showRail && (
         <nav id={railId} ref={railNode} tabIndex={-1} aria-label="Manuscript" className="rail" data-open={railOpen ? 'true' : 'false'}>
+          {railOpen && railOverlay && closeBar('rail', 'Chapters')}
           {rail}
         </nav>
       )}
@@ -73,6 +94,7 @@ export function Workspace({ rail, inspector, openPanel = null, children }) {
       </main>
       {showInspector && (
         <aside id={inspectorId} ref={inspectorNode} tabIndex={-1} aria-label="Inspector" className="inspector" data-open={inspectorOpen ? 'true' : 'false'}>
+          {inspectorOpen && inspectorOverlay && closeBar('inspector', 'Details')}
           {inspector}
         </aside>
       )}
