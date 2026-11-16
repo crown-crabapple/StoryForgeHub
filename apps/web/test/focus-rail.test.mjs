@@ -622,10 +622,11 @@ const NO_DIAG = { items: [], error: null, loading: false };
 const rail = (scene = RAIL_SCENE, diagnostics = NO_DIAG, objects = OBJECTS_FOR_RAIL) =>
   plain(render(createElement(shell.SceneInspector, { book: { id: BOOK_ID }, scene, diagnostics, objects })));
 
-test('rail: sections appear top to bottom as Goal, Scene, In this scene, Scene notes, Continuity, Problems, Revisions', () => {
-  const html = rail();
+test('rail: sections appear top to bottom as Goal, Scene, Scene notes, In this scene, Continuity, Problems, Revisions', () => {
+  // the tab buttons (">Scene<", ">Problems<") are not sections: look at the panels only
+  const html = rail().replace(/<div[^>]*role="tablist"[^>]*>[\s\S]*?<\/div>/, '');
   const at = (s) => html.indexOf(s);
-  const order = ['aria-label="Daily goal"', '>Scene<', '>In this scene<', '>Scene notes<', '>Continuity<', '>Problems<', '>Revisions<'];
+  const order = ['aria-label="Daily goal"', '>Scene<', '>Scene notes<', '>In this scene<', '>Continuity<', '>Problems<', '>Revisions<'];
   for (const s of order) assert.ok(at(s) >= 0, `missing ${s}`);
   for (let i = 1; i < order.length; i++) assert.ok(at(order[i - 1]) < at(order[i]), `${order[i - 1]} must come before ${order[i]}`);
 });
