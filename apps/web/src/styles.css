@@ -2930,6 +2930,27 @@ div.md > * + .md-heading {
 .entry-panel[hidden] {
   display: none;
 }
+.inspector-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  min-width: 0;
+}
+.inspector-panel {
+  gap: var(--s5);
+  min-width: 0;
+}
+/* the scene panel is narrow: its five tabs share the width (and wrap onto a second row only when the panel is narrower still), so none hides off the edge */
+.inspector-tabs .entry-tabs {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+.inspector-tabs .entry-tab {
+  flex: 1 1 auto;
+  justify-content: center;
+  padding: 0 6px;
+  font-size: var(--fs-13);
+}
 .codex-actions {
   display: flex;
   flex-wrap: wrap;
