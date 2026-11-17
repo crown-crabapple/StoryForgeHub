@@ -1,7 +1,7 @@
 // Plugin access policy (contract M08-J02 sections 2-3). A request with `Authorization: Bearer` is a plugin request: it may reach only /api/v1/*, only
 // what its grant's permissions allow, and only the books it was granted. It never reaches the member routes, writes, admin, AI, export, backup or receipts.
 // Writes: with 'canvas' it may change a canvas (planning/canvases/*.canvas) of a granted book; with 'plan' (M11) the Story Planner files of a granted book; with 'workspace' (M12) the workspace docs under planning/.
-// Both go through the same store, sha checks and module gates as the app. M12 W6: with 'draft' (book AI level cowriter) it may create chapters and scenes (always AI drafts) and replace the body of its own unaccepted drafts. Nothing a token does can change prose the author wrote or accepted, or Codex entries.
+// Both go through the same store, sha checks and module gates as the app. M12 W6: with 'draft' (book AI level cowriter) it may create chapters and scenes (always AI drafts) and replace the body of its own unaccepted drafts. With 'workspace' it may also create a new Codex entry (seed or sketch). Nothing a token does can change prose the author wrote or accepted, or an existing Codex entry.
 // Decided before (and instead of) the member policy; a bearer request never carries a member's cookie authority.
 
 /** The v1 routes and the permission each needs. Anything else under /api/v1 is refused. */
@@ -46,6 +46,8 @@ const V1 = [
   // repoint an event's scenes or an entry's first_appearance to live scenes (app routes event-fields / entry-fields, only those body keys: api-v1.mjs)
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/timeline\/events\/[^/]{1,120}$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/codex\/entries\/[^/]{1,120}\/first-appearance$/, need: 'workspace', book: true, level: 'planner' },
+  // a new Codex entry (a new file only; status seed or sketch, never canon; a type the book already has). Existing entries stay proposal-only (codex_save_entry / codex_propose_edit).
+  { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/entries$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/scenes\/[^/]{1,120}\/cast$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/(knowledge|state-events)$/, need: 'workspace', book: true, level: 'planner' },
   { method: 'POST', re: /^\/api\/v1\/books\/([^/]+)\/tasks$/, need: 'workspace', book: true, level: 'advisor' },

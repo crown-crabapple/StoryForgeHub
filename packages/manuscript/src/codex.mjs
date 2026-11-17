@@ -216,18 +216,29 @@ const notUsable = (rel) => fail('REFUSED_UNSIMPLE_FIELD', `${rel}: its front mat
 
 // ------------------------------------------------------------------ createEntry
 
+const MAX_ENTRY_BODY = 1024 * 1024;
+/** The body of a new entry: the given Markdown (LF line ends, a final newline, no front matter fence at the start), else "## Overview". @param {unknown} body */
+function entryBody(body) {
+  const text = typeof body === 'string' ? body.replace(/\r\n?/g, '\n').replace(/^\n+/, '') : '';
+  if (text.trim() === '') return '## Overview\n\n';
+  // a body that starts with "---" would read as a second front matter block
+  const safe = text.startsWith('---') ? `\n${text}` : text;
+  return safe.endsWith('\n') ? safe : `${safe}\n`;
+}
+
 /**
  * New entry file codex/<folder>/<slug>.md: schema, id, slug, type, name, status, fields (the type's default labels with empty
- * values, overridden by `fields`), body "## Overview". A slug used by another entry, thread or event: SLUG_TAKEN.
+ * values, overridden by `fields`), body "## Overview" (or `body`, Markdown, when given). A slug used by another entry, thread or event: SLUG_TAKEN.
  * @param {string} bookRoot
- * @param {{ type: string, name: string, slug?: string, status?: string, fields?: Record<string, any> | { label: string, value: any }[], dryRun?: boolean }} args
+ * @param {{ type: string, name: string, slug?: string, status?: string, fields?: Record<string, any> | { label: string, value: any }[], body?: string, dryRun?: boolean }} args
  */
 export function createEntry(bookRoot, args = {}) {
   return guarded(async () => {
-    const { type, name, slug: given, status = 'seed', fields, dryRun = false, scope = 'book' } = args ?? {};
+    const { type, name, slug: given, status = 'seed', fields, body, dryRun = false, scope = 'book' } = args ?? {};
     if (typeof type !== 'string' || !TYPE_RE.test(type) || type.length > 40) return fail('REFUSED_BAD_ARGS', 'type must be a lower-case word (a-z)');
     if (!isText(name) || name.trim() === '' || name.length > 300) return fail('REFUSED_BAD_ARGS', 'name must be a non-empty string without control characters (max 300)');
     if (!ENTRY_STATUSES.includes(status)) return fail('REFUSED_BAD_ARGS', `status must be one of ${ENTRY_STATUSES.join(', ')}`);
+    if (body !== undefined && body !== null && (typeof body !== 'string' || body.includes('\0') || body.length > MAX_ENTRY_BODY)) return fail('REFUSED_BAD_ARGS', `body must be Markdown text (max ${MAX_ENTRY_BODY} characters)`);
     const slug = given !== undefined && given !== null && given !== '' ? given : slugify(name);
     if (typeof slug !== 'string' || !SLUG_RE.test(slug) || slug.length > 60) {
       return fail('REFUSED_BAD_ARGS', given ? 'slug must be lower-case letters, digits and single hyphens (1-60 characters)' : 'the name has no letters or digits to make a slug from; give a slug');
@@ -254,7 +265,7 @@ export function createEntry(bookRoot, args = {}) {
     const to = `codex/${entryFolder(type)}/${slug}.md`;
     const text =
       `---\nschema: storyforge.entry/v1\nid: ${id}\nslug: ${formatYamlText(slug)}\ntype: ${type}\nname: ${formatYamlText(name)}\nstatus: ${status}\n` +
-      `${pairs.length > 0 ? `${fieldsLines(pairs).join('\n')}\n` : ''}---\n## Overview\n\n`;
+      `${pairs.length > 0 ? `${fieldsLines(pairs).join('\n')}\n` : ''}---\n${entryBody(body)}`;
     const changes = [{ from: null, to, content: Buffer.from(text, 'utf8'), before: null }];
     return finish({ bookRoot, store, lb, op: 'createEntry', args: { type, name, slug, status, ...(scope === 'series' ? { scope } : {}) }, changes, dryRun, withDiff: true, extra: { id, slug, type, path: to } });
   });

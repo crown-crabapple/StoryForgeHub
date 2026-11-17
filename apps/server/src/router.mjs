@@ -1382,7 +1382,8 @@ async function handleStructure(repository, match, body) {
     }
     // ---- M04-J02 Codex. `base_sha256` (optional) is the file as the author saw it: a different file on disk is a 409.
     case 'entry-create': {
-      const r = await repository.createEntry(bookId, { type: body.type, name: body.name, slug: body.slug, status: body.status, fields: body.fields, ...(body.where !== undefined ? { where: body.where } : {}), dryRun });
+      if (body.body !== undefined && typeof body.body !== 'string') return badRequest('body must be a string of Markdown');
+      const r = await repository.createEntry(bookId, { type: body.type, name: body.name, slug: body.slug, status: body.status, fields: body.fields, ...(body.body !== undefined ? { body: body.body } : {}), ...(body.where !== undefined ? { where: body.where } : {}), dryRun });
       return respond(r, created, structureBody);
     }
     case 'entry-fields': {

@@ -200,7 +200,7 @@
  *   setThreadFields(bookId: string, ref: string, args: { status?: string, setup?: string[], develop?: string[], payoff?: string[], characters?: string[], add?: Record<string, string[]>, remove?: Record<string, string[]>, dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
  *   updateThreadBody(bookId: string, ref: string, body: string, opts: { baseSha256: string }): Promise<WriteResult & { sha256?: string, current?: { sha256: string, body: string } }>,
  *   getEntryImage(bookId: string, ref: string): Promise<{ bytes: Buffer, contentType: string, sha256: string } | null>,
- *   createEntry(bookId: string, args: { type: string, name: string, slug?: string, status?: string, fields?: any, dryRun?: boolean }): Promise<StructureResult>,
+ *   createEntry(bookId: string, args: { type: string, name: string, slug?: string, status?: string, fields?: any, body?: string, dryRun?: boolean }): Promise<StructureResult>,
  *   setEntryFields(bookId: string, ref: string, args: { name?: string, status?: string, role?: string, aliases?: string[], fields?: any, related?: { to: string, as?: string }[], firstAppearance?: string | null, dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
  *   changeEntrySlug(bookId: string, ref: string, args: { slug: string, dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
  *   archiveEntry(bookId: string, ref: string, args?: { dryRun?: boolean, baseSha256?: string }): Promise<StructureResult>,
