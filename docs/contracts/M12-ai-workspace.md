@@ -257,7 +257,8 @@ Read tools (permission `read`; 9 new):
 | `codex_get_cast` | `chapter?` | The cast of each scene. |
 | `codex_knowledge_at` | `character`, `at?` | What a character knows by the end of a chapter. |
 | `codex_get_state_events` | `chapter?` | State events with chapter, subject, kind and value. |
-| `codex_get_tasks` | `status?`, `for?` | Tasks and counts. |
+| `codex_get_tasks` | `status?`, `for?` | Tasks and counts (no notes). |
+| `codex_get_task` | `task` | One task: fields, notes (the body) and targets. `GET /api/v1/books/:b/tasks/:task`, permission `read`. |
 | `codex_continuity_check` | `chapter?`, `cast?` | Findings, dismissed findings, stale dismissals. `cast` is `[{ entry, role }]` and needs `chapter`. |
 | `codex_get_context` | `chapter`, `budget?` | The context pack. |
 

@@ -13,7 +13,7 @@ A book whose author set no level is at `planner`.
 
 ## Advisor
 
-- Read: `codex_get_context`, `codex_get_doc`, `codex_list_docs`, `codex_get_ledger`, `codex_get_cast`, `codex_knowledge_at`, `codex_get_state_events`, `codex_get_tasks`, and the other read tools.
+- Read: `codex_get_context`, `codex_get_doc`, `codex_list_docs`, `codex_get_ledger`, `codex_get_cast`, `codex_knowledge_at`, `codex_get_state_events`, `codex_get_tasks`, `codex_get_task`, and the other read tools.
 - Check: `codex_continuity_check`, `codex_get_diagnostics`.
 - Write: `codex_propose_edit`, `codex_save_chapter`, `codex_save_entry` (all suggestions the author accepts), `codex_create_task`.
 - Show the chapter plan and outline in chat. Deliver the draft in chat.
@@ -26,6 +26,7 @@ Everything in Advisor, plus:
 
 - Plan (`plan`): `codex_save_scene_plan`, `codex_set_beats`, `codex_create_link`, and the other plan tools. Canvas tools need the `canvas` permission.
 - Workspace (`workspace`): `codex_setup_workspace`, `codex_save_doc`, `codex_append_doc`, `codex_lock_docs`.
+- Codex (`workspace`): `codex_create_entry` for a new character, place, faction, object or lore entry (seed or sketch). Change an existing entry only with `codex_save_entry` or `codex_propose_edit`.
 - Ledgers (`workspace`): `codex_save_ledger_item`, `codex_set_chapter_cast`, `codex_record_knowledge`, `codex_record_state_events`.
 - Findings and tasks (`workspace`): `codex_dismiss_finding`, `codex_restore_finding`, `codex_update_task`, `codex_complete_task`.
 - Log (`workspace`): `codex_log_writing`.

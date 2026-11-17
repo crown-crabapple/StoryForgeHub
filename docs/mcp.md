@@ -114,7 +114,7 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 | `codex_list_chapters` | A book's acts, chapters and scenes. | read |
 | `codex_get_chapter` | Every scene of one chapter, with body and sha256. Takes `chapter`, and `act` if the number repeats. | read |
 | `codex_get_scene` | One scene: metadata, front matter, sha256, body. | read |
-| `codex_list_entries` | Codex entries of a book; `type` keeps one kind. | read |
+| `codex_list_entries` | Codex entries of a book, and the book's codex `types` with their field labels; `type` keeps one kind. | read |
 | `codex_get_entry` | One codex entry by id or slug, with sha256 and body. | read |
 | `codex_search` | Text search over scenes and entries; `book` is optional, `limit` is 1 to 100 (default 20). | read |
 | `codex_get_diagnostics` | The problems StoryForge found in a book. | read |
@@ -138,7 +138,8 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 | `codex_get_cast` | The cast of each scene (pov, appears, mentioned); `chapter` keeps one chapter. | read |
 | `codex_knowledge_at` | What a `character` knows by the end of chapter `at` (all of it without `at`). | read |
 | `codex_get_state_events` | The state events (died, revived, destroyed, lost, found, holder, location); `chapter` keeps one chapter. | read |
-| `codex_get_tasks` | The revision tasks and counts; filter by `status` or `for` (`ai` or `author`). | read |
+| `codex_get_tasks` | The revision tasks and counts; filter by `status` or `for` (`ai` or `author`). The list leaves out each task's notes. | read |
+| `codex_get_task` | One task in full: its fields, its notes (the task's body: what to do, and the finding and evidence for a continuity or check task) and its targets. | read |
 | `codex_continuity_check` | The continuity findings, the dismissed ones and stale dismissals. `chapter` keeps one chapter; with `chapter` and `cast` (`[{ entry, role }]`) it also checks a planned cast. | read |
 | `codex_get_context` | The context pack for writing chapter `chapter`, trimmed to `budget` characters (default 24000). | read |
 | `codex_save_chapter` | Propose the whole new body of one scene (`scene`, `markdown`). | propose |
@@ -176,6 +177,7 @@ Names match the legacy StoryForgeHub `codex_*` tools wherever v2 has the same id
 | `codex_set_chapter_cast` | Set the whole cast of one scene (`scene`, `cast`: `[{ entry, role }]`). | workspace |
 | `codex_record_knowledge` | Record that a `character` learns a `fact` in a `chapter`. | workspace |
 | `codex_record_state_events` | Record state events of a `chapter` (`items`: `[{ subject, kind, value? }]`). | workspace |
+| `codex_create_entry` | Create a new codex entry (`type`, `name`, `slug?`, `status?`: `seed` or `sketch`, `fields?`, `body?` in Markdown). A new file in the book only; `type` must be one of the book's types; never `canon`. Existing entries stay proposal-only. | workspace |
 | `codex_create_task` | Create a task (`title`, `notes?`, `labels?`, `for?`). | workspace |
 | `codex_update_task` | Change a task's `status` and/or `for`. | workspace |
 | `codex_complete_task` | Mark a task done. | workspace |

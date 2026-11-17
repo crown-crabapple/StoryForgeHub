@@ -53,10 +53,10 @@ export function v1RouteOf(method, pathname) {
   if (c === 'scenes') return 'scene-create';
   if (c === 'chapters') return 'chapter-create';
   if (c === 'context') return 'context';
-  if (c === 'entries') return d === undefined ? 'entries' : 'entry';
+  if (c === 'entries') return d === undefined ? (method === 'POST' ? 'entry-create' : 'entries') : 'entry';
   if (c === 'ledger') return method === 'GET' ? 'ledger' : d === 'threads' && parts[6] === undefined ? 'ledger-thread-create' : 'ledger-thread-update';
   if (c === 'cast' || c === 'knowledge' || c === 'state-events') return method === 'GET' ? c : c === 'knowledge' ? 'knowledge-record' : 'state-record';
-  if (c === 'tasks') return method === 'GET' ? 'tasks' : d === undefined ? 'task-create' : 'task-status';
+  if (c === 'tasks') return method === 'GET' ? (d === undefined ? 'tasks' : 'task') : d === undefined ? 'task-create' : 'task-status';
   if (c === 'activity') return 'activity-ai-log';
   if (c === 'timeline' && method === 'POST') return 'event-scenes';
   if (c === 'codex' && method === 'POST') return 'entry-first-appearance';
@@ -197,6 +197,12 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     if (c === 'codex' && method === 'POST') {
       return done(await memberWrite(bk, 'POST', ['entries', /** @type {string} */ (parts[6]), 'fields'], FIRST_APPEARANCE_ROUTES, undefined, { shape: (b) => pick(b, ['first_appearance', 'base_sha256']) }), `${target}/codex`);
     }
+    // A new Codex entry: the app's own entry-create route, a new file in this book only (never the series' shared codex). Status seed (default) or sketch: only the author makes an
+    // entry canon. The type must be one the book already has (the `types` of GET /entries), so an AI cannot invent a new codex folder. Changing an entry afterwards stays proposal-only.
+    if (c === 'entries' && method === 'POST' && d2 === undefined) {
+      const types = (await repository.getCodexTypes(bk.id)) ?? [];
+      return done(await memberWrite(bk, 'POST', ['entries'], ['entry-create'], (b) => entryGuard(b, types), { shape: (b) => ({ ...pick(b, ['type', 'name', 'slug', 'fields', 'body', 'dryRun']), status: b.status ?? 'seed' }) }), `${target}/codex`);
+    }
     if (c === 'cast') {
       const chapter = params.get('chapter');
       if (chapter !== null && !/^[0-9]{1,6}$/.test(chapter)) return done(badRequest('chapter must be a chapter number'));
@@ -222,6 +228,12 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     }
     if (c === 'tasks') {
       if (method === 'POST') return done(await memberWrite(bk, 'POST', d2 === undefined ? ['tasks'] : ['tasks', d2, 'status'], WORKSPACE_ROUTES));
+      if (d2 !== undefined) {
+        // one task with its notes (the Markdown body of the task file) and where each target is now
+        if (parts[6] !== undefined) return done(NOT_FOUND);
+        const one = await repository.getTask(bk.id, d2);
+        return done(one.ok ? { status: 200, body: planOut({ task: one.task, notes: one.notes, targets: one.targets }) } : NOT_FOUND);
+      }
       const status = params.get('status');
       const forWho = params.get('for');
       if (status !== null && !['open', 'doing', 'done', 'dropped'].includes(status)) return done(badRequest('status must be open, doing, done or dropped'));
@@ -248,7 +260,8 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     if (c === 'entries' && d2 === undefined) {
       const list = await repository.listCodexEntries(bk.id);
       if (!list) return done(NOT_FOUND);
-      return done({ status: 200, body: { entries: list.entries.map((/** @type {any} */ e) => ({ id: e.id, slug: e.slug, type: e.type, name: e.name, status: e.status, role: e.role ?? null, aliases: e.aliases ?? [], archived: Boolean(e.archived), path: e.path })) } });
+      const types = ((await repository.getCodexTypes(bk.id)) ?? []).map((/** @type {any} */ x) => ({ type: x.type, name: x.name, fields: x.fields ?? [] }));
+      return done({ status: 200, body: { types, entries: list.entries.map((/** @type {any} */ e) => ({ id: e.id, slug: e.slug, type: e.type, name: e.name, status: e.status, role: e.role ?? null, aliases: e.aliases ?? [], archived: Boolean(e.archived), path: e.path })) } });
     }
     if (c === 'entries') {
       const e = await repository.getEntry(bk.id, d2);
@@ -405,6 +418,18 @@ export async function handlePluginRequest({ method, pathname, params, bearer, re
     const result = await asActor(() => handleWrite(repository, match, sent, state, { principal: { kind: 'plugin', id: grant.id, display_name: grant.plugin } }));
     if (hooks.after && result.status >= 200 && result.status < 300) await hooks.after(/** @type {any} */ (result), /** @type {Record<string, unknown>} */ (sent));
     return result;
+  }
+
+  /**
+   * POST /entries: refuse what an AI may not do before the app route runs. @param {Record<string, unknown>} b @param {any[]} types the book's codex types
+   * @returns {{ status: number, body: unknown } | null}
+   */
+  function entryGuard(b, types) {
+    if (b.status !== undefined && b.status !== 'seed' && b.status !== 'sketch') return badRequest('status must be seed or sketch; only the author makes an entry canon', 'REFUSED_STATUS');
+    if (b.where !== undefined && b.where !== 'book') return badRequest('a plugin creates entries in the book only, not in the series codex', 'REFUSED_SCOPE');
+    if (typeof b.type !== 'string' || !types.some((x) => x.type === b.type)) return badRequest(`type must be one of the book's codex types: ${types.map((x) => x.type).join(', ')}`, 'REFUSED_TYPE');
+    if (b.body !== undefined && (typeof b.body !== 'string' || b.body.length > MAX_TEXT)) return badRequest('body must be a string of Markdown');
+    return null;
   }
 
   /**

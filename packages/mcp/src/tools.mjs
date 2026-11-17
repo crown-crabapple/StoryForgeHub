@@ -2,7 +2,8 @@
 // plugin API /api/v1 only, through the `api` helper the protocol layer builds over the server's `call`. Nothing here touches a file or the network, and no tool can change
 // prose or a canonical file: the propose tools create a suggestion the author accepts or rejects in StoryForge. The one exception is the canvas tools (permission 'canvas'),
 // which change only planning/canvases/*.canvas files, and the plan tools (permission 'plan', M11), which write only Story Planner files under planning/ through the app's own
-// planner routes (the author can Undo each change), and the workspace tools (permission 'workspace', M12), which write only workspace docs under planning/ the same way.
+// planner routes (the author can Undo each change), and the workspace tools (permission 'workspace', M12), which write only workspace docs under planning/ the same way, plus
+// codex_create_entry, which adds a NEW seed or sketch Codex entry file and never changes an existing one.
 // plugin-policy.mjs still decides every underlying request.
 
 /** A failure whose message is safe to show the model (becomes an isError tool result). */
@@ -26,6 +27,7 @@ const BOOK_DOC = 'The book is its slug or its id (see codex_list_books).';
 const CANVAS_NOTE = 'This changed the canvas file directly; it is planning material, not prose.';
 const WORKSPACE_NOTE = 'This changed the workspace files directly (a workspace doc, ledger, cast, state, task or writing log; planning material, not prose); the author can Undo it in StoryForge.';
 const PLAN_NOTE = 'This changed the planning file directly (planning material, not prose); the author can Undo it in StoryForge.';
+const ENTRY_NOTE = 'The new entry is in the Codex at once (AI Activity records it); the author can edit, promote or archive it in StoryForge.';
 const NOTE = 'Nothing was changed. The author reviews this suggestion in StoryForge and accepts or rejects it.';
 const seg = (/** @type {string} */ s) => encodeURIComponent(s);
 const bookPath = (/** @type {string} */ book) => `/api/v1/books/${seg(book)}`;
@@ -389,7 +391,7 @@ const entryRef = (/** @type {string} */ words) => ({ type: 'string', minLength: 
 const taskRef = { type: 'string', minLength: 1, maxLength: 200, description: 'The task id or slug (see codex_get_tasks).' };
 const sceneIdList = (/** @type {string} */ words) => ({ type: 'array', items: { type: 'string' }, description: words });
 
-/** One workspace read: GET /api/v1/books/:b/<path>[?query]. @param {{ name: string, title: string, text: string, props?: Record<string, any>, required?: string[], path: string, query?: (args: Record<string, any>) => Record<string, string> }} d @returns {Tool} */
+/** One workspace read: GET /api/v1/books/:b/<path>[?query]. @param {{ name: string, title: string, text: string, props?: Record<string, any>, required?: string[], path: string | ((args: Record<string, any>) => string), query?: (args: Record<string, any>) => Record<string, string> }} d @returns {Tool} */
 const wsRead = ({ name, title, text, props = {}, required = [], path, query = () => ({}) }) => ({
   name,
   title,
@@ -398,7 +400,7 @@ const wsRead = ({ name, title, text, props = {}, required = [], path, query = ()
   inputSchema: schema({ book: bookArg, ...props }, ['book', ...required]),
   annotations: READ,
   async run(args, api) {
-    return result(await api.get(`${bookPath(args.book)}/${path}`, query(args)));
+    return result(await api.get(`${bookPath(args.book)}/${typeof path === 'function' ? path(args) : path}`, query(args)));
   },
 });
 
@@ -452,10 +454,18 @@ const WORKSPACE_TOOLS = [
   wsRead({
     name: 'codex_get_tasks',
     title: 'Read the tasks',
-    text: 'Lists the revision tasks with their status and who they are for (ai or author), and the counts. Filter by status or by for.',
+    text: 'Lists the revision tasks with their status and who they are for (ai or author), and the counts. Filter by status or by for. The list has no notes: read a task with codex_get_task for what it asks.',
     props: { status: { type: 'string', enum: TASK_STATUS_ENUM }, for: { type: 'string', enum: FOR_ENUM, description: 'Only tasks for the AI or for the author.' } },
     path: 'tasks',
     query: (a) => ({ ...(a.status !== undefined ? { status: a.status } : {}), ...(a.for !== undefined ? { for: a.for } : {}) }),
+  }),
+  wsRead({
+    name: 'codex_get_task',
+    title: 'Read one task',
+    text: 'Reads one task in full: its fields, its notes (the body of the task: what to do, and for a continuity or check task the finding and its evidence) and its targets (each scene or entry it points at, whether it is still found and the text to select). Read a task before doing it.',
+    props: { task: taskRef },
+    required: ['task'],
+    path: (a) => `tasks/${seg(a.task)}`,
   }),
   {
     name: 'codex_save_ledger_item',
@@ -821,13 +831,13 @@ export const TOOLS = [
   {
     name: 'codex_list_entries',
     title: 'List codex entries',
-    description: `Lists the codex entries of a book (characters, places, items and so on): id, slug, type, name, status, role and aliases. Pass type to keep one kind. ${BOOK_DOC}`,
+    description: `Lists the codex entries of a book (characters, places, items and so on): id, slug, type, name, status, role and aliases, and the book's codex types with their field labels (what codex_create_entry accepts). Pass type to keep one kind. ${BOOK_DOC}`,
     need: 'read',
     inputSchema: schema({ book: bookArg, type: { type: 'string', minLength: 1, maxLength: 100, description: 'Only entries of this type, for example "character".' } }, ['book']),
     annotations: READ,
     async run(args, api) {
-      const { entries } = await api.get(`${bookPath(args.book)}/entries`);
-      return result({ entries: args.type === undefined ? entries : entries.filter((/** @type {any} */ e) => e.type === args.type) });
+      const { entries, types } = await api.get(`${bookPath(args.book)}/entries`);
+      return result({ entries: args.type === undefined ? entries : entries.filter((/** @type {any} */ e) => e.type === args.type), types: types ?? [] });
     },
   },
   {
@@ -984,6 +994,26 @@ export const TOOLS = [
         id = e.id;
       }
       return propose(api, args.book, { target: id, text: args.markdown, ...proposalExtras(args) });
+    },
+  },
+  {
+    name: 'codex_create_entry',
+    title: 'Create a codex entry',
+    description: `Creates a NEW codex entry (a character, location, faction, object, lore item or a custom type the book already has) as a new file; nothing existing is changed. type must be one of the book's codex types (the "types" codex_list_entries returns, with each type's field labels). status is seed (default) or sketch; only the author makes an entry canon. body is the entry's Markdown (sections as "## Heading"); left out, the entry starts with an empty "## Overview". fields fills the type's field labels. The slug is made from the name unless given; a slug already used by an entry, thread or event is refused (SLUG_TAKEN), so check codex_list_entries first. To change an entry afterwards use codex_save_entry or codex_propose_edit (a suggestion the author reviews). ${ENTRY_NOTE} ${BOOK_DOC}`,
+    need: 'workspace',
+    inputSchema: schema({
+      book: bookArg,
+      type: { type: 'string', minLength: 1, maxLength: 40, pattern: '^[a-z]+$', description: 'The codex type, for example "character", "location", "faction", "object" or "lore".' },
+      name: { type: 'string', minLength: 1, maxLength: 300, description: 'The entry name.' },
+      slug: { type: 'string', minLength: 1, maxLength: 60, pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', description: 'Optional; made from the name when left out.' },
+      status: { type: 'string', enum: ['seed', 'sketch'], description: 'seed (default: an idea, barely described) or sketch (described, not yet settled).' },
+      fields: { type: 'object', additionalProperties: { type: ['string', 'number', 'boolean'] }, description: 'Field values by label, for example { "Age": "34", "Occupation": "Ferry pilot" }.' },
+      body: { type: 'string', description: 'The entry body in Markdown, for example "## Overview\\n\\n...\\n\\n## Appearance\\n\\n...".' },
+    }, ['book', 'type', 'name']),
+    annotations: PLAN,
+    async run(args, api) {
+      const r = await api.post(`${bookPath(args.book)}/entries`, given(args, ['type', 'name', 'slug', 'status', 'fields', 'body']));
+      return result({ id: r.id, slug: r.slug, type: r.type, path: r.path ?? null, opId: r.opId ?? null, note: ENTRY_NOTE });
     },
   },
   {
