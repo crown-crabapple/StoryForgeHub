@@ -4140,6 +4140,28 @@ label.form-check {
   cursor: help;
 }
 
+/* ---------- checker findings (M13-J01): wavy for error, dotted for warning and info; colours follow the theme ---------- */
+
+.cm-finding {
+  text-decoration: underline dotted var(--warning);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.cm-finding-warning {
+  text-decoration-color: var(--warning);
+}
+.cm-finding-info {
+  text-decoration-color: var(--accent);
+}
+.cm-finding-error {
+  text-decoration-style: wavy;
+  text-decoration-color: var(--danger);
+}
+.cm-finding-advisory.cm-finding-error {
+  text-decoration-style: dotted;
+  text-decoration-color: var(--warning);
+}
+
 /* ---------- inline suggestions: struck original lines and a card with the proposal ---------- */
 
 .cm-line.cm-sugg-del {

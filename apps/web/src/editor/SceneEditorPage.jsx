@@ -29,6 +29,7 @@ import { ConflictPanel } from './ConflictPanel.jsx';
 import { StalePanel } from './StalePanel.jsx';
 import { setSuggestionMarks, suggestionMarks } from './suggestion-marks.js';
 import { continuityMarks, setContinuityMarks } from './continuity-marks.js';
+import { findingMarks } from './finding-marks.js';
 import { createDraftStore, draftKey } from './draft-store.js';
 import { RESTORED_NOTICE, decideRestore, getOfflineQueue } from './offline-queue.js';
 import { decoratedMarkdown, marksExtension, setMarks } from './extensions.js';
@@ -267,6 +268,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       keymap.of([...historyKeymap, ...defaultKeymap]),
       decoratedMarkdown(),
       continuityMarks(),
+      findingMarks(),
       suggestionMarks((id, hunkId, decision) => onDecideRef.current(id, decision, hunkId)),
       marksExtension(readShowMarks()),
       placeholder('Start writing…'),
