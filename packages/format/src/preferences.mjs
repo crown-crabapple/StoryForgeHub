@@ -15,7 +15,7 @@ export const DEFAULT_AI_LEVEL = 'planner';
 export const aiLevelReaches = (level, min) => AI_LEVELS.indexOf(AI_LEVELS.includes(level) ? level : DEFAULT_AI_LEVEL) >= AI_LEVELS.indexOf(min);
 
 /** Keys where the project outranks the person: built-in < profile < library < book. */
-export const PROJECT_KEYS = ['modules', 'labels', 'export', 'ai'];
+export const PROJECT_KEYS = ['modules', 'labels', 'export', 'ai', 'checks'];
 /** Keys where the person at the keyboard wins: built-in < library < book < profile. */
 export const APPEARANCE_KEYS = ['theme', 'typography', 'layout', 'shortcuts'];
 /** Every key a `preferences` map may hold. */
@@ -42,6 +42,13 @@ export const BUILTIN = Object.freeze({
   labels: Object.freeze({}),
   export: Object.freeze({}),
   ai: Object.freeze({ level: DEFAULT_AI_LEVEL }),
+  // M13-J01: optional local checks. Nothing runs until the author turns it on.
+  checks: Object.freeze({
+    version: 1,
+    grammar: Object.freeze({ enabled: false, language: 'en' }),
+    style: Object.freeze({ enabled: false }),
+    epub: Object.freeze({ validate: false }),
+  }),
   theme: 'dark',
   typography: Object.freeze({ family: 'serif', size: 18, lineHeight: 1.7, paragraphSpacing: 0, letterSpacing: 0, measure: 72 }),
   layout: Object.freeze({ name: 'Writing' }),
@@ -78,6 +85,26 @@ export function preferenceProblems(key, value) {
         } else bad(`${key}.${k}`, `unknown ai setting ${k}`);
       }
       return out;
+    case 'checks': {
+      if (!isMap(value)) return [{ location: key, message: 'checks must be a mapping (version, grammar, style, epub)' }];
+      const flags = { grammar: ['enabled', 'language'], style: ['enabled'], epub: ['validate'] };
+      for (const [k, v] of Object.entries(value)) {
+        if (k === 'version') {
+          if (v !== 1) bad(`${key}.${k}`, 'checks.version must be 1: this book was saved by a newer StoryForge');
+        } else if (Object.hasOwn(flags, k)) {
+          if (!isMap(v)) bad(`${key}.${k}`, `${k} must be a mapping (${flags[k].join(', ')})`);
+          else {
+            for (const [s, sv] of Object.entries(v)) {
+              if (!flags[k].includes(s)) bad(`${key}.${k}.${s}`, `unknown ${k} setting ${s}`);
+              else if (s === 'language') {
+                if (sv !== 'en') bad(`${key}.${k}.${s}`, 'language must be en (the only language supported)');
+              } else if (typeof sv !== 'boolean') bad(`${key}.${k}.${s}`, `${s} must be true or false`);
+            }
+          }
+        } else bad(`${key}.${k}`, `unknown checks setting ${k}`);
+      }
+      return out;
+    }
     case 'labels':
     case 'export':
       return isMap(value) ? [] : [{ location: key, message: `${key} must be a mapping` }];

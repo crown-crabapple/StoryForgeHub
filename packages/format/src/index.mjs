@@ -206,6 +206,10 @@ export { STATE_EVENTS, CAST_ROLES, FINGERPRINT_RE, SETTINGS_SEVERITIES } from '.
 
 // M07-J04: preferences (the layers and their precedence) and custom prompt components / workflows. Additive within v1.
 export * from './preferences.mjs';
+
+// M13-J01: findings, validation results, capability states, prose projection and offset mapping. Pure; copied verbatim into the web app.
+export * from './findings.mjs';
+export * from './prose-map.mjs';
 export { PROMPT_INPUTS, PROMPT_TASKS, INPUT_FIELDS, PROMPT_SCHEMA, WORKFLOW_SCHEMA, placeholdersOf, parsePromptFile, loadPrompts, renderPrompt } from './prompts.mjs';
 
 // M08-J02: plugin manifests (_plugins/<id>/plugin.md). Additive within v1.
