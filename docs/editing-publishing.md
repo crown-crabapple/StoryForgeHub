@@ -10,7 +10,7 @@ Versions are the latest published when this table was written (2026-11-18, from 
 |---|---|---|---|---|---|---|
 | Harper (`harper.js`), grammar | J02 | 3.2.0 (pinned) | Apache-2.0 (its dependency `fflate` is MIT) | none beyond the browser; runs in a web worker | JS and a WASM file (about 20 MB, 8.4 MB gzip) in the web build; the WASM loads only when grammar checks are on for the book | yes |
 | textlint (`@textlint/kernel`, `@textlint/textlint-plugin-text`), style review | J03 | 16.1.1 (pinned; kernel and text plugin only) | MIT | Node.js, on the server (`packages/style`) | production dependency; the rules are StoryForge's own, in this repository (no `textlint-rule-*` packages, no dynamic loading) | yes |
-| Paged.js (`pagedjs`), book interior preview | J05 | 0.4.3 | MIT | the browser | to confirm in J05 | yes |
+| Paged.js (`pagedjs`), book interior preview | J05 | 0.4.3 (pinned) | MIT (its bundled dependencies are MIT, ISC, CC0-1.0 and BSD-3-Clause) | the browser | production dependency of `apps/server`; only `dist/paged.js` is served by the StoryForge server (`/interior-assets/paged.js`); preview only in J05, the matching PDF is J06 | yes |
 | Browser renderer for PDF | J06 | to confirm in J06: `playwright-core` 1.65.1 or `puppeteer-core` 25.18.1 | Apache-2.0 (both) | an installed Chromium | optional dependency the author installs | yes |
 | EPUBCheck (`w3c/epubcheck`), EPUB validation | J04 | 5.4.0 (released 2026-09-15; tested with 5.4.0, another 5.x runs with a note, any other major version is `unavailable`) | BSD-3-Clause (its distribution also holds Saxon-HE MPL-2.0, ICU4J Unicode-3.0 and W3C/SAX components) | Java 8 or newer | author-installed, not bundled and never downloaded by StoryForge: the licences of its bundled components are outside StoryForge's production allow-list and the zip is 33 MB. the real EPUBCheck tests run only when `STORYFORGE_EPUBCHECK_JAR` is set and are skipped otherwise | not applicable (not shipped) |
 
@@ -135,6 +135,27 @@ Each check builds the EPUB once and checks those exact bytes. A later export nee
 - You install and update Java and EPUBCheck. StoryForge only finds and runs them.
 - Messages link to a scene only when EPUBCheck's line falls inside one scene of that chapter file; otherwise they link to the chapter.
 - Results are kept in memory until the next check of the book or 30 minutes; they are not saved in the book.
+
+## Book interior preview (experimental)
+
+The interior preview lays your manuscript out as the inside of a printed novel, in your browser, so you can see pages, margins, running heads and chapter openings before you decide anything. It is a preview only: it makes no file, and your existing PDF export is unchanged.
+
+1. Open **Export** and choose **Book interior (experimental)**. The page opens at `/books/<id>/interior`; it is not a tab.
+2. On the left, set the trim size (6 x 9 or 5.5 x 8.5 inches), the font (Literata or Inter), the font size and line spacing, the four margins (the inside margin is on the spine side of every page), where chapters start (always on a right-hand page, or on the next page), the scene break, running heads, page numbers, and the text of the copyright page, a dedication and an About the author page. Changes are saved to the book (`preferences.interior` in `book.md`) 800 ms after you stop typing.
+3. Choose **Refresh preview**. The page lays the book out with Paged.js, shows the pages in a frame, and says "142 pages in 3.1 s" (or why the layout failed).
+4. Nothing re-renders by itself. When the book or the settings no longer match the preview, **Preview out of date** shows; the page asks every 5 seconds while it is visible and after each save.
+
+The **Report** lists the page count and words; Markdown the preview flattens or drops (images, tables, footnotes, lists, block quotes and code) with a link to each scene; characters your chosen font does not have, which show in a fallback font; and what the layout check found on the pages, with page numbers: clipped text, headings left at the foot of a page, single lines at the top or bottom of a page (widows and orphans, listed for review, not prevented) and any difference between the text on the pages and the text of the book.
+
+### Limits
+
+- Experimental. A preview of a printed interior; not print-ready, not checked by any printer or store, and no PDF/X.
+- One template (a novel). No images, tables, footnotes, lists or block quotes as such: they are flattened or left out, and reported.
+- Widows and orphans are listed for review. Paged.js 0.4.3 does not apply `widows` or `orphans`, so they are not prevented.
+- Long books take time to lay out in the browser, and all the pages stay in memory.
+- Whether a character is in the font is judged from the font's declared character ranges, which is an approximation.
+- The preview is made on the server from the same manuscript as the other exports, kept in memory for 30 minutes (the latest five per book) and never saved in the book. It is never shared through a share link. The preview page runs only StoryForge's own scripts and cannot reach the network.
+- The matching PDF is a later job (J06).
 
 ## No downloads at run time
 

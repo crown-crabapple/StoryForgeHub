@@ -10,6 +10,7 @@ import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
 import { handleIntegrationsRead, handleIntegrationsWrite } from './plugin-admin.mjs';
 import { checkModule, handlePreferencesRead, handleProfileWrite, styleChecksOf } from './preferences.mjs';
 import { handleEpubChecksWrite, handleToolsRead, handleToolsWrite, handleValidationCancel, handleValidationRead, handleValidationStart } from './epub-routes.mjs';
+import { handleInteriorFingerprint, handleInteriorLayout, handleInteriorPreview, handleInteriorSnapshot } from './interior-routes.mjs';
 import { styleScans } from './style-scans.mjs';
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
@@ -49,7 +50,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   const [api, a, b, c, d, e, f, ...rest] = /** @type {string[]} */ (parts);
   if (api !== 'api' || rest.length > 0) return NOT_FOUND;
   // only the revisions routes (scenes/:s/revisions[/:file]), an entry image and a synopsis extract (synopses/:slug/extract) are longer than five segments
-  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image') || (c === 'synopses' && d !== undefined && e === 'extract' && f === undefined) || (c === 'export' && d === 'planning' && e === undefined) || (c === 'export' && d === 'validations' && e !== undefined && (f === undefined || f === 'file' || f === 'report')) || (c === 'checks' && d === 'style' && ((e === 'dismissals' && f === undefined) || (e === 'scans' && f !== undefined)))))) return NOT_FOUND;
+  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image') || (c === 'synopses' && d !== undefined && e === 'extract' && f === undefined) || (c === 'export' && d === 'planning' && e === undefined) || (c === 'export' && d === 'validations' && e !== undefined && (f === undefined || f === 'file' || f === 'report')) || (c === 'interior' && d === 'snapshots' && e !== undefined && f === 'preview.html') || (c === 'checks' && d === 'style' && ((e === 'dismissals' && f === undefined) || (e === 'scans' && f !== undefined)))))) return NOT_FOUND;
 
   if (a === 'health' && b === undefined) {
     const info = await repository.libraryInfo();
@@ -110,6 +111,9 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'export' && d === 'validations' && e !== undefined && f === undefined) return handleValidationRead(state, b, e, 'status', download);
     if (c === 'export' && d === 'validations' && e !== undefined && (f === 'file' || f === 'report')) return handleValidationRead(state, b, e, f, download);
     if (c === 'export' && d === 'planning' && e === undefined) return handlePlanningExport(repository, b);
+    // M13-J05: the Book interior preview: the fingerprint of the current interior, and a snapshot's preview document (in memory)
+    if (c === 'interior' && d === 'fingerprint' && e === undefined) return handleInteriorFingerprint(repository, state, b);
+    if (c === 'interior' && d === 'snapshots' && e !== undefined && f === 'preview.html') return handleInteriorPreview(state, b, e);
     if (c === 'backup' && d === undefined) return handleBackup(repository, b, params);
     if (c === 'diagnostics' && d === undefined) {
       return { status: 200, body: await repository.getDiagnostics(b) };
@@ -759,6 +763,12 @@ export function matchWriteRoute(method, pathname) {
     if (method === 'POST' && e !== undefined && f === 'cancel' && g === undefined) return { route: 'validation-cancel', bookId: b, validationId: e };
     return null;
   }
+  // M13-J05: the interior layout settings (preferences.interior in book.md: write) and snapshots of the rendered interior (memory only: read)
+  if (c === 'interior') {
+    if (method === 'POST' && d === 'layout' && e === undefined) return { route: 'interior-layout', bookId: b };
+    if (method === 'POST' && d === 'snapshots' && e === undefined) return { route: 'interior-snapshot', bookId: b };
+    return null;
+  }
   // M13-J03: style checks settings, dismissals (one Markdown file each), checking one scene's text, scans (in memory, read-only)
   if (c === 'checks' && d === 'style') {
     if (method === 'POST' && e === undefined) return { route: 'book-checks-style', bookId: b };
@@ -1359,6 +1369,11 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
     // ---- M13-J04 EPUB validation: the remembered choice (book.md), and the jobs (memory only; they write nothing into the book)
     case 'book-checks-epub':
       return handleEpubChecksWrite(repository, bookId, body);
+    // ---- M13-J05 Book interior: the layout (book.md), and snapshots (memory only; they write nothing into the book)
+    case 'interior-layout':
+      return handleInteriorLayout(repository, bookId, body);
+    case 'interior-snapshot':
+      return handleInteriorSnapshot(repository, state, bookId, body);
     case 'validation-start':
       return handleValidationStart(repository, state, bookId, body);
     case 'validation-cancel':

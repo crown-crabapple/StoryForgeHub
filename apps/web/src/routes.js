@@ -62,7 +62,7 @@ export function tabHref(bookId, tab) {
 /**
  * @param {string} pathname
  * @param {string} [search]
- * @returns {{ name: 'library' } | { name: 'settings' } | { name: 'members' } | { name: 'book', bookId: string, sceneId: string | null, file: string | null } | { name: 'tab', bookId: string, tab: string } | { name: 'notfound' }}
+ * @returns {{ name: 'library' } | { name: 'settings' } | { name: 'members' } | { name: 'book', bookId: string, sceneId: string | null, file: string | null } | { name: 'tab', bookId: string, tab: string } | { name: 'interior', bookId: string } | { name: 'notfound' }}
  */
 export function parseRoute(pathname, search = '') {
   if (pathname === '/' || pathname === '') return { name: 'library' };
@@ -80,6 +80,7 @@ export function parseRoute(pathname, search = '') {
     const params = new URLSearchParams(search);
     return { name: 'book', bookId, sceneId: params.get('scene'), file: params.get('file') };
   }
+  if (m[2] === 'interior') return { name: 'interior', bookId }; // M13-J05: a full page (Export > Book interior), not a tab
   if (PLACEHOLDER_TABS.includes(m[2])) return { name: 'tab', bookId, tab: m[2] };
   if (Object.hasOwn(TAB_ALIASES, m[2])) return { name: 'tab', bookId, tab: TAB_ALIASES[m[2]] }; // the old address; App replaces the URL (redirectFor)
   return { name: 'notfound' };

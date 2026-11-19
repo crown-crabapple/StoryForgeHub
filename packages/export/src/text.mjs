@@ -234,6 +234,21 @@ export const xmlEscape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').r
 /** Characters XML 1.0 cannot hold are dropped. @param {string} s */
 export const xmlSafe = (s) => Array.from(s).filter((ch) => { const c = /** @type {number} */ (ch.codePointAt(0)); return !(c < 0x20 && c !== 0x09 && c !== 0x0a && c !== 0x0d) && c !== 0xfffe && c !== 0xffff; }).join('');
 
+/**
+ * Runs as escaped inline HTML (`<em>`, `<strong>`; nothing else ever reaches the output). Shared by the EPUB and the book interior.
+ * @param {Run[]} runs
+ */
+export function runsHtml(runs) {
+  return runs
+    .map((r) => {
+      let h = xmlEscape(xmlSafe(r.text));
+      if (r.em) h = `<em>${h}</em>`;
+      if (r.strong) h = `<strong>${h}</strong>`;
+      return h;
+    })
+    .join('');
+}
+
 /** @param {string} s */
 export function xmlUnescape(s) {
   return s

@@ -16,7 +16,7 @@ import { checkModule, moduleOn, receiptsGate } from './preferences.mjs';
 import { RESTORE_FOLDER_RE, handleApi, handleRestore, handleUpload, handleWrite, isApiPath, matchWriteRoute } from './router.mjs';
 import { handleSharedRead, handleSharedWrite, matchSharedRoute } from './shared-routes.mjs';
 import { hasRestoreHeaders, hasUploadHeaders, hasWriteHeaders, isRequestAllowed } from './security.mjs';
-import { serveStatic } from './static.mjs';
+import { serveInteriorAsset, serveStatic } from './static.mjs';
 import { createWebhookEvents } from './webhook-events.mjs';
 
 const JSON_TYPE = 'application/json; charset=utf-8';
@@ -474,10 +474,11 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
         }
         return sendJson(res, status, body);
       }
-      const file = await serveStatic(webRoot, pathname);
+      // M13-J05: the Book interior preview's scripts and fonts come from a fixed allow-list, never from the web root
+      const file = (pathname === '/interior-assets' || pathname.startsWith('/interior-assets/')) ? await serveInteriorAsset(pathname) : await serveStatic(webRoot, pathname);
       // the OAuth consent page is never shown inside another site's frame (clickjacking an Allow); personal mode has no SameSite cookie to stop that on its own
       const frame = pathname === '/oauth/authorize' ? { 'x-frame-options': 'DENY', 'content-security-policy': "frame-ancestors 'none'", 'cache-control': 'no-store' } : {};
-      res.writeHead(file.status, { 'content-type': file.type, 'content-length': Buffer.byteLength(file.body), ...frame });
+      res.writeHead(file.status, { 'content-type': file.type, 'content-length': Buffer.byteLength(file.body), ...('headers' in file ? file.headers : {}), ...frame });
       return res.end(file.body);
     } catch {
       if (!res.headersSent) return sendJson(res, 500, { error: 'internal' });

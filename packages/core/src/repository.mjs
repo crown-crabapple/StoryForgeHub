@@ -193,6 +193,7 @@
  *   setGrammarChecks(bookId: string, patch: { enabled?: boolean, dialect?: string, addWords?: string[], removeWords?: string[], disableRules?: string[], enableRules?: string[] }): Promise<WriteResult & { grammar?: Record<string, any> }>,  (M13-J02: preferences.checks.grammar in book.md)
  *   setStyleChecks(bookId: string, patch: { enabled?: boolean, rules?: Record<string, Record<string, any>> }): Promise<WriteResult & { style?: Record<string, any> }>,  (M13-J03: preferences.checks.style in book.md)
  *   setEpubChecks(bookId: string, patch: { validate: boolean }): Promise<WriteResult & { epub?: Record<string, any> }>,  (M13-J04: preferences.checks.epub.validate in book.md)
+ *   setInteriorLayout(bookId: string, patch: Record<string, any>): Promise<WriteResult & { interior?: Record<string, any> }>,  (M13-J05: preferences.interior in book.md; shallow merge, margins/frontMatter/backMatter replace as wholes)
  *   listAiActivity(bookId: string, opts?: { limit?: number }): Promise<WriteResult & { items?: { opId: string, at: string, actor: { kind: string, id: string, name: string }, op: string, summary: string, files: string[], undone: boolean, undoable: boolean }[] }>,  (M12: what plugin tokens changed, newest first)
  *   listRevisions(bookId: string, sceneId: string): Promise<WriteResult & { revisions?: any[] }>,
  *   getRevision(bookId: string, sceneId: string, file: string): Promise<WriteResult & { revision?: any }>,

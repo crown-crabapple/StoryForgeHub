@@ -12,6 +12,7 @@ import { InsightsView } from './insights/InsightsView.jsx';
 import { TasksView } from './tasks/TasksView.jsx';
 import { WorkspaceView } from './workspace/WorkspaceView.jsx';
 import { StyleChecksView } from './style/StyleChecksView.jsx';
+import { InteriorView } from './interior/InteriorView.jsx';
 import { TimerProvider } from './writing/TimerProvider.jsx';
 import { useApi } from './api.js';
 import { SettingsView } from './ai/SettingsView.jsx';
@@ -96,6 +97,11 @@ function Routes() {
   else if (route.name === 'book') {
     bookId = route.bookId;
     view = <BookView bookId={route.bookId} sceneId={route.sceneId} file={route.file} />;
+  } else if (route.name === 'interior') {
+    // M13-J05: the Book interior preview is a full page of the book, not a tab
+    bookId = route.bookId;
+    tab = 'interior';
+    view = <InteriorView key={route.bookId} bookId={route.bookId} />;
   } else if (route.name === 'tab') {
     bookId = route.bookId;
     tab = route.tab;

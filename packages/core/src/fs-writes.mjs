@@ -1,7 +1,7 @@
 // FsRepository write methods. No filesystem access here: every change goes through
 // @storyforge/store (the single writer) or @storyforge/manuscript (which uses the store).
 import path from 'node:path';
-import { AI_LEVELS, GRAMMAR_DIALECTS, GRAMMAR_RULE_RE, MAX_GRAMMAR_WORDS, STYLE_RULE_IDS, extractDocs, isGrammarWord, preferenceProblems, validate } from '@storyforge/format';
+import { AI_LEVELS, GRAMMAR_DIALECTS, GRAMMAR_RULE_RE, INTERIOR_DEFAULTS, MAX_GRAMMAR_WORDS, STYLE_RULE_IDS, extractDocs, isGrammarWord, preferenceProblems, validate } from '@storyforge/format';
 import { isMap, parseDocument } from 'yaml';
 import {
   archiveArc,
@@ -354,6 +354,54 @@ export function withEpubChecks(bytes, patch) {
   const text = doc.toString({ lineWidth: 0 });
   const buf = Buffer.concat([Buffer.from(head.slice(0, firstNl + 1) + (head.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text) + rest.slice(close), 'utf8'), bytes.subarray(end)]);
   return { ok: true, buf, changed: !buf.equals(bytes), epub: next };
+}
+
+/**
+ * M13-J05: the bytes of a book.md with `preferences.interior` changed by `patch` (the Book interior layout). Same discipline as withEpubChecks: only the front matter is touched,
+ * through the YAML Document (comments and other keys keep their place); the body bytes are copied unchanged. The patch is a shallow merge: `margins`, `frontMatter` and `backMatter`
+ * replace as wholes. The merged map is validated with preferenceProblems('interior', ...) before anything is returned (BAD_ARGS with the first problem); a file without `version`
+ * gets `version: 1`. `interior` is the resulting map as written in this file; `changed: false` when the file already says so.
+ * @param {Buffer} bytes
+ * @param {Record<string, any>} patch any of the keys of INTERIOR_DEFAULTS
+ * @returns {{ ok: true, buf: Buffer, changed: boolean, interior: Record<string, any> } | { ok: false, code: string, message: string }}
+ */
+export function withInteriorLayout(bytes, patch) {
+  const badArgs = (message) => ({ ok: false, code: 'BAD_ARGS', message });
+  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return badArgs('the interior settings change must be an object');
+  if (Object.keys(patch).length === 0) return badArgs('the interior settings change must name at least one setting');
+  for (const k of Object.keys(patch)) if (!Object.hasOwn(INTERIOR_DEFAULTS, k)) return badArgs(`unknown interior setting ${k}`);
+  const end = frontMatterEnd(bytes);
+  if (end < 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'front matter is not terminated' };
+  const head = bytes.subarray(0, end).toString('utf8');
+  const firstNl = head.indexOf('\n');
+  const rest = head.slice(firstNl + 1);
+  const close = rest.lastIndexOf('---');
+  const inner = rest.slice(0, close);
+  const doc = parseDocument(inner, { version: '1.2', schema: 'core' });
+  if (doc.errors.length > 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: `the front matter cannot be read: ${doc.errors[0].message}` };
+  if (inner.trim() !== '' && !isMap(doc.contents)) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'the front matter is not a mapping' };
+  const refuse = (what) => badArgs(`${what} in this file is not a mapping, so the interior settings cannot be changed; edit it by hand`);
+  if (inner.trim() === '') doc.contents = doc.createNode({});
+  const present = (n) => n !== undefined && n !== null && !(n?.value === null);
+  let prefs = doc.get('preferences', true);
+  if (present(prefs) && !isMap(prefs)) return /** @type {any} */ (refuse('preferences'));
+  let interior = isMap(prefs) ? prefs.get('interior', true) : undefined;
+  if (present(interior) && !isMap(interior)) return /** @type {any} */ (refuse('interior'));
+  const cur = isMap(interior) ? /** @type {Record<string, any>} */ (interior.toJSON() ?? {}) : {};
+  const next = { version: 1, ...cur, ...patch };
+  const problems = preferenceProblems('interior', next);
+  if (problems.length > 0) return badArgs(`${problems[0].location.replace(/^interior\./, '')}: ${problems[0].message}`);
+
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const changedKeys = Object.keys(next).filter((k) => !same(cur[k], next[k]));
+  if (changedKeys.length === 0) return { ok: true, buf: bytes, changed: false, interior: cur };
+
+  if (!isMap(prefs)) { prefs = doc.createNode({}); doc.set('preferences', prefs); }
+  if (!isMap(interior)) { interior = doc.createNode({}); prefs.set('interior', interior); }
+  for (const k of changedKeys) interior.set(k, doc.createNode(next[k]));
+  const text = doc.toString({ lineWidth: 0 });
+  const buf = Buffer.concat([Buffer.from(head.slice(0, firstNl + 1) + (head.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text) + rest.slice(close), 'utf8'), bytes.subarray(end)]);
+  return { ok: true, buf, changed: !buf.equals(bytes), interior: next };
 }
 
 const OP_WORDS = { write: 'Changed', archive: 'Archived', restore: 'Restored', restoreOp: 'Undid' };
@@ -810,6 +858,28 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
         else afterWrite(found.book.path);
       }
       return { ok: true, code: 'OK', epub: edit.epub, ...(edit.changed ? {} : { unchanged: true }) };
+    },
+
+    /**
+     * M13-J05: change `preferences.interior` in book.md (the Book interior layout; shallow merge, `margins`, `frontMatter` and `backMatter` replace as wholes). Same discipline as
+     * setEpubChecks: one journaled store write. `interior` in the result is the book's resulting map. Refusals: BAD_ARGS, NOT_FOUND, NOT_A_DOCUMENT, CONFLICT.
+     * @param {string} bookId @param {Parameters<typeof withInteriorLayout>[1]} patch
+     */
+    async setInteriorLayout(bookId, patch) {
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book));
+      const cur = await store.read('book.md');
+      if (!cur) return fail('NOT_FOUND', { message: 'book.md was not found' });
+      const edit = withInteriorLayout(cur.bytes, patch);
+      if (!edit.ok) return fail(edit.code, { message: edit.message });
+      if (edit.changed) {
+        const r = await store.write('book.md', edit.buf, { baseSha256: cur.sha256 });
+        if (!r.ok) return r.code === 'CONFLICT' ? fail('CONFLICT', { current: null }) : fail(r.code, r.message ? { message: r.message } : {});
+        if (reconcile) await reconcile(found.book.path);
+        else afterWrite(found.book.path);
+      }
+      return { ok: true, code: 'OK', interior: edit.interior, ...(edit.changed ? {} : { unchanged: true }) };
     },
 
     /**

@@ -156,6 +156,8 @@ const ROUTES = [
   ['POST', `/api/books/${BOOK}/checks/epub`, 'book-checks-epub', 'write'],
   ['POST', `/api/books/${BOOK}/export/validations`, 'validation-start', 'write'],
   ['POST', `/api/books/${BOOK}/export/validations/val_X/cancel`, 'validation-cancel', 'write'],
+  ['POST', `/api/books/${BOOK}/interior/layout`, 'interior-layout', 'write'],
+  ['POST', `/api/books/${BOOK}/interior/snapshots`, 'interior-snapshot', 'read'],
   ['PUT', '/api/tools', 'tools-save', 'admin'],
   ['POST', `/api/books/${BOOK}/scenes/${SCENE}/apply-finding`, 'scene-apply-finding', 'write'],
   ['POST', `/api/books/${BOOK}/title`, 'book-title', 'admin'],

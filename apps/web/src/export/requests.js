@@ -8,7 +8,7 @@ export const EXPORT_FORMATS = [
   { key: 'markdown', label: 'Markdown', hint: 'One plain-text .md file' },
   { key: 'docx', label: 'Word', hint: 'A .docx file for Word or LibreOffice' },
   { key: 'epub', label: 'EPUB', hint: 'An e-book for readers and e-readers' },
-  { key: 'pdf', label: 'PDF', hint: 'A print-ready .pdf file' },
+  { key: 'pdf', label: 'PDF', hint: 'A manuscript .pdf file (double-spaced pages)' },
 ];
 
 export const PAGE_SIZES = [

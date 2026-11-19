@@ -71,6 +71,8 @@ export const WRITE_CLASSES = Object.freeze({
   // M13-J04: the remembered EPUBCheck choice is an ordinary edit of the book (write); starting or cancelling a validation runs a process on this computer (write, never a share link);
   // the paths of Java and EPUBCheck are per-machine settings, so in shared mode only the owner changes them
   'book-checks-epub': 'write', 'validation-start': 'write', 'validation-cancel': 'write', 'tools-save': 'admin',
+  // M13-J05: the interior layout is an ordinary edit of book.md (write); a snapshot only renders the book in memory (read: a viewer may preview)
+  'interior-layout': 'write', 'interior-snapshot': 'read',
   // renaming a book, creating a series and moving a book into one change the library's layout: owner only in shared mode
   'book-title': 'admin', 'series-create': 'admin', 'book-move-to-series': 'admin',
 });
@@ -105,6 +107,8 @@ export function classifyRead(pathname) {
     if (c === 'export' && d === 'planning') return { cls: 'read', book: b, shareable: false };
     // M13-J04: an EPUB validation (its status, the EPUB that was checked, the report) belongs to the members who ran it: never a share link
     if (c === 'export' && d === 'validations') return { cls: 'read', book: b, shareable: false };
+    // M13-J05: the Book interior preview (fingerprint, preview document) belongs to the members working on the book: never a share link
+    if (c === 'interior') return { cls: 'read', book: b, shareable: false };
     if (c === 'export') return { cls: 'export', book: b };
     if (c === 'ai' && d === 'stream') return { cls: 'ai', book: b }; // M08-J03: a reply in progress is AI use (editor, and only when the owner allows AI for members)
     // what a share link may read of its book: the book, a scene's text, the cover. Notes, receipts, suggestions, comments, revisions, raw

@@ -1,7 +1,7 @@
 // EPUB 3 output. `mimetype` first and stored; fixed entry order and timestamps; dcterms:modified is the newest included scene's
 // mtime (never "now"), so the same files give the same bytes.
 import { chapterHeading, partHeading } from './markdown.mjs';
-import { parseBlocks, xmlEscape, xmlSafe } from './text.mjs';
+import { parseBlocks, runsHtml, xmlEscape, xmlSafe } from './text.mjs';
 import { writeZip } from './zip.mjs';
 
 const XML_DECL = '<?xml version="1.0" encoding="UTF-8"?>\n';
@@ -19,18 +19,6 @@ h2 { font-size: 1.2em; margin: 1.5em 0 0.75em; }
 p { margin: 0; text-indent: 1.5em; text-align: left; }
 p.scene-break { text-indent: 0; text-align: center; margin: 1em 0; }
 `;
-
-/** @param {import('./text.mjs').Run[]} runs */
-function runsHtml(runs) {
-  return runs
-    .map((r) => {
-      let h = esc(r.text);
-      if (r.em) h = `<em>${h}</em>`;
-      if (r.strong) h = `<strong>${h}</strong>`;
-      return h;
-    })
-    .join('');
-}
 
 /**
  * The chapter files, in order: { file, heading, html, chapter, scenes }. `scenes` are the 1-based line ranges of each included scene inside `html`
