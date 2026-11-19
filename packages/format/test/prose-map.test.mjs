@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  projectProse, toBodyRange, codePointToUtf16, utf8ToUtf16, lineColumnToUtf16, lfOffsetToRaw, rawOffsetToLf,
+  projectProse, toBodyRange, isWholeRange, codePointToUtf16, utf8ToUtf16, lineColumnToUtf16, lfOffsetToRaw, rawOffsetToLf,
 } from '../src/index.mjs';
 
 /** Find `word` in the projected text, map it back, and assert the body holds exactly `word` there. */
@@ -58,16 +58,16 @@ test('links keep the label and drop the destination', () => {
   mapWord('[label](https://x.test/a)', 'label', 'label');
 });
 
-test('images are dropped entirely, alt text included', () => {
+test('images become one placeholder, alt text dropped', () => {
   const body = 'Before ![alt text](a.png) after.';
-  mapWord(body, 'after', 'Before  after.');
+  mapWord(body, 'after', 'Before X after.');
   assert.ok(!projectProse(body).text.includes('alt'));
-  assert.equal(projectProse('![a](b.png)').text, '');
+  assert.equal(projectProse('![a](b.png)').text, 'X');
 });
 
-test('inline code is dropped, including double-backtick spans', () => {
-  mapWord('Run `npm test` today.', 'today', 'Run  today.');
-  mapWord('Run ``a ` b`` today.', 'today', 'Run  today.');
+test('inline code becomes one placeholder, including double-backtick spans', () => {
+  mapWord('Run `npm test` today.', 'today', 'Run X today.');
+  mapWord('Run ``a ` b`` today.', 'today', 'Run X today.');
   assert.equal(projectProse('a ` b').text, 'a ` b', 'an unclosed backtick is kept');
 });
 
@@ -87,8 +87,8 @@ test('HTML comments, including scene notes, are never prose', () => {
   assert.equal(projectProse('a <!-- open').text, 'a <!-- open', 'an unclosed comment is kept');
 });
 
-test('autolinks and reference definitions are dropped', () => {
-  mapWord('Visit <https://x.test/a> soon.', 'soon', 'Visit  soon.');
+test('autolinks become a placeholder, reference definitions are dropped', () => {
+  mapWord('Visit <https://x.test/a> soon.', 'soon', 'Visit X soon.');
   const body = 'Text here.\n[ref]: https://x.test/ref\nMore text.';
   const { proj } = mapWord(body, 'More', 'Text here.\n\nMore text.');
   assert.ok(!proj.text.includes('https'));
@@ -266,4 +266,70 @@ test('CRLF: project the LF view, map, then convert to raw offsets and slice the 
   const r = toBodyRange(proj, at, at + 6);
   assert.equal(lf.slice(r.from, r.to), 'target');
   assert.equal(raw.slice(lfOffsetToRaw(raw, r.from), lfOffsetToRaw(raw, r.to)), 'target');
+});
+
+test('M13-J02: [[target]] Codex links become a placeholder and [[target|label]] keeps only the label', () => {
+  mapWord('Then [[Mara]] left.', 'left', 'Then X left.');
+  const { proj } = mapWord('Then [[Mara|she]] left.', 'she', 'Then she left.');
+  assert.equal(proj.text, 'Then she left.');
+  mapWord('Then [[Mara|she]] left.', 'left');
+  mapWord('[[Mara|the captain|x]] spoke', 'the captain|x', 'the captain|x spoke');
+  mapWord('[[a]][[b|c]]d', 'd', 'Xcd');
+  // an unclosed [[ and a [[ across a line break are kept as text
+  assert.equal(projectProse('Open [[Mara never closes').text, 'Open [[Mara never closes');
+  assert.equal(projectProse('x [[Ma\nra]] y').text, 'x [[Ma\nra]] y');
+});
+
+test('M13-J02: [@key] citations are dropped whole, offsets stay exact', () => {
+  mapWord('As said [@smith2020] before.', 'before', 'As said X before.');
+  mapWord('A [@a:b-1] B [@c2]', 'B', 'A X B X');
+  // not a citation: whitespace in the key, or a link destination follows
+  assert.equal(projectProse('x [@ no] y').text, 'x [@ no] y');
+  assert.equal(projectProse('x [@k](u) y').text, 'x @k y');
+});
+
+test('placeholders: removed inline content the reader sees projects as one X mapped to its start', () => {
+  const body = 'Past the dunes lay [[salt-orchard]], half under water.';
+  const { proj } = mapWord(body, 'half', 'Past the dunes lay X, half under water.');
+  assert.equal(proj.placeholders.length, proj.text.length);
+  const x = proj.text.indexOf('X');
+  assert.equal(proj.placeholders[x], 1);
+  assert.equal(proj.map[x], body.indexOf('[['));
+  assert.equal(proj.placeholders.reduce((a, b) => a + b, 0), 1);
+  mapWord('Then `x` was typed.', 'was', 'Then X was typed.');
+  assert.equal(projectProse('a [@key] b').text, 'a X b');
+  assert.equal(projectProse('a <https://x.test/p> b').text, 'a X b');
+  assert.equal(projectProse('a ![alt](s.png) b').text, 'a X b');
+  const she = projectProse('Then [[a|she]] left.');
+  assert.equal(she.text, 'Then she left.');
+  assert.equal(she.placeholders.reduce((a, b) => a + b, 0), 0);
+  assert.equal(projectProse('a <!-- note: hi --> b').text, 'a  b');
+  assert.equal(projectProse('a <!-- note: hi --> b').placeholders.reduce((a, b) => a + b, 0), 0);
+  assert.equal(projectProse('A *b* c [d](u) e').placeholders.reduce((a, b) => a + b, 0), 0);
+});
+
+test('isWholeRange is false over any placeholder and true over its neighbours', () => {
+  const p = projectProse('Past the dunes lay [[salt-orchard]], half under water.');
+  const x = p.text.indexOf('X');
+  assert.equal(isWholeRange(p, x, x + 1), false);
+  assert.equal(isWholeRange(p, x - 1, x), true, 'the space before');
+  assert.equal(isWholeRange(p, x + 1, x + 2), true, 'the comma after');
+  assert.equal(isWholeRange(p, x - 1, x + 1), false);
+  assert.equal(isWholeRange(p, x, x + 2), false);
+  assert.equal(isWholeRange(p, x - 4, x - 1), true, 'the word before');
+  const { text, map } = p;
+  assert.equal(isWholeRange({ text, map }, x, x + 1), true, 'a projection without placeholders is judged by contiguity only');
+});
+
+test('isWholeRange: true over unbroken body text, false across anything left out', () => {
+  const body = 'Then `x` was *very* typed [here](https://a.test) now.';
+  const p = projectProse(body);
+  const at = (s) => p.text.indexOf(s);
+  assert.equal(isWholeRange(p, at('was'), at('was') + 3), true);
+  assert.equal(isWholeRange(p, at('very'), at('very') + 4), true);
+  assert.equal(isWholeRange(p, at('Then'), at('Then') + 6), false, 'across the dropped code span');
+  assert.equal(isWholeRange(p, at('very'), at('very') + 6), false, 'across the dropped emphasis marker');
+  assert.equal(isWholeRange(p, at('here'), at('here') + 6), false, 'across the dropped link destination');
+  assert.equal(isWholeRange(p, 3, 3), false);
+  assert.equal(isWholeRange(p, -1, 2), false);
 });

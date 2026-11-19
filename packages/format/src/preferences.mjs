@@ -22,7 +22,7 @@ export const APPEARANCE_KEYS = ['theme', 'typography', 'layout', 'shortcuts'];
 export const PREFERENCE_KEYS = [...PROJECT_KEYS, ...APPEARANCE_KEYS];
 
 /** The right-rail sections a layout can pin, in the default order. */
-export const INSPECTOR_SECTIONS = ['goal', 'scene', 'plan', 'linked', 'notes', 'events', 'research', 'continuity', 'comments', 'suggestions', 'problems', 'revisions', 'receipts', 'book-problems'];
+export const INSPECTOR_SECTIONS = ['goal', 'scene', 'plan', 'linked', 'notes', 'events', 'research', 'grammar', 'continuity', 'comments', 'suggestions', 'problems', 'revisions', 'receipts', 'book-problems'];
 
 export const BUILTIN_THEMES = ['dark', 'light', 'high-contrast'];
 export const FONT_FAMILIES = ['serif', 'sans', 'mono', 'accessible'];
@@ -45,7 +45,7 @@ export const BUILTIN = Object.freeze({
   // M13-J01: optional local checks. Nothing runs until the author turns it on.
   checks: Object.freeze({
     version: 1,
-    grammar: Object.freeze({ enabled: false, language: 'en' }),
+    grammar: Object.freeze({ enabled: false, language: 'en', dialect: 'american', words: Object.freeze([]), rules: Object.freeze({}) }),
     style: Object.freeze({ enabled: false }),
     epub: Object.freeze({ validate: false }),
   }),
@@ -54,6 +54,12 @@ export const BUILTIN = Object.freeze({
   layout: Object.freeze({ name: 'Writing' }),
   shortcuts: Object.freeze({}),
 });
+
+export const GRAMMAR_DIALECTS = ['american', 'british', 'australian', 'canadian', 'indian'];
+export const MAX_GRAMMAR_WORDS = 5000;
+export const GRAMMAR_RULE_RE = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
+/** A book-dictionary word: 1 to 64 characters, no whitespace at either end, no line break. @param {unknown} w */
+export const isGrammarWord = (w) => typeof w === 'string' && w.length >= 1 && w.length <= 64 && w === w.trim() && !/[\r\n\u2028\u2029]/.test(w);
 
 const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const inRange = (v, [lo, hi]) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
@@ -87,7 +93,7 @@ export function preferenceProblems(key, value) {
       return out;
     case 'checks': {
       if (!isMap(value)) return [{ location: key, message: 'checks must be a mapping (version, grammar, style, epub)' }];
-      const flags = { grammar: ['enabled', 'language'], style: ['enabled'], epub: ['validate'] };
+      const flags = { grammar: ['enabled', 'language', 'dialect', 'words', 'rules'], style: ['enabled'], epub: ['validate'] };
       for (const [k, v] of Object.entries(value)) {
         if (k === 'version') {
           if (v !== 1) bad(`${key}.${k}`, 'checks.version must be 1: this book was saved by a newer StoryForge');
@@ -98,6 +104,27 @@ export function preferenceProblems(key, value) {
               if (!flags[k].includes(s)) bad(`${key}.${k}.${s}`, `unknown ${k} setting ${s}`);
               else if (s === 'language') {
                 if (sv !== 'en') bad(`${key}.${k}.${s}`, 'language must be en (the only language supported)');
+              } else if (s === 'dialect') {
+                if (!GRAMMAR_DIALECTS.includes(sv)) bad(`${key}.${k}.${s}`, `dialect must be one of ${GRAMMAR_DIALECTS.join(', ')}`);
+              } else if (s === 'words') {
+                if (!Array.isArray(sv)) bad(`${key}.${k}.${s}`, 'words must be a list of words');
+                else {
+                  if (sv.length > MAX_GRAMMAR_WORDS) bad(`${key}.${k}.${s}`, `words holds at most ${MAX_GRAMMAR_WORDS} words`);
+                  const seen = new Set();
+                  sv.forEach((w, i) => {
+                    if (!isGrammarWord(w)) bad(`${key}.${k}.${s}.${i}`, 'a word is 1 to 64 characters with no space at either end and no line break');
+                    else if (seen.has(w)) bad(`${key}.${k}.${s}.${i}`, `the word ${w} is listed twice`);
+                    else seen.add(w);
+                  });
+                }
+              } else if (s === 'rules') {
+                if (!isMap(sv)) bad(`${key}.${k}.${s}`, 'rules must be a mapping of rule name to false');
+                else {
+                  for (const [rule, rv] of Object.entries(sv)) {
+                    if (!GRAMMAR_RULE_RE.test(rule)) bad(`${key}.${k}.${s}.${rule}`, 'a rule name is a letter followed by up to 63 letters or digits');
+                    else if (rv !== false) bad(`${key}.${k}.${s}.${rule}`, 'a rule is turned off with false; leave it out to use the default');
+                  }
+                }
               } else if (typeof sv !== 'boolean') bad(`${key}.${k}.${s}`, `${s} must be true or false`);
             }
           }

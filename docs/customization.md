@@ -19,7 +19,7 @@ There are four layers.
 
 | Kind of setting | Keys | Order (the last one wins) |
 |---|---|---|
-| **Project** | `modules`, `labels`, `export`, `ai` | built-in, then your profile, then `library.md`, then `book.md` |
+| **Project** | `modules`, `labels`, `export`, `ai`, `checks` | built-in, then your profile, then `library.md`, then `book.md` |
 | **Appearance** | `theme`, `typography`, `layout`, `shortcuts` | built-in, then `library.md`, then `book.md`, then your profile |
 
 In words: for how things **look and feel**, the person at the keyboard always wins. For **which features are on**, the project wins, so a book can say "no AI for this book" and no profile can turn it back on. A feature the project says nothing about follows your profile.
@@ -105,7 +105,7 @@ A layout says which side panels show, how wide they are, and which sections the 
 
 - **Writing** (the default: chapters on the left, everything on the right), **Planning** (wider panels, events and research first) and **Review** (no chapter panel; continuity, suggestions and receipts first).
 - Settings > Layout switches layouts, hides or shows either panel, reorders the right panel's sections, and **saves the current layout under a name** of your own.
-- The right panel's sections are `goal`, `scene`, `plan`, `linked`, `notes`, `events`, `research`, `continuity`, `comments`, `suggestions`, `problems`, `revisions`, `receipts` and `book-problems`. `plan` (shown as "Plan", after Scene facts) holds the scene's planning fields; it belongs to the `planner` feature, so it is hidden when that feature is off. The Planning layout pins it.
+- The right panel's sections are `goal`, `scene`, `plan`, `linked`, `notes`, `events`, `research`, `grammar`, `continuity`, `comments`, `suggestions`, `problems`, `revisions`, `receipts` and `book-problems`. `grammar` (shown as "Grammar") holds the grammar suggestions for the open scene; see [Grammar checks](#grammar-checks). `plan` (shown as "Plan", after Scene facts) holds the scene's planning fields; it belongs to the `planner` feature, so it is hidden when that feature is off. The Planning layout pins it.
 - Switching layout never reloads the page and never loses text you have not saved yet.
 - Resize a panel by dragging its edge, or Tab to the edge (it is a separator with a value) and use Left and Right arrows (Shift for bigger steps, Home and End for the limits).
 - Below 900 px wide the narrow-screen rules still apply: one column, the chapters behind a button.
@@ -120,7 +120,7 @@ Settings > Shortcuts lists every command. **Change** waits for the keys you pres
 - These chords cannot be used at all: Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+L, Ctrl+Tab, F5, Alt+F4, Tab, Shift+Tab and Escape. Escape and Tab in dialogs are fixed.
 - Chords are written `Mod+Alt+Shift+Key`; `Mod` is Ctrl (Cmd on a Mac). In a profile, `{"shortcuts": {"focus.toggle": "Mod+Shift+K"}}` rebinds focus mode; `null` removes a binding.
 
-Default commands: `editor.bold` Ctrl+B, `editor.italic` Ctrl+I, `editor.link` Ctrl+K, `editor.note` Ctrl+Alt+M, `editor.sceneBreak` Ctrl+Enter, `editor.save` Ctrl+S, `focus.toggle` Ctrl+Shift+F, `help.shortcuts` ?, `outline.moveUp` / `outline.moveDown` Alt+Up / Alt+Down, `board.moveUp` / `board.moveDown` / `board.chapterBack` / `board.chapterForward` Alt+arrows, `timeline.moveUp` / `timeline.moveDown` Alt+Up / Alt+Down.
+Default commands: `editor.bold` Ctrl+B, `editor.italic` Ctrl+I, `editor.link` Ctrl+K, `editor.note` Ctrl+Alt+M, `editor.sceneBreak` Ctrl+Enter, `editor.save` Ctrl+S, `editor.checkScene` ("Check grammar now") Ctrl+Alt+G, `focus.toggle` Ctrl+Shift+F, `help.shortcuts` ?, `outline.moveUp` / `outline.moveDown` Alt+Up / Alt+Down, `board.moveUp` / `board.moveDown` / `board.chapterBack` / `board.chapterForward` Alt+arrows, `timeline.moveUp` / `timeline.moveDown` Alt+Up / Alt+Down.
 
 ## Features (modules)
 
@@ -161,6 +161,35 @@ preferences:
 ```
 
 A level that is not one of the four, or another key under `ai`, is `E102` at `preferences.ai.level` (or `preferences.ai.<key>`) and is ignored when settings are resolved. The level limits connections only, not what you do in the app. See [mcp.md](mcp.md).
+
+## Grammar checks
+
+`checks` holds the optional local checks. Nothing runs until a book turns one on. By hand, in `book.md`:
+
+```yaml
+preferences:
+  checks:
+    version: 1
+    grammar:
+      enabled: true
+      language: en
+      dialect: british
+      words: [Mara, Kestrel]
+      rules: { SpellCheck: false }
+    style:
+      enabled: false
+    epub:
+      validate: false
+```
+
+- `version` must be `1`.
+- `grammar.enabled`, `style.enabled` and `epub.validate` are `true` or `false`; all three default to `false`.
+- `grammar.language` is `en`, the only value.
+- `grammar.dialect` is `american` (the default), `british`, `australian`, `canadian` or `indian`.
+- `grammar.words` is the book dictionary: up to 5,000 words, each 1 to 64 characters, with no space at either end and no line break. A word listed twice is an error.
+- `grammar.rules` maps a Harper rule name (a letter followed by up to 63 letters or digits) to `false`. A rule that is not listed is on. `true` is an error.
+
+A wrong value, or a key that `checks` does not know, is `E102` at its location. Settings > Grammar checks writes the grammar keys for you; see [editing-publishing.md](editing-publishing.md#grammar-checks).
 
 ## Custom prompts
 

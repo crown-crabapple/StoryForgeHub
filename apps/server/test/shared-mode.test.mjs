@@ -146,6 +146,7 @@ const ROUTES = [
   ['POST', '/api/library/open', 'library-open', 'admin'],
   ['POST', '/api/books', 'book-create', 'admin'],
   ['POST', '/api/series', 'series-create', 'admin'],
+  ['POST', `/api/books/${BOOK}/checks/grammar`, 'book-checks-grammar', 'write'],
   ['POST', `/api/books/${BOOK}/title`, 'book-title', 'admin'],
   ['POST', `/api/books/${BOOK}/move-to-series`, 'book-move-to-series', 'admin'],
   ['POST', '/api/recover', 'recover', 'admin'],

@@ -22,6 +22,7 @@ before(async () => {
   await fs.mkdir(webRoot);
   await fs.writeFile(path.join(webRoot, 'index.html'), '<!doctype html><title>SPA</title>');
   await fs.writeFile(path.join(webRoot, 'a.js'), 'console.log("a");');
+  await fs.writeFile(path.join(webRoot, 'a.wasm'), Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]));
   await fs.writeFile(path.join(outer, 'secret.txt'), SECRET);
   await fs.writeFile(path.join(outer, 'package.json'), `{"name":"${SECRET}"}`);
   server = createServer({ repository: createFsRepository(libRoot), webRoot });
@@ -137,6 +138,12 @@ test('static: /a.js served', async () => {
   assert.equal(r.status, 200);
   assert.match(r.headers['content-type'], /javascript/);
   assert.equal(r.text, 'console.log("a");');
+});
+
+test('static: a .wasm file is served as application/wasm (WebAssembly.instantiateStreaming needs it)', async () => {
+  const r = await request(port, 'GET', '/a.wasm');
+  assert.equal(r.status, 200);
+  assert.equal(r.headers['content-type'], 'application/wasm');
 });
 
 test('static: / serves index.html', async () => {

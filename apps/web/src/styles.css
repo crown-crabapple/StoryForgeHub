@@ -6107,3 +6107,40 @@ kbd {
     transition: none;
   }
 }
+
+/* ---------- grammar checks: the rail panel and Settings (M13-J02) ---------- */
+.gr-card .gr-text {
+  max-width: 100%;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.gr-card .gr-flagged {
+  margin: 0;
+}
+.gr-card .gr-message {
+  margin: 0;
+}
+.gr-codex {
+  font-size: var(--fs-12);
+}
+.gr-status {
+  margin: 0 0 var(--s2);
+}
+.gr-settings-book {
+  margin: var(--s3) 0;
+}
+.gr-word-list,
+.gr-rule-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+}
+.gr-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
