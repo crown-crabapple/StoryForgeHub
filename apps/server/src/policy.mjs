@@ -68,6 +68,9 @@ export const WRITE_CLASSES = Object.freeze({
   // M13-J03: style settings, dismissals and applying a finding edit the book (write); checking a text and the scans only read it and write nothing (read)
   'book-checks-style': 'write', 'style-dismiss': 'write', 'style-undismiss': 'write', 'scene-apply-finding': 'write',
   'style-check': 'read', 'style-scan-start': 'read', 'style-scan-cancel': 'read',
+  // M13-J04: the remembered EPUBCheck choice is an ordinary edit of the book (write); starting or cancelling a validation runs a process on this computer (write, never a share link);
+  // the paths of Java and EPUBCheck are per-machine settings, so in shared mode only the owner changes them
+  'book-checks-epub': 'write', 'validation-start': 'write', 'validation-cancel': 'write', 'tools-save': 'admin',
   // renaming a book, creating a series and moving a book into one change the library's layout: owner only in shared mode
   'book-title': 'admin', 'series-create': 'admin', 'book-move-to-series': 'admin',
 });
@@ -86,6 +89,7 @@ export function classifyRead(pathname) {
   if (a === 'status' && parts.length === 2) return { cls: 'read' };
   if (a === 'auth') return { cls: 'auth' };
   if (a === 'shared') return { cls: 'admin' }; // members, invites, shares, audit
+  if (a === 'tools' && (parts.length === 2 || (b === 'status' && parts.length === 3))) return { cls: 'admin' }; // M13-J04: where Java and EPUBCheck are, and whether they work
   if (a === 'oauth' && b === 'request' && parts.length === 3) return { cls: 'admin' }; // the OAuth consent page: only the owner connects an AI app
   if ((a === 'plugins' || a === 'webhooks') && parts.length === 2) return { cls: 'admin' }; // M08-J02: the manifests, grants and subscriptions (never a token or a secret)
   if (a === 'recover' || (a === 'ai' && b === 'profiles') || (a === 'library' && b === 'recent')) return { cls: 'admin' };
@@ -99,6 +103,8 @@ export function classifyRead(pathname) {
     if (c === 'backup' || (c === 'repair' && d === 'plan')) return { cls: 'admin', book: b };
     // Story Planner M8: the planning export is private project data (members only, never a share link), like the planner reads
     if (c === 'export' && d === 'planning') return { cls: 'read', book: b, shareable: false };
+    // M13-J04: an EPUB validation (its status, the EPUB that was checked, the report) belongs to the members who ran it: never a share link
+    if (c === 'export' && d === 'validations') return { cls: 'read', book: b, shareable: false };
     if (c === 'export') return { cls: 'export', book: b };
     if (c === 'ai' && d === 'stream') return { cls: 'ai', book: b }; // M08-J03: a reply in progress is AI use (editor, and only when the owner allows AI for members)
     // what a share link may read of its book: the book, a scene's text, the cover. Notes, receipts, suggestions, comments, revisions, raw

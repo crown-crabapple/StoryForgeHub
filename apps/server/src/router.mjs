@@ -9,6 +9,7 @@ import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
 import { handleIntegrationsRead, handleIntegrationsWrite } from './plugin-admin.mjs';
 import { checkModule, handlePreferencesRead, handleProfileWrite, styleChecksOf } from './preferences.mjs';
+import { handleEpubChecksWrite, handleToolsRead, handleToolsWrite, handleValidationCancel, handleValidationRead, handleValidationStart } from './epub-routes.mjs';
 import { styleScans } from './style-scans.mjs';
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
@@ -48,7 +49,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   const [api, a, b, c, d, e, f, ...rest] = /** @type {string[]} */ (parts);
   if (api !== 'api' || rest.length > 0) return NOT_FOUND;
   // only the revisions routes (scenes/:s/revisions[/:file]), an entry image and a synopsis extract (synopses/:slug/extract) are longer than five segments
-  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image') || (c === 'synopses' && d !== undefined && e === 'extract' && f === undefined) || (c === 'export' && d === 'planning' && e === undefined) || (c === 'checks' && d === 'style' && ((e === 'dismissals' && f === undefined) || (e === 'scans' && f !== undefined)))))) return NOT_FOUND;
+  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image') || (c === 'synopses' && d !== undefined && e === 'extract' && f === undefined) || (c === 'export' && d === 'planning' && e === undefined) || (c === 'export' && d === 'validations' && e !== undefined && (f === undefined || f === 'file' || f === 'report')) || (c === 'checks' && d === 'style' && ((e === 'dismissals' && f === undefined) || (e === 'scans' && f !== undefined)))))) return NOT_FOUND;
 
   if (a === 'health' && b === undefined) {
     const info = await repository.libraryInfo();
@@ -72,6 +73,9 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   }
   // M05-J04 (optional AI): provider profiles, and whether AI is on for a book
   if (a === 'ai' && b === 'profiles' && c === undefined) return handleAiRead(repository, state, 'profiles');
+  // M13-J04: where Java and EPUBCheck are (per machine), and whether they work
+  if (a === 'tools' && b === undefined) return handleToolsRead(state, 'settings');
+  if (a === 'tools' && b === 'status' && c === undefined) return handleToolsRead(state, 'status');
   if (a === 'search' && b === undefined) return handleSearch(repository, params);
   // M08-J02: the plugins found in the library and the access granted to them; the webhook subscriptions (never a token or a secret)
   if ((a === 'plugins' || a === 'webhooks') && b === undefined) return handleIntegrationsRead(repository, state, a);
@@ -102,6 +106,9 @@ export async function handleApi(repository, pathname, state, params = new URLSea
     if (c === 'checks' && d === 'style' && e === 'scans') return handleStyleScanStatus(state, b, f, params);
     if (c === 'cover' && d === undefined) return handleCover(repository, b, params);
     if (c === 'export' && d === undefined) return handleExport(repository, b, params);
+    // M13-J04: an EPUB validation job (in memory): its status, the exact EPUB that was checked, the report
+    if (c === 'export' && d === 'validations' && e !== undefined && f === undefined) return handleValidationRead(state, b, e, 'status', download);
+    if (c === 'export' && d === 'validations' && e !== undefined && (f === 'file' || f === 'report')) return handleValidationRead(state, b, e, f, download);
     if (c === 'export' && d === 'planning' && e === undefined) return handlePlanningExport(repository, b);
     if (c === 'backup' && d === undefined) return handleBackup(repository, b, params);
     if (c === 'diagnostics' && d === undefined) {
@@ -677,14 +684,16 @@ export function parseContextQuery(params) {
  * Which write route (if any) a method + path is. Anything else non-GET stays 405.
  * @param {string} method
  * @param {string} pathname
- * @returns {{ route: string, profileId?: string, bookId?: string, commentId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string, goalId?: string, taskId?: string, tokenId?: string, webhookId?: string } | null}
+ * @returns {{ route: string, profileId?: string, bookId?: string, commentId?: string, sceneId?: string, entryId?: string, threadId?: string, eventId?: string, noteId?: string, n?: string, opId?: string, file?: string, goalId?: string, taskId?: string, tokenId?: string, webhookId?: string, scanId?: string, validationId?: string } | null}
  */
 export function matchWriteRoute(method, pathname) {
   const parts = pathname.split('/').filter(Boolean).map(decode);
   if (parts.some((p) => p === null) || parts[0] !== 'api') return null;
   const [, a, b, c, d, e, f, g, ...rest] = /** @type {string[]} */ (parts);
   if (rest.length > 0) return null;
-  if ((f !== undefined || g !== undefined) && !(a === 'books' && ((c === 'scenes' && e === 'revisions') || (c === 'suggestions' && e === 'hunks' && g === undefined) || (c === 'checks' && d === 'style' && ((e === 'dismissals' && g === undefined) || e === 'scans'))))) return null;
+  if ((f !== undefined || g !== undefined) && !(a === 'books' && ((c === 'scenes' && e === 'revisions') || (c === 'suggestions' && e === 'hunks' && g === undefined) || (c === 'checks' && d === 'style' && ((e === 'dismissals' && g === undefined) || e === 'scans')) || (c === 'export' && d === 'validations' && e !== undefined && f === 'cancel' && g === undefined)))) return null;
+  // M13-J04: the per-machine paths of Java and EPUBCheck (owner only in shared mode)
+  if (method === 'PUT' && a === 'tools' && b === undefined) return { route: 'tools-save' };
   if (method === 'POST' && a === 'recover' && b === undefined) return { route: 'recover' };
   if (method === 'POST' && a === 'index' && b === 'rebuild' && c === undefined) return { route: 'index-rebuild' };
   if (method === 'POST' && a === 'books' && b === undefined) return { route: 'book-create' };
@@ -743,6 +752,13 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'ai-level' && d === undefined) return { route: 'book-ai-level', bookId: b };
   // M13-J02: grammar checks settings (on/off, dialect, the book dictionary, turned-off rules), saved as `preferences.checks.grammar`
   if (method === 'POST' && c === 'checks' && d === 'grammar' && e === undefined) return { route: 'book-checks-grammar', bookId: b };
+  // M13-J04: the remembered "Validate with EPUBCheck" choice (checks.epub.validate in book.md), and the validation jobs (they run a process on this computer, so write)
+  if (method === 'POST' && c === 'checks' && d === 'epub' && e === undefined) return { route: 'book-checks-epub', bookId: b };
+  if (c === 'export' && d === 'validations') {
+    if (method === 'POST' && e === undefined) return { route: 'validation-start', bookId: b };
+    if (method === 'POST' && e !== undefined && f === 'cancel' && g === undefined) return { route: 'validation-cancel', bookId: b, validationId: e };
+    return null;
+  }
   // M13-J03: style checks settings, dismissals (one Markdown file each), checking one scene's text, scans (in memory, read-only)
   if (c === 'checks' && d === 'style') {
     if (method === 'POST' && e === undefined) return { route: 'book-checks-style', bookId: b };
@@ -1087,6 +1103,7 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
   if (!isObject(body)) return badRequest('body must be a JSON object');
   if (match.route.startsWith('profile-')) return handleProfileWrite(match, body, state); // M07-J04: a file in the user config folder, no library file
   if (match.route.startsWith('plugin-') || match.route.startsWith('webhook-')) return handleIntegrationsWrite(repository, match, body, state); // M08-J02: files in the user config (or shared-data) folder, no library file
+  if (match.route === 'tools-save') return handleToolsWrite(state, body); // M13-J04: tools.json in the user config folder, no library file
   const off = await checkModule(repository, state, match); // M07-J04: a write of a module that is off is refused (403 MODULE_OFF) before anything runs
   if (off) return off;
   const bookId = /** @type {string} */ (match.bookId);
@@ -1339,6 +1356,13 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
       if (!started.ok) return { status: 409, body: { error: 'SCAN_RUNNING', code: 'SCAN_RUNNING', message: 'a style scan of this book is already running; cancel it or wait', scanId: started.scanId } };
       return { status: 202, body: { scanId: started.scanId } };
     }
+    // ---- M13-J04 EPUB validation: the remembered choice (book.md), and the jobs (memory only; they write nothing into the book)
+    case 'book-checks-epub':
+      return handleEpubChecksWrite(repository, bookId, body);
+    case 'validation-start':
+      return handleValidationStart(repository, state, bookId, body);
+    case 'validation-cancel':
+      return handleValidationCancel(state, bookId, /** @type {string} */ (match.validationId), body);
     case 'style-scan-cancel': {
       const bad = unknownKey(body, []);
       if (bad) return badRequest(bad);

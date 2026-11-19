@@ -50,6 +50,10 @@ const processPaths = ['node:child_process', 'child_process'].map((name) => ({
   message: 'Only packages/claude-book/src/style.mjs starts a process (the Claude-Book style checker).',
 }));
 
+const processBan = (message) => ['node:child_process', 'child_process'].map((name) => ({ name, message }));
+const EXPORT_PROCESS_PATHS = processBan('In packages/export only src/epubcheck.mjs starts a process (EPUBCheck).');
+const SERVER_PROCESS_PATHS = processBan('In apps/server/src only open-browser.mjs starts a process. EPUBCheck runs through @storyforge/export.');
+
 export default [
   { ignores: ['**/node_modules/**', '**/dist/**', 'packages/format/fixtures/**', 'packages/manuscript/fixtures/**'] },
   js.configs.recommended,
@@ -181,6 +185,24 @@ export default [
   {
     files: ['packages/claude-book/src/style.mjs'],
     rules: { 'no-restricted-imports': ['error', { paths: [...fsPaths, ...networkPaths] }] },
+  },
+
+  // M13-J04: starting a process is allowed only where needed. packages/export/src/epubcheck.mjs runs the author's own EPUBCheck (an argument array,
+  // never a shell); apps/server/src/open-browser.mjs opens the default browser. Everywhere else in packages/export/src and apps/server/src it is an error.
+  // (The server block restates fsPaths because a later no-restricted-imports setting replaces the earlier one; static.mjs keeps its read access.)
+  {
+    files: ['packages/export/src/**/*.mjs'],
+    ignores: ['packages/export/src/epubcheck.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: EXPORT_PROCESS_PATHS }] },
+  },
+  {
+    files: ['apps/server/src/**/*.mjs'],
+    ignores: ['apps/server/src/open-browser.mjs', 'apps/server/src/static.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: [...fsPaths, ...SERVER_PROCESS_PATHS] }] },
+  },
+  {
+    files: ['apps/server/src/static.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: SERVER_PROCESS_PATHS }] },
   },
 
   // node:sqlite belongs to the index package alone (its tests may open the database to check tables).

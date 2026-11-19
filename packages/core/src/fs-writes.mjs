@@ -311,6 +311,51 @@ export function withStyleChecks(bytes, patch) {
   return { ok: true, buf, changed: !buf.equals(bytes), style: next };
 }
 
+/**
+ * M13-J04: the bytes of a book.md with `preferences.checks.epub.validate` set (the "Validate with EPUBCheck" choice of the Export dialog). Same discipline as withStyleChecks: only the
+ * front matter is touched, through the YAML Document; the body bytes are copied unchanged. `epub` is the resulting `checks.epub` map as written in this file; `changed: false` when
+ * the file already says so.
+ * @param {Buffer} bytes
+ * @param {{ validate: boolean }} patch
+ * @returns {{ ok: true, buf: Buffer, changed: boolean, epub: Record<string, any> } | { ok: false, code: string, message: string }}
+ */
+export function withEpubChecks(bytes, patch) {
+  const badArgs = (message) => ({ ok: false, code: 'BAD_ARGS', message });
+  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return badArgs('the EPUB settings change must be an object');
+  for (const k of Object.keys(patch)) if (k !== 'validate') return badArgs(`unknown EPUB setting ${k}`);
+  if (typeof patch.validate !== 'boolean') return badArgs('validate must be true or false');
+  const end = frontMatterEnd(bytes);
+  if (end < 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'front matter is not terminated' };
+  const head = bytes.subarray(0, end).toString('utf8');
+  const firstNl = head.indexOf('\n');
+  const rest = head.slice(firstNl + 1);
+  const close = rest.lastIndexOf('---');
+  const inner = rest.slice(0, close);
+  const doc = parseDocument(inner, { version: '1.2', schema: 'core' });
+  if (doc.errors.length > 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: `the front matter cannot be read: ${doc.errors[0].message}` };
+  if (inner.trim() !== '' && !isMap(doc.contents)) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'the front matter is not a mapping' };
+  const refuse = (what) => badArgs(`${what} in this file is not a mapping, so the EPUB settings cannot be changed; edit it by hand`);
+  if (inner.trim() === '') doc.contents = doc.createNode({});
+  const present = (n) => n !== undefined && n !== null && !(n?.value === null);
+  let prefs = doc.get('preferences', true);
+  if (present(prefs) && !isMap(prefs)) return /** @type {any} */ (refuse('preferences'));
+  let checks = isMap(prefs) ? prefs.get('checks', true) : undefined;
+  if (present(checks) && !isMap(checks)) return /** @type {any} */ (refuse('checks'));
+  let epub = isMap(checks) ? checks.get('epub', true) : undefined;
+  if (present(epub) && !isMap(epub)) return /** @type {any} */ (refuse('epub'));
+  const cur = isMap(epub) ? /** @type {Record<string, any>} */ (epub.toJSON() ?? {}) : {};
+  const next = { ...cur, validate: patch.validate };
+  if (cur.validate === patch.validate) return { ok: true, buf: bytes, changed: false, epub: cur };
+
+  if (!isMap(prefs)) { prefs = doc.createNode({}); doc.set('preferences', prefs); }
+  if (!isMap(checks)) { checks = doc.createNode({}); prefs.set('checks', checks); }
+  if (!isMap(epub)) { epub = doc.createNode({}); checks.set('epub', epub); }
+  epub.set('validate', doc.createNode(patch.validate));
+  const text = doc.toString({ lineWidth: 0 });
+  const buf = Buffer.concat([Buffer.from(head.slice(0, firstNl + 1) + (head.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text) + rest.slice(close), 'utf8'), bytes.subarray(end)]);
+  return { ok: true, buf, changed: !buf.equals(bytes), epub: next };
+}
+
 const OP_WORDS = { write: 'Changed', archive: 'Archived', restore: 'Restored', restoreOp: 'Undid' };
 /** One plain line for an AI Activity item: what kind of change and which files. @param {string} op @param {string[]} files */
 function aiActivitySummary(op, files) {
@@ -743,6 +788,28 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
         else afterWrite(found.book.path);
       }
       return { ok: true, code: 'OK', style: edit.style, ...(edit.changed ? {} : { unchanged: true }) };
+    },
+
+    /**
+     * M13-J04: change `preferences.checks.epub.validate` in book.md (the remembered "Validate with EPUBCheck" choice). Same discipline as setStyleChecks: one journaled store write.
+     * `epub` in the result is the book's resulting map. Refusals: BAD_ARGS, NOT_FOUND, NOT_A_DOCUMENT, CONFLICT.
+     * @param {string} bookId @param {Parameters<typeof withEpubChecks>[1]} patch
+     */
+    async setEpubChecks(bookId, patch) {
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book));
+      const cur = await store.read('book.md');
+      if (!cur) return fail('NOT_FOUND', { message: 'book.md was not found' });
+      const edit = withEpubChecks(cur.bytes, patch);
+      if (!edit.ok) return fail(edit.code, { message: edit.message });
+      if (edit.changed) {
+        const r = await store.write('book.md', edit.buf, { baseSha256: cur.sha256 });
+        if (!r.ok) return r.code === 'CONFLICT' ? fail('CONFLICT', { current: null }) : fail(r.code, r.message ? { message: r.message } : {});
+        if (reconcile) await reconcile(found.book.path);
+        else afterWrite(found.book.path);
+      }
+      return { ok: true, code: 'OK', epub: edit.epub, ...(edit.changed ? {} : { unchanged: true }) };
     },
 
     /**

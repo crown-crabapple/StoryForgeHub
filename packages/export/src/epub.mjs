@@ -32,9 +32,13 @@ function runsHtml(runs) {
     .join('');
 }
 
-/** The chapter files, in order: { file, title, html }. @param {import('./manuscript.mjs').Manuscript} m */
+/**
+ * The chapter files, in order: { file, heading, html, chapter, scenes }. `scenes` are the 1-based line ranges of each included scene inside `html`
+ * (body lines; a scene with no lines of its own is left out).
+ * @param {import('./manuscript.mjs').Manuscript} m
+ */
 export function epubChapters(m) {
-  /** @type {{ file: string, heading: string, html: string }[]} */
+  /** @type {{ file: string, heading: string, html: string, chapter: import('./manuscript.mjs').MChapter | null, scenes: { sceneId: string, first: number, last: number }[] }[]} */
   const out = [];
   let n = 0;
   const titlePage = () => {
@@ -50,25 +54,38 @@ export function epubChapters(m) {
     for (const chapter of part.chapters) {
       n += 1;
       const heading = chapterHeading(chapter);
-      const lines = [pendingTitle + partHtml, `<h2>${esc(heading)}</h2>\n`];
+      /** @type {string[]} */
+      const lines = [];
+      let newlines = 0;
+      const add = (text) => {
+        lines.push(text);
+        for (let k = text.indexOf('\n'); k !== -1; k = text.indexOf('\n', k + 1)) newlines += 1;
+      };
+      add(pendingTitle + partHtml);
+      add(`<h2>${esc(heading)}</h2>\n`);
       pendingTitle = '';
       partHtml = '';
+      /** @type {{ sceneId: string, first: number, last: number }[]} */
+      const sceneLines = [];
       chapter.scenes.forEach((scene, i) => {
+        let first = newlines + 1;
         if (m.options.sceneTitles) {
-          if (scene.title !== '') lines.push(`<h3>${esc(scene.title)}</h3>\n`);
+          if (scene.title !== '') add(`<h3>${esc(scene.title)}</h3>\n`);
         } else if (i > 0) {
-          lines.push('<p class="scene-break">* * *</p>\n');
+          add('<p class="scene-break">* * *</p>\n');
+          first = newlines + 1;
         }
         for (const b of parseBlocks(scene.markdown)) {
-          if (b.type === 'break') lines.push('<p class="scene-break">* * *</p>\n');
-          else if (b.type === 'heading') lines.push(`<h3>${runsHtml(b.runs)}</h3>\n`);
-          else lines.push(`<p>${runsHtml(b.runs)}</p>\n`);
+          if (b.type === 'break') add('<p class="scene-break">* * *</p>\n');
+          else if (b.type === 'heading') add(`<h3>${runsHtml(b.runs)}</h3>\n`);
+          else add(`<p>${runsHtml(b.runs)}</p>\n`);
         }
+        if (newlines >= first && typeof scene.id === 'string' && scene.id !== '') sceneLines.push({ sceneId: scene.id, first, last: newlines });
       });
-      out.push({ file: `chapter-${String(n).padStart(3, '0')}.xhtml`, heading, html: lines.join('') });
+      out.push({ file: `chapter-${String(n).padStart(3, '0')}.xhtml`, heading, html: lines.join(''), chapter, scenes: sceneLines });
     }
   }
-  if (out.length === 0 && pendingTitle !== '') out.push({ file: 'chapter-001.xhtml', heading: m.title, html: pendingTitle });
+  if (out.length === 0 && pendingTitle !== '') out.push({ file: 'chapter-001.xhtml', heading: m.title, html: pendingTitle, chapter: null, scenes: [] });
   return out;
 }
 
@@ -115,4 +132,26 @@ ${chapters.map((_c, i) => `<itemref idref="c${i + 1}"/>`).join('\n')}
     ...chapters.map((c) => ({ name: `OEBPS/${c.file}`, data: Buffer.from(xhtml(m.language, c.heading, c.html), 'utf8') })),
   ];
   return writeZip(entries);
+}
+
+/**
+ * Where each scene sits in the EPUB's chapter files, from the same data renderEpub writes (the bytes do not change).
+ * `{ '<path inside the EPUB>': { chapterId, chapterLabel, scenes: [{ sceneId, firstLine, lastLine }] } }`; lines are 1-based lines of
+ * that XHTML file as written. `chapterId` is null when the chapter has none.
+ * @param {import('./manuscript.mjs').Manuscript} m
+ * @returns {Record<string, { chapterId: string | null, chapterLabel: string, scenes: { sceneId: string, firstLine: number, lastLine: number }[] }>}
+ */
+export function epubSourceMap(m) {
+  /** @type {ReturnType<typeof epubSourceMap>} */
+  const map = {};
+  for (const c of epubChapters(m)) {
+    const shell = xhtml(m.language, c.heading, '');
+    const bodyStart = shell.slice(0, shell.indexOf('</body>')).split('\n').length;
+    map[`OEBPS/${c.file}`] = {
+      chapterId: typeof c.chapter?.id === 'string' && c.chapter.id !== '' ? c.chapter.id : null,
+      chapterLabel: c.chapter?.label ?? c.heading,
+      scenes: c.scenes.map((s) => ({ sceneId: s.sceneId, firstLine: bodyStart - 1 + s.first, lastLine: bodyStart - 1 + s.last })),
+    };
+  }
+  return map;
 }
