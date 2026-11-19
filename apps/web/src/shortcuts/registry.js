@@ -16,6 +16,7 @@ export const COMMANDS = [
   { id: 'editor.note', label: 'Author note', scope: 'editor', binding: 'Mod+Alt+M', files: ['editor/SceneEditorPage.jsx', 'editor/Toolbar.jsx'] },
   { id: 'editor.sceneBreak', label: 'Scene break', scope: 'editor', binding: 'Mod+Enter', files: ['editor/SceneEditorPage.jsx', 'editor/Toolbar.jsx'] },
   { id: 'editor.save', label: 'Save now', scope: 'editor', binding: 'Mod+S', files: ['editor/SceneEditorPage.jsx', 'editor/RawEditor.jsx'] },
+  { id: 'editor.checkScene', label: 'Check grammar now', scope: 'editor', binding: 'Mod+Alt+G', files: ['editor/SceneEditorPage.jsx'] },
   { id: 'focus.toggle', label: 'Focus mode on or off', scope: 'global', binding: 'Mod+Shift+F', files: ['writing/focus.js', 'writing/FocusContext.jsx', 'editor/Toolbar.jsx'] },
   { id: 'focus.exit', label: 'Leave focus mode', scope: 'global', binding: 'Escape', fixed: true, files: ['writing/focus.js', 'writing/FocusContext.jsx'] },
   { id: 'help.shortcuts', label: 'Show keyboard shortcuts', scope: 'global', binding: '?', files: ['shortcuts/ShortcutsContext.jsx'] },

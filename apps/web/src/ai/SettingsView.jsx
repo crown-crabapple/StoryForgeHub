@@ -5,6 +5,7 @@ import { ClaudeSettings } from '../integrations/ClaudePanel.jsx';
 import { PluginsSettings } from '../integrations/PluginsPanel.jsx';
 import { WebhooksSettings } from '../integrations/WebhooksPanel.jsx';
 import { AiLevelSettings } from '../prefs/AiLevelSettings.jsx';
+import { GrammarSettings } from '../prefs/GrammarSettings.jsx';
 import { BookAdminSettings } from '../prefs/BookAdminSettings.jsx';
 import { PreferencesSettings } from '../prefs/PreferencesSettings.jsx';
 import { Link } from '../router.jsx';
@@ -345,6 +346,7 @@ export function SettingsView() {
           <WebhooksSettings />
         </>
       )}
+      <GrammarSettings />
       <section aria-labelledby="ai-setup-heading">
         <h2 id="ai-setup-heading">Set up AI (optional)</h2>
         <p className="placeholder-text">

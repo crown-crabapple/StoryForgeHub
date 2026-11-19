@@ -184,6 +184,7 @@
  *   recordAiWords(bookId: string, args: { words: number, chapter?: number, note?: string }): Promise<WriteResult & Record<string, any>>,
  *   setDailyGoal(bookId: string, goal: number | null): Promise<WriteResult & { daily_word_goal?: number }>,
  *   setAiLevel(bookId: string, level: string | null, opts?: { scope?: 'book' | 'library' }): Promise<WriteResult & { level?: string | null, scope?: string }>,  (M12: preferences.ai.level in book.md or library.md)
+ *   setGrammarChecks(bookId: string, patch: { enabled?: boolean, dialect?: string, addWords?: string[], removeWords?: string[], disableRules?: string[], enableRules?: string[] }): Promise<WriteResult & { grammar?: Record<string, any> }>,  (M13-J02: preferences.checks.grammar in book.md)
  *   listAiActivity(bookId: string, opts?: { limit?: number }): Promise<WriteResult & { items?: { opId: string, at: string, actor: { kind: string, id: string, name: string }, op: string, summary: string, files: string[], undone: boolean, undoable: boolean }[] }>,  (M12: what plugin tokens changed, newest first)
  *   listRevisions(bookId: string, sceneId: string): Promise<WriteResult & { revisions?: any[] }>,
  *   getRevision(bookId: string, sceneId: string, file: string): Promise<WriteResult & { revision?: any }>,

@@ -26,6 +26,7 @@
     "@lezer/highlight": "1.2.5",
     "@lezer/lr": "1.4.11",
     "@lezer/markdown": "1.8.0",
+    "harper.js": "3.2.0",
     "react": "19.2.9",
     "react-dom": "19.2.9"
   },

@@ -4,6 +4,8 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useApi } from '../api.js';
+import { createGrammarController } from '../grammar/grammar-controller.js';
 import { Link } from '../router.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { SaveStatus } from '../shell/SaveStatus.jsx';
@@ -29,7 +31,7 @@ import { ConflictPanel } from './ConflictPanel.jsx';
 import { StalePanel } from './StalePanel.jsx';
 import { setSuggestionMarks, suggestionMarks } from './suggestion-marks.js';
 import { continuityMarks, setContinuityMarks } from './continuity-marks.js';
-import { findingMarks } from './finding-marks.js';
+import { applyFinding, findingMarks, setFindings } from './finding-marks.js';
 import { createDraftStore, draftKey } from './draft-store.js';
 import { RESTORED_NOTICE, decideRestore, getOfflineQueue } from './offline-queue.js';
 import { decoratedMarkdown, marksExtension, setMarks } from './extensions.js';
@@ -120,6 +122,11 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const writingRef = useRef(writing);
   const focusCompartment = useRef(new Compartment());
   const liveTimer = useRef(null);
+  const grammarRef = useRef(/** @type {ReturnType<typeof createGrammarController> | null} */ (null)); // the open scene's grammar controller; null while checks are off
+  const grammarVersion = useRef(0);
+  const grammarListeners = useRef(new Set());
+  const grammarBody = useRef(''); // the text the controller's findings were found in
+  const grammarIgnoring = useRef(false);
   const key = draftKey(book.id, scene.id);
   const isEntry = Boolean(resource);
   // shared mode (M07-J03b): reviewers and viewers get a read-only editor; everyone signed in is told who else has the scene open; a stale save is kept as a suggestion
@@ -138,6 +145,13 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const marksRef = useRef(/** @type {any[]} */ ([]));
   const shownMarks = useMemo(() => (suggestionsOn && showInline ? inline.marks.map((m) => ({ ...m, canDecide: can.decide })) : []), [suggestionsOn, showInline, inline.marks, can.decide]);
   const onDecideRef = useRef(/** @type {(id: string, decision: 'accept' | 'decline', hunkId: string) => Promise<boolean>} */ (async () => false));
+  // grammar checks (M13-J02): only when the book has them on; the checker (a worker and its WASM) is not created otherwise
+  const [grammarRev, setGrammarRev] = useState(0);
+  const grammarPrefs = useApi(isEntry ? null : `/api/preferences?book=${encodeURIComponent(book.id)}`, String(grammarRev));
+  const grammarSettings = grammarPrefs.data?.effective?.checks?.grammar ?? null;
+  const grammarOn = !isEntry && grammarSettings?.enabled === true;
+  const grammarSettingsKey = JSON.stringify(grammarSettings);
+  const grammarSettingsRef = useRef(grammarSettings);
   const others = usePresence({ bookId: book.id, sceneId: scene.id, enabled: can.present && !isEntry });
 
   const [snap, setSnap] = useState(null);
@@ -184,6 +198,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     setLineKind(lineEndings.kind);
     setWords(countWords(text));
     writingRef.current.setLiveBody(text);
+    grammarRef.current?.docChanged((grammarVersion.current += 1), view.state.doc.toString());
     setSelected(0);
     if (keepLine) {
       const at = view.state.doc.line(Math.min(line, view.state.doc.lines)).from;
@@ -264,6 +279,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         'editor.note': runCommand(authorNote),
         'editor.sceneBreak': runCommand(sceneBreak),
         'editor.save': () => (void ctl.saveNow(), true),
+        'editor.checkScene': () => (grammarRef.current?.checkNow(), true),
       }),
       keymap.of([...historyKeymap, ...defaultKeymap]),
       decoratedMarkdown(),
@@ -284,6 +300,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
           ctl.edit(text);
           setWords(countWords(text));
           writingRef.current.reportEdit();
+          grammarRef.current?.docChanged((grammarVersion.current += 1), u.state.doc.toString());
           clearTimeout(liveTimer.current);
           liveTimer.current = setTimeout(() => writingRef.current.setLiveBody(text), 250);
         }
@@ -371,6 +388,39 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         v.dispatch({ selection: { anchor: a, head: Math.max(a, b) }, effects: EditorView.scrollIntoView(a, { y: 'center' }) });
         v.focus();
       },
+      // M13-J02: grammar checks. The panel reads the controller through these; the text changes only through applyFinding.
+      grammar: {
+        snapshot: () => grammarRef.current?.snapshot() ?? null,
+        subscribe(fn) {
+          grammarListeners.current.add(fn);
+          return () => grammarListeners.current.delete(fn);
+        },
+      },
+      applyFinding(id, index) {
+        const v = viewRef.current;
+        return v ? applyFinding(v, id, index) : { ok: false, code: 'NOT_FOUND' };
+      },
+      selectBodyRange(from, to) {
+        const v = viewRef.current;
+        if (!v) return;
+        const size = v.state.doc.length;
+        const a = Math.min(Math.max(0, from), size);
+        const b = Math.min(Math.max(a, to), size);
+        v.dispatch({ selection: { anchor: a, head: b }, effects: EditorView.scrollIntoView(a, { y: 'center' }) });
+        v.focus();
+      },
+      checkNow: () => grammarRef.current?.checkNow(),
+      ignoreFinding(id) {
+        const found = grammarRef.current?.snapshot().findings.find((f) => f.id === id);
+        if (!found) return;
+        grammarIgnoring.current = true;
+        try {
+          grammarRef.current.ignore(found, grammarBody.current);
+        } finally {
+          grammarIgnoring.current = false;
+        }
+      },
+      reloadGrammarSettings: () => setGrammarRev((n) => n + 1),
       baseSha: () => ctl.snapshot().baseSha256,
       selection() {
         const v = viewRef.current;
@@ -422,6 +472,47 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one editor per scene id; later `scene` props are handled below
   }, [book.id, scene.id]);
+
+  useEffect(() => {
+    grammarSettingsRef.current = grammarSettings;
+  });
+  // ---- grammar checks: one controller per open scene while the book has them on (no controller, no worker otherwise)
+  useEffect(() => {
+    const tell = () => {
+      for (const fn of [...grammarListeners.current]) fn();
+    };
+    const view = viewRef.current;
+    if (!grammarOn || !view) {
+      grammarRef.current = null;
+      tell();
+      return undefined;
+    }
+    const ctl = createGrammarController({
+      sceneId: scene.id,
+      createWorker: () => new Worker(new URL('../grammar/harper.worker.js', import.meta.url), { type: 'module' }),
+      setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
+      clearTimeout: (id) => globalThis.clearTimeout(id),
+      now: () => Date.now(),
+      onFindings: (list) => {
+        if (!grammarIgnoring.current && viewRef.current) grammarBody.current = viewRef.current.state.doc.toString();
+        viewRef.current?.dispatch({ effects: setFindings.of(list) });
+      },
+    });
+    grammarRef.current = ctl;
+    const unsubscribe = ctl.subscribe(tell);
+    ctl.docChanged((grammarVersion.current += 1), view.state.doc.toString());
+    tell();
+    return () => {
+      unsubscribe();
+      ctl.dispose();
+      if (grammarRef.current === ctl) grammarRef.current = null;
+      viewRef.current?.dispatch({ effects: setFindings.of([]) }); // the underlines go with the checker
+      tell();
+    };
+  }, [grammarOn, book.id, scene.id]);
+  useEffect(() => {
+    if (grammarOn && grammarSettingsRef.current) grammarRef.current?.configure(grammarSettingsRef.current);
+  }, [grammarOn, grammarSettingsKey, book.id, scene.id]);
 
   // ---- pending suggestions drawn in the text: push the marks whenever they change (a reload draws the last ones again, see applyText)
   useEffect(() => {

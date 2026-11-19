@@ -13,15 +13,25 @@
 //    Setext headings, thematic breaks (`---`), tables and task-list brackets are kept as text.
 //  - An inline code span must close before a blank line; otherwise its backticks are kept.
 //  - Fenced blocks (``` or ~~~, up to 3 spaces of indent) run to the closing fence or the end of the body.
+//  - Codex links `[[target]]` become one placeholder (see below); `[[target|label]]` keeps only `label` (everything after the first `|`) and no placeholder.
+//    A `[[` with no `]]` on its line is kept. Citations `[@key]` (no whitespace or `]` in the key, not followed by `(`) become one placeholder.
+//  - Placeholders: inline content a reader sees as something (inline code span, label-less Codex link, citation, autolink, image) is projected as
+//    ONE unit, the character 'X', mapped to the construct's start offset in the body and flagged in `projection.placeholders`. This keeps the
+//    text around it from joining or doubling spaces, and no finding may cover a placeholder (isWholeRange is false over one). Content readers do not
+//    see (HTML comments, emphasis / heading / list / quote markers, destinations of labelled links, escape backslashes, fenced blocks,
+//    reference definitions) is dropped with no placeholder.
 //  - Front matter is not handled: pass the body only.
 // Combining marks (\p{M}) and surrogate pairs are never split at a range end by toBodyRange().
 
 /**
- * @typedef {{ text: string, map: Int32Array }} Projection
+ * @typedef {{ text: string, map: Int32Array, placeholders?: Uint8Array }} Projection
  * `map[i]` is the body offset of `text[i]`; `map[text.length]` is the body offset just after the last projected unit (0 for empty text).
+ * `placeholders[i]` is 1 when `text[i]` is the stand-in 'X' for removed inline content (its `map[i]` is the construct's start); absent means none.
  */
 
 const ESCAPABLE = /[!-/:-@[-`{-~]/;
+const CODEX_LINK = /\[\[([^\]\n]+?)\]\]/y;
+const CITATION = /\[@[^\]\s]+\](?!\()/y;
 const AUTOLINK = /<(?:[A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*|[^\s<>@]+@[^\s<>]+)>/y;
 const isWs = (ch) => ch === '' || ch === undefined || /\s/.test(ch);
 const isWordChar = (ch) => ch !== '' && ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
@@ -30,8 +40,9 @@ const isLow = (u) => u >= 0xdc00 && u <= 0xdfff;
 
 /**
  * Project a body (LF line breaks, as the editor holds it) to the prose an engine checks.
- * Left out: fenced code, inline code, HTML comments, link and image destinations, reference definitions, autolinks, images, emphasis markers,
- * heading / quote / list markers at line start, and the backslash of an escape. Everything else is kept, line breaks included.
+ * Left out: fenced code, HTML comments, link destinations, reference definitions, emphasis markers, heading / quote / list markers at line start,
+ * and the backslash of an escape. Inline code, label-less Codex links, citations, autolinks and images each become one placeholder 'X'.
+ * Everything else is kept, line breaks included.
  * @param {string} body @returns {Projection}
  */
 export function projectProse(body) {
@@ -40,7 +51,10 @@ export function projectProse(body) {
   const units = [];
   /** @type {number[]} */
   const offs = [];
-  const keep = (i) => { units.push(body.charCodeAt(i)); offs.push(i); };
+  /** @type {number[]} */
+  const phs = [];
+  const keep = (i) => { units.push(body.charCodeAt(i)); offs.push(i); phs.push(0); };
+  const place = (i) => { units.push(0x58); offs.push(i); phs.push(1); };
   /** index of a `]` -> index just after the `(...)` that follows it, for links whose label is being kept */
   const closers = new Map();
   const blankBetween = (a, b) => /\n[ \t]*\n/.test(body.slice(a, b));
@@ -130,7 +144,7 @@ export function projectProse(body) {
         }
         AUTOLINK.lastIndex = j;
         const m = AUTOLINK.exec(body);
-        if (m) { j += m[0].length; continue; }
+        if (m) { place(j); j += m[0].length; continue; }
         keep(j); j += 1;
         continue;
       }
@@ -147,7 +161,7 @@ export function projectProse(body) {
           if (e - s === k) { found = s; break; }
           q = e;
         }
-        if (found >= 0 && !blankBetween(j, found)) { j = found + k; continue; }
+        if (found >= 0 && !blankBetween(j, found)) { place(j); j = found + k; continue; }
         for (let t = 0; t < k; t += 1) keep(j + t);
         j += k;
         continue;
@@ -156,10 +170,26 @@ export function projectProse(body) {
         const cb = closeBracket(j + 1);
         if (cb >= 0 && body[cb + 1] === '(') {
           const pe = closeParen(cb + 1);
-          if (pe >= 0) { j = pe; continue; }
+          if (pe >= 0) { place(j); j = pe; continue; }
         }
         keep(j); j += 1;
         continue;
+      }
+      if (c === '[' && body[j + 1] === '[') {
+        CODEX_LINK.lastIndex = j;
+        const m = CODEX_LINK.exec(body);
+        if (m) {
+          const bar = m[1].indexOf('|');
+          if (bar >= 0) for (let t = j + 2 + bar + 1; t < j + 2 + m[1].length; t += 1) keep(t);
+          else place(j);
+          j += m[0].length;
+          continue;
+        }
+      }
+      if (c === '[' && body[j + 1] === '@') {
+        CITATION.lastIndex = j;
+        const m = CITATION.exec(body);
+        if (m) { place(j); j += m[0].length; continue; }
       }
       if (c === '[') {
         const cb = closeBracket(j);
@@ -191,7 +221,7 @@ export function projectProse(body) {
   map[units.length] = units.length > 0 ? offs[units.length - 1] + 1 : 0;
   let text = '';
   for (let k = 0; k < units.length; k += 8192) text += String.fromCharCode(...units.slice(k, k + 8192));
-  return { text, map };
+  return { text, map, placeholders: Uint8Array.from(phs) };
 }
 
 /**
@@ -201,6 +231,24 @@ export function projectProse(body) {
  * @returns {{ from: number, to: number } | null}
  */
 export function toBodyRange(projection, from, to) {
+  return toBodyRangeOf(projection, from, to);
+}
+
+/**
+ * True when the projected `[from, to)` is one unbroken run of body text: nothing the projection left out (code, a link destination,
+ * a note, an emphasis marker) sits between its first and last unit, and no unit is a placeholder. A replacement for a range that is not whole would delete hidden text,
+ * so engines' findings over such a range are not offered.
+ * @param {Projection} projection @param {number} from @param {number} to
+ */
+export function isWholeRange(projection, from, to) {
+  const { text, map, placeholders } = projection;
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to > text.length || to <= from) return false;
+  if (placeholders) for (let k = from; k < to; k += 1) if (placeholders[k]) return false;
+  for (let k = from; k < to - 1; k += 1) if (map[k + 1] !== map[k] + 1) return false;
+  return true;
+}
+
+function toBodyRangeOf(projection, from, to) {
   const { text, map } = projection;
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to > text.length || to <= from) return null;
   let f = from;

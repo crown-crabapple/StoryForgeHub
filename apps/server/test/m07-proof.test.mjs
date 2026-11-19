@@ -213,6 +213,8 @@ const SAMPLES = {
   'oauth-deny': ['POST', '/api/oauth/deny'],
   // M12: the book's AI level (owner only)
   'book-ai-level': ['POST', `${b}/ai-level`],
+  // M13-J02: grammar checks settings (writer)
+  'book-checks-grammar': ['POST', `${b}/checks/grammar`],
   'book-title': ['POST', `${b}/title`],
   'series-create': ['POST', '/api/series'],
   'book-move-to-series': ['POST', `${b}/move-to-series`],

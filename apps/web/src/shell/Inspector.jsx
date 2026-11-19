@@ -7,6 +7,7 @@ import { SceneSection } from '../writing/SceneSection.jsx';
 import { sceneLinkItems } from '../writing/scene-context.js';
 import { RailResearch } from '../notes/RailResearch.jsx';
 import { researchForScene } from '../notes/model.js';
+import { RailGrammar } from '../grammar/RailGrammar.jsx';
 import { RailContinuity } from '../continuity/RailContinuity.jsx';
 import { RailSuggestions } from '../suggestions/RailSuggestions.jsx';
 import { RailComments } from '../collab/RailComments.jsx';
@@ -62,7 +63,7 @@ const TAB_STORE_KEY = 'storyforge.inspector.tab';
 const TAB_DEFS = [
   { key: 'scene', label: 'Scene', sections: ['goal', 'scene', 'plan', 'notes'] },
   { key: 'links', label: 'Links', sections: ['linked', 'events', 'research'] },
-  { key: 'review', label: 'Review', sections: ['continuity', 'comments', 'suggestions'] },
+  { key: 'review', label: 'Review', sections: ['grammar', 'continuity', 'comments', 'suggestions'] },
   { key: 'problems', label: 'Problems', sections: ['problems', 'book-problems'] },
   { key: 'history', label: 'History', sections: ['revisions', 'receipts'] },
 ];
@@ -139,7 +140,7 @@ export function SceneInspector({ book, scene, diagnostics, objects = null, onCha
   const items = diagnostics.items ?? [];
   const forScene = scene ? items.filter((d) => isForFile(d, book, scene)) : [];
   const forBook = scene ? items.filter((d) => !forScene.includes(d)) : items;
-  const has = { scene: readable, events: timeline !== undefined, research: notes !== undefined, comments: readable, suggestions: readable, revisions: readable, goal: true, plan: true, linked: true, notes: true, continuity: true, problems: true, receipts: readable };
+  const has = { scene: readable, events: timeline !== undefined, research: notes !== undefined, comments: readable, suggestions: readable, revisions: readable, grammar: readable, goal: true, plan: true, linked: true, notes: true, continuity: true, problems: true, receipts: readable };
   const pinned = prefs.layout.pinned;
   const tabs = scene ? inspectorTabs({ has, moduleOn: prefs.moduleOn, pinned, problemCount: forScene.length }) : [];
   const active = tabs.some((t) => t.key === tab) ? tab : defaultInspectorTab(tabs, pinned);
@@ -207,6 +208,11 @@ export function SceneInspector({ book, scene, diagnostics, objects = null, onCha
     research: has.research && (
       <RailSlot id="research" module="research">
         <RailResearch bookId={book.id} notes={notes ? researchForScene(notes.notes, sceneLinkItems(scene.front_matter, body, objects)) : null} />
+      </RailSlot>
+    ),
+    grammar: has.grammar && (
+      <RailSlot id="grammar">
+        <RailGrammar book={book} scene={scene} />
       </RailSlot>
     ),
     continuity: (

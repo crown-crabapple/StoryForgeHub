@@ -1,7 +1,7 @@
 // FsRepository write methods. No filesystem access here: every change goes through
 // @storyforge/store (the single writer) or @storyforge/manuscript (which uses the store).
 import path from 'node:path';
-import { AI_LEVELS, extractDocs, validate } from '@storyforge/format';
+import { AI_LEVELS, GRAMMAR_DIALECTS, GRAMMAR_RULE_RE, MAX_GRAMMAR_WORDS, extractDocs, isGrammarWord, validate } from '@storyforge/format';
 import { isMap, parseDocument } from 'yaml';
 import {
   archiveArc,
@@ -151,6 +151,96 @@ export function withAiLevel(bytes, level) {
   const text = doc.toString({ lineWidth: 0 });
   const next = Buffer.concat([Buffer.from(head.slice(0, firstNl + 1) + (head.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text) + rest.slice(close), 'utf8'), bytes.subarray(end)]);
   return { ok: true, buf: next, changed: !next.equals(bytes) };
+}
+
+const GRAMMAR_PATCH_KEYS = ['enabled', 'dialect', 'addWords', 'removeWords', 'disableRules', 'enableRules'];
+
+/**
+ * M13-J02: the bytes of a book.md with `preferences.checks.grammar` changed by `patch` (the Grammar checks settings). Only the front matter is touched, through the YAML
+ * Document, so comments and the other keys keep their place; the body bytes are copied unchanged. `addWords` appends the words not already listed, in order;
+ * `removeWords` removes exact matches; `disableRules` sets a rule to false; `enableRules` deletes the rule's entry. `changed: false` when the file already says so.
+ * `grammar` is the resulting `checks.grammar` map as written in this file.
+ * @param {Buffer} bytes
+ * @param {{ enabled?: boolean, dialect?: string, addWords?: string[], removeWords?: string[], disableRules?: string[], enableRules?: string[] }} patch
+ * @returns {{ ok: true, buf: Buffer, changed: boolean, grammar: Record<string, any> } | { ok: false, code: string, message: string }}
+ */
+export function withGrammarChecks(bytes, patch) {
+  const badArgs = (message) => ({ ok: false, code: 'BAD_ARGS', message });
+  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return badArgs('the grammar settings change must be an object');
+  for (const k of Object.keys(patch)) if (!GRAMMAR_PATCH_KEYS.includes(k)) return badArgs(`unknown grammar setting ${k}`);
+  if (patch.enabled !== undefined && typeof patch.enabled !== 'boolean') return badArgs('enabled must be true or false');
+  if (patch.dialect !== undefined && !GRAMMAR_DIALECTS.includes(patch.dialect)) return badArgs(`dialect must be one of ${GRAMMAR_DIALECTS.join(', ')}`);
+  for (const k of ['addWords', 'removeWords']) {
+    if (patch[k] === undefined) continue;
+    if (!Array.isArray(patch[k])) return badArgs(`${k} must be a list of words`);
+    if (!patch[k].every(isGrammarWord)) return badArgs(`${k} holds a word that is not 1 to 64 characters with no space at either end and no line break`);
+  }
+  for (const k of ['disableRules', 'enableRules']) {
+    if (patch[k] === undefined) continue;
+    if (!Array.isArray(patch[k])) return badArgs(`${k} must be a list of rule names`);
+    if (!patch[k].every((r) => typeof r === 'string' && GRAMMAR_RULE_RE.test(r))) return badArgs(`${k} holds a rule name that is not a letter followed by up to 63 letters or digits`);
+  }
+  const end = frontMatterEnd(bytes);
+  if (end < 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'front matter is not terminated' };
+  const head = bytes.subarray(0, end).toString('utf8');
+  const firstNl = head.indexOf('\n');
+  const rest = head.slice(firstNl + 1);
+  const close = rest.lastIndexOf('---');
+  const inner = rest.slice(0, close);
+  const doc = parseDocument(inner, { version: '1.2', schema: 'core' });
+  if (doc.errors.length > 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: `the front matter cannot be read: ${doc.errors[0].message}` };
+  if (inner.trim() !== '' && !isMap(doc.contents)) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'the front matter is not a mapping' };
+  const refuse = (what) => badArgs(`${what} in this file is not a mapping, so the grammar settings cannot be changed; edit it by hand`);
+  if (inner.trim() === '') doc.contents = doc.createNode({});
+  const present = (n) => n !== undefined && n !== null && !(n?.value === null);
+  let prefs = doc.get('preferences', true);
+  if (present(prefs) && !isMap(prefs)) return /** @type {any} */ (refuse('preferences'));
+  let checks = isMap(prefs) ? prefs.get('checks', true) : undefined;
+  if (present(checks) && !isMap(checks)) return /** @type {any} */ (refuse('checks'));
+  let grammar = isMap(checks) ? checks.get('grammar', true) : undefined;
+  if (present(grammar) && !isMap(grammar)) return /** @type {any} */ (refuse('grammar'));
+  const cur = isMap(grammar) ? /** @type {Record<string, any>} */ (grammar.toJSON() ?? {}) : {};
+  if (cur.words !== undefined && !Array.isArray(cur.words)) return badArgs('words in this file is not a list, so the grammar settings cannot be changed; edit it by hand');
+  if (cur.rules !== undefined && (cur.rules === null || typeof cur.rules !== 'object' || Array.isArray(cur.rules))) return badArgs('rules in this file is not a mapping, so the grammar settings cannot be changed; edit it by hand');
+
+  const next = { ...cur };
+  if (patch.enabled !== undefined) next.enabled = patch.enabled;
+  if (patch.dialect !== undefined) next.dialect = patch.dialect;
+  let words = [...(cur.words ?? [])];
+  for (const w of patch.removeWords ?? []) words = words.filter((x) => x !== w);
+  for (const w of patch.addWords ?? []) if (!words.includes(w)) words.push(w);
+  if (words.length > MAX_GRAMMAR_WORDS) return badArgs(`the book dictionary holds at most ${MAX_GRAMMAR_WORDS} words`);
+  if (words.length > 0 || cur.words !== undefined) next.words = words;
+  const rules = { ...(cur.rules ?? {}) };
+  for (const r of patch.disableRules ?? []) rules[r] = false;
+  for (const r of patch.enableRules ?? []) delete rules[r];
+  if (Object.keys(rules).length > 0 || cur.rules !== undefined) next.rules = rules;
+  // a list or map that the change emptied is removed, not left as `[]` / `{}`
+  if (words.length === 0 && (patch.removeWords ?? []).length > 0) delete next.words;
+  if (Object.keys(rules).length === 0 && (patch.enableRules ?? []).length > 0) delete next.rules;
+
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const keys = new Set([...Object.keys(cur), ...Object.keys(next)]);
+  const changedKeys = [...keys].filter((k) => !same(cur[k], next[k]));
+  if (changedKeys.length === 0) return { ok: true, buf: bytes, changed: false, grammar: cur };
+
+  if (!isMap(prefs)) { prefs = doc.createNode({}); doc.set('preferences', prefs); }
+  if (!isMap(checks)) { checks = doc.createNode({}); prefs.set('checks', checks); }
+  if (!isMap(grammar)) { grammar = doc.createNode({}); checks.set('grammar', grammar); }
+  for (const k of changedKeys) {
+    if (next[k] === undefined) grammar.delete(k);
+    else grammar.set(k, doc.createNode(next[k]));
+  }
+  if (grammar.items.length === 0) {
+    checks.delete('grammar');
+    if (checks.items.length === 0) {
+      prefs.delete('checks');
+      if (prefs.items.length === 0) doc.delete('preferences');
+    }
+  }
+  const text = doc.toString({ lineWidth: 0 });
+  const buf = Buffer.concat([Buffer.from(head.slice(0, firstNl + 1) + (head.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text) + rest.slice(close), 'utf8'), bytes.subarray(end)]);
+  return { ok: true, buf, changed: !buf.equals(bytes), grammar: next };
 }
 
 const OP_WORDS = { write: 'Changed', archive: 'Archived', restore: 'Restored', restoreOp: 'Undid' };
@@ -541,6 +631,28 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
         }
       }
       return { ok: true, code: 'OK', level, scope, ...(edit.changed ? {} : { unchanged: true }) };
+    },
+
+    /**
+     * M13-J02: change `preferences.checks.grammar` in book.md (on/off, dialect, the book dictionary, turned-off rules). Only that map changes (the rest of the front matter, its
+     * comments and the body stay as they are); one journaled store write, so it can be undone like any other. `grammar` in the result is the book's resulting map.
+     * @param {string} bookId @param {Parameters<typeof withGrammarChecks>[1]} patch
+     */
+    async setGrammarChecks(bookId, patch) {
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book));
+      const cur = await store.read('book.md');
+      if (!cur) return fail('NOT_FOUND', { message: 'book.md was not found' });
+      const edit = withGrammarChecks(cur.bytes, patch);
+      if (!edit.ok) return fail(edit.code, { message: edit.message });
+      if (edit.changed) {
+        const r = await store.write('book.md', edit.buf, { baseSha256: cur.sha256 });
+        if (!r.ok) return r.code === 'CONFLICT' ? fail('CONFLICT', { current: null }) : fail(r.code, r.message ? { message: r.message } : {});
+        if (reconcile) await reconcile(found.book.path);
+        else afterWrite(found.book.path);
+      }
+      return { ok: true, code: 'OK', grammar: edit.grammar, ...(edit.changed ? {} : { unchanged: true }) };
     },
 
     /**

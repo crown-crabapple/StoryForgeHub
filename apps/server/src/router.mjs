@@ -1,7 +1,7 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
 import { DEFAULT_BUDGET, MAX_BUDGET, MIN_BUDGET } from '@storyforge/core';
-import { AI_LEVELS } from '@storyforge/format';
+import { AI_LEVELS, preferenceProblems } from '@storyforge/format';
 import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, planningZip, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
@@ -735,6 +735,8 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'goal' && d === undefined) return { route: 'goal', bookId: b };
   // M12: the book's (or its library's default) AI level, saved as the `ai.level` project preference
   if (method === 'POST' && c === 'ai-level' && d === undefined) return { route: 'book-ai-level', bookId: b };
+  // M13-J02: grammar checks settings (on/off, dialect, the book dictionary, turned-off rules), saved as `preferences.checks.grammar`
+  if (method === 'POST' && c === 'checks' && d === 'grammar' && e === undefined) return { route: 'book-checks-grammar', bookId: b };
   // rename a book's title; put a standalone book into a series (owner only in shared mode)
   if (method === 'POST' && c === 'title' && d === undefined) return { route: 'book-title', bookId: b };
   if (method === 'POST' && c === 'move-to-series' && d === undefined) return { route: 'book-move-to-series', bookId: b };
@@ -876,6 +878,36 @@ function respond(r, okStatus, okBody) {
   const detail = { code: r.code, ...(r.field ? { field: r.field } : {}), ...(r.message ? { message: r.message } : {}), ...(r.diagnostics?.length ? { diagnostics: r.diagnostics } : {}) };
   const conflicting = ['EXISTS', 'ROLLED_BACK', 'REFUSED_PATH_TAKEN', 'REFUSED_DUPLICATE_ID', 'REFUSED_STALE_ACTION', 'NO_CHAPTER_GAP', 'REFUSED_FILES_CHANGED', 'REFUSED_TRASH_MISSING', 'REFUSED_NOT_UNDOABLE', 'SLUG_TAKEN', 'TYPE_EXISTS', 'CITE_KEY_TAKEN', 'TEMPLATE_EXISTS'].includes(r.code);
   return { status: conflicting ? 409 : 400, body: { error: conflicting ? 'conflict' : 'refused', ...detail } };
+}
+
+/**
+ * The body of POST /api/books/:b/checks/grammar: only enabled, dialect, addWords, removeWords, disableRules, enableRules, each valid, at least one present.
+ * Words, rule names and the dialect are checked with the same rules the file is (preferenceProblems). Returns the patch, or an error message naming the field.
+ * @param {Record<string, unknown>} body @returns {Record<string, any> | string}
+ */
+function grammarPatch(body) {
+  const allowed = ['enabled', 'dialect', 'addWords', 'removeWords', 'disableRules', 'enableRules'];
+  for (const k of Object.keys(body)) if (!allowed.includes(k)) return `unknown field ${k} (allowed: ${allowed.join(', ')})`;
+  if (Object.keys(body).length === 0) return `expected at least one of ${allowed.join(', ')}`;
+  const problem = (grammar) => preferenceProblems('checks', { grammar })[0]?.message;
+  if (body.enabled !== undefined && typeof body.enabled !== 'boolean') return 'enabled must be true or false';
+  if (body.dialect !== undefined) {
+    const m = problem({ dialect: body.dialect });
+    if (m) return `dialect: ${m}`;
+  }
+  for (const k of ['addWords', 'removeWords']) {
+    if (body[k] === undefined) continue;
+    if (!Array.isArray(body[k])) return `${k} must be a list of words`;
+    const m = problem({ words: body[k] });
+    if (m) return `${k}: ${m}`;
+  }
+  for (const k of ['disableRules', 'enableRules']) {
+    if (body[k] === undefined) continue;
+    if (!Array.isArray(body[k]) || body[k].some((r) => typeof r !== 'string')) return `${k} must be a list of rule names`;
+    const m = problem({ rules: Object.fromEntries(body[k].map((r) => [r, false])) });
+    if (m) return `${k}: ${m}`;
+  }
+  return body;
 }
 
 /** A planner `fields` body: an object of string-or-null values ({} when absent), or an error message. @param {unknown} v @returns {Record<string, string | null> | string} */
@@ -1167,6 +1199,12 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
       if (body.scope !== undefined && body.scope !== 'book' && body.scope !== 'library') return badRequest("scope must be 'book' or 'library'");
       const r = await repository.setAiLevel(bookId, body.level, { scope: body.scope ?? 'book' });
       return respond(r, 200, (x) => ({ ok: true, level: x.level, scope: x.scope }));
+    }
+    case 'book-checks-grammar': {
+      const patch = grammarPatch(body);
+      if (typeof patch === 'string') return badRequest(patch);
+      const r = await repository.setGrammarChecks(bookId, patch);
+      return respond(r, 200, (x) => ({ ok: true, grammar: x.grammar, ...(x.unchanged ? { unchanged: true } : {}) }));
     }
     case 'revision-save': {
       if (body.label !== undefined && typeof body.label !== 'string') return badRequest('label must be a string');
