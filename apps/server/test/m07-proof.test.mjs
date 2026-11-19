@@ -226,6 +226,9 @@ const SAMPLES = {
   'book-checks-epub': ['POST', `${b}/checks/epub`],
   'validation-start': ['POST', `${b}/export/validations`],
   'validation-cancel': ['POST', `${b}/export/validations/val_X/cancel`],
+  // M13-J05: the interior layout (writer) and a snapshot of the rendered interior (read-only)
+  'interior-layout': ['POST', `${b}/interior/layout`],
+  'interior-snapshot': ['POST', `${b}/interior/snapshots`],
   'tools-save': ['PUT', '/api/tools'],
   'scene-apply-finding': ['POST', `${b}/scenes/${SCENE}/apply-finding`],
   'book-title': ['POST', `${b}/title`],
@@ -251,13 +254,14 @@ const GET_SAMPLES = {
     `${b}/links`, `${b}/links/key-therefore-ferry`, `${b}/flow`, `${b}/scene-plans/${SCENE}`, `${b}/story-plan`, `${b}/plan-overview`, `${b}/arcs`, `${b}/arcs/maren-hollis`, `${b}/structures`, `${b}/structures/main-three-act`, `${b}/structure-templates`, `${b}/relationships`, `${b}/relationships/maren-hollis-and-pell`, `${b}/plan-badges`, `${b}/synopses`, `${b}/synopses/one-page`, `${b}/synopses/one-page/extract`,
     `${b}/clues`, `${b}/clues/sea-gate-key`, `${b}/series-plan`, `${b}/export/planning`, `${b}/ai-activity`, `${b}/context?chapter=1`, `${b}/checks/style/dismissals`, `${b}/checks/style/scans/scan_X`,
     `${b}/export/validations/val_X`, `${b}/export/validations/val_X/file`, `${b}/export/validations/val_X/report`,
+    `${b}/interior/fingerprint`, `${b}/interior/snapshots/snap_X/preview.html`,
     `/api/books/${OTHER_BOOK}`, `/api/books/${OTHER_BOOK}/scenes/${SCENE}`,
   ],
   export: [`${b}/export?format=markdown`, `/api/books/${OTHER_BOOK}/export?format=markdown`],
   admin: ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/plugins', '/api/webhooks', '/api/oauth/request', '/api/ai/profiles', '/api/tools', '/api/tools/status', '/api/recover/last', '/api/library/recent', `${b}/backup`, `${b}/repair/plan`],
   auth: ['/api/auth/me'],
 };
-const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview', 'arcs', 'structures', 'relationships', 'plan-badges', 'synopses', 'synopses/one-page/extract', 'clues', 'series-plan', 'export/planning', 'ai-activity', 'context?chapter=1', 'checks/style/dismissals', 'checks/style/scans/scan_X', 'export/validations/val_X', 'export/validations/val_X/file', 'export/validations/val_X/report'].map((x) => `${b}/${x}`);
+const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview', 'arcs', 'structures', 'relationships', 'plan-badges', 'synopses', 'synopses/one-page/extract', 'clues', 'series-plan', 'export/planning', 'ai-activity', 'context?chapter=1', 'checks/style/dismissals', 'checks/style/scans/scan_X', 'export/validations/val_X', 'export/validations/val_X/file', 'export/validations/val_X/report', 'interior/fingerprint', 'interior/snapshots/snap_X/preview.html'].map((x) => `${b}/${x}`);
 
 const PRINCIPALS = ['owner', 'editor', 'reviewer', 'viewer', 'share', 'exportShare', 'anonymous'];
 /** The principal object allowed() takes for each caller kind of the sweep. */

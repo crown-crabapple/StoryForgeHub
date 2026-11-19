@@ -6241,3 +6241,59 @@ kbd {
   margin: var(--s2) 0;
   padding-left: var(--s4);
 }
+
+/* M13-J05: the Book interior page (desktop layout: settings left, preview and report right; a plain note at narrow widths) */
+.interior-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
+  gap: var(--s4);
+  align-items: start;
+}
+.interior-narrow-note {
+  display: none;
+}
+@media (max-width: 899px) {
+  .interior-narrow-note {
+    display: block;
+  }
+  .interior-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.interior-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  margin: 0 0 var(--s2);
+}
+.interior-status {
+  margin: 0;
+}
+.interior-frame {
+  display: block;
+  width: 100%;
+  height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface);
+}
+.interior-frame-empty {
+  min-height: 12rem;
+}
+.interior-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s4);
+  margin: 0 0 var(--s3);
+}
+.interior-facts dt {
+  font-size: var(--fs-14);
+}
+.interior-facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+.interior-glyph {
+  font-size: 1.25em;
+}

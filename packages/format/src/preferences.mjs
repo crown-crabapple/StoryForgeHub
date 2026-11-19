@@ -15,7 +15,7 @@ export const DEFAULT_AI_LEVEL = 'planner';
 export const aiLevelReaches = (level, min) => AI_LEVELS.indexOf(AI_LEVELS.includes(level) ? level : DEFAULT_AI_LEVEL) >= AI_LEVELS.indexOf(min);
 
 /** Keys where the project outranks the person: built-in < profile < library < book. */
-export const PROJECT_KEYS = ['modules', 'labels', 'export', 'ai', 'checks'];
+export const PROJECT_KEYS = ['modules', 'labels', 'export', 'ai', 'checks', 'interior'];
 /** Keys where the person at the keyboard wins: built-in < library < book < profile. */
 export const APPEARANCE_KEYS = ['theme', 'typography', 'layout', 'shortcuts'];
 /** Every key a `preferences` map may hold. */
@@ -114,6 +114,33 @@ function styleRuleProblems(rules, at, bad) {
   }
 }
 
+/** M13-J05: the book interior layout (`preferences.interior`). The one template, its choices and ranges. */
+export const INTERIOR_TEMPLATES = Object.freeze(['novel']);
+export const INTERIOR_TRIMS = Object.freeze(['6x9', '5.5x8.5']);
+export const INTERIOR_FONTS = Object.freeze(['literata', 'inter']);
+export const INTERIOR_CHAPTER_STARTS = Object.freeze(['right', 'any']);
+export const INTERIOR_SCENE_BREAKS = Object.freeze(['asterisks', 'ornament', 'blank']);
+export const INTERIOR_RANGES = Object.freeze({ fontSize: Object.freeze([9, 14]), lineHeight: Object.freeze([1.1, 1.8]), margin: Object.freeze([0.25, 1.5]) });
+export const INTERIOR_MARGIN_KEYS = Object.freeze(['inside', 'outside', 'top', 'bottom']);
+/** Longest plain text of each interior text setting, in characters. */
+export const INTERIOR_TEXT_LIMITS = Object.freeze({ copyright: 2000, dedication: 1000, aboutAuthor: 4000 });
+/** The interior defaults (deep-frozen). */
+export const INTERIOR_DEFAULTS = Object.freeze({
+  version: 1,
+  template: 'novel',
+  trim: '6x9',
+  font: 'literata',
+  fontSize: 11,
+  lineHeight: 1.35,
+  margins: Object.freeze({ inside: 0.75, outside: 0.5, top: 0.6, bottom: 0.6 }),
+  chapterStart: 'right',
+  sceneBreak: 'asterisks',
+  runningHeads: true,
+  pageNumbers: true,
+  frontMatter: Object.freeze({ copyright: '', dedication: '' }),
+  backMatter: Object.freeze({ aboutAuthor: '' }),
+});
+
 /** The built-in layer: every key's default. The reference dark theme, serif 18 px, the Writing layout. */
 export const BUILTIN = Object.freeze({
   modules: Object.freeze(Object.fromEntries(MODULE_IDS.map((id) => [id, true]))),
@@ -127,6 +154,8 @@ export const BUILTIN = Object.freeze({
     style: Object.freeze({ enabled: false, rules: STYLE_DEFAULTS }),
     epub: Object.freeze({ validate: false }),
   }),
+  // M13-J05: book interior layout (preview).
+  interior: INTERIOR_DEFAULTS,
   theme: 'dark',
   typography: Object.freeze({ family: 'serif', size: 18, lineHeight: 1.7, paragraphSpacing: 0, letterSpacing: 0, measure: 72 }),
   layout: Object.freeze({ name: 'Writing' }),
@@ -209,6 +238,40 @@ export function preferenceProblems(key, value) {
             }
           }
         } else bad(`${key}.${k}`, `unknown checks setting ${k}`);
+      }
+      return out;
+    }
+    case 'interior': {
+      if (!isMap(value)) return [{ location: key, message: 'interior must be a mapping (version, template, trim, font, fontSize, lineHeight, margins, chapterStart, sceneBreak, runningHeads, pageNumbers, frontMatter, backMatter)' }];
+      const choice = (k, v, list) => { if (!list.includes(v)) bad(`${key}.${k}`, `${k} must be one of ${list.join(', ')}`); };
+      const group = (k, v, keys, limits) => {
+        if (!isMap(v)) return bad(`${key}.${k}`, `${k} must be a mapping (${keys.join(', ')})`);
+        for (const [s, sv] of Object.entries(v)) {
+          const loc = `${key}.${k}.${s}`;
+          if (!keys.includes(s)) bad(loc, `unknown ${k} setting ${s}`);
+          else if (limits) {
+            if (typeof sv !== 'string' || sv.length > limits[s]) bad(loc, `${s} must be plain text of at most ${limits[s]} characters`);
+          } else if (!inRange(sv, INTERIOR_RANGES.margin)) bad(loc, `${s} must be a number of inches from ${INTERIOR_RANGES.margin[0]} to ${INTERIOR_RANGES.margin[1]}`);
+        }
+      };
+      for (const [k, v] of Object.entries(value)) {
+        if (k === 'version') {
+          if (v !== 1) bad(`${key}.${k}`, 'interior.version must be 1: this book was saved by a newer StoryForge');
+        } else if (k === 'template') choice(k, v, INTERIOR_TEMPLATES);
+        else if (k === 'trim') choice(k, v, INTERIOR_TRIMS);
+        else if (k === 'font') choice(k, v, INTERIOR_FONTS);
+        else if (k === 'chapterStart') choice(k, v, INTERIOR_CHAPTER_STARTS);
+        else if (k === 'sceneBreak') choice(k, v, INTERIOR_SCENE_BREAKS);
+        else if (k === 'fontSize') {
+          if (!inRange(v, INTERIOR_RANGES.fontSize) || !Number.isInteger(v * 2)) bad(`${key}.${k}`, 'fontSize must be whole or half points from 9 to 14');
+        } else if (k === 'lineHeight') {
+          if (!inRange(v, INTERIOR_RANGES.lineHeight)) bad(`${key}.${k}`, 'lineHeight must be a number from 1.1 to 1.8');
+        } else if (k === 'runningHeads' || k === 'pageNumbers') {
+          if (typeof v !== 'boolean') bad(`${key}.${k}`, `${k} must be true or false`);
+        } else if (k === 'margins') group(k, v, INTERIOR_MARGIN_KEYS, null);
+        else if (k === 'frontMatter') group(k, v, ['copyright', 'dedication'], INTERIOR_TEXT_LIMITS);
+        else if (k === 'backMatter') group(k, v, ['aboutAuthor'], INTERIOR_TEXT_LIMITS);
+        else bad(`${key}.${k}`, `unknown interior setting ${k}`);
       }
       return out;
     }

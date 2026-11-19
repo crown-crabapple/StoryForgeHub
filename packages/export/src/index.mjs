@@ -58,3 +58,6 @@ export async function exportBook(bookRoot, format, options = {}) {
   }
   return { bytes, filename: `${manuscript.slug}.${ext}`, mime, warnings };
 }
+
+// M13-J05: the book interior (Paged.js preview). Pure: html, css and a report from an assembled manuscript.
+export { renderInterior, parseUnicodeRanges, INTERIOR_FONT_FILES } from './interior.mjs';

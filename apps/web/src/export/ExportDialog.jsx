@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Dialog } from '../shell/Dialog.jsx';
+import { useNavigate } from '../router.jsx';
+import { interiorPath } from '../interior/requests.js';
 import { ValidationPanel } from './ValidationPanel.jsx';
 import { cancelValidation, pollValidation, saveValidateChoice, startValidation, validationUrls } from './validation.js';
 import { EVIDENCE_WARNING, EXPORT_FORMATS, INCLUDE_OPTIONS, PAGE_SIZES, PLANNING_EXPORT_HINT, exportUrl, fetchDownload, planningExportUrl, saveBlob, statusesOf } from './requests.js';
@@ -24,6 +26,7 @@ export function ExportDialog({ book, onClose, fetchImpl, initialValidate = false
   const [validate, setValidate] = useState(initialValidate === true);
   const [check, setCheck] = useState(/** @type {{ phase: 'running' | 'done', id: string | null, job: any, cancelling: boolean } | null} */ (null));
   const [note, setNote] = useState(/** @type {string | null} */ (null));
+  const navigate = useNavigate();
   const live = useRef(new AbortController());
   const statuses = statusesOf(book);
   const checking = format === 'epub' && validate && include === 'manuscript';
@@ -93,6 +96,12 @@ export function ExportDialog({ book, onClose, fetchImpl, initialValidate = false
     setBusy(false);
     if (!r.ok) setProblem(r.message);
     else saveBlob(r.blob, r.filename);
+  }
+
+  /** Open the Book interior page (a full page of the book); a running check is stopped like on close. */
+  function openInterior() {
+    close();
+    navigate(interiorPath(book.id));
   }
 
   /** Closing while a check runs stops it. */
@@ -202,6 +211,16 @@ export function ExportDialog({ book, onClose, fetchImpl, initialValidate = false
           </p>
           <button type="button" className="btn" aria-describedby="export-planning-hint" disabled={busy} onClick={() => download(planningExportUrl(book.id), `${book.slug ?? 'book'}-planning.zip`)}>
             Planning notes (Markdown zip)
+          </button>
+        </div>
+
+        <div className="field export-interior">
+          <h3>Book interior (experimental)</h3>
+          <p className="secondary field-hint" id="export-interior-hint">
+            A preview of the manuscript laid out as a printed book interior. Nothing is exported or changed.
+          </p>
+          <button type="button" className="btn" aria-describedby="export-interior-hint" onClick={openInterior}>
+            Book interior (experimental)
           </button>
         </div>
 

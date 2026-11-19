@@ -1,6 +1,6 @@
 // Preferences, profiles and modules for the API (M07-J04). A profile is per-machine user config (never author data): choosing or saving one writes
 // `<config>/profiles/<name>.json` through @storyforge/store and nothing in any library. The library and book layers are read from `library.md` / `book.md`.
-import { AI_LEVELS, DEFAULT_AI_LEVEL, MODULE_IDS, PREFERENCE_KEYS, moduleOfRoute, profileProblems, resolveModules, resolvePreferences } from '@storyforge/format';
+import { AI_LEVELS, DEFAULT_AI_LEVEL, INTERIOR_DEFAULTS, MODULE_IDS, PREFERENCE_KEYS, moduleOfRoute, profileProblems, resolveModules, resolvePreferences } from '@storyforge/format';
 import { DEFAULT_PROFILE, deleteProfile, isProfileName, listProfiles, readProfile, writeProfile } from '@storyforge/store';
 
 /** The profile name a server run uses: `--profile <name>`, else `STORYFORGE_PROFILE`, else `default`. Throws an Error with a usable message for a bad name.
@@ -171,4 +171,17 @@ export async function handleProfileWrite(match, body, state) {
     default:
       return NOT_FOUND;
   }
+}
+
+/**
+ * M13-J05: the effective `interior` layout of a book (resolved like any project key: built-in < profile < library < book; a layer that names only some keys keeps the defaults for the
+ * rest). Null for an unknown book.
+ * @param {any} repository @param {any} state @param {string} bookId @returns {Promise<Record<string, any> | null>}
+ */
+export async function interiorOf(repository, state, bookId) {
+  const project = typeof repository.getPreferences === 'function' ? await repository.getPreferences({ bookId }) : null;
+  if (project === null) return null;
+  const profile = await readProfile(profileNameOf(state));
+  const resolved = resolvePreferences({ profile: layerOf(profile), library: project.library, book: project.book }).values?.interior;
+  return { ...INTERIOR_DEFAULTS, ...(resolved ?? {}) };
 }
