@@ -215,6 +215,14 @@ const SAMPLES = {
   'book-ai-level': ['POST', `${b}/ai-level`],
   // M13-J02: grammar checks settings (writer)
   'book-checks-grammar': ['POST', `${b}/checks/grammar`],
+  // M13-J03: style checks (settings, dismissals and applying a finding are writer; the check and the scans only read)
+  'book-checks-style': ['POST', `${b}/checks/style`],
+  'style-dismiss': ['POST', `${b}/checks/style/dismissals`],
+  'style-undismiss': ['DELETE', `${b}/checks/style/dismissals/some-slug`],
+  'style-check': ['POST', `${b}/checks/style/check`],
+  'style-scan-start': ['POST', `${b}/checks/style/scans`],
+  'style-scan-cancel': ['POST', `${b}/checks/style/scans/scan_X/cancel`],
+  'scene-apply-finding': ['POST', `${b}/scenes/${SCENE}/apply-finding`],
   'book-title': ['POST', `${b}/title`],
   'series-create': ['POST', '/api/series'],
   'book-move-to-series': ['POST', `${b}/move-to-series`],
@@ -236,14 +244,14 @@ const GET_SAMPLES = {
     `${b}/receipts`, `${b}/receipts/verify`, `${b}/suggestions`, `${b}/comments`, `${b}/notes`, `${b}/scene-notes`, `${S}/revisions`, `${b}/activity`,
     `${b}/raw?path=book.md`, `${b}/ai/status`, `${b}/presence`, `${b}/objects`,
     `${b}/links`, `${b}/links/key-therefore-ferry`, `${b}/flow`, `${b}/scene-plans/${SCENE}`, `${b}/story-plan`, `${b}/plan-overview`, `${b}/arcs`, `${b}/arcs/maren-hollis`, `${b}/structures`, `${b}/structures/main-three-act`, `${b}/structure-templates`, `${b}/relationships`, `${b}/relationships/maren-hollis-and-pell`, `${b}/plan-badges`, `${b}/synopses`, `${b}/synopses/one-page`, `${b}/synopses/one-page/extract`,
-    `${b}/clues`, `${b}/clues/sea-gate-key`, `${b}/series-plan`, `${b}/export/planning`, `${b}/ai-activity`, `${b}/context?chapter=1`,
+    `${b}/clues`, `${b}/clues/sea-gate-key`, `${b}/series-plan`, `${b}/export/planning`, `${b}/ai-activity`, `${b}/context?chapter=1`, `${b}/checks/style/dismissals`, `${b}/checks/style/scans/scan_X`,
     `/api/books/${OTHER_BOOK}`, `/api/books/${OTHER_BOOK}/scenes/${SCENE}`,
   ],
   export: [`${b}/export?format=markdown`, `/api/books/${OTHER_BOOK}/export?format=markdown`],
   admin: ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/plugins', '/api/webhooks', '/api/oauth/request', '/api/ai/profiles', '/api/recover/last', '/api/library/recent', `${b}/backup`, `${b}/repair/plan`],
   auth: ['/api/auth/me'],
 };
-const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview', 'arcs', 'structures', 'relationships', 'plan-badges', 'synopses', 'synopses/one-page/extract', 'clues', 'series-plan', 'export/planning', 'ai-activity', 'context?chapter=1'].map((x) => `${b}/${x}`);
+const PRIVATE_READS = ['receipts', 'receipts/verify', 'suggestions', 'comments', 'notes', 'scene-notes', `scenes/${SCENE}/revisions`, 'activity', 'raw?path=book.md', 'presence', 'ai/status', 'links', 'flow', `scene-plans/${SCENE}`, 'story-plan', 'plan-overview', 'arcs', 'structures', 'relationships', 'plan-badges', 'synopses', 'synopses/one-page/extract', 'clues', 'series-plan', 'export/planning', 'ai-activity', 'context?chapter=1', 'checks/style/dismissals', 'checks/style/scans/scan_X'].map((x) => `${b}/${x}`);
 
 const PRINCIPALS = ['owner', 'editor', 'reviewer', 'viewer', 'share', 'exportShare', 'anonymous'];
 /** The principal object allowed() takes for each caller kind of the sweep. */

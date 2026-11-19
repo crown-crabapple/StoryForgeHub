@@ -36,6 +36,84 @@ export const TYPOGRAPHY_RANGES = {
 };
 export const PANEL_WIDTH_RANGES = { rail: [180, 480], inspector: [240, 560] };
 
+/** M13-J03: the six style rule ids (fixed; a book setting can never name another rule). */
+export const STYLE_RULE_IDS = Object.freeze(['preferred-terms', 'repeated-words', 'punctuation', 'repeated-phrases', 'long-paragraphs', 'isolated-lines']);
+export const STYLE_QUOTES = Object.freeze(['curly', 'straight']);
+export const STYLE_DASHES = Object.freeze(['em', 'em-spaced', 'en-spaced']);
+export const STYLE_ELLIPSES = Object.freeze(['character', 'dots']);
+export const MAX_STYLE_TERMS = 500;
+/** Whole-number limits of the style rule options: [min, max]. */
+export const STYLE_NUMBER_RANGES = Object.freeze({ minWords: [3, 8], window: [50, 2000], maxWords: [50, 2000], minRun: [3, 30] });
+/** Each rule's own keys. */
+const STYLE_RULE_KEYS = Object.freeze({
+  'preferred-terms': ['enabled', 'terms'],
+  'repeated-words': ['enabled'],
+  punctuation: ['enabled', 'quotes', 'dashes', 'ellipsis'],
+  'repeated-phrases': ['enabled', 'minWords', 'window'],
+  'long-paragraphs': ['enabled', 'maxWords'],
+  'isolated-lines': ['enabled', 'minRun'],
+});
+/** The style rule defaults (format holds its own copy; a test compares it with @storyforge/style). Deep-frozen. */
+export const STYLE_DEFAULTS = Object.freeze({
+  'preferred-terms': Object.freeze({ enabled: true, terms: Object.freeze([]) }),
+  'repeated-words': Object.freeze({ enabled: true }),
+  punctuation: Object.freeze({ enabled: true, quotes: null, dashes: null, ellipsis: null }),
+  'repeated-phrases': Object.freeze({ enabled: false, minWords: 4, window: 300 }),
+  'long-paragraphs': Object.freeze({ enabled: false, maxWords: 220 }),
+  'isolated-lines': Object.freeze({ enabled: false, minRun: 6 }),
+});
+
+/**
+ * Problems of `checks.style.rules`.
+ * @param {any} rules @param {string} at @param {(location: string, message: string) => void} bad
+ */
+function styleRuleProblems(rules, at, bad) {
+  if (rules === null || typeof rules !== 'object' || Array.isArray(rules)) return bad(at, `rules must be a mapping of rule id to its settings (${STYLE_RULE_IDS.join(', ')})`);
+  for (const [id, rule] of Object.entries(rules)) {
+    const here = `${at}.${id}`;
+    if (!STYLE_RULE_IDS.includes(id)) {
+      bad(here, `unknown style rule ${id} (rules: ${STYLE_RULE_IDS.join(', ')}); rules are part of StoryForge`);
+      continue;
+    }
+    if (rule === null || typeof rule !== 'object' || Array.isArray(rule)) {
+      bad(here, `${id} must be a mapping (${STYLE_RULE_KEYS[id].join(', ')})`);
+      continue;
+    }
+    for (const [k, v] of Object.entries(rule)) {
+      const loc = `${here}.${k}`;
+      if (!STYLE_RULE_KEYS[id].includes(k)) bad(loc, `unknown ${id} setting ${k}`);
+      else if (k === 'enabled' || k === 'caseSensitive') {
+        if (typeof v !== 'boolean') bad(loc, `${k} must be true or false`);
+      } else if (k === 'quotes' || k === 'dashes' || k === 'ellipsis') {
+        const choices = k === 'quotes' ? STYLE_QUOTES : k === 'dashes' ? STYLE_DASHES : STYLE_ELLIPSES;
+        if (v !== null && !choices.includes(v)) bad(loc, `${k} must be ${choices.join(', ')} or null (not checked)`);
+      } else if (k === 'terms') {
+        if (!Array.isArray(v)) bad(loc, 'terms must be a list of { use, avoid } pairs');
+        else {
+          if (v.length > MAX_STYLE_TERMS) bad(loc, `terms holds at most ${MAX_STYLE_TERMS} entries`);
+          v.forEach((t, i) => {
+            const tl = `${loc}.${i}`;
+            if (t === null || typeof t !== 'object' || Array.isArray(t)) return bad(tl, 'a term is a mapping with use and avoid');
+            for (const tk of Object.keys(t)) if (tk !== 'use' && tk !== 'avoid' && tk !== 'caseSensitive') bad(`${tl}.${tk}`, `unknown term setting ${tk}`);
+            if (t.caseSensitive !== undefined && typeof t.caseSensitive !== 'boolean') bad(`${tl}.caseSensitive`, 'caseSensitive must be true or false');
+            const okWord = (w) => typeof w === 'string' && w.length >= 1 && w.length <= 64;
+            if (!okWord(t.use)) bad(`${tl}.use`, 'use is 1 to 64 characters');
+            if (!Array.isArray(t.avoid) || t.avoid.length < 1 || t.avoid.length > 20) bad(`${tl}.avoid`, 'avoid is a list of 1 to 20 spellings');
+            else {
+              t.avoid.forEach((a, j) => {
+                if (!okWord(a)) bad(`${tl}.avoid.${j}`, 'an avoided spelling is 1 to 64 characters');
+                else if (a === t.use) bad(`${tl}.avoid.${j}`, 'an avoided spelling cannot equal the preferred one');
+              });
+            }
+          });
+        }
+      } else if (!Number.isInteger(v) || v < STYLE_NUMBER_RANGES[k][0] || v > STYLE_NUMBER_RANGES[k][1]) {
+        bad(loc, `${k} must be a whole number from ${STYLE_NUMBER_RANGES[k][0]} to ${STYLE_NUMBER_RANGES[k][1]}`);
+      }
+    }
+  }
+}
+
 /** The built-in layer: every key's default. The reference dark theme, serif 18 px, the Writing layout. */
 export const BUILTIN = Object.freeze({
   modules: Object.freeze(Object.fromEntries(MODULE_IDS.map((id) => [id, true]))),
@@ -46,7 +124,7 @@ export const BUILTIN = Object.freeze({
   checks: Object.freeze({
     version: 1,
     grammar: Object.freeze({ enabled: false, language: 'en', dialect: 'american', words: Object.freeze([]), rules: Object.freeze({}) }),
-    style: Object.freeze({ enabled: false }),
+    style: Object.freeze({ enabled: false, rules: STYLE_DEFAULTS }),
     epub: Object.freeze({ validate: false }),
   }),
   theme: 'dark',
@@ -93,7 +171,7 @@ export function preferenceProblems(key, value) {
       return out;
     case 'checks': {
       if (!isMap(value)) return [{ location: key, message: 'checks must be a mapping (version, grammar, style, epub)' }];
-      const flags = { grammar: ['enabled', 'language', 'dialect', 'words', 'rules'], style: ['enabled'], epub: ['validate'] };
+      const flags = { grammar: ['enabled', 'language', 'dialect', 'words', 'rules'], style: ['enabled', 'rules'], epub: ['validate'] };
       for (const [k, v] of Object.entries(value)) {
         if (k === 'version') {
           if (v !== 1) bad(`${key}.${k}`, 'checks.version must be 1: this book was saved by a newer StoryForge');
@@ -117,6 +195,8 @@ export function preferenceProblems(key, value) {
                     else seen.add(w);
                   });
                 }
+              } else if (k === 'style' && s === 'rules') {
+                styleRuleProblems(sv, `${key}.${k}.${s}`, bad);
               } else if (s === 'rules') {
                 if (!isMap(sv)) bad(`${key}.${k}.${s}`, 'rules must be a mapping of rule name to false');
                 else {

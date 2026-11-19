@@ -105,7 +105,7 @@ A layout says which side panels show, how wide they are, and which sections the 
 
 - **Writing** (the default: chapters on the left, everything on the right), **Planning** (wider panels, events and research first) and **Review** (no chapter panel; continuity, suggestions and receipts first).
 - Settings > Layout switches layouts, hides or shows either panel, reorders the right panel's sections, and **saves the current layout under a name** of your own.
-- The right panel's sections are `goal`, `scene`, `plan`, `linked`, `notes`, `events`, `research`, `grammar`, `continuity`, `comments`, `suggestions`, `problems`, `revisions`, `receipts` and `book-problems`. `grammar` (shown as "Grammar") holds the grammar suggestions for the open scene; see [Grammar checks](#grammar-checks). `plan` (shown as "Plan", after Scene facts) holds the scene's planning fields; it belongs to the `planner` feature, so it is hidden when that feature is off. The Planning layout pins it.
+- The right panel's sections are `goal`, `scene`, `plan`, `linked`, `notes`, `events`, `research`, `grammar`, `continuity`, `comments`, `suggestions`, `problems`, `revisions`, `receipts` and `book-problems`. `grammar` (shown as "Checks") holds the grammar and style suggestions for the open scene; see [Grammar checks](#grammar-checks) and [Style checks](#style-checks). `plan` (shown as "Plan", after Scene facts) holds the scene's planning fields; it belongs to the `planner` feature, so it is hidden when that feature is off. The Planning layout pins it.
 - Switching layout never reloads the page and never loses text you have not saved yet.
 - Resize a panel by dragging its edge, or Tab to the edge (it is a separator with a value) and use Left and Right arrows (Shift for bigger steps, Home and End for the limits).
 - Below 900 px wide the narrow-screen rules still apply: one column, the chapters behind a button.
@@ -190,6 +190,44 @@ preferences:
 - `grammar.rules` maps a Harper rule name (a letter followed by up to 63 letters or digits) to `false`. A rule that is not listed is on. `true` is an error.
 
 A wrong value, or a key that `checks` does not know, is `E102` at its location. Settings > Grammar checks writes the grammar keys for you; see [editing-publishing.md](editing-publishing.md#grammar-checks).
+
+## Style checks
+
+`checks.style` turns the style checks on and sets the options of the six built-in rules. By hand, in `book.md`:
+
+```yaml
+preferences:
+  checks:
+    version: 1
+    style:
+      enabled: true
+      rules:
+        preferred-terms: { enabled: true, terms: [ { use: grey, avoid: [gray] } ] }
+        repeated-words: { enabled: true }
+        punctuation: { enabled: true, quotes: curly, dashes: em, ellipsis: character }
+        repeated-phrases: { enabled: false, minWords: 4, window: 300 }
+        long-paragraphs: { enabled: false, maxWords: 220 }
+        isolated-lines: { enabled: false, minRun: 6 }
+```
+
+- `style.enabled` is `true` or `false` and defaults to `false`.
+- `style.rules` is a mapping of rule id to that rule's settings. The only ids are `preferred-terms`, `repeated-words`, `punctuation`, `repeated-phrases`, `long-paragraphs` and `isolated-lines`. Any other id is `E102`, so a book cannot name another rule, a path or a package, and nothing outside the built-in rules is ever run. A rule you leave out, or a key you leave out of a rule, has its default.
+- Each rule accepts only its own keys; any other key is `E102`. `enabled` is `true` or `false` for every rule.
+
+| Rule | Defaults | Other keys |
+|---|---|---|
+| `preferred-terms` | `enabled: true`, `terms: []` | `terms` |
+| `repeated-words` | `enabled: true` | none |
+| `punctuation` | `enabled: true`, `quotes`, `dashes` and `ellipsis` all `null` | `quotes`, `dashes`, `ellipsis` |
+| `repeated-phrases` | `enabled: false`, `minWords: 4`, `window: 300` | `minWords`, `window` |
+| `long-paragraphs` | `enabled: false`, `maxWords: 220` | `maxWords` |
+| `isolated-lines` | `enabled: false`, `minRun: 6` | `minRun` |
+
+- `terms` is a list of up to 500 entries. Each entry has `use` (1 to 64 characters) and `avoid` (a list of 1 to 20 strings of 1 to 64 characters, none equal to `use`), and may have `caseSensitive: true` or `false`. Without `caseSensitive: true` a term matches regardless of capitals. A key other than `use`, `avoid` and `caseSensitive` in a term is an error.
+- `quotes` is `curly`, `straight` or `null`; `dashes` is `em`, `em-spaced`, `en-spaced` or `null`; `ellipsis` is `character`, `dots` or `null`. `null` means that kind of punctuation is not checked.
+- The numbers are whole numbers: `minWords` 3 to 8, `window` 50 to 2000, `maxWords` 50 to 2000 and `minRun` 3 to 30.
+
+A wrong value, or a key that is not allowed, is `E102` at its location. Settings > Style checks writes these keys for you; see [editing-publishing.md](editing-publishing.md#style-checks).
 
 ## Custom prompts
 

@@ -11,11 +11,12 @@ export const PROJECT_TABS = [
   { key: 'notes', label: 'Notes', path: '/notes' },
 ];
 
-/** Further project pages (M07-J02), shown after the tabs above: the Insights dashboard and the revision Tasks, and the AI Workspace (M12, gated by the `workspace` module). */
+/** Further project pages (M07-J02), shown after the tabs above: the Insights dashboard and the revision Tasks, the AI Workspace (M12, gated by the `workspace` module) and Style checks (M13-J03, no module). */
 export const MORE_TABS = [
   { key: 'insights', label: 'Insights', path: '/insights' },
   { key: 'tasks', label: 'Tasks', path: '/tasks' },
   { key: 'workspace', label: 'AI Workspace', path: '/workspace' },
+  { key: 'style', label: 'Style checks', path: '/style' },
 ];
 
 /** The module a project tab belongs to (M07-J04): with the module off the tab disappears. `insights` and `tasks` are J02's pages, gated by id so they follow once they exist. */

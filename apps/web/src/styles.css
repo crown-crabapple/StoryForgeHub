@@ -6144,3 +6144,52 @@ kbd {
   align-items: center;
   gap: var(--s2);
 }
+
+/* ---------- style checks: the rail group, the page and Settings (M13-J03) ---------- */
+.st-group-title {
+  margin: var(--s3) 0 var(--s2);
+  font-size: var(--fs-13);
+}
+.st-card .st-place,
+.st-card .st-passage {
+  margin: 0;
+}
+.st-card .st-passage mark {
+  font-weight: 600;
+}
+.st-related {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.st-dismiss {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+.st-page .st-scenes {
+  margin: var(--s2) 0 var(--s2) var(--s4);
+}
+.st-bar {
+  height: 10px;
+  max-width: 480px;
+  overflow: hidden;
+  background: var(--divider);
+  border-radius: 5px;
+}
+.st-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.st-dismissed,
+.st-stale {
+  margin: var(--s4) 0;
+}
+.st-rule {
+  margin: var(--s3) 0;
+}

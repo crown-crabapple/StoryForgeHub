@@ -57,7 +57,7 @@ export const SECTION_LABELS = {
   notes: 'Notes in the text',
   events: 'Events',
   research: 'Research',
-  grammar: 'Grammar',
+  grammar: 'Checks',
   continuity: 'Continuity',
   comments: 'Comments',
   suggestions: 'Suggestions',

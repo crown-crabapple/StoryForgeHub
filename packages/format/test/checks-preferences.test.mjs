@@ -1,12 +1,12 @@
 // M13-J01: the `checks` preference (defaults, layering, each E102).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolvePreferences, BUILTIN, PROJECT_KEYS, PREFERENCE_KEYS, checkPreferenceMap, preferenceProblems, INSPECTOR_SECTIONS } from '../src/index.mjs';
+import { resolvePreferences, STYLE_DEFAULTS, STYLE_RULE_IDS, BUILTIN, PROJECT_KEYS, PREFERENCE_KEYS, checkPreferenceMap, preferenceProblems, INSPECTOR_SECTIONS } from '../src/index.mjs';
 
 const DEFAULTS = {
   version: 1,
   grammar: { enabled: false, language: 'en', dialect: 'american', words: [], rules: {} },
-  style: { enabled: false },
+  style: { enabled: false, rules: STYLE_DEFAULTS },
   epub: { validate: false },
 };
 
@@ -34,7 +34,7 @@ test('layering: built-in < profile < library < book, key by key', () => {
   const library = { checks: { style: { enabled: false } } };
   const book = { checks: { epub: { validate: true } } };
   const { values, sources } = resolvePreferences({ profile, library, book });
-  assert.deepEqual(values.checks, { version: 1, grammar: { enabled: true, language: 'en', dialect: 'american', words: [], rules: {} }, style: { enabled: false }, epub: { validate: true } });
+  assert.deepEqual(values.checks, { version: 1, grammar: { enabled: true, language: 'en', dialect: 'american', words: [], rules: {} }, style: { enabled: false, rules: STYLE_DEFAULTS }, epub: { validate: true } });
   assert.equal(sources['checks.grammar.enabled'], 'profile');
   assert.equal(sources['checks.grammar.language'], 'builtin');
   assert.equal(sources['checks.style.enabled'], 'library');
@@ -135,4 +135,83 @@ test('M13-J02: the dictionary and rules layer like any other setting; grammar is
   assert.deepEqual(values.checks.grammar.words, ['B']);
   assert.deepEqual(values.checks.grammar.rules, { X: false, Y: false });
   assert.equal(INSPECTOR_SECTIONS.indexOf('grammar') + 1, INSPECTOR_SECTIONS.indexOf('continuity'));
+});
+
+test('M13-J03: the style defaults are the six rules, deeply frozen, with punctuation unchosen', () => {
+  assert.deepEqual(STYLE_RULE_IDS, ['preferred-terms', 'repeated-words', 'punctuation', 'repeated-phrases', 'long-paragraphs', 'isolated-lines']);
+  assert.deepEqual(Object.keys(BUILTIN.checks.style.rules), [...STYLE_RULE_IDS]);
+  assert.deepEqual(BUILTIN.checks.style.rules, {
+    'preferred-terms': { enabled: true, terms: [] },
+    'repeated-words': { enabled: true },
+    punctuation: { enabled: true, quotes: null, dashes: null, ellipsis: null },
+    'repeated-phrases': { enabled: false, minWords: 4, window: 300 },
+    'long-paragraphs': { enabled: false, maxWords: 220 },
+    'isolated-lines': { enabled: false, minRun: 6 },
+  });
+  assert.ok(Object.isFrozen(BUILTIN.checks.style.rules));
+  for (const id of STYLE_RULE_IDS) assert.ok(Object.isFrozen(BUILTIN.checks.style.rules[id]), id);
+  assert.ok(Object.isFrozen(BUILTIN.checks.style.rules['preferred-terms'].terms));
+  assert.ok(Object.isFrozen(STYLE_RULE_IDS));
+});
+
+test('M13-J03: a well formed checks.style has no problems', () => {
+  assert.deepEqual(problems({ style: { enabled: true, rules: STYLE_DEFAULTS } }), []);
+  assert.deepEqual(problems({ style: { rules: {} } }), []);
+  assert.deepEqual(problems({ style: { rules: { 'preferred-terms': { enabled: true, terms: [{ use: 'grey', avoid: ['gray'] }, { use: 'x', avoid: ['a'.repeat(64), 'b'] }] } } } }), []);
+  assert.deepEqual(problems({ style: { rules: { punctuation: { enabled: true, quotes: 'curly', dashes: 'em-spaced', ellipsis: 'dots' } } } }), []);
+  assert.deepEqual(problems({ style: { rules: { punctuation: { quotes: 'straight', dashes: 'en-spaced', ellipsis: 'character' } } } }), []);
+  assert.deepEqual(problems({ style: { rules: { 'repeated-phrases': { minWords: 3, window: 50 }, 'long-paragraphs': { maxWords: 2000 }, 'isolated-lines': { minRun: 30 } } } }), []);
+  assert.deepEqual(problems({ style: { rules: { 'repeated-phrases': { minWords: 8, window: 2000 }, 'long-paragraphs': { maxWords: 50 }, 'isolated-lines': { minRun: 3 } } } }), []);
+  assert.deepEqual(problems({ style: { rules: { 'preferred-terms': { terms: Array.from({ length: 500 }, (_, i) => ({ use: `u${i}`, avoid: [`a${i}`] })) } } } }), []);
+});
+
+test('M13-J03: each bad checks.style value is E102 at its exact location', () => {
+  const R = 'E102 preferences.checks.style.rules';
+  assert.deepEqual(problems({ style: { rules: [] } }), [R]);
+  assert.deepEqual(problems({ style: { rules: 'all' } }), [R]);
+  assert.deepEqual(problems({ style: { rules: { 'textlint-rule-anything': { enabled: true } } } }), [`${R}.textlint-rule-anything`]);
+  assert.deepEqual(problems({ style: { rules: { '../x': {} } } }), [`${R}.../x`]);
+  assert.deepEqual(problems({ style: { rules: { 'repeated-words': true } } }), [`${R}.repeated-words`]);
+  assert.deepEqual(problems({ style: { rules: { 'repeated-words': { enabled: 'yes' } } } }), [`${R}.repeated-words.enabled`]);
+  assert.deepEqual(problems({ style: { rules: { 'repeated-words': { minWords: 4 } } } }), [`${R}.repeated-words.minWords`]);
+  assert.deepEqual(problems({ style: { rules: { 'long-paragraphs': { minRun: 4 } } } }), [`${R}.long-paragraphs.minRun`]);
+  assert.deepEqual(problems({ style: { rules: { punctuation: { quotes: 'fancy' } } } }), [`${R}.punctuation.quotes`]);
+  assert.deepEqual(problems({ style: { rules: { punctuation: { dashes: 'em-unspaced' } } } }), [`${R}.punctuation.dashes`]);
+  assert.deepEqual(problems({ style: { rules: { punctuation: { ellipsis: 3 } } } }), [`${R}.punctuation.ellipsis`]);
+  assert.deepEqual(problems({ style: { rules: { punctuation: { quotes: 'CURLY' } } } }), [`${R}.punctuation.quotes`]);
+  for (const [id, key, bad] of [['repeated-phrases', 'minWords', [2, 9, 4.5, '4']], ['repeated-phrases', 'window', [49, 2001, 1.5]], ['long-paragraphs', 'maxWords', [49, 2001, NaN]], ['isolated-lines', 'minRun', [2, 31, 6.1, null]]]) {
+    for (const v of bad) assert.deepEqual(problems({ style: { rules: { [id]: { [key]: v } } } }), [`${R}.${id}.${key}`], `${id}.${key}=${String(v)}`);
+  }
+  const T = `${R}.preferred-terms.terms`;
+  const terms = (t) => problems({ style: { rules: { 'preferred-terms': { terms: t } } } });
+  assert.deepEqual(terms('grey'), [T]);
+  assert.deepEqual(terms(Array.from({ length: 501 }, (_, i) => ({ use: `u${i}`, avoid: [`a${i}`] }))), [T]);
+  assert.deepEqual(terms(['grey']), [`${T}.0`]);
+  assert.deepEqual(terms([{ use: '', avoid: ['gray'] }]), [`${T}.0.use`]);
+  assert.deepEqual(terms([{ use: 'u'.repeat(65), avoid: ['gray'] }]), [`${T}.0.use`]);
+  assert.deepEqual(terms([{ use: 'grey' }]), [`${T}.0.avoid`]);
+  assert.deepEqual(terms([{ use: 'grey', avoid: [] }]), [`${T}.0.avoid`]);
+  assert.deepEqual(terms([{ use: 'grey', avoid: Array.from({ length: 21 }, (_, i) => `a${i}`) }]), [`${T}.0.avoid`]);
+  assert.deepEqual(terms([{ use: 'grey', avoid: ['gray', ''] }]), [`${T}.0.avoid.1`]);
+  assert.deepEqual(terms([{ use: 'grey', avoid: ['a'.repeat(65)] }]), [`${T}.0.avoid.0`]);
+  assert.deepEqual(terms([{ use: 'grey', avoid: ['gray', 'grey'] }]), [`${T}.0.avoid.1`]);
+  assert.deepEqual(terms([{ use: 'grey', avoid: ['gray'], extra: 1 }]), [`${T}.0.extra`]);
+  assert.deepEqual(problems({ style: { rules: { 'preferred-terms': { caseSensitive: 'no' } } } }), [`${R}.preferred-terms.caseSensitive`]);
+});
+
+test('M13-J03: style rules layer rule by rule; a broken style value is ignored by the resolver', () => {
+  const { values } = resolvePreferences({ book: { checks: { style: { enabled: true, rules: { punctuation: { quotes: 'curly' } } } } } });
+  assert.equal(values.checks.style.enabled, true);
+  assert.deepEqual(values.checks.style.rules.punctuation, { enabled: true, quotes: 'curly', dashes: null, ellipsis: null });
+  assert.deepEqual(values.checks.style.rules['repeated-words'], { enabled: true });
+  const bad = resolvePreferences({ book: { checks: { style: { rules: { evil: { enabled: true } } } } } });
+  assert.equal(Object.hasOwn(bad.values.checks.style.rules, 'evil'), false);
+  assert.deepEqual(bad.values.checks.style.rules, STYLE_DEFAULTS);
+});
+
+test('a preferred term may set caseSensitive (true or false) and nothing else extra', () => {
+  const at = (term) => preferenceProblems('checks', { style: { rules: { 'preferred-terms': { enabled: true, terms: [term] } } } });
+  assert.deepEqual(at({ use: 'Grey', avoid: ['Gray'], caseSensitive: true }), []);
+  assert.ok(at({ use: 'Grey', avoid: ['Gray'], caseSensitive: 'yes' }).some((p) => p.location.endsWith('caseSensitive')));
+  assert.ok(at({ use: 'Grey', avoid: ['Gray'], other: 1 }).some((p) => p.location.endsWith('other')));
 });

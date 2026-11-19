@@ -179,7 +179,8 @@ describe('the editor wiring', () => {
   });
 
   test('findings reach the editor through setFindings; the controller is disposed; every doc change is passed on', () => {
-    assert.match(src, /setFindings\.of\(list\)/);
+    assert.match(src, /setFindings\.of\(mergeFindings\(checkFindings\.current\.grammar, checkFindings\.current\.style\)\)/);
+    assert.match(src, /checkFindings\.current\.grammar = list;/);
     assert.match(src, /ctl\.dispose\(\)/);
     assert.match(src, /docChanged\(\(grammarVersion\.current \+= 1\), u\.state\.doc\.toString\(\)\)/);
     assert.match(src, /'editor\.checkScene': \(\) =>/);

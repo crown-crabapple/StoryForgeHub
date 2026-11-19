@@ -128,6 +128,12 @@ export default [
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 
+  // packages/style (M13-J03): server-only textlint engine; pure. No filesystem access and no child processes; the rules are a fixed in-repo table.
+  {
+    files: ['packages/style/src/**/*.mjs'],
+    rules: { 'no-restricted-imports': ['error', { paths: [...fsPaths, ...processPaths] }] },
+  },
+
   // packages/suggestions (M05-J06): pure; builds, parses and applies suggestion text. No filesystem access.
   {
     files: ['packages/suggestions/src/**/*.mjs'],

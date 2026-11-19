@@ -120,6 +120,12 @@
  *   getCover(bookId: string): Promise<{ bytes: Buffer, contentType: string, sha256: string } | { error: 'too_large' } | null>,
  *   getScene(bookId: string, sceneId: string): Promise<SceneDoc | null>,
  *   getDiagnostics(bookId?: string): Promise<Diagnostic[]>,
+ *   listLiveScenes(bookId: string): Promise<WriteResult & { scenes?: { id: string, title: string, act: number, chapter: number, chapterLabel: string, path: string }[] }>,  (M13-J03: live scenes in book order, no file reads)
+ *   getSceneBodies(bookId: string, sceneIds: string[]): Promise<WriteResult & { scenes?: { id: string, title: string, act: number, chapter: number, chapterLabel: string, path: string, body: string, sha256: string }[], missing?: string[] }>,  (M13-J03: many live scene bodies, LF, requested order)
+ *   applyFindingEdit(bookId: string, sceneId: string, args: { baseSha256: string, from: number, to: number, original: string, replacement: string, ruleId: string, engine: string }): Promise<WriteResult & { sha256?: string, opId?: string | null, path?: string }>,  (M13-J03: author.edit receipt, workflow check)
+ *   createStyleDismissal(bookId: string, args: { fingerprint: string, rule: string, sceneId: string, text: string, note?: string | null }): Promise<WriteResult & Record<string, any>>,  (M13-J03: planning/style/<slug>.md)
+ *   archiveStyleDismissal(bookId: string, slug: string): Promise<WriteResult & Record<string, any>>,
+ *   listStyleDismissals(bookId: string): Promise<{ slug: string, fingerprint: string, rule: string, sceneId: string, text: string, note: string, created: string }[]>,
  *   getContinuity(bookId: string, opts?: { chapter?: number, cast?: { entry: string, role: string }[] }): Promise<import('@storyforge/continuity').ContinuityResult | null>,
  *   getContinuitySettings(bookId: string): Promise<{ exists: boolean, file: string, overdue_chapters: number, severity: Record<string, string> } | null>,
  *   saveContinuitySettings(bookId: string, args: { overdue_chapters?: number, severity?: Record<string, string>, dryRun?: boolean }): Promise<WriteResult & Record<string, any>>,
@@ -185,6 +191,7 @@
  *   setDailyGoal(bookId: string, goal: number | null): Promise<WriteResult & { daily_word_goal?: number }>,
  *   setAiLevel(bookId: string, level: string | null, opts?: { scope?: 'book' | 'library' }): Promise<WriteResult & { level?: string | null, scope?: string }>,  (M12: preferences.ai.level in book.md or library.md)
  *   setGrammarChecks(bookId: string, patch: { enabled?: boolean, dialect?: string, addWords?: string[], removeWords?: string[], disableRules?: string[], enableRules?: string[] }): Promise<WriteResult & { grammar?: Record<string, any> }>,  (M13-J02: preferences.checks.grammar in book.md)
+ *   setStyleChecks(bookId: string, patch: { enabled?: boolean, rules?: Record<string, Record<string, any>> }): Promise<WriteResult & { style?: Record<string, any> }>,  (M13-J03: preferences.checks.style in book.md)
  *   listAiActivity(bookId: string, opts?: { limit?: number }): Promise<WriteResult & { items?: { opId: string, at: string, actor: { kind: string, id: string, name: string }, op: string, summary: string, files: string[], undone: boolean, undoable: boolean }[] }>,  (M12: what plugin tokens changed, newest first)
  *   listRevisions(bookId: string, sceneId: string): Promise<WriteResult & { revisions?: any[] }>,
  *   getRevision(bookId: string, sceneId: string, file: string): Promise<WriteResult & { revision?: any }>,

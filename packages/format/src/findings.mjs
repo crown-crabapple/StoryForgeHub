@@ -21,10 +21,11 @@ const ISO_UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 /**
  * @typedef {{ sha256: string, length: number }} FindingSource
  * @typedef {{ from: number, to: number }} FindingRange
+ * @typedef {{ sceneId: string, from: number, to: number, text: string }} FindingRelated
  * @typedef {{
  *   schema: 'storyforge.finding/v1', id: string, engine: string, engineVersion: string, ruleId: string,
  *   category: string, severity: string, advisory: boolean, message: string, sceneId: string,
- *   source: FindingSource, range: FindingRange, original: string, replacements: string[]
+ *   source: FindingSource, range: FindingRange, original: string, replacements: string[], related?: FindingRelated[]
  * }} Finding
  * @typedef {{ code: string, severity: string, message: string, location: { path: string, line: number, column: number } | null, sceneId: string | null, chapterId: string | null }} ValidationMessage
  * @typedef {{
@@ -103,6 +104,21 @@ export function findingProblems(f) {
     f.replacements.forEach((r, i) => { if (typeof r !== 'string') bad(`replacements.${i}`, 'a replacement must be a string'); });
   }
 
+  if (f.related !== undefined) {
+    if (!Array.isArray(f.related)) bad('related', 'related must be a list');
+    else {
+      if (f.related.length > 20) bad('related', 'at most 20 related occurrences');
+      f.related.forEach((r, i) => {
+        const at = `related.${i}`;
+        if (!isMap(r)) return bad(at, 'a related occurrence is { sceneId, from, to, text }');
+        if (typeof r.sceneId !== 'string' || !SCENE_ID_RE.test(r.sceneId)) bad(`${at}.sceneId`, 'sceneId must be scene_ plus a 26-character ULID');
+        if (!Number.isInteger(r.from) || !Number.isInteger(r.to) || r.from < 0 || r.from >= r.to) bad(`${at}.range`, 'from and to must be integers with 0 <= from < to');
+        if (typeof r.text !== 'string' || r.text.length > 200) bad(`${at}.text`, 'text must be a string of at most 200 characters');
+        return undefined;
+      });
+    }
+  }
+
   if (typeof f.id !== 'string' || !FINDING_ID_RE.test(f.id)) bad('id', 'id must be fnd_ plus 16 lower-case hex characters');
   else if (typeof f.engine === 'string' && typeof f.ruleId === 'string' && typeof f.sceneId === 'string' && rangeOk && typeof f.original === 'string' && f.id !== findingId(f)) bad('id', 'id does not match the finding (see findingId)');
   return out;
@@ -159,7 +175,7 @@ export function validationProblems(r) {
         if (!isMap(m.location) || typeof m.location.path !== 'string' || !Number.isInteger(m.location.line) || !Number.isInteger(m.location.column)) bad(`${at}.location`, 'location must be { path, line, column } or null');
       }
       if (m.sceneId !== null && (typeof m.sceneId !== 'string' || !SCENE_ID_RE.test(m.sceneId))) bad(`${at}.sceneId`, 'sceneId must be a scene id or null');
-      if (m.chapterId !== null && (typeof m.chapterId !== 'string' || !/^chapter_[0-9A-HJKMNP-TV-Z]{26}$/.test(m.chapterId))) bad(`${at}.chapterId`, 'chapterId must be a chapter id or null');
+      if (m.chapterId !== null && (typeof m.chapterId !== 'string' || !/^chap_[0-9A-HJKMNP-TV-Z]{26}$/.test(m.chapterId))) bad(`${at}.chapterId`, 'chapterId must be a chapter id or null');
       return undefined;
     });
   }

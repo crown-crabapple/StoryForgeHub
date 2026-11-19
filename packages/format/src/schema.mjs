@@ -1,7 +1,7 @@
 // Per-kind field tables (spec sections 4-7 and 11.1) and the E102 / I401 / E103 checks.
 import path from 'node:path';
 import { isValidId, isValidSlug } from './ids.mjs';
-import { checkPreferences } from './preferences.mjs';
+import { checkPreferences, STYLE_RULE_IDS } from './preferences.mjs';
 
 /**
  * Field type codes: str, int (>= 0), int1 (>= 1), num, bool, list, map, any, slug,
@@ -83,6 +83,12 @@ export const KINDS = {
     prefix: 'note',
     required: ['slug', 'fingerprint', 'rule', 'title'],
     fields: { slug: 'slug', fingerprint: 'str', rule: 'str', title: 'str', created: 'any', intentional: 'bool' },
+  },
+  // Added 2026-11-18, M13-J03 (additive within v1): one dismissed style finding, under planning/style/. `fingerprint` is sty-<16 hex>, `scene` a scene id, `text` the flagged passage. The body is an optional note. Never story text or canon.
+  'style-dismissal': {
+    prefix: 'note',
+    required: ['slug', 'fingerprint', 'rule', 'scene', 'text'],
+    fields: { slug: 'slug', fingerprint: 'str', rule: STYLE_RULE_IDS, scene: 'str', text: 'str', created: 'any' },
   },
   // Added 2026-11-07, M12 W4 (additive within v1): the author's continuity settings, one file: planning/continuity/settings.md. `overdue_chapters` is how many chapters a promise or question may stay open (TH2); `severity` maps a rule id to error, warning, info or off.
   'continuity-settings': {
@@ -639,6 +645,13 @@ export function checkFields(doc, ctx, add) {
       add('E102', file, 'fingerprint', 'fingerprint must look like cf1-0123456789abcdef');
     }
     if (typeof doc.body === 'string' && doc.body.trim() === '') add('E102', file, 'body', 'the exception needs a written rationale');
+  }
+
+  if (doc.kind === 'style-dismissal') {
+    if (typeof fm.fingerprint === 'string' && !(FINGERPRINT_RE.test(fm.fingerprint) && fm.fingerprint.startsWith('sty-'))) {
+      add('E102', file, 'fingerprint', 'fingerprint must look like sty-0123456789abcdef');
+    }
+    if (typeof fm.scene === 'string' && !isValidId(fm.scene, 'scene')) add('E102', file, 'scene', 'scene must be scene_ followed by a 26-character ULID');
   }
 
   if (doc.kind === 'link' && typeof fm.from === 'string' && fm.from === fm.to) add('E211', file, 'to', 'a link cannot point from a scene or beat to itself');

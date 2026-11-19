@@ -1,12 +1,15 @@
 // The JSON API. Maps GET /api/... paths to FileRepository reads and the guarded write routes to
 // FileRepository write methods.
+import { createHash } from 'node:crypto';
 import { DEFAULT_BUDGET, MAX_BUDGET, MIN_BUDGET } from '@storyforge/core';
-import { AI_LEVELS, preferenceProblems } from '@storyforge/format';
+import { AI_LEVELS, FINGERPRINT_RE, preferenceProblems } from '@storyforge/format';
+import { STYLE_RULE_IDS, checkStyle, styleFingerprint } from '@storyforge/style';
 import { ExportError, ExportVerificationError, FORMATS, INCLUDE_MODES, RestoreError, createBackup, exportBook, planningZip, restoreBackup } from '@storyforge/export';
 import pkg from '../package.json' with { type: 'json' };
 import { handleAiRead, handleAiWrite } from './ai-routes.mjs';
 import { handleIntegrationsRead, handleIntegrationsWrite } from './plugin-admin.mjs';
-import { checkModule, handlePreferencesRead, handleProfileWrite } from './preferences.mjs';
+import { checkModule, handlePreferencesRead, handleProfileWrite, styleChecksOf } from './preferences.mjs';
+import { styleScans } from './style-scans.mjs';
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
 /** @typedef {{ status: number, body: unknown, raw?: { bytes: Buffer, headers: Record<string, string> } }} ApiResult  `raw` (cover images) is sent as is instead of `body`. */
@@ -45,7 +48,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
   const [api, a, b, c, d, e, f, ...rest] = /** @type {string[]} */ (parts);
   if (api !== 'api' || rest.length > 0) return NOT_FOUND;
   // only the revisions routes (scenes/:s/revisions[/:file]), an entry image and a synopsis extract (synopses/:slug/extract) are longer than five segments
-  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image') || (c === 'synopses' && d !== undefined && e === 'extract' && f === undefined) || (c === 'export' && d === 'planning' && e === undefined)))) return NOT_FOUND;
+  if (e !== undefined && !(a === 'books' && ((c === 'scenes' && d !== undefined && e === 'revisions') || (c === 'entries' && d !== undefined && e === 'image') || (c === 'synopses' && d !== undefined && e === 'extract' && f === undefined) || (c === 'export' && d === 'planning' && e === undefined) || (c === 'checks' && d === 'style' && ((e === 'dismissals' && f === undefined) || (e === 'scans' && f !== undefined)))))) return NOT_FOUND;
 
   if (a === 'health' && b === undefined) {
     const info = await repository.libraryInfo();
@@ -94,6 +97,9 @@ export async function handleApi(repository, pathname, state, params = new URLSea
       const book = await repository.getBook(b);
       return book ? { status: 200, body: book } : NOT_FOUND;
     }
+    // M13-J03: the book's style dismissals, and the status of a style scan (in memory)
+    if (c === 'checks' && d === 'style' && e === 'dismissals') return handleStyleDismissals(repository, b);
+    if (c === 'checks' && d === 'style' && e === 'scans') return handleStyleScanStatus(state, b, f, params);
     if (c === 'cover' && d === undefined) return handleCover(repository, b, params);
     if (c === 'export' && d === undefined) return handleExport(repository, b, params);
     if (c === 'export' && d === 'planning' && e === undefined) return handlePlanningExport(repository, b);
@@ -678,7 +684,7 @@ export function matchWriteRoute(method, pathname) {
   if (parts.some((p) => p === null) || parts[0] !== 'api') return null;
   const [, a, b, c, d, e, f, g, ...rest] = /** @type {string[]} */ (parts);
   if (rest.length > 0) return null;
-  if ((f !== undefined || g !== undefined) && !(a === 'books' && ((c === 'scenes' && e === 'revisions') || (c === 'suggestions' && e === 'hunks' && g === undefined)))) return null;
+  if ((f !== undefined || g !== undefined) && !(a === 'books' && ((c === 'scenes' && e === 'revisions') || (c === 'suggestions' && e === 'hunks' && g === undefined) || (c === 'checks' && d === 'style' && ((e === 'dismissals' && g === undefined) || e === 'scans'))))) return null;
   if (method === 'POST' && a === 'recover' && b === undefined) return { route: 'recover' };
   if (method === 'POST' && a === 'index' && b === 'rebuild' && c === undefined) return { route: 'index-rebuild' };
   if (method === 'POST' && a === 'books' && b === undefined) return { route: 'book-create' };
@@ -737,6 +743,16 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'POST' && c === 'ai-level' && d === undefined) return { route: 'book-ai-level', bookId: b };
   // M13-J02: grammar checks settings (on/off, dialect, the book dictionary, turned-off rules), saved as `preferences.checks.grammar`
   if (method === 'POST' && c === 'checks' && d === 'grammar' && e === undefined) return { route: 'book-checks-grammar', bookId: b };
+  // M13-J03: style checks settings, dismissals (one Markdown file each), checking one scene's text, scans (in memory, read-only)
+  if (c === 'checks' && d === 'style') {
+    if (method === 'POST' && e === undefined) return { route: 'book-checks-style', bookId: b };
+    if (method === 'POST' && e === 'dismissals' && f === undefined) return { route: 'style-dismiss', bookId: b };
+    if (method === 'DELETE' && e === 'dismissals' && f !== undefined && g === undefined) return { route: 'style-undismiss', bookId: b, slug: f };
+    if (method === 'POST' && e === 'check' && f === undefined) return { route: 'style-check', bookId: b };
+    if (method === 'POST' && e === 'scans' && f === undefined) return { route: 'style-scan-start', bookId: b };
+    if (method === 'POST' && e === 'scans' && f !== undefined && g === 'cancel') return { route: 'style-scan-cancel', bookId: b, scanId: f };
+    return null;
+  }
   // rename a book's title; put a standalone book into a series (owner only in shared mode)
   if (method === 'POST' && c === 'title' && d === undefined) return { route: 'book-title', bookId: b };
   if (method === 'POST' && c === 'move-to-series' && d === undefined) return { route: 'book-move-to-series', bookId: b };
@@ -758,6 +774,8 @@ export function matchWriteRoute(method, pathname) {
   if (method === 'PUT' && c === 'scenes' && d !== undefined && e === 'raw') return { route: 'scene-raw', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'scenes' && d === undefined) return { route: 'create', bookId: b };
   if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'archive') return { route: 'archive', bookId: b, sceneId: d };
+  // M13-J03: apply one finding of a scan to a scene that is not open in the editor
+  if (method === 'POST' && c === 'scenes' && d !== undefined && e === 'apply-finding' && f === undefined) return { route: 'scene-apply-finding', bookId: b, sceneId: d };
   if (method === 'POST' && c === 'archive' && d === 'restore' && e === undefined) return { route: 'restore', bookId: b };
   // M03-J01 structure commands (all POST; `dryRun: true` in the body previews without writing)
   if (method === 'POST' && c === 'scenes' && d === 'merge' && e === undefined) return { route: 'scene-merge', bookId: b };
@@ -908,6 +926,67 @@ function grammarPatch(body) {
     if (m) return `${k}: ${m}`;
   }
   return body;
+}
+
+const SCENE_ID_RE = /^scene_[0-9A-HJKMNP-TV-Z]{26}$/;
+const MAX_STYLE_CHECK_CHARS = 2_000_000;
+
+/**
+ * The body of POST /api/books/:b/checks/style: only enabled (boolean) and rules (rule id -> that rule's whole settings map), at least one. A rule id must be one of the six built-in
+ * ids and each map is checked with the same rules the book file is (preferenceProblems). Returns the patch, or an error message naming the field.
+ * @param {Record<string, unknown>} body @returns {Record<string, any> | string}
+ */
+function stylePatch(body) {
+  const allowed = ['enabled', 'rules'];
+  for (const k of Object.keys(body)) if (!allowed.includes(k)) return `unknown field ${k} (allowed: ${allowed.join(', ')})`;
+  if (Object.keys(body).length === 0) return `expected at least one of ${allowed.join(', ')}`;
+  if (body.enabled !== undefined && typeof body.enabled !== 'boolean') return 'enabled must be true or false';
+  if (body.rules !== undefined) {
+    if (!isObject(body.rules)) return 'rules must be a mapping of rule id to that rule’s whole settings';
+    for (const [id, map] of Object.entries(body.rules)) {
+      if (!STYLE_RULE_IDS.includes(id)) return `rules.${id}: unknown style rule (rules: ${STYLE_RULE_IDS.join(', ')})`;
+      if (!isObject(map)) return `rules.${id} must be a mapping`;
+      const m = preferenceProblems('checks', { style: { rules: { [id]: map } } })[0]?.message;
+      if (m) return `rules.${id}: ${m}`;
+    }
+  }
+  return body;
+}
+
+/** Reject a body that has a key outside `allowed`. Returns the error message, or null. @param {Record<string, unknown>} body @param {string[]} allowed */
+function unknownKey(body, allowed) {
+  const k = Object.keys(body).find((x) => !allowed.includes(x));
+  return k === undefined ? null : `unknown field ${k}${allowed.length > 0 ? ` (allowed: ${allowed.join(', ')})` : ' (this request takes no body)'}`;
+}
+
+/** Like respond(), with the style refusals named by their codes: 409 ALREADY_DISMISSED and SCENE_CHANGED. */
+function respondStyle(r, okStatus, okBody) {
+  if (r.ok) return { status: okStatus, body: okBody(r) };
+  if (r.code === 'ALREADY_DISMISSED' || r.code === 'SCENE_CHANGED') return { status: 409, body: { error: r.code, code: r.code, message: r.message } };
+  return respond(r, okStatus, okBody);
+}
+
+/** The style findings of one text with the dismissed ones removed; each carries its `fingerprint` (what a dismissal stores). */
+async function styleFindingsOf(repository, bookId, settings, sceneId, text) {
+  const sha256 = createHash('sha256').update(text, 'utf8').digest('hex');
+  const found = await checkStyle({ sceneId, body: text, settings, sha256 });
+  if (found.length === 0) return [];
+  const dismissed = new Set((await repository.listStyleDismissals(bookId)).map((d) => d.fingerprint));
+  return found.map((f) => ({ ...f, fingerprint: styleFingerprint(f, text) })).filter((f) => !dismissed.has(f.fingerprint));
+}
+
+/** GET /api/books/:b/checks/style/dismissals: { dismissals: [{ slug, fingerprint, rule, sceneId, text, note, created }] }. */
+async function handleStyleDismissals(repository, bookId) {
+  if (!(await repository.getBook(bookId))) return NOT_FOUND;
+  return { status: 200, body: { dismissals: await repository.listStyleDismissals(bookId) } };
+}
+
+/** GET /api/books/:b/checks/style/scans/:id[?from=n]: the status of a scan (in memory); `from` lists only the findings from that index on. @param {any} state */
+function handleStyleScanStatus(state, bookId, scanId, params) {
+  const from = params.get('from');
+  if (from !== null && !/^[0-9]{1,9}$/.test(from)) return badRequest('from must be a whole number of 0 or more');
+  const status = (state?.styleScans ?? styleScans).status(bookId, scanId, from === null ? 0 : Number(from));
+  return status ? { status: 200, body: status } : NOT_FOUND;
 }
 
 /** A planner `fields` body: an object of string-or-null values ({} when absent), or an error message. @param {unknown} v @returns {Record<string, string | null> | string} */
@@ -1205,6 +1284,75 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
       if (typeof patch === 'string') return badRequest(patch);
       const r = await repository.setGrammarChecks(bookId, patch);
       return respond(r, 200, (x) => ({ ok: true, grammar: x.grammar, ...(x.unchanged ? { unchanged: true } : {}) }));
+    }
+    // ---- M13-J03 style checks: settings in book.md, dismissals (planning/style/<slug>.md), one text checked on request, scans (memory only), applying a finding to a closed scene
+    case 'book-checks-style': {
+      const patch = stylePatch(body);
+      if (typeof patch === 'string') return badRequest(patch);
+      const r = await repository.setStyleChecks(bookId, patch);
+      return respond(r, 200, (x) => ({ ok: true, style: x.style, ...(x.unchanged ? { unchanged: true } : {}) }));
+    }
+    case 'style-dismiss': {
+      const bad = unknownKey(body, ['fingerprint', 'rule', 'sceneId', 'text', 'note']);
+      if (bad) return badRequest(bad);
+      if (typeof body.fingerprint !== 'string' || !FINGERPRINT_RE.test(body.fingerprint)) return badRequest('fingerprint must look like sty-0123456789abcdef');
+      if (typeof body.rule !== 'string' || !STYLE_RULE_IDS.includes(body.rule)) return badRequest(`rule must be one of ${STYLE_RULE_IDS.join(', ')}`);
+      if (typeof body.sceneId !== 'string' || !SCENE_ID_RE.test(body.sceneId)) return badRequest('sceneId must be a scene id');
+      if (typeof body.text !== 'string' || body.text.trim() === '') return badRequest('text must be the flagged passage');
+      if (body.note !== undefined && body.note !== null && typeof body.note !== 'string') return badRequest('note must be text or null');
+      const r = await repository.createStyleDismissal(bookId, { fingerprint: body.fingerprint, rule: body.rule, sceneId: body.sceneId, text: body.text, note: /** @type {string | null | undefined} */ (body.note) });
+      return respondStyle(r, 201, (x) => ({ ok: true, file: x.file, slug: x.slug, id: x.id, opId: x.opId ?? null, undo: x.undo ?? null }));
+    }
+    case 'style-undismiss': {
+      const bad = unknownKey(body, []);
+      if (bad) return badRequest(bad);
+      const r = await repository.archiveStyleDismissal(bookId, /** @type {string} */ (match.slug));
+      return respondStyle(r, 200, (x) => ({ ok: true, archived: x.archived, slug: x.slug, opId: x.opId ?? null, undo: x.undo ?? null }));
+    }
+    case 'style-check': {
+      const bad = unknownKey(body, ['sceneId', 'body']);
+      if (bad) return badRequest(bad);
+      if (typeof body.sceneId !== 'string' || !SCENE_ID_RE.test(body.sceneId)) return badRequest('sceneId must be a scene id');
+      if (typeof body.body !== 'string') return badRequest('body must be the scene text');
+      if (body.body.length > MAX_STYLE_CHECK_CHARS) return { status: 413, body: { error: 'too_large', code: 'TOO_LARGE', message: 'the text is over 2,000,000 characters' } };
+      const settings = await styleChecksOf(repository, state, bookId);
+      if (!settings) return NOT_FOUND;
+      if (!settings.enabled) return { status: 200, body: { findings: [], state: 'disabled' } };
+      return { status: 200, body: { findings: await styleFindingsOf(repository, bookId, settings, body.sceneId, body.body) } };
+    }
+    case 'style-scan-start': {
+      const bad = unknownKey(body, ['scope']);
+      if (bad) return badRequest(bad);
+      const scope = body.scope;
+      if (!isObject(scope)) return badRequest("expected { scope: { kind: 'scenes', ids } | { kind: 'chapter', act, chapter } | { kind: 'manuscript' } }");
+      const whole = (v) => Number.isInteger(v) && /** @type {number} */ (v) >= 0;
+      const keys = scope.kind === 'scenes' ? ['kind', 'ids'] : scope.kind === 'chapter' ? ['kind', 'act', 'chapter'] : ['kind'];
+      if (scope.kind !== 'scenes' && scope.kind !== 'chapter' && scope.kind !== 'manuscript') return badRequest("scope.kind must be 'scenes', 'chapter' or 'manuscript'");
+      const extra = unknownKey(scope, keys);
+      if (extra) return badRequest(`scope: ${extra}`);
+      if (scope.kind === 'scenes' && (!Array.isArray(scope.ids) || scope.ids.length === 0 || scope.ids.length > 5000 || scope.ids.some((i) => typeof i !== 'string' || !SCENE_ID_RE.test(i)))) return badRequest('scope.ids must be a list of 1 to 5,000 scene ids');
+      if (scope.kind === 'chapter' && (!whole(scope.act) || !whole(scope.chapter))) return badRequest('scope.act and scope.chapter must be whole numbers');
+      const settings = await styleChecksOf(repository, state, bookId);
+      if (!settings) return NOT_FOUND;
+      if (!settings.enabled) return { status: 409, body: { error: 'STYLE_OFF', code: 'STYLE_OFF', message: 'style checks are off for this book; turn them on in its settings' } };
+      const started = (state?.styleScans ?? styleScans).start({ repository, bookId, scope: /** @type {any} */ (scope), settings });
+      if (!started.ok) return { status: 409, body: { error: 'SCAN_RUNNING', code: 'SCAN_RUNNING', message: 'a style scan of this book is already running; cancel it or wait', scanId: started.scanId } };
+      return { status: 202, body: { scanId: started.scanId } };
+    }
+    case 'style-scan-cancel': {
+      const bad = unknownKey(body, []);
+      if (bad) return badRequest(bad);
+      const r = (state?.styleScans ?? styleScans).cancel(bookId, /** @type {string} */ (match.scanId));
+      return r ? { status: 200, body: { ok: true, cancelled: r.cancelled, state: r.state } } : NOT_FOUND;
+    }
+    case 'scene-apply-finding': {
+      const bad = unknownKey(body, ['baseSha256', 'from', 'to', 'original', 'replacement', 'ruleId', 'engine']);
+      if (bad) return badRequest(bad);
+      if (typeof body.baseSha256 !== 'string' || !Number.isInteger(body.from) || !Number.isInteger(body.to) || typeof body.original !== 'string' || typeof body.replacement !== 'string' || typeof body.ruleId !== 'string' || typeof body.engine !== 'string') {
+        return badRequest('expected { baseSha256: string, from: integer, to: integer, original: string, replacement: string, ruleId: string, engine: string }');
+      }
+      const r = await repository.applyFindingEdit(bookId, /** @type {string} */ (match.sceneId), /** @type {any} */ ({ baseSha256: body.baseSha256, from: body.from, to: body.to, original: body.original, replacement: body.replacement, ruleId: body.ruleId, engine: body.engine }));
+      return respondStyle(r, 200, (x) => ({ ok: true, sha256: x.sha256, opId: x.opId ?? null, undo: x.opId ? { opId: x.opId } : null }));
     }
     case 'revision-save': {
       if (body.label !== undefined && typeof body.label !== 'string') return badRequest('label must be a string');

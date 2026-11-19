@@ -1,7 +1,7 @@
 // FsRepository write methods. No filesystem access here: every change goes through
 // @storyforge/store (the single writer) or @storyforge/manuscript (which uses the store).
 import path from 'node:path';
-import { AI_LEVELS, GRAMMAR_DIALECTS, GRAMMAR_RULE_RE, MAX_GRAMMAR_WORDS, extractDocs, isGrammarWord, validate } from '@storyforge/format';
+import { AI_LEVELS, GRAMMAR_DIALECTS, GRAMMAR_RULE_RE, MAX_GRAMMAR_WORDS, STYLE_RULE_IDS, extractDocs, isGrammarWord, preferenceProblems, validate } from '@storyforge/format';
 import { isMap, parseDocument } from 'yaml';
 import {
   archiveArc,
@@ -79,6 +79,7 @@ import { recordPath, renderAiRecord, selectRange, spliceReplacement } from './ai
 import { createCheckMethods } from './check-scene.mjs';
 import { checkTitle } from './create-series.mjs';
 import { createContinuityExceptionMethods } from './continuity-exceptions.mjs';
+import { createStyleDismissalMethods } from './style-dismissals.mjs';
 import { createCommentMethods } from './comments.mjs';
 import { createCoverMethods } from './cover-drafts.mjs';
 import { createSuggestionMethods } from './suggestions.mjs';
@@ -241,6 +242,73 @@ export function withGrammarChecks(bytes, patch) {
   const text = doc.toString({ lineWidth: 0 });
   const buf = Buffer.concat([Buffer.from(head.slice(0, firstNl + 1) + (head.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text) + rest.slice(close), 'utf8'), bytes.subarray(end)]);
   return { ok: true, buf, changed: !buf.equals(bytes), grammar: next };
+}
+
+/**
+ * M13-J03: the bytes of a book.md with `preferences.checks.style` changed by `patch` (the Style checks settings). Same discipline as withGrammarChecks: only the front matter is
+ * touched, through the YAML Document (comments and other keys keep their place), the body bytes are copied unchanged. `enabled` sets the switch; `rules` maps a rule id to that
+ * rule's whole map, which replaces the rule's map in the file. The resulting `checks.style` map is validated with preferenceProblems before anything is returned (BAD_ARGS
+ * with the first problem). `style` is the resulting `checks.style` map as written in this file; `changed: false` when the file already says so.
+ * @param {Buffer} bytes
+ * @param {{ enabled?: boolean, rules?: Record<string, Record<string, any>> }} patch
+ * @returns {{ ok: true, buf: Buffer, changed: boolean, style: Record<string, any> } | { ok: false, code: string, message: string }}
+ */
+export function withStyleChecks(bytes, patch) {
+  const badArgs = (message) => ({ ok: false, code: 'BAD_ARGS', message });
+  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return badArgs('the style settings change must be an object');
+  for (const k of Object.keys(patch)) if (k !== 'enabled' && k !== 'rules') return badArgs(`unknown style setting ${k}`);
+  if (patch.enabled !== undefined && typeof patch.enabled !== 'boolean') return badArgs('enabled must be true or false');
+  if (patch.rules !== undefined) {
+    if (patch.rules === null || typeof patch.rules !== 'object' || Array.isArray(patch.rules)) return badArgs('rules must be a mapping of rule id to that rule’s whole settings');
+    for (const [id, map] of Object.entries(patch.rules)) {
+      if (!STYLE_RULE_IDS.includes(id)) return badArgs(`unknown style rule ${id} (rules: ${STYLE_RULE_IDS.join(', ')})`);
+      if (map === null || typeof map !== 'object' || Array.isArray(map)) return badArgs(`${id} must be a mapping`);
+    }
+  }
+  const end = frontMatterEnd(bytes);
+  if (end < 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'front matter is not terminated' };
+  const head = bytes.subarray(0, end).toString('utf8');
+  const firstNl = head.indexOf('\n');
+  const rest = head.slice(firstNl + 1);
+  const close = rest.lastIndexOf('---');
+  const inner = rest.slice(0, close);
+  const doc = parseDocument(inner, { version: '1.2', schema: 'core' });
+  if (doc.errors.length > 0) return { ok: false, code: 'NOT_A_DOCUMENT', message: `the front matter cannot be read: ${doc.errors[0].message}` };
+  if (inner.trim() !== '' && !isMap(doc.contents)) return { ok: false, code: 'NOT_A_DOCUMENT', message: 'the front matter is not a mapping' };
+  const refuse = (what) => badArgs(`${what} in this file is not a mapping, so the style settings cannot be changed; edit it by hand`);
+  if (inner.trim() === '') doc.contents = doc.createNode({});
+  const present = (n) => n !== undefined && n !== null && !(n?.value === null);
+  let prefs = doc.get('preferences', true);
+  if (present(prefs) && !isMap(prefs)) return /** @type {any} */ (refuse('preferences'));
+  let checks = isMap(prefs) ? prefs.get('checks', true) : undefined;
+  if (present(checks) && !isMap(checks)) return /** @type {any} */ (refuse('checks'));
+  let style = isMap(checks) ? checks.get('style', true) : undefined;
+  if (present(style) && !isMap(style)) return /** @type {any} */ (refuse('style'));
+  const cur = isMap(style) ? /** @type {Record<string, any>} */ (style.toJSON() ?? {}) : {};
+  if (cur.rules !== undefined && (cur.rules === null || typeof cur.rules !== 'object' || Array.isArray(cur.rules))) return badArgs('rules in this file is not a mapping, so the style settings cannot be changed; edit it by hand');
+
+  const next = { ...cur };
+  if (patch.enabled !== undefined) next.enabled = patch.enabled;
+  const rules = { ...(cur.rules ?? {}), ...(patch.rules ?? {}) };
+  if (Object.keys(rules).length > 0 || cur.rules !== undefined) next.rules = rules;
+  const problems = preferenceProblems('checks', { style: next });
+  if (problems.length > 0) return badArgs(`${problems[0].location.replace(/^checks\.style\./, '')}: ${problems[0].message}`);
+
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  if (same(cur, next)) return { ok: true, buf: bytes, changed: false, style: cur };
+
+  if (!isMap(prefs)) { prefs = doc.createNode({}); doc.set('preferences', prefs); }
+  if (!isMap(checks)) { checks = doc.createNode({}); prefs.set('checks', checks); }
+  if (!isMap(style)) { style = doc.createNode({}); checks.set('style', style); }
+  if (!same(cur.enabled, next.enabled)) style.set('enabled', doc.createNode(next.enabled));
+  if (next.rules !== undefined) {
+    let rulesNode = style.get('rules', true);
+    if (!isMap(rulesNode)) { rulesNode = doc.createNode({}); style.set('rules', rulesNode); }
+    for (const [id, map] of Object.entries(next.rules)) if (!same(cur.rules?.[id], map)) rulesNode.set(id, doc.createNode(map));
+  }
+  const text = doc.toString({ lineWidth: 0 });
+  const buf = Buffer.concat([Buffer.from(head.slice(0, firstNl + 1) + (head.includes('\r\n') ? text.replace(/\n/g, '\r\n') : text) + rest.slice(close), 'utf8'), bytes.subarray(end)]);
+  return { ok: true, buf, changed: !buf.equals(bytes), style: next };
 }
 
 const OP_WORDS = { write: 'Changed', archive: 'Archived', restore: 'Restored', restoreOp: 'Undid' };
@@ -656,6 +724,28 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     },
 
     /**
+     * M13-J03: change `preferences.checks.style` in book.md (on/off, each rule's whole settings map). Same discipline as setGrammarChecks: only that map changes, one journaled store
+     * write (undoable). `style` in the result is the book's resulting map. Refusals: BAD_ARGS, NOT_FOUND, NOT_A_DOCUMENT, CONFLICT.
+     * @param {string} bookId @param {Parameters<typeof withStyleChecks>[1]} patch
+     */
+    async setStyleChecks(bookId, patch) {
+      const found = await findBook(bookId);
+      if (!found) return fail('NOT_FOUND');
+      const store = await openStore(bookRootOf(found.book));
+      const cur = await store.read('book.md');
+      if (!cur) return fail('NOT_FOUND', { message: 'book.md was not found' });
+      const edit = withStyleChecks(cur.bytes, patch);
+      if (!edit.ok) return fail(edit.code, { message: edit.message });
+      if (edit.changed) {
+        const r = await store.write('book.md', edit.buf, { baseSha256: cur.sha256 });
+        if (!r.ok) return r.code === 'CONFLICT' ? fail('CONFLICT', { current: null }) : fail(r.code, r.message ? { message: r.message } : {});
+        if (reconcile) await reconcile(found.book.path);
+        else afterWrite(found.book.path);
+      }
+      return { ok: true, code: 'OK', style: edit.style, ...(edit.changed ? {} : { unchanged: true }) };
+    },
+
+    /**
      * M12 AI Activity: what plugin tokens (AI connections) changed in a book, newest first. Read from the op journal: every store batch made through a plugin token
      * records its actor. `undone`: a later undo restored it; `undoable`: Undo (POST /ops/:opId/restore) can work, judging by what the operation recorded.
      * @param {string} bookId @param {{ limit?: number }} [opts]
@@ -928,6 +1018,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
     },
     // ---- M05-J02: continuity exceptions (planning/continuity/<slug>.md, through the store) and the context lines of a finding
     ...createContinuityExceptionMethods({ root, afterWrite, reconcile, now }),
+    ...createStyleDismissalMethods({ root, afterWrite, reconcile, now }),
     // ---- M05-J06: suggestions (suggestions/<YYYY>/*.md, through the store; a target changes only on accept) and the read-only scene check
     ...createSuggestionMethods({ root, afterWrite, reconcile, now, receipts, readValidate }),
     // ---- M07-J03b: comments (comments/<YYYY>/*.md, through the store; they never change the file they are about)
@@ -1075,6 +1166,56 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
           workflow: 'ai-rewrite',
           ai: { ...hint, acceptance: 'accepted' },
           summary: 'Author applied an AI rewrite of a selected passage.',
+        },
+      });
+      if (!r.ok) return r.code === 'CONFLICT' ? changed : fail(r.code, r.message ? { message: r.message } : {});
+      afterWrite(ctx.book.path);
+      return { ok: true, code: 'OK', sha256: r.sha256, opId: r.opId ?? null, path: ctx.rel };
+    },
+
+    /**
+     * M13-J03: apply one style finding to a live scene that is not open in the editor. Like applyAiRewrite: only if the file is still exactly as the scan saw it (`baseSha256`)
+     * and the range still holds `original`, else SCENE_CHANGED and nothing is written. `from` / `to` are body offsets (line breaks counting 1). Everything outside the range stays
+     * byte-identical. One journaled atomic write with an `author.edit` receipt (workflow `check`); `opId` undoes it (POST /ops/:opId/restore).
+     * Refusals: BAD_ARGS (bad strings or numbers, replacement over 2,000 characters), NOT_FOUND, NOT_UTF8, NOT_A_SCENE, SCENE_CHANGED.
+     * @param {string} bookId @param {string} sceneId
+     * @param {{ baseSha256?: string, from?: number, to?: number, original?: string, replacement?: string, ruleId?: string, engine?: string }} [args]
+     */
+    async applyFindingEdit(bookId, sceneId, { baseSha256, from, to, original, replacement, ruleId, engine } = {}) {
+      if (typeof baseSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(baseSha256)) return fail('BAD_ARGS', { message: 'baseSha256 must be 64 lower-case hex characters' });
+      if (typeof original !== 'string' || original === '' || typeof replacement !== 'string') return fail('BAD_ARGS', { message: 'original must be non-empty text and replacement must be text' });
+      if (replacement.length > 2000) return fail('BAD_ARGS', { message: 'replacement is at most 2,000 characters' });
+      if (typeof ruleId !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(ruleId)) return fail('BAD_ARGS', { message: 'ruleId must be a rule id' });
+      if (typeof engine !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(engine)) return fail('BAD_ARGS', { message: 'engine must be an engine name' });
+      if (!Number.isInteger(from) || !Number.isInteger(to) || /** @type {number} */ (from) < 0 || /** @type {number} */ (to) <= /** @type {number} */ (from)) return fail('BAD_ARGS', { message: 'from and to must be whole numbers with from < to' });
+      const ctx = await sceneContext(bookId, sceneId, { live: true });
+      if (!ctx || ctx.rel === null) return fail('NOT_FOUND');
+      const cur = await ctx.store.read(ctx.rel);
+      if (!cur) return fail('NOT_FOUND');
+      const changed = fail('SCENE_CHANGED', { message: 'the scene changed after the check; nothing was written' });
+      if (cur.sha256 !== baseSha256) return changed;
+      const end = frontMatterEnd(cur.bytes);
+      if (end < 0) return fail('NOT_A_SCENE', { message: 'front matter is not terminated' });
+      const sel = selectRange(cur.bytes, end, from, to);
+      if (!sel.ok) return sel.code === 'NOT_UTF8' ? fail('NOT_UTF8', { message: sel.message }) : changed;
+      if (sel.text !== original) return changed;
+      const next = spliceReplacement(cur.bytes, sel, replacement);
+      const short = (t) => {
+        const one = t.replace(/\s*\n\s*/g, ' ');
+        return one.length > 60 ? `${one.slice(0, 59)}…` : one;
+      };
+      const r = await receipts.writeWithReceipt(ctx.store, {
+        opName: 'write',
+        args: { rel: ctx.rel },
+        rel: ctx.rel,
+        targetId: sceneId,
+        baseSha256: cur.sha256,
+        after: next,
+        receipt: {
+          operation: 'author.edit',
+          actor: 'author',
+          workflow: 'check',
+          summary: `Style check: “${short(original)}” -> “${short(replacement)}” (${ruleId})`,
         },
       });
       if (!r.ok) return r.code === 'CONFLICT' ? changed : fail(r.code, r.message ? { message: r.message } : {});
