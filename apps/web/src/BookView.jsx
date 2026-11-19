@@ -8,6 +8,7 @@ import { EditorBridgeProvider, useEditorBridge } from './editor/bridge.jsx';
 import { SceneEditorPage } from './editor/SceneEditorPage.jsx';
 import { parseView } from './planning/model.js';
 import { noticeText, parseSelect } from './tasks/model.js';
+import { parseAt } from './style/model.js';
 import { usePrefs } from './prefs/PrefsContext.jsx';
 import { PlanningWorkspace, ViewSwitch } from './planning/PlanningWorkspace.jsx';
 import { ReadView } from './reading/ReadView.jsx';
@@ -280,7 +281,7 @@ export function BookView({ bookId, sceneId, file }) {
         chapterLabel={chapterLabel}
         objects={objects}
         initialLine={/^[1-9][0-9]{0,6}$/.test(new URLSearchParams(search).get('line') ?? '') ? Number(new URLSearchParams(search).get('line')) : null}
-        initialSelection={parseSelect(search)}
+        initialSelection={parseSelect(search) ?? parseAt(search)}
         footerExtra={<ArchiveButton bookId={book.id} scene={scene} />}
         onStructureChanged={() => setBump((n) => n + 1)}
       />

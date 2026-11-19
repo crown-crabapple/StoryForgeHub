@@ -65,6 +65,9 @@ export const WRITE_CLASSES = Object.freeze({
   'book-ai-level': 'admin',
   // M13-J02: a writer may add a name to the book dictionary or turn a grammar rule off
   'book-checks-grammar': 'write',
+  // M13-J03: style settings, dismissals and applying a finding edit the book (write); checking a text and the scans only read it and write nothing (read)
+  'book-checks-style': 'write', 'style-dismiss': 'write', 'style-undismiss': 'write', 'scene-apply-finding': 'write',
+  'style-check': 'read', 'style-scan-start': 'read', 'style-scan-cancel': 'read',
   // renaming a book, creating a series and moving a book into one change the library's layout: owner only in shared mode
   'book-title': 'admin', 'series-create': 'admin', 'book-move-to-series': 'admin',
 });

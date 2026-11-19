@@ -9,7 +9,9 @@ import { createContext, useContext, useMemo, useRef } from 'react';
  *   selectRange?: (line: number, from: number, to: number) => void,
  *   grammar?: { snapshot: () => { state: string, reason: string | null, findings: any[], checkedAt: string | null } | null, subscribe: (fn: () => void) => () => void },
  *   applyFinding?: (id: string, index: number) => { ok: boolean, code?: string }, selectBodyRange?: (from: number, to: number) => void,
- *   checkNow?: () => void, ignoreFinding?: (id: string) => void, reloadGrammarSettings?: () => void }} EditorHandle
+ *   checkNow?: () => void, ignoreFinding?: (id: string) => void, reloadGrammarSettings?: () => void,
+ *   style?: { snapshot: () => { state: string, reason: string | null, findings: any[], checkedAt: string | null, body: string } | null, subscribe: (fn: () => void) => () => void },
+ *   dismissStyleFinding?: (id: string, note?: string) => Promise<{ ok: boolean, code?: string, message?: string }> }} EditorHandle
  *   `jumpToLine` moves the caret to a 1-based line and focuses the editor; `baseSha` / `text` are the file hash and text the editor last saved
  *   or loaded / its current text; `reload` re-reads the file after something else changed it (a restored revision).
  * `setContinuityMarks(marks)` draws the dotted underline of the continuity findings (decoration only; the text is never changed); `selectRange(line, from, to)` selects columns
@@ -18,6 +20,8 @@ import { createContext, useContext, useMemo, useRef } from 'react';
  * `grammar.subscribe(fn)` calls `fn()` when that changes, including when checks are turned on or off. `applyFinding(id, index)` applies a replacement as an ordinary author edit,
  * `selectBodyRange(from, to)` selects text by offsets in the editor text, `checkNow()` runs a check at once, `ignoreFinding(id)` hides one occurrence for the session, and
  * `reloadGrammarSettings()` reads the book's checks settings again and reconfigures the checker (after the dictionary or a rule changed).
+ * Style checks (M13-J03): `style.snapshot()` / `style.subscribe(fn)` are the style controller's, like `grammar`; `checkNow()` runs both checks. `dismissStyleFinding(id, note?)` saves a
+ * dismissal for a style finding (a file in the book, never a change to the text) and checks again.
  */
 
 const BridgeContext = createContext(null);

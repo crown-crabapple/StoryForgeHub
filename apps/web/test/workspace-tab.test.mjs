@@ -73,7 +73,7 @@ describe('tab and routes', () => {
 
   test('the second nav links to it while the module is on (the default)', () => {
     const markup = renderToStaticMarkup(h(m['/src/shell/MoreNav.jsx'].MoreNav, { bookId: BOOK, active: 'workspace' }));
-    assert.deepEqual(hrefs(markup), [`/books/${BOOK}/insights`, `/books/${BOOK}/tasks`, `/books/${BOOK}/workspace`]);
+    assert.deepEqual(hrefs(markup), [`/books/${BOOK}/insights`, `/books/${BOOK}/tasks`, `/books/${BOOK}/workspace`, `/books/${BOOK}/style`]);
     assert.match(markup, /aria-current="page"[^>]*>AI Workspace</);
   });
 

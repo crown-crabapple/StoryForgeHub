@@ -731,6 +731,49 @@ export function createFsRepository(libraryRoot, options = {}) {
       return { ...summary, front_matter: fm, body, sha256 };
     },
 
+    /**
+     * M13-J03: the live scenes (not archived, not excluded) of a book in book order, without reading any file: what a Style checks scan needs to resolve a chapter or
+     * manuscript scope. Unknown book: NOT_FOUND.
+     */
+    async listLiveScenes(bookId) {
+      const result = await readValidate();
+      const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
+      if (!book) return { ok: false, code: 'NOT_FOUND' };
+      return {
+        ok: true,
+        code: 'OK',
+        scenes: book.order.map((/** @type {any} */ s) => ({ id: s.id, title: s.title, act: s.act, chapter: s.chapter, chapterLabel: s.chapter_label, path: s.path })),
+      };
+    },
+
+    /**
+     * M13-J03: the bodies of many live scenes at once, through the same loader getScene uses. Answers in the order requested (a repeated id once); an id that is not a live scene of
+     * the book (unknown, archived, excluded, unreadable) is skipped and listed in `missing`. `body` has LF line breaks; `sha256` is the whole-file hash getScene gives.
+     * Refusals: BAD_ARGS (sceneIds is not a list of strings), NOT_FOUND (no such book).
+     */
+    async getSceneBodies(bookId, sceneIds) {
+      if (!Array.isArray(sceneIds) || sceneIds.some((i) => typeof i !== 'string')) return { ok: false, code: 'BAD_ARGS', message: 'sceneIds must be a list of scene ids' };
+      const result = await readValidate();
+      const book = result.books.find((/** @type {any} */ b) => b.id === bookId);
+      if (!book) return { ok: false, code: 'NOT_FOUND' };
+      const byId = new Map(book.order.map((/** @type {any} */ s) => [s.id, s]));
+      const wanted = [...new Set(sceneIds)];
+      const entries = wanted.filter((id) => byId.has(id)).map((id) => byId.get(id));
+      const loaded = await loadScenes(entries);
+      const found = new Map();
+      loaded.forEach((l, i) => {
+        if (l.sha256 !== null) found.set(entries[i].id, { entry: entries[i], l });
+      });
+      const missing = wanted.filter((id) => !found.has(id));
+      const scenes = wanted
+        .filter((id) => found.has(id))
+        .map((id) => {
+          const { entry, l } = found.get(id);
+          return { id, title: entry.title, act: entry.act, chapter: entry.chapter, chapterLabel: entry.chapter_label, path: entry.path, body: l.body.replace(/\r\n/g, '\n'), sha256: l.sha256 };
+        });
+      return { ok: true, code: 'OK', scenes, missing };
+    },
+
     async getRawFile(bookId, relPath) {
       const book = await bookById(bookId);
       if (!book || typeof relPath !== 'string') return null;

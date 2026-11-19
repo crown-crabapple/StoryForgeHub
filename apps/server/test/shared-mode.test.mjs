@@ -147,6 +147,13 @@ const ROUTES = [
   ['POST', '/api/books', 'book-create', 'admin'],
   ['POST', '/api/series', 'series-create', 'admin'],
   ['POST', `/api/books/${BOOK}/checks/grammar`, 'book-checks-grammar', 'write'],
+  ['POST', `/api/books/${BOOK}/checks/style`, 'book-checks-style', 'write'],
+  ['POST', `/api/books/${BOOK}/checks/style/dismissals`, 'style-dismiss', 'write'],
+  ['DELETE', `/api/books/${BOOK}/checks/style/dismissals/some-slug`, 'style-undismiss', 'write'],
+  ['POST', `/api/books/${BOOK}/checks/style/check`, 'style-check', 'read'],
+  ['POST', `/api/books/${BOOK}/checks/style/scans`, 'style-scan-start', 'read'],
+  ['POST', `/api/books/${BOOK}/checks/style/scans/scan_X/cancel`, 'style-scan-cancel', 'read'],
+  ['POST', `/api/books/${BOOK}/scenes/${SCENE}/apply-finding`, 'scene-apply-finding', 'write'],
   ['POST', `/api/books/${BOOK}/title`, 'book-title', 'admin'],
   ['POST', `/api/books/${BOOK}/move-to-series`, 'book-move-to-series', 'admin'],
   ['POST', '/api/recover', 'recover', 'admin'],
@@ -239,7 +246,8 @@ test('roles: viewer, reviewer, share and anonymous are refused every write, edit
   const bodyFor = (route) => (route === 'body' ? { body: `${SECRET_PROSE}\n`, base_sha256: sha } : {});
   // one request the owner could make for real, tried by everyone who must not
   for (const [who, cookie] of [['viewer', t.c.viewer], ['reviewer', t.c.reviewer], ['share', t.c.share], ['export share', t.c.exportShare], ['anonymous', undefined]]) {
-    for (const [method, url, route] of ROUTES) {
+    for (const [method, url, route, cls] of ROUTES) {
+      if (cls === 'read' && (who === 'viewer' || who === 'reviewer')) continue; // M13-J03: the style check and scans only read the book, so a viewer may use them
       const r = await t.call(method, url, { cookie, body: bodyFor(route) });
       assert.equal(r.status, who === 'anonymous' ? 401 : 403, `${who} ${method} ${url}: ${r.text}`);
     }

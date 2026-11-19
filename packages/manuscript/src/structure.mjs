@@ -799,7 +799,7 @@ export function mergeScenes(bookRoot, firstId, secondId, args = {}) {
 // ------------------------------------------------------------------ undo
 
 /** Operations whose created files restoreOp may remove again. */
-const CREATION_UNDOABLE = new Set(['createContinuityException', 'decideSuggestion', 'createLink', 'saveScenePlan', 'saveStoryPlan', 'createArc', 'createStructure', 'createRelationship', 'createSynopsis', 'createClue']); // Story Planner M1-M8: a new link, scene plan, story plan, arc, structure, relationship, synopsis or clue is planning data only, so undo may remove it again (to the trash)
+const CREATION_UNDOABLE = new Set(['createContinuityException', 'createStyleDismissal', 'decideSuggestion', 'createLink', 'saveScenePlan', 'saveStoryPlan', 'createArc', 'createStructure', 'createRelationship', 'createSynopsis', 'createClue']); // M13-J03: a style dismissal is a planning file too. Story Planner M1-M8: a new link, scene plan, story plan, arc, structure, relationship, synopsis or clue is planning data only, so undo may remove it again (to the trash)
 
 /**
  * Could restoreOp undo this recorded operation (`trash/<opId>/op.json`), judging by what it recorded alone? The same test restoreOp starts with; whether the files

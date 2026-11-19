@@ -92,6 +92,25 @@ test('replacements: 0 to 8 strings', () => {
   assert.deepEqual(fields(finding({ replacements: ['a', 3] })), ['replacements.1']);
 });
 
+test('related: optional, up to 20 occurrences of { sceneId, from, to, text }', () => {
+  const rel = { sceneId: SCENE, from: 0, to: 3, text: 'She' };
+  assert.deepEqual(findingProblems(finding({ related: [] })), []);
+  assert.deepEqual(findingProblems(finding({ related: [rel] })), []);
+  assert.deepEqual(findingProblems(finding({ related: Array(20).fill(rel) })), []);
+  assert.deepEqual(findingProblems(finding({ related: [{ ...rel, text: 'x'.repeat(200) }] })), []);
+  assert.deepEqual(findingProblems(finding({ related: undefined })), [], 'absent is fine');
+  assert.deepEqual(fields(finding({ related: Array(21).fill(rel) })), ['related']);
+  assert.deepEqual(fields(finding({ related: 'x' })), ['related']);
+  assert.deepEqual(fields(finding({ related: null })), ['related']);
+  assert.deepEqual(fields(finding({ related: [null] })), ['related.0']);
+  assert.deepEqual(fields(finding({ related: [{ ...rel, sceneId: 'scene_short' }] })), ['related.0.sceneId']);
+  assert.deepEqual(fields(finding({ related: [{ ...rel, from: 3, to: 3 }] })), ['related.0.range']);
+  assert.deepEqual(fields(finding({ related: [{ ...rel, from: -1 }] })), ['related.0.range']);
+  assert.deepEqual(fields(finding({ related: [{ ...rel, to: 1.5 }] })), ['related.0.range']);
+  assert.deepEqual(fields(finding({ related: [{ ...rel, text: 'x'.repeat(201) }] })), ['related.0.text']);
+  assert.deepEqual(fields(finding({ related: [{ ...rel, text: 5 }] })), ['related.0.text']);
+});
+
 test('id: format and match', () => {
   assert.deepEqual(fields(finding({ id: 'fnd_xyz' })), ['id']);
   assert.deepEqual(fields(finding({ id: `fnd_${'A'.repeat(16)}` })), ['id']);
@@ -191,6 +210,9 @@ test('validation message rules', () => {
   assert.deepEqual(vfields(validation({ messages: [{ ...m, location: { path: 'a' } }] })), ['messages.0.location']);
   assert.deepEqual(vfields(validation({ messages: [{ ...m, sceneId: 'nope' }] })), ['messages.0.sceneId']);
   assert.deepEqual(vfields(validation({ messages: [{ ...m, chapterId: 'nope' }] })), ['messages.0.chapterId']);
+  // chapter ids use the format's `chap_` prefix (packages/format/src/ids.mjs)
+  assert.deepEqual(vfields(validation({ messages: [{ ...m, chapterId: 'chap_01HZX3K9M2N4P6Q8R0S1T2V3W4' }] })), []);
+  assert.deepEqual(vfields(validation({ messages: [{ ...m, chapterId: 'chapter_01HZX3K9M2N4P6Q8R0S1T2V3W4' }] })), ['messages.0.chapterId']);
   assert.deepEqual(vfields(validation({ messages: [7] })), ['messages.0']);
 });
 

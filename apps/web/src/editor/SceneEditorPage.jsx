@@ -4,8 +4,11 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useApi } from '../api.js';
+import { postJson, useApi } from '../api.js';
+import { mergeFindings } from '../findings/merge.js';
 import { createGrammarController } from '../grammar/grammar-controller.js';
+import { createStyleController } from '../grammar/style-controller.js';
+import { styleFingerprint } from '../style/model.js';
 import { Link } from '../router.jsx';
 import { Dialog } from '../shell/Dialog.jsx';
 import { SaveStatus } from '../shell/SaveStatus.jsx';
@@ -127,6 +130,10 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const grammarListeners = useRef(new Set());
   const grammarBody = useRef(''); // the text the controller's findings were found in
   const grammarIgnoring = useRef(false);
+  const styleRef = useRef(/** @type {ReturnType<typeof createStyleController> | null} */ (null)); // the open scene's style controller (M13-J03); null while style checks are off
+  const styleVersion = useRef(0);
+  const styleListeners = useRef(new Set());
+  const checkFindings = useRef({ grammar: /** @type {any[]} */ ([]), style: /** @type {any[]} */ ([]) }); // what each controller found; the editor marks show them merged
   const key = draftKey(book.id, scene.id);
   const isEntry = Boolean(resource);
   // shared mode (M07-J03b): reviewers and viewers get a read-only editor; everyone signed in is told who else has the scene open; a stale save is kept as a suggestion
@@ -152,6 +159,13 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
   const grammarOn = !isEntry && grammarSettings?.enabled === true;
   const grammarSettingsKey = JSON.stringify(grammarSettings);
   const grammarSettingsRef = useRef(grammarSettings);
+  // style checks (M13-J03): only when the book has them on; the check itself runs on the server
+  const styleSettings = grammarPrefs.data?.effective?.checks?.style ?? null;
+  const styleOn = !isEntry && styleSettings?.enabled === true;
+  /** Draw grammar and style findings together, each duplicate concern once (mergeFindings). */
+  const pushFindings = useCallback(() => {
+    viewRef.current?.dispatch({ effects: setFindings.of(mergeFindings(checkFindings.current.grammar, checkFindings.current.style)) });
+  }, []);
   const others = usePresence({ bookId: book.id, sceneId: scene.id, enabled: can.present && !isEntry });
 
   const [snap, setSnap] = useState(null);
@@ -199,6 +213,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
     setWords(countWords(text));
     writingRef.current.setLiveBody(text);
     grammarRef.current?.docChanged((grammarVersion.current += 1), view.state.doc.toString());
+    styleRef.current?.docChanged((styleVersion.current += 1), view.state.doc.toString());
     setSelected(0);
     if (keepLine) {
       const at = view.state.doc.line(Math.min(line, view.state.doc.lines)).from;
@@ -279,7 +294,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         'editor.note': runCommand(authorNote),
         'editor.sceneBreak': runCommand(sceneBreak),
         'editor.save': () => (void ctl.saveNow(), true),
-        'editor.checkScene': () => (grammarRef.current?.checkNow(), true),
+        'editor.checkScene': () => (grammarRef.current?.checkNow(), styleRef.current?.checkNow(), true),
       }),
       keymap.of([...historyKeymap, ...defaultKeymap]),
       decoratedMarkdown(),
@@ -301,6 +316,7 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
           setWords(countWords(text));
           writingRef.current.reportEdit();
           grammarRef.current?.docChanged((grammarVersion.current += 1), u.state.doc.toString());
+          styleRef.current?.docChanged((styleVersion.current += 1), u.state.doc.toString());
           clearTimeout(liveTimer.current);
           liveTimer.current = setTimeout(() => writingRef.current.setLiveBody(text), 250);
         }
@@ -409,7 +425,34 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
         v.dispatch({ selection: { anchor: a, head: b }, effects: EditorView.scrollIntoView(a, { y: 'center' }) });
         v.focus();
       },
-      checkNow: () => grammarRef.current?.checkNow(),
+      checkNow: () => {
+        grammarRef.current?.checkNow();
+        styleRef.current?.checkNow();
+      },
+      // M13-J03: style checks. The panel reads the style controller here; Dismiss saves a dismissal file (never changes the text) and checks again.
+      style: {
+        snapshot: () => styleRef.current?.snapshot() ?? null,
+        subscribe(fn) {
+          styleListeners.current.add(fn);
+          return () => styleListeners.current.delete(fn);
+        },
+      },
+      async dismissStyleFinding(id, note) {
+        const snap = styleRef.current?.snapshot();
+        const found = snap?.findings.find((f) => f.id === id);
+        if (!snap || !found) return { ok: false, code: 'NOT_FOUND' };
+        try {
+          const fingerprint = await styleFingerprint(found, snap.body);
+          const payload = { fingerprint, rule: found.ruleId, sceneId: scene.id, text: found.original, ...(note ? { note } : {}) };
+          const r = await postJson(`/api/books/${encodeURIComponent(book.id)}/checks/style/dismissals`, payload);
+          const already = r.status === 409 && (r.json?.error ?? r.json?.code) === 'ALREADY_DISMISSED';
+          if (r.status !== 200 && r.status !== 201 && !already) return { ok: false, code: 'REFUSED', message: r.json?.message ?? `Not saved (${r.status}).` };
+          styleRef.current?.checkNow();
+          return { ok: true };
+        } catch {
+          return { ok: false, code: 'OFFLINE', message: 'The server could not be reached.' };
+        }
+      },
       ignoreFinding(id) {
         const found = grammarRef.current?.snapshot().findings.find((f) => f.id === id);
         if (!found) return;
@@ -495,10 +538,12 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       now: () => Date.now(),
       onFindings: (list) => {
         if (!grammarIgnoring.current && viewRef.current) grammarBody.current = viewRef.current.state.doc.toString();
-        viewRef.current?.dispatch({ effects: setFindings.of(list) });
+        checkFindings.current.grammar = list;
+        pushFindings();
       },
     });
     grammarRef.current = ctl;
+    const found = checkFindings.current;
     const unsubscribe = ctl.subscribe(tell);
     ctl.docChanged((grammarVersion.current += 1), view.state.doc.toString());
     tell();
@@ -506,13 +551,63 @@ export function SceneEditorPage({ book, scene, chapterLabel = null, objects = nu
       unsubscribe();
       ctl.dispose();
       if (grammarRef.current === ctl) grammarRef.current = null;
-      viewRef.current?.dispatch({ effects: setFindings.of([]) }); // the underlines go with the checker
+      found.grammar = [];
+      pushFindings(); // the underlines go with the checker
       tell();
     };
-  }, [grammarOn, book.id, scene.id]);
+  }, [grammarOn, book.id, scene.id, pushFindings]);
   useEffect(() => {
     if (grammarOn && grammarSettingsRef.current) grammarRef.current?.configure(grammarSettingsRef.current);
   }, [grammarOn, grammarSettingsKey, book.id, scene.id]);
+
+  // ---- style checks (M13-J03): one controller per open scene while the book has them on; it asks the server, so no request is made while they are off
+  const styleSettingsKey = JSON.stringify(styleSettings);
+  const styleSettingsRef = useRef(styleSettings);
+  useEffect(() => {
+    styleSettingsRef.current = styleSettings;
+  });
+  useEffect(() => {
+    const tell = () => {
+      for (const fn of [...styleListeners.current]) fn();
+    };
+    const view = viewRef.current;
+    if (!styleOn || !view) {
+      styleRef.current = null;
+      tell();
+      return undefined;
+    }
+    const ctl = createStyleController({
+      sceneId: scene.id,
+      request: async (req) => {
+        const r = await postJson(`/api/books/${encodeURIComponent(book.id)}/checks/style/check`, req);
+        if (r.status !== 200) throw new Error(r.json?.message ?? `The style check was refused (${r.status}).`);
+        return r.json;
+      },
+      setTimeout: (fn, ms) => globalThis.setTimeout(fn, ms),
+      clearTimeout: (id) => globalThis.clearTimeout(id),
+      now: () => Date.now(),
+      onFindings: (list) => {
+        checkFindings.current.style = list;
+        pushFindings();
+      },
+    });
+    styleRef.current = ctl;
+    const found = checkFindings.current;
+    const unsubscribe = ctl.subscribe(tell);
+    ctl.docChanged((styleVersion.current += 1), view.state.doc.toString());
+    tell();
+    return () => {
+      unsubscribe();
+      ctl.dispose();
+      if (styleRef.current === ctl) styleRef.current = null;
+      found.style = [];
+      pushFindings();
+      tell();
+    };
+  }, [styleOn, book.id, scene.id, pushFindings]);
+  useEffect(() => {
+    if (styleOn && styleSettingsRef.current) styleRef.current?.configure(styleSettingsRef.current);
+  }, [styleOn, styleSettingsKey, book.id, scene.id]);
 
   // ---- pending suggestions drawn in the text: push the marks whenever they change (a reload draws the last ones again, see applyText)
   useEffect(() => {

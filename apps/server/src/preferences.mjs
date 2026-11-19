@@ -51,6 +51,18 @@ export async function aiLevelOf(repository, state, which = {}) {
   return AI_LEVELS.includes(level) ? level : DEFAULT_AI_LEVEL;
 }
 
+/**
+ * M13-J03: the effective `checks.style` of a book ({ enabled, rules }, resolved like any project key: built-in < profile < library < book). Null for an unknown book.
+ * @param {any} repository @param {any} state @param {string} bookId @returns {Promise<{ enabled: boolean, rules: Record<string, any> } | null>}
+ */
+export async function styleChecksOf(repository, state, bookId) {
+  const project = typeof repository.getPreferences === 'function' ? await repository.getPreferences({ bookId }) : null;
+  if (project === null) return null;
+  const profile = await readProfile(profileNameOf(state));
+  const style = resolvePreferences({ profile: layerOf(profile), library: project.library, book: project.book }).values?.checks?.style;
+  return { enabled: style?.enabled === true, rules: style?.rules ?? {} };
+}
+
 /** M12: the refusal for an AI request above the book's AI level. Nothing was written. @param {string} level @param {string} min */
 export const aiLevelRefused = (level, min) => ({
   status: 403,

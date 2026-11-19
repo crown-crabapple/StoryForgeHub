@@ -22,6 +22,7 @@
     "@storyforge/legacy-import": "0.1.0",
     "@storyforge/mcp": "0.1.0",
     "@storyforge/shared": "0.1.0",
-    "@storyforge/store": "0.1.0"
+    "@storyforge/store": "0.1.0",
+    "@storyforge/style": "0.1.0"
   }
 }

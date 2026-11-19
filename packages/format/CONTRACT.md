@@ -158,7 +158,7 @@ The validator output (code, file, location) must equal this list exactly, as a s
 | `E102-event-state` | event `state` item with an unknown `event` word (M05-J01) |
 | `E301-event-state` | event `state` slug that resolves to nothing |
 | `E302-event-state` | event `state` location value that is a character, not a location |
-| `W307-duplicate-exception` | two `planning/continuity/` exceptions with one fingerprint |
+| `W307-duplicate-exception` | two `planning/continuity/` exceptions with one fingerprint, or two `planning/style/` style dismissals with one fingerprint (M13-J03) |
 | `W308-suggestion-target-missing` | a `suggestions/` document whose `target` id is not a live document (M05-J06) |
 | `W314-comment-target-missing` | a `comments/` document whose `target` id is not a live document (M07-J03) |
 | `W315-plugin-api-newer` | a `_plugins/<id>/plugin.md` manifest whose `api` is greater than the API major this StoryForge serves (M08-J02) |
