@@ -1,5 +1,5 @@
 // @storyforge/core - domain layer: FileRepository interface, FsRepository, config.
-export { createFsRepository, checkLibraryFolder, folderExists } from './fs-repository.mjs';
+export { createFsRepository, checkLibraryFolder, fileExists, folderExists } from './fs-repository.mjs';
 export { createLibraryHost } from './library-host.mjs';
 export { countWords } from './word-count.mjs';
 export { wordDelta, FALLBACK_TOKENS } from './word-delta.mjs';

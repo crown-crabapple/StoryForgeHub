@@ -141,6 +141,15 @@ export async function folderExists(p) {
   }
 }
 
+/** True if `p` is an existing regular file (a read-only stat; the tools settings check the paths they save with it). @param {string} p */
+export async function fileExists(p) {
+  try {
+    return (await stat(p)).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** Markdown as plain words: links and comments reduced to their text, emphasis marks dropped, whitespace collapsed. @param {string} md */
 function plainText(md) {
   return md

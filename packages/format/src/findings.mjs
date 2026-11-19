@@ -172,7 +172,9 @@ export function validationProblems(r) {
       if (!VALIDATION_SEVERITIES.includes(m.severity)) bad(`${at}.severity`, `severity must be one of ${VALIDATION_SEVERITIES.join(', ')}`);
       if (typeof m.message !== 'string' || m.message === '') bad(`${at}.message`, 'message must be a non-empty string');
       if (m.location !== null) {
-        if (!isMap(m.location) || typeof m.location.path !== 'string' || !Number.isInteger(m.location.line) || !Number.isInteger(m.location.column)) bad(`${at}.location`, 'location must be { path, line, column } or null');
+        // line and column are 1-based, or null when the validator does not know them
+        const pos = (v) => v === null || (Number.isInteger(v) && v >= 1);
+        if (!isMap(m.location) || typeof m.location.path !== 'string' || !pos(m.location.line) || !pos(m.location.column)) bad(`${at}.location`, 'location must be { path, line, column } (line and column 1 or more, or null) or null');
       }
       if (m.sceneId !== null && (typeof m.sceneId !== 'string' || !SCENE_ID_RE.test(m.sceneId))) bad(`${at}.sceneId`, 'sceneId must be a scene id or null');
       if (m.chapterId !== null && (typeof m.chapterId !== 'string' || !/^chap_[0-9A-HJKMNP-TV-Z]{26}$/.test(m.chapterId))) bad(`${at}.chapterId`, 'chapterId must be a chapter id or null');

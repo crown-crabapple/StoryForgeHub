@@ -6193,3 +6193,51 @@ kbd {
 .st-rule {
   margin: var(--s3) 0;
 }
+
+/* ---------- EPUB validation (M13-J04): the check inside the Export dialog, and the setup status in Settings ---------- */
+
+.validation-panel {
+  margin: var(--s3) 0;
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+.validation-outcome {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-14);
+}
+.validation-good strong {
+  color: var(--ok);
+}
+.validation-warn strong {
+  color: var(--warning);
+}
+.validation-bad strong {
+  color: var(--danger);
+}
+.validation-limits {
+  margin: var(--s2) 0;
+}
+.validation-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.validation-message {
+  margin: 0 0 var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--divider);
+}
+.validation-message p {
+  margin: 0 0 var(--s1);
+}
+.validation-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+.epub-setup-status {
+  margin: var(--s2) 0;
+  padding-left: var(--s4);
+}

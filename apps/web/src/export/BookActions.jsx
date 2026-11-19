@@ -5,11 +5,13 @@ import { BackupDialog } from './BackupDialog.jsx';
 import { LabelManager } from '../world/LabelManager.jsx';
 import { SaveAsTemplateDialog } from '../world/SaveAsTemplateDialog.jsx';
 import { ExportDialog } from './ExportDialog.jsx';
+import { preferencesUrl, validateChoiceOf } from './validation.js';
 
 /** The Export dialog with the book's statuses loaded. */
 function ExportFlow({ bookId, onClose }) {
   const { data, error, loading } = useApi(`/api/books/${encodeURIComponent(bookId)}`);
-  if (loading) {
+  const prefs = useApi(preferencesUrl(bookId)); // the remembered "Validate with EPUBCheck" choice (checks.epub.validate)
+  if (loading || prefs.loading) {
     return (
       <Dialog label="Export" onClose={onClose}>
         <h2>Export</h2>
@@ -34,7 +36,7 @@ function ExportFlow({ bookId, onClose }) {
       </Dialog>
     );
   }
-  return <ExportDialog book={data} onClose={onClose} />;
+  return <ExportDialog book={data} onClose={onClose} initialValidate={validateChoiceOf(prefs.data)} />;
 }
 
 /**

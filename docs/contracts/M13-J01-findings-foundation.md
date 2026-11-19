@@ -47,7 +47,7 @@ Schema `storyforge.validation/v1`. Kept apart from findings: it is about an expo
 | `artifact` | `{ kind, sha256, name }`: `kind` is `epub` or `pdf`; `sha256` of the exact file checked; `name` the file name only (no folder) |
 | `checkedAt` | ISO 8601 UTC time, or `null` when nothing ran |
 | `outcome` | One of `passed`, `passed-with-warnings`, `failed`, `not-checked`, `unavailable`, `error`, `cancelled` |
-| `messages` | Array of `{ code, severity, message, location, sceneId, chapterId }`. `severity` is one of `fatal`, `error`, `warning`, `info`, `usage`. `location` is `{ path, line, column }` or `null`. `sceneId`/`chapterId` are set only when the mapping is exact; otherwise `null`. |
+| `messages` | Array of `{ code, severity, message, location, sceneId, chapterId }`. `severity` is one of `fatal`, `error`, `warning`, `info`, `usage`. `location` is `{ path, line, column }` or `null`; `line` and `column` are 1-based, or `null` when the validator does not know them (J04). `sceneId`/`chapterId` are set only when the mapping is exact; otherwise `null`. |
 | `report` | `{ path }` (relative to the export folder) or `null` |
 | `detail` | Plain-language text for `unavailable`, `error` and `cancelled`; `null` otherwise |
 

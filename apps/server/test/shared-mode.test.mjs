@@ -153,6 +153,10 @@ const ROUTES = [
   ['POST', `/api/books/${BOOK}/checks/style/check`, 'style-check', 'read'],
   ['POST', `/api/books/${BOOK}/checks/style/scans`, 'style-scan-start', 'read'],
   ['POST', `/api/books/${BOOK}/checks/style/scans/scan_X/cancel`, 'style-scan-cancel', 'read'],
+  ['POST', `/api/books/${BOOK}/checks/epub`, 'book-checks-epub', 'write'],
+  ['POST', `/api/books/${BOOK}/export/validations`, 'validation-start', 'write'],
+  ['POST', `/api/books/${BOOK}/export/validations/val_X/cancel`, 'validation-cancel', 'write'],
+  ['PUT', '/api/tools', 'tools-save', 'admin'],
   ['POST', `/api/books/${BOOK}/scenes/${SCENE}/apply-finding`, 'scene-apply-finding', 'write'],
   ['POST', `/api/books/${BOOK}/title`, 'book-title', 'admin'],
   ['POST', `/api/books/${BOOK}/move-to-series`, 'book-move-to-series', 'admin'],
@@ -257,7 +261,7 @@ test('roles: viewer, reviewer, share and anonymous are refused every write, edit
     assert.equal(r.status, 403, `editor ${method} ${url} (${cls}): ${r.text}`);
   }
   // admin reads
-  for (const url of ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/ai/profiles', '/api/recover/last', '/api/library/recent', `/api/books/${BOOK}/backup`, `/api/books/${BOOK}/repair/plan`]) {
+  for (const url of ['/api/shared/members', '/api/shared/invites', '/api/shared/shares', '/api/shared/settings', '/api/ai/profiles', '/api/tools', '/api/tools/status', '/api/recover/last', '/api/library/recent', `/api/books/${BOOK}/backup`, `/api/books/${BOOK}/repair/plan`]) {
     for (const [who, cookie] of [['editor', t.c.editor], ['reviewer', t.c.reviewer], ['viewer', t.c.viewer], ['share', t.c.share]]) {
       assert.equal((await t.call('GET', url, { cookie })).status, 403, `${who} GET ${url}`);
     }

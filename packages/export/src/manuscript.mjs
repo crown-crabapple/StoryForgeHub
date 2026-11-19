@@ -6,7 +6,7 @@ import { ExportError, cleanBody, sceneKey } from './text.mjs';
 
 /**
  * @typedef {{ id: string, title: string, markdown: string }} MScene
- * @typedef {{ label: string, title: string, scenes: MScene[] }} MChapter
+ * @typedef {{ id?: string, label: string, title: string, scenes: MScene[] }} MChapter
  * @typedef {{ label: string, chapters: MChapter[], act?: number, title?: string }} MPart
  * @typedef {{ title: string, subtitle: string, author: string, parts: MPart[], excluded: { id: string | null, reason: string }[],
  *             slug: string, bookId: string, language: string, modified: string, options: Required<ManuscriptOptions> }} Manuscript
@@ -125,7 +125,7 @@ export async function assembleManuscript(bookRoot, options = {}) {
     }
     let chapter = part.chapters[part.chapters.length - 1];
     if (!chapter || lastChapter !== s.chapter) {
-      chapter = { label: s.chapter_label, title: str(chapterDocs.get(s.chapter)?.fm.title), scenes: [] };
+      chapter = { id: str(chapterDocs.get(s.chapter)?.fm.id), label: s.chapter_label, title: str(chapterDocs.get(s.chapter)?.fm.title), scenes: [] };
       part.chapters.push(chapter);
       lastChapter = s.chapter;
     }

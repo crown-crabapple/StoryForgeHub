@@ -12,7 +12,7 @@ Versions are the latest published when this table was written (2026-11-18, from 
 | textlint (`@textlint/kernel`, `@textlint/textlint-plugin-text`), style review | J03 | 16.1.1 (pinned; kernel and text plugin only) | MIT | Node.js, on the server (`packages/style`) | production dependency; the rules are StoryForge's own, in this repository (no `textlint-rule-*` packages, no dynamic loading) | yes |
 | Paged.js (`pagedjs`), book interior preview | J05 | 0.4.3 | MIT | the browser | to confirm in J05 | yes |
 | Browser renderer for PDF | J06 | to confirm in J06: `playwright-core` 1.65.1 or `puppeteer-core` 25.18.1 | Apache-2.0 (both) | an installed Chromium | optional dependency the author installs | yes |
-| EPUBCheck (`w3c/epubcheck`), EPUB validation | J04 | 5.4.0 (released 2026-09-15) | BSD-3-Clause | a Java runtime; minimum version to confirm in J04 | not on npm (GitHub release zip); vendored or author-installed, to be decided in J04 | yes |
+| EPUBCheck (`w3c/epubcheck`), EPUB validation | J04 | 5.4.0 (released 2026-09-15; tested with 5.4.0, another 5.x runs with a note, any other major version is `unavailable`) | BSD-3-Clause (its distribution also holds Saxon-HE MPL-2.0, ICU4J Unicode-3.0 and W3C/SAX components) | Java 8 or newer | author-installed, not bundled and never downloaded by StoryForge: the licences of its bundled components are outside StoryForge's production allow-list and the zip is 33 MB. the real EPUBCheck tests run only when `STORYFORGE_EPUBCHECK_JAR` is set and are skipped otherwise | not applicable (not shipped) |
 
 "Allowed by licence check" means the SPDX identifier is in `LICENSE_ALLOW` in `scripts/checks.mjs`. StoryForge is AGPL-3.0-only.
 
@@ -104,6 +104,37 @@ Applying a replacement from the Style checks page writes a receipt: operation `a
 - Saved dismissals cover style suggestions only. Grammar **Ignore** still lasts until you close the scene.
 
 The settings are saved in `book.md` under `preferences.checks.style`. See [customization.md](customization.md#style-checks).
+
+## Validating an EPUB
+
+EPUBCheck is the standard tool for testing an EPUB file against the EPUB specification. StoryForge can run it on an export, on your computer, and show the result in plain words. It never changes your manuscript and sends nothing anywhere.
+
+### Install the two tools yourself
+
+StoryForge does not bundle, download or install EPUBCheck or Java. EPUBCheck's download includes components under licences StoryForge does not ship, and it is 33 MB.
+
+1. **Java 8 or newer.** Any Java runtime works; Temurin is a free one. Download page: https://adoptium.net/temurin/releases/ (choose the JRE or JDK for your system). Check it with `java -version` in a terminal.
+2. **EPUBCheck 5.** Download the zip from the releases page: https://github.com/w3c/epubcheck/releases (this was tested with 5.4.0, `epubcheck-5.4.0.zip`). Unzip it somewhere you will keep it. The file you need is `epubcheck.jar` inside the unzipped folder. Another 5.x version runs with the note "tested with 5.4.0"; any other major version is reported as unavailable.
+3. In StoryForge open **Settings, EPUB validation (optional)**, enter the whole path to the `java` program (`java.exe` on Windows) and to `epubcheck.jar`, choose **Save**, then **Check setup**. It says whether each is ready and, if not, why.
+
+If a field is empty StoryForge looks, in this order, at the settings of your computer `STORYFORGE_JAVA` and `STORYFORGE_EPUBCHECK_JAR`, then `JAVA_HOME`, then the `java` on your `PATH`. EPUBCheck is only found if you name it. In shared mode only the owner can change these settings. They are saved per computer in the file `tools.json` of the StoryForge settings folder, not in a book.
+
+### Run a check
+
+1. Open **Export**, choose **EPUB** and tick **Validate with EPUBCheck**. StoryForge remembers the choice for the book (`preferences.checks.epub.validate`).
+2. Choose **Export and check**. The dialog stays open, shows "Checking the EPUB…" and has **Cancel**. A cold run takes a few seconds.
+3. The result is one of **Passed**, **Passed with warnings**, **Failed**, **Not checked** (you cancelled), **Validator unavailable** (Java or EPUBCheck is missing or not usable; the reason is shown and "Set it up in Settings") or **Check could not run** (a process problem, with the detail). Only the first two are ever shown as a pass.
+4. The messages are listed by severity: a plain explanation for common problems, EPUBCheck's own code and message, where it is (file, line, column) and, when the problem is in your text, a link to the scene or chapter. Problems in the package file, the navigation document or the stylesheet have no link.
+5. **Download EPUB** gives the exact file that was checked, whatever the outcome: a failed check never hides it. **Download report** gives `report.json` with the result, the explanations and EPUBCheck's own report summary.
+
+Each check builds the EPUB once and checks those exact bytes. A later export needs its own check. One check runs per book at a time. Only the manuscript EPUB is checked, not the provenance summary or the evidence package.
+
+### Limits
+
+- EPUBCheck checks the file against the EPUB standard. It does not check editing, full accessibility or whether a store will accept the book. A pass is not a promise about any of those.
+- You install and update Java and EPUBCheck. StoryForge only finds and runs them.
+- Messages link to a scene only when EPUBCheck's line falls inside one scene of that chapter file; otherwise they link to the chapter.
+- Results are kept in memory until the next check of the book or 30 minutes; they are not saved in the book.
 
 ## No downloads at run time
 

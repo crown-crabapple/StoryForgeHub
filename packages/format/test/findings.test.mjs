@@ -170,7 +170,7 @@ const vfields = (r) => validationProblems(r).map((p) => p.field);
 
 test('valid validation results', () => {
   assert.deepEqual(validationProblems(validation()), []);
-  assert.deepEqual(validationProblems(validation({ outcome: 'passed-with-warnings', messages: [{ code: 'OPF-1', severity: 'warning', message: 'm', location: { path: 'a.xhtml', line: 3, column: 0 }, sceneId: SCENE, chapterId: null }] })), []);
+  assert.deepEqual(validationProblems(validation({ outcome: 'passed-with-warnings', messages: [{ code: 'OPF-1', severity: 'warning', message: 'm', location: { path: 'a.xhtml', line: 3, column: null }, sceneId: SCENE, chapterId: null }] })), []);
   assert.deepEqual(validationProblems(validation({ outcome: 'failed', artifact: { kind: 'pdf', sha256: SHA, name: 'b.pdf' }, report: null })), []);
   assert.deepEqual(validationProblems(validation({ outcome: 'unavailable', validatorVersion: null, checkedAt: null, detail: 'Java was not found.', report: null })), []);
   assert.deepEqual(validationProblems(validation({ outcome: 'not-checked', validatorVersion: null, checkedAt: null, report: null })), []);

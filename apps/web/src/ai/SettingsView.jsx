@@ -5,6 +5,7 @@ import { ClaudeSettings } from '../integrations/ClaudePanel.jsx';
 import { PluginsSettings } from '../integrations/PluginsPanel.jsx';
 import { WebhooksSettings } from '../integrations/WebhooksPanel.jsx';
 import { AiLevelSettings } from '../prefs/AiLevelSettings.jsx';
+import { EpubSettings } from '../prefs/EpubSettings.jsx';
 import { GrammarSettings } from '../prefs/GrammarSettings.jsx';
 import { StyleSettings } from '../prefs/StyleSettings.jsx';
 import { BookAdminSettings } from '../prefs/BookAdminSettings.jsx';
@@ -345,6 +346,7 @@ export function SettingsView() {
           <ClaudeSettings mode={mode} />
           <PluginsSettings />
           <WebhooksSettings />
+          <EpubSettings />
         </>
       )}
       <GrammarSettings />
