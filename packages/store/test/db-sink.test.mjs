@@ -295,7 +295,11 @@ test('moveTree: a disk failure after the database step moves the rows back', asy
     applyOp: async (c) => {
       spy.push(c.op);
       const r = await docs.applyOp(c);
-      if (c.op === 'moveTree') await fs.mkdir(path.join(root, 'harbour-lights', 'north-road')); // the place "appears meanwhile"
+      if (c.op === 'moveTree') {
+        // the place "appears meanwhile", with a file in it: POSIX rename replaces an EMPTY folder, so only a non-empty one makes it throw everywhere
+        await fs.mkdir(path.join(root, 'harbour-lights', 'north-road'));
+        await fs.writeFile(path.join(root, 'harbour-lights', 'north-road', 'squatter.txt'), 'x');
+      }
       return r;
     },
   });
