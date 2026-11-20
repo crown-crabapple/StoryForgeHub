@@ -6,7 +6,7 @@ const FS_MODULES = ['node:fs', 'node:fs/promises', 'fs', 'fs/promises'];
 const fsPaths = FS_MODULES.map((name) => ({
   name,
   message:
-    'Filesystem access is restricted: writes only in packages/store/src; reads in packages/format, packages/templates/src (its own template folder), packages/core/src/fs-repository.mjs and apps/server/src/static.mjs.',
+    'Filesystem access is restricted: writes only in packages/store/src; reads in packages/format, packages/templates/src (its own template folder), packages/core/src/fs-repository.mjs, apps/server/src/static.mjs, and packages/db/src/{import,export,materialize,migrate}.mjs (the database importer, exporter and on-disk copy).',
 }));
 
 // M05-J04 / M08-J02: outbound network I/O exists in TWO places, packages/ai/src/transport.mjs (the AI provider) and packages/integrations/src/webhook-transport.mjs (webhooks). Everywhere else in packages/** and apps/server/** these are errors:
@@ -106,6 +106,14 @@ export default [
   {
     files: ['apps/server/**/*.mjs'],
     ignores: ['apps/server/src/static.mjs', 'apps/server/test/**'],
+    rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
+  },
+
+  // packages/db (Phase 1): the database is canonical. Only import.mjs (reads a source library), export.mjs, materialize.mjs (writes the private on-disk copy
+  // atomically; sanctioned new place) and migrate.mjs (reads the .sql files) touch the filesystem. Everything else in packages/db/src goes through the database.
+  {
+    files: ['packages/db/src/**/*.mjs'],
+    ignores: ['packages/db/src/import.mjs', 'packages/db/src/export.mjs', 'packages/db/src/materialize.mjs', 'packages/db/src/migrate.mjs'],
     rules: { 'no-restricted-imports': ['error', { paths: fsPaths }] },
   },
 

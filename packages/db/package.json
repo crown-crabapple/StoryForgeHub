@@ -1,0 +1,20 @@
+{
+  "name": "@storyforge/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StoryForge database (hosted plan, ADR 0004): PostgreSQL or PGlite connection, migrations, and the Phase 1 document store that holds every library file (H0 §2.0).",
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "exports": "./src/index.mjs",
+  "scripts": {
+    "test": "node --import ../../scripts/test-isolate-config.mjs --test \"test/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.15",
+    "@storyforge/format": "0.1.0",
+    "pg": "8.23.1"
+  }
+}

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { atomicWrite, kindOf, readOrNull, sha256 } from './atomic.mjs';
 import { escapesRoot } from './contain.mjs';
 import { makeOpId } from './journal.mjs';
+import { sinkFor } from './sink.mjs';
 import { moveAbsToTrash } from './trash.mjs';
 
 const SCENE_ID_RE = /^[A-Za-z0-9_-]{1,80}$/;
@@ -81,8 +82,21 @@ export async function saveRevision(root, sceneId, bytes, meta) {
   /** @type {Record<string, unknown>} */
   const entry = { file, at: at.toISOString(), reason: meta.reason, sha256: sha, words: Number.isInteger(meta.words) ? meta.words : 0 };
   if (typeof meta.label === 'string' && meta.label.trim() !== '') entry.label = meta.label.trim();
-  await atomicWrite(path.join(dir, file), bytes);
-  await writeIndex(dir, [...entries, entry]);
+  const covered = sinkFor(root);
+  if (covered) {
+    try {
+      await covered.sink.putRevision(covered.bookPath, sceneId, file, bytes, entry); // database first
+    } catch (e) {
+      return fail('ERROR', { message: `database write failed: ${String(e?.message ?? e)}` });
+    }
+  }
+  try {
+    await atomicWrite(path.join(dir, file), bytes);
+    await writeIndex(dir, [...entries, entry]);
+  } catch (e) {
+    await covered?.sink.deleteRevisions(covered.bookPath, sceneId, [file]).catch(() => {});
+    throw e;
+  }
   return { ok: true, code: 'OK', stored: true, entry };
 }
 
@@ -97,9 +111,28 @@ export async function pruneRevisions(root, sceneId, files) {
   const drop = new Set(files.filter((f) => typeof f === 'string' && REVISION_FILE_RE.test(f) && entries.some((e) => e.file === f)));
   if (drop.size === 0) return { ok: true, code: 'OK', opId: null, pruned: [] };
   const opId = makeOpId();
-  for (const f of drop) {
-    if ((await kindOf(path.join(dir, f))) === 'file') await moveAbsToTrash(root, opId, path.join(dir, f), `revisions/${sceneId}/${f}`);
+  const covered = sinkFor(root);
+  /** what the database held, to put back if the disk step fails */
+  const held = [];
+  if (covered) {
+    for (const f of drop) {
+      const bytes = await readOrNull(path.join(dir, f));
+      if (bytes) held.push({ file: f, bytes, entry: entries.find((e) => e.file === f) });
+    }
+    try {
+      await covered.sink.deleteRevisions(covered.bookPath, sceneId, [...drop]); // database first
+    } catch (e) {
+      return fail('ERROR', { message: `database write failed: ${String(e?.message ?? e)}` });
+    }
   }
-  await writeIndex(dir, entries.filter((e) => !drop.has(e.file)));
+  try {
+    for (const f of drop) {
+      if ((await kindOf(path.join(dir, f))) === 'file') await moveAbsToTrash(root, opId, path.join(dir, f), `revisions/${sceneId}/${f}`);
+    }
+    await writeIndex(dir, entries.filter((e) => !drop.has(e.file)));
+  } catch (e) {
+    for (const h of held) await covered.sink.putRevision(covered.bookPath, sceneId, h.file, h.bytes, h.entry).catch(() => {});
+    throw e;
+  }
   return { ok: true, code: 'OK', opId, pruned: [...drop] };
 }

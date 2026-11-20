@@ -41,8 +41,12 @@ async function sourceFiles() {
   }
   const files = [];
   for (const r of roots) await walk(r, files);
-  return files.filter((f) => !f.startsWith(STORE_SRC + path.sep));
+  return files.filter((f) => !f.startsWith(STORE_SRC + path.sep) && !SANCTIONED.includes(f));
 }
+
+// The one other writer (H0 §2.0): packages/db/src/materialize.mjs makes the server's private on-disk copy match the database.
+// It writes only that copy, from the canonical database, so it must not go through the store (which would write the database again).
+const SANCTIONED = [path.join(REPO_ROOT, 'packages', 'db', 'src', 'materialize.mjs')];
 
 test('no file write/rename/delete/mkdir call exists outside packages/store/src', async () => {
   const files = await sourceFiles();

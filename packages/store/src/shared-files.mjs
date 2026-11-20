@@ -4,6 +4,7 @@ import { chmod, mkdir, open, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { atomicWrite } from './atomic.mjs';
 import { withRootLock } from './lock.mjs';
+import { sharedSinkFor } from './sink.mjs';
 
 const NAME_RE = /^[a-z][a-z0-9-]*\.(json|jsonl)$/;
 
@@ -48,7 +49,18 @@ export async function writeSharedJson(dir, name, value) {
   const text = JSON.stringify(value, null, 2);
   if (text === undefined) throw new TypeError('value is not serialisable');
   await ensureDir(path.dirname(file));
-  await withRootLock(path.dirname(file), () => atomicWrite(file, Buffer.from(`${text}\n`, 'utf8')));
+  const bytes = Buffer.from(`${text}\n`, 'utf8');
+  const sink = sharedSinkFor(path.dirname(file));
+  await withRootLock(path.dirname(file), async () => {
+    const previous = sink ? await sink.readShared(name) : null;
+    if (sink) await sink.writeShared(name, bytes); // database first
+    try {
+      await atomicWrite(file, bytes);
+    } catch (e) {
+      if (sink) await (previous ? sink.writeShared(name, previous) : sink.deleteShared?.(name))?.catch?.(() => {}); // undo the database side
+      throw e;
+    }
+  });
   if (process.platform !== 'win32') await chmod(file, 0o600).catch(() => {});
 }
 
@@ -61,13 +73,19 @@ export async function appendSharedLine(dir, name, line) {
   const file = fileOf(dir, name);
   if (line.includes('\n')) throw new TypeError('a line must not contain a newline');
   await ensureDir(path.dirname(file));
+  const sink = sharedSinkFor(path.dirname(file));
   await withRootLock(path.dirname(file), async () => {
-    const fh = await open(file, 'a', 0o600);
+    const seq = sink ? await sink.appendSharedLine(name, line) : null; // database first
+    let fh;
     try {
+      fh = await open(file, 'a', 0o600);
       await fh.write(`${line}\n`);
       await fh.sync();
+    } catch (e) {
+      if (sink && typeof seq === 'number') await sink.deleteSharedLine?.(name, seq)?.catch?.(() => {}); // undo the database side
+      throw e;
     } finally {
-      await fh.close();
+      await fh?.close();
     }
   });
 }

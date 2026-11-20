@@ -156,10 +156,11 @@ function publicOrigin(req) {
  *   loopback clients only, no accounts, no policy.
  *   `profile` is the name of the profile this run uses (M07-J04; the CLI takes it from --profile or STORYFORGE_PROFILE); the switcher in Settings changes it for the run.
  *   `shared.dir` (M08-J02) is the shared-data folder: shared mode keeps plugin tokens and webhook subscriptions there (personal mode keeps them in the user config folder).
+ *   `database` (Phase 1, `serve --database`) is an async function returning `{ kind, library_id, files }` for GET /api/status; absent in file mode.
  *   `integrations` (M08-J02) is a test seam for webhook delivery ({ deliver, backoffMs, timeoutMs, now, sleep }); production never sets it.
  * @returns {import('node:http').Server} not yet listening; callers bind it to 127.0.0.1 (personal mode) or the shared-mode host
  */
-export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES, shared = null, profile = 'default', integrations }) {
+export function createServer({ repository, host, webRoot, recoverReport, instance, maxRestoreBytes = MAX_RESTORE_BYTES, shared = null, profile = 'default', integrations, database }) {
   const gate = shared ? shared.gate : null;
   /** Classes whose calls are audited (contract M07-J03 section 4). */
   const AUDITED = new Set(['write', 'suggest', 'comment', 'admin', 'ai']);
@@ -182,6 +183,7 @@ export function createServer({ repository, host, webRoot, recoverReport, instanc
     ai: createAiService({ settings: { keystore } }), // optional AI workshop (M05-J04): profiles, session keys and stored previews live in this process only
     presence: createPresence(), // advisory "also in this scene" (M07-J03b): in memory only, expires after 60 s, never blocks a save
     profile,
+    database: database ?? null,
     moduleOn: (/** @type {any} */ repo, /** @type {string} */ id, /** @type {any} */ which) => moduleOn(repo, state, id, which),
     // plugin tokens, webhook subscriptions and delivery (M08-J02): opened lazily; delivery is gated by the integrations module
     integrations: createPluginService({ shared, keystore, enabled: (/** @type {string} */ bookId) => moduleOn(current(), state, 'integrations', { bookId }), dispatcher: integrations }),

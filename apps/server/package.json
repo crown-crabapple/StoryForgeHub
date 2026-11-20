@@ -18,6 +18,7 @@
     "@fontsource-variable/literata": "5.3.0",
     "@storyforge/ai": "0.1.0",
     "@storyforge/core": "0.1.0",
+    "@storyforge/db": "0.1.0",
     "@storyforge/export": "0.1.0",
     "@storyforge/format": "0.1.0",
     "@storyforge/integrations": "0.1.0",
