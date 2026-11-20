@@ -6,26 +6,90 @@ import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { planStart } from '../../../deploy/entrypoint.mjs';
+import { checkOwner, planStart } from '../../../deploy/entrypoint.mjs';
+import { closeAll, freshDatabaseUrl, HOSTED, importInto, tempDir } from './db-helpers.mjs';
 import { REPO_ROOT } from './helpers.mjs';
 import { PW, call, cookieOf } from './shared-helpers.mjs';
 import { containerEnv, makeDirs, runEntry, startEntry, stopEntries, tokenOf } from './deploy-helpers.mjs';
 
 after(stopEntries);
+after(closeAll);
 
 const PUBLIC = 'https://write.example.org';
 const viaProxy = { headers: { Host: 'write.example.org' } }; // what the reverse proxy forwards
 
 test('planStart: the defaults of the container, and every refusal', () => {
-  assert.deepEqual(planStart({}), { ok: true, mode: 'shared', host: '0.0.0.0', port: '4317', library: '/library', sharedData: '/shared-data', publicUrl: null, owner: null });
+  assert.deepEqual(planStart({}), { ok: true, mode: 'shared', host: '0.0.0.0', port: '4317', library: '/library', sharedData: '/shared-data', publicUrl: null, owner: null, database: false, libraryId: null });
   const personal = planStart({ STORYFORGE_MODE: 'personal', STORYFORGE_OWNER: 'ilse', STORYFORGE_PUBLIC_URL: PUBLIC });
-  assert.deepEqual(personal, { ok: true, mode: 'personal', host: '127.0.0.1', port: '4317', library: '/library', sharedData: '/shared-data', publicUrl: null, owner: null });
+  assert.deepEqual(personal, { ok: true, mode: 'personal', host: '127.0.0.1', port: '4317', library: '/library', sharedData: '/shared-data', publicUrl: null, owner: null, database: false, libraryId: null });
   const shared = planStart({ STORYFORGE_OWNER: 'ilse', STORYFORGE_PUBLIC_URL: PUBLIC, STORYFORGE_PORT: '5000', STORYFORGE_HOST: '127.0.0.1' });
-  assert.deepEqual(shared, { ok: true, mode: 'shared', host: '127.0.0.1', port: '5000', library: '/library', sharedData: '/shared-data', publicUrl: PUBLIC, owner: 'ilse' });
+  assert.deepEqual(shared, { ok: true, mode: 'shared', host: '127.0.0.1', port: '5000', library: '/library', sharedData: '/shared-data', publicUrl: PUBLIC, owner: 'ilse', database: false, libraryId: null });
   assert.match(planStart({ STORYFORGE_MODE: 'personal', STORYFORGE_HOST: '0.0.0.0' }).message, /refused in personal mode/);
   assert.equal(planStart({ STORYFORGE_MODE: 'personal', STORYFORGE_HOST: 'localhost' }).ok, true);
   assert.match(planStart({ STORYFORGE_MODE: 'team' }).message, /personal or shared/);
   for (const port of ['abc', '70000', '-1', '4317.5']) assert.match(planStart({ STORYFORGE_PORT: port }).message, /STORYFORGE_PORT/, port);
+});
+
+test('planStart: STORYFORGE_DATABASE switches database mode on, STORYFORGE_LIBRARY_ID picks the library and is validated', () => {
+  const url = 'postgres://u:p@db.example.org/sf';
+  const plain = planStart({ STORYFORGE_DATABASE: url });
+  assert.equal(plain.ok, true);
+  assert.equal(plain.database, true);
+  assert.equal(plain.libraryId, null, 'no id given: the server default (main) applies');
+  assert.equal(planStart({ STORYFORGE_DATABASE: '   ' }).database, false, 'a blank URL is no database');
+  const named = planStart({ STORYFORGE_DATABASE: url, STORYFORGE_LIBRARY_ID: 'my-lib-2' });
+  assert.equal(named.ok, true);
+  assert.equal(named.database, true);
+  assert.equal(named.libraryId, 'my-lib-2');
+  assert.equal(planStart({ STORYFORGE_DATABASE: url, STORYFORGE_LIBRARY_ID: 'a'.repeat(63) }).ok, true, '63 characters is the longest id');
+  assert.deepEqual(planStart({ STORYFORGE_LIBRARY_ID: 'main' }), { ok: false, message: 'STORYFORGE_LIBRARY_ID only works with STORYFORGE_DATABASE' });
+  assert.equal(planStart({ STORYFORGE_LIBRARY_ID: 'main', STORYFORGE_DATABASE: '  ' }).ok, false, 'a blank database URL does not enable the id');
+  for (const id of ['Main', '-main', 'a_b', 'a b', 'a/b', '../x', 'a'.repeat(64)]) {
+    const r = planStart({ STORYFORGE_DATABASE: url, STORYFORGE_LIBRARY_ID: id });
+    assert.equal(r.ok, false, id);
+    assert.match(r.message, /STORYFORGE_LIBRARY_ID/, id);
+  }
+});
+
+const SHARED_FIXTURE = path.join(HOSTED, 'shared-data');
+const dbPlan = (url, sharedData) => planStart({ STORYFORGE_DATABASE: url, STORYFORGE_SHARED_DATA: sharedData });
+
+test('checkOwner (file mode): reads the owner from the shared folder; an empty folder has none', async () => {
+  const withOwner = await tempDir('sf-co-file-');
+  await fs.cp(SHARED_FIXTURE, withOwner, { recursive: true });
+  assert.deepEqual(await checkOwner(planStart({ STORYFORGE_SHARED_DATA: withOwner }), {}), { ok: true, hasOwner: true });
+  const empty = await tempDir('sf-co-file-empty-');
+  assert.deepEqual(await checkOwner(planStart({ STORYFORGE_SHARED_DATA: empty }), {}), { ok: true, hasOwner: false });
+});
+
+test('checkOwner (database mode): an empty folder next to a database that has an owner is filled from it and is not ownerless', async () => {
+  const url = await freshDatabaseUrl();
+  await importInto(url, { sharedData: SHARED_FIXTURE });
+  const folder = await tempDir('sf-co-db-empty-');
+  assert.deepEqual(await fs.readdir(folder), []);
+  assert.deepEqual(await checkOwner(dbPlan(url, folder), { STORYFORGE_DATABASE: url }), { ok: true, hasOwner: true });
+  const names = await fs.readdir(folder);
+  assert.ok(names.includes('users.json') && names.includes('members.json'), `the folder now holds the shared files: ${names.join(', ')}`);
+});
+
+test('checkOwner (database mode): a folder of accounts the database never saw is refused and left untouched', async () => {
+  const url = await freshDatabaseUrl();
+  await importInto(url); // library only, no shared data
+  const folder = await tempDir('sf-co-db-unseen-');
+  const body = '{"version":1,"users":[]}\n';
+  await fs.writeFile(path.join(folder, 'users.json'), body);
+  const r = await checkOwner(dbPlan(url, folder), { STORYFORGE_DATABASE: url });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /users\.json/);
+  assert.equal(await fs.readFile(path.join(folder, 'users.json'), 'utf8'), body, 'the folder file is unchanged');
+  assert.deepEqual(await fs.readdir(folder), ['users.json']);
+});
+
+test('checkOwner (database mode): no shared data anywhere means no owner', async () => {
+  const url = await freshDatabaseUrl();
+  await importInto(url);
+  const folder = await tempDir('sf-co-db-none-');
+  assert.deepEqual(await checkOwner(dbPlan(url, folder), { STORYFORGE_DATABASE: url }), { ok: true, hasOwner: false });
 });
 
 test('the entrypoint refuses (exit 2, nothing started) a personal mode on a public address, an unknown mode, and a shared mode with no owner', async () => {

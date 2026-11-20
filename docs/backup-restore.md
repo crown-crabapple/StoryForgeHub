@@ -74,6 +74,57 @@ age --recipient <public key> --output storyforge-2026-01-31.dump.age storyforge-
 - Keep 7 daily, 4 weekly and 3 monthly dumps.
 - Keep the `shared-data` secrets key (`STORYFORGE_SECRETS_KEY`, see [self-hosting.md](self-hosting.md)) and the server's config folder in the same off-server routine. They are not in the database.
 
+### Nightly backup of a bare server
+
+For a server with a local PostgreSQL, `deploy/storyforge-db-backup.sh` does the nightly backup. `storyforge-db-backup.timer` starts `storyforge-db-backup.service` every night at 03:30 (up to 20 minutes later, at random; a night missed while the server was off runs at the next boot). The script, as root:
+
+- dumps the database with `pg_dump --format=custom`, run as the `postgres` user over the local socket (peer authentication, so no password is involved);
+- makes a tar of the config folder (`/var/lib/storyforge/config`) if it exists;
+- encrypts both with `age` to a public key and writes `db.dump.age` and `config.tar.gz.age`. Nothing is written unencrypted, and without a recipient the script stops;
+- keeps 7 daily, 4 weekly (Sunday) and 3 monthly (the 1st) sets in `/var/backups/storyforge/{daily,weekly,monthly}`. The weekly and monthly sets are hard links to the daily files;
+- copies `/var/backups/storyforge` to `STORYFORGE_BACKUP_COPY_TO` with `rsync -a --hard-links` (never `--delete`), if that is set. Without it the script says the backup is on this server only.
+
+The config folder is in the backup. The shared-data secrets key is not, unless it is under that folder: keep `STORYFORGE_SECRETS_KEY` in your off-server routine.
+
+**Make the key pair off the server.** On another computer:
+
+```sh
+age-keygen -o storyforge-backup.key
+```
+
+Keep `storyforge-backup.key` there, with a second copy somewhere safe. Without it the backups cannot be read by anyone. Only the `public key: age1...` line goes to the server.
+
+**Install the timer.** On the server, install `age` (`apt install age`), then:
+
+```sh
+sudo cp deploy/storyforge-backup.env.example /etc/storyforge/backup.env
+sudo chmod 600 /etc/storyforge/backup.env
+sudo cp deploy/storyforge-db-backup.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now storyforge-db-backup.timer
+```
+
+Edit `/etc/storyforge/backup.env`: set `STORYFORGE_BACKUP_AGE_RECIPIENT` to the public key and, as advised, `STORYFORGE_BACKUP_COPY_TO` to an rsync target (for example `backup@backup.example.org:storyforge/`). The commented lines in that file show the other settings and their defaults. The service runs `/opt/storyforge/deploy/storyforge-db-backup.sh`.
+
+**Run it once by hand** and read the result:
+
+```sh
+sudo systemctl start storyforge-db-backup && journalctl -u storyforge-db-backup
+```
+
+The log says where the set was written and whether it was copied off the server.
+
+**Restore.** Stop the server first. Decrypt on the computer that holds the private key, or copy the key to the server for the restore and remove it afterwards:
+
+```sh
+sudo systemctl stop storyforge
+age --decrypt -i storyforge-backup.key db.dump.age | sudo -u postgres pg_restore --clean --if-exists -d storyforge
+sudo systemctl start storyforge
+```
+
+`--clean --if-exists` drops the existing objects in the database before it recreates them from the dump. Then check that the server is up with `/api/status` (for example `curl http://127.0.0.1:4317/api/status` on the server) and open the app. To restore the config folder, decrypt `config.tar.gz.age` the same way and unpack it into `/var/lib/storyforge/config` with `tar --extract --gzip`.
+
+Practise the restore into a scratch database first: see the restore drill below, and [H0 section 4](contracts/H0-hosted-foundation.md#4-backup-and-recovery) for the rule.
+
 ### Restore drill
 
 Do this before every release, and once before you need it. Use a clean database, not the live one:

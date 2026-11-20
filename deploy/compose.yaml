@@ -4,7 +4,8 @@
 #   docker compose up -d --build
 #   docker compose logs storyforge                 the one-time setup link is printed here on the first start
 # The app listens on 127.0.0.1:4317 of this machine only. Put a TLS reverse proxy in front for anyone else (see the commented caddy service and docs/self-hosting.md).
-# There is no database service: the index is a disposable SQLite cache inside each book's .storyforge/ folder, rebuilt by the app when its format changes.
+# By default there is no database service: the library is the Markdown folder, and the index is a disposable SQLite cache inside each book's .storyforge/ folder, rebuilt by the app
+# when its format changes. For PostgreSQL as the canonical copy (docs/database.md) there is a commented-out postgres service below.
 name: storyforge
 
 services:
@@ -38,5 +39,26 @@ services:
   #     - ./Caddyfile:/etc/caddy/Caddyfile:ro
   #     - caddy-data:/data
   #
+  # Optional: PostgreSQL as the canonical copy of the writing (docs/database.md). To use it, remove the # signs on the postgres service and its volume below, and add to
+  # storyforge.env (the same password in both places; the library folder must be empty the first time, then import with db import, see docs/database.md):
+  #   POSTGRES_PASSWORD=CHANGE_ME
+  #   STORYFORGE_DATABASE=postgres://storyforge:CHANGE_ME@postgres:5432/storyforge
+  # postgres:
+  #   image: postgres:16
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: storyforge
+  #     POSTGRES_DB: storyforge
+  #   env_file:
+  #     - storyforge.env
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U storyforge -d storyforge"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #
 # volumes:
 #   caddy-data:
+#   postgres-data:

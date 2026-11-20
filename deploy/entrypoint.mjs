@@ -9,6 +9,9 @@
 //   STORYFORGE_LIBRARY      the library folder (default /library)
 //   STORYFORGE_SHARED_DATA  shared: accounts, sessions and audit (default /shared-data)
 //   XDG_CONFIG_HOME         the per-user config folder (the image sets /config)
+//   STORYFORGE_DATABASE     optional: postgres://... (docs/database.md). The database is then the source of truth: STORYFORGE_LIBRARY is its private on-disk
+//                           copy (an empty folder the first time) and the shared data is the database's. The URL stays in the environment, never on a command line.
+//   STORYFORGE_LIBRARY_ID   with STORYFORGE_DATABASE: which library in the database (default main)
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -18,7 +21,7 @@ const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 /**
  * What the environment asks for. Pure, so a test can check every refusal.
  * @param {Record<string, string | undefined>} env
- * @returns {{ ok: true, mode: 'personal' | 'shared', host: string, port: string, library: string, sharedData: string, publicUrl: string | null, owner: string | null }
+ * @returns {{ ok: true, mode: 'personal' | 'shared', host: string, port: string, library: string, sharedData: string, publicUrl: string | null, owner: string | null, database: boolean, libraryId: string | null }
  *   | { ok: false, message: string }}
  */
 export function planStart(env) {
@@ -31,7 +34,41 @@ export function planStart(env) {
   if (mode === 'personal' && !LOOPBACK.has(host.toLowerCase())) {
     return { ok: false, message: `STORYFORGE_HOST=${host} is refused in personal mode: it listens on 127.0.0.1 only (inside a container that is only reachable with network_mode: host). Use STORYFORGE_MODE=shared for access from other computers.` };
   }
-  return { ok: true, mode, host, port, library: text('STORYFORGE_LIBRARY') ?? '/library', sharedData: text('STORYFORGE_SHARED_DATA') ?? '/shared-data', publicUrl: mode === 'shared' ? text('STORYFORGE_PUBLIC_URL') : null, owner: mode === 'shared' ? text('STORYFORGE_OWNER') : null };
+  const database = text('STORYFORGE_DATABASE') !== null;
+  const libraryId = text('STORYFORGE_LIBRARY_ID');
+  if (libraryId !== null && !database) return { ok: false, message: 'STORYFORGE_LIBRARY_ID only works with STORYFORGE_DATABASE' };
+  if (libraryId !== null && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(libraryId)) return { ok: false, message: `STORYFORGE_LIBRARY_ID must be a-z, 0-9 and hyphens, not "${libraryId}"` };
+  return { ok: true, mode, host, port, library: text('STORYFORGE_LIBRARY') ?? '/library', sharedData: text('STORYFORGE_SHARED_DATA') ?? '/shared-data', publicUrl: mode === 'shared' ? text('STORYFORGE_PUBLIC_URL') : null, owner: mode === 'shared' ? text('STORYFORGE_OWNER') : null, database, libraryId };
+}
+
+/**
+ * Does the shared data have an owner? With a database the shared data is the database's: the folder is first brought up to date from it (and a folder of
+ * accounts that were never imported is refused), so a fresh container with an empty folder does not mistake an existing owner for none.
+ * @param {Extract<ReturnType<typeof planStart>, { ok: true }>} plan
+ * @param {Record<string, string | undefined>} env
+ * @returns {Promise<{ ok: true, hasOwner: boolean } | { ok: false, message: string }>}
+ */
+export async function checkOwner(plan, env) {
+  const { SharedDataError, openSharedData } = await import('@storyforge/shared');
+  /** @type {{ close: () => Promise<void> } | null} */
+  let db = null;
+  try {
+    if (plan.database) {
+      const { DatabaseStartError, openSharedDatabase } = await import('../apps/server/src/db-serve.mjs');
+      try {
+        db = await openSharedDatabase({ url: String(env.STORYFORGE_DATABASE).trim(), libraryId: plan.libraryId ?? 'main', sharedDir: plan.sharedData });
+      } catch (e) {
+        if (e instanceof DatabaseStartError) return { ok: false, message: e.message };
+        throw e;
+      }
+    }
+    return { ok: true, hasOwner: (await openSharedData(plan.sharedData)).listMembers().some((m) => m.role === 'owner') };
+  } catch (e) {
+    if (e instanceof SharedDataError) return { ok: false, message: `the shared data cannot be used: ${e.message} (nothing was changed; fix or move that file)` };
+    throw e;
+  } finally {
+    await db?.close();
+  }
 }
 
 /** @param {string} message @returns {number} */
@@ -44,22 +81,16 @@ async function main() {
   const plan = planStart(process.env);
   if (!plan.ok) return refuse(plan.message);
   const node = process.execPath;
-  const common = ['--library', plan.library, '--port', plan.port];
+  const common = ['--library', plan.library, '--port', plan.port, ...(plan.libraryId ? ['--library-id', plan.libraryId] : [])]; // the database URL reaches the children through the environment
   const sharedArgs = ['--shared-data', plan.sharedData, ...(plan.publicUrl ? ['--public-url', plan.publicUrl] : [])];
   if (plan.mode === 'personal' && (process.env.STORYFORGE_OWNER || process.env.STORYFORGE_PUBLIC_URL)) {
     process.stderr.write('storyforge-entrypoint: STORYFORGE_OWNER and STORYFORGE_PUBLIC_URL are ignored in personal mode (no accounts)\n');
   }
 
   if (plan.mode === 'shared') {
-    const { SharedDataError, openSharedData } = await import('@storyforge/shared');
-    let hasOwner;
-    try {
-      hasOwner = (await openSharedData(plan.sharedData)).listMembers().some((m) => m.role === 'owner');
-    } catch (e) {
-      if (e instanceof SharedDataError) return refuse(`the shared data cannot be used: ${e.message} (nothing was changed; fix or move that file)`);
-      throw e;
-    }
-    if (!hasOwner) {
+    const owner = await checkOwner(plan, process.env);
+    if (!owner.ok) return refuse(owner.message);
+    if (!owner.hasOwner) {
       if (!plan.owner) return refuse(`shared mode has no owner yet: set STORYFORGE_OWNER=<user name> (3-32 characters: a-z, 0-9, dot, underscore, hyphen) and start again. Shared data: ${plan.sharedData}`);
       // once: the next start finds the owner and stays quiet. The setup link goes to this process's stdout, that is, the container log.
       const init = spawnSync(node, [MAIN, 'shared', 'init', '--owner', plan.owner, ...common, ...sharedArgs], { stdio: 'inherit' });
