@@ -1,0 +1,151 @@
+{
+  "about": "Executable requirement for the Phase 1 importer (docs/contracts/H0-hosted-foundation.md sections 5 and 6). Proven against the files by packages/format/test/hosted-import-fixture.test.mjs.",
+  "books": [
+    { "id": "book_01S5000000000000000000000A", "slug": "salt-orchard", "path": "saltmarsh/salt-orchard", "series": "saltmarsh", "series_number": 1 },
+    { "id": "book_01H00000000000000000000020", "slug": "the-salt-road", "path": "saltmarsh/the-salt-road", "series": "saltmarsh", "series_number": 2 }
+  ],
+  "counts": {
+    "documents": {
+      "act": 3,
+      "ai-record": 1,
+      "arc": 1,
+      "asset-note": 1,
+      "book": 2,
+      "chapter": 4,
+      "clue": 2,
+      "codex-type": 1,
+      "comment": 1,
+      "continuity-exception": 1,
+      "continuity-settings": 1,
+      "doc": 4,
+      "entry": 12,
+      "event": 5,
+      "goals": 1,
+      "library": 1,
+      "link": 2,
+      "plugin": 1,
+      "prompt": 1,
+      "prompt-workflow": 1,
+      "receipt": 3,
+      "relationship": 1,
+      "research": 1,
+      "scene": 11,
+      "scene-plan": 1,
+      "series": 1,
+      "source": 1,
+      "story-plan": 1,
+      "structure": 1,
+      "style-dismissal": 1,
+      "suggestion": 1,
+      "synopsis": 1,
+      "task": 1,
+      "template": 1,
+      "thread": 2
+    },
+    "archived_documents": { "clue": 1, "scene": 1 },
+    "variant_scenes": 1,
+    "comment_replies": 2,
+    "receipt_chain_length": 3,
+    "other_records": {
+      "canvas": 1,
+      "canvas_story_cards": 3,
+      "asset_files": 2,
+      "provenance_blobs": 2,
+      "revision_files": 6,
+      "writing_log_rows": 3,
+      "session_rows": 3,
+      "goal_items": 3
+    },
+    "shared_data": {
+      "user": 5,
+      "member": 5,
+      "book_scoped_member": 1,
+      "session": 1,
+      "invite": 2,
+      "invite_open": 1,
+      "invite_used": 1,
+      "share_link": 1,
+      "setup_token": 0,
+      "settings": 1,
+      "plugin_token": 1,
+      "oauth_client": 1,
+      "oauth_token": 2,
+      "webhook": 1,
+      "audit_event": 4
+    }
+  },
+  "scene_order": {
+    "book_01S5000000000000000000000A": [
+      "scene_01S50000000000000000000001",
+      "scene_01S50000000000000000000002",
+      "scene_01S50000000000000000000003",
+      "scene_01S50000000000000000000005",
+      "scene_01S50000000000000000000006",
+      "scene_01S50000000000000000000008",
+      "scene_01S50000000000000000000009"
+    ],
+    "book_01H00000000000000000000020": [
+      "scene_01H00000000000000000000023",
+      "scene_01H00000000000000000000024"
+    ]
+  },
+  "excluded_scenes": {
+    "variant": ["scene_01S50000000000000000000004"],
+    "archived": ["scene_01S50000000000000000000007"]
+  },
+  "field_mappings": [
+    { "record_id": "book_01S5000000000000000000000A", "source": "saltmarsh/salt-orchard/book.md", "field": "series_number", "target": "book.series_number" },
+    { "record_id": "book_01S5000000000000000000000A", "source": "saltmarsh/salt-orchard/book.md", "field": "preferences", "target": "book.preferences" },
+    { "record_id": "lib_01H00000000000000000000001", "source": "library.md", "field": "pen_names", "target": "library_settings.pen_names" },
+    { "record_id": "chap_01S5000000000000000000000E", "source": "saltmarsh/salt-orchard/manuscript/act-01-low-water/ch-001-the-drowned-rows/chapter.md", "field": "chapter", "target": "chapter.position" },
+    { "record_id": "scene_01S50000000000000000000004", "source": "saltmarsh/salt-orchard/manuscript/act-01-low-water/ch-001-the-drowned-rows/0020-the-key-alt.md", "field": "variant_of", "target": "scene.variant_of" },
+    { "record_id": "scene_01S50000000000000000000002", "source": "saltmarsh/salt-orchard/manuscript/act-01-low-water/ch-001-the-drowned-rows/0010-arrival.md", "field": "characters", "target": "record_ref.to_id (field=characters)" },
+    { "record_id": "scene_01S50000000000000000000002", "source": "saltmarsh/salt-orchard/manuscript/act-01-low-water/ch-001-the-drowned-rows/0010-arrival.md", "field": "summary", "target": "scene.summary" },
+    { "record_id": "entry_01S5000000000000000000000G", "source": "saltmarsh/salt-orchard/codex/characters/maren-hollis.md", "field": "aliases", "target": "codex_alias.alias (one row per alias)" },
+    { "record_id": "entry_01S5000000000000000000000G", "source": "saltmarsh/salt-orchard/codex/characters/maren-hollis.md", "field": "fields", "target": "codex_entry.fields" },
+    { "record_id": "thread_01S5000000000000000000000T", "source": "saltmarsh/salt-orchard/planning/threads/brass-key.md", "field": "payoff", "target": "record_ref.to_id (field=payoff)" }
+  ],
+  "import_metadata": {
+    "entry_01S5000000000000000000000K": ["nickname_origin", "x-voice"],
+    "scene_01S50000000000000000000003": ["x-mood"]
+  },
+  "expected_findings": [
+    {
+      "code": "E301",
+      "record_id": "scene_01S50000000000000000000005",
+      "file": "saltmarsh/salt-orchard/manuscript/act-01-low-water/ch-002-the-grafting/0010-ferry.md",
+      "location": "line 17",
+      "why": "unresolved [[the-ferry-ledger]] link (H0 section 6); the only error the fixture is allowed to report"
+    },
+    {
+      "code": "I401",
+      "record_id": "entry_01S5000000000000000000000K",
+      "file": "saltmarsh/salt-orchard/codex/characters/pell.md",
+      "location": "nickname_origin",
+      "why": "unknown front-matter field; the importer keeps it in import_metadata"
+    },
+    {
+      "code": "W303",
+      "record_id": "thread_01S5000000000000000000000T",
+      "file": "saltmarsh/salt-orchard/planning/threads/brass-key.md",
+      "location": "develop[0]",
+      "why": "reference to the archived scene scene_01S50000000000000000000007 (H0 section 6)"
+    }
+  ],
+  "raw_import_constructs": {
+    "scene_01S50000000000000000000008": ["image", "footnote"],
+    "scene_01S50000000000000000000009": ["fenced_code", "table"]
+  },
+  "restore_points": {
+    "scene_01S50000000000000000000003": {
+      "in_source": 6,
+      "kept": 4,
+      "kept_files": [
+        "20261102T081500Z-manual.md",
+        "20261102T164000Z-autosave.md",
+        "20261103T100500Z-manual.md",
+        "20261105T120000Z-autosave.md"
+      ]
+    }
+  }
+}

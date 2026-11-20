@@ -1,5 +1,7 @@
 # @storyforge/manuscript — ordering and recovery contract (M00-J04)
 
+> **Amended (2026-11-19)** by the hosted redesign: scene operations are file operations; they become record operations. The rest stands. See [ADR 0004](../../docs/decisions/0004-hosted-database-canonical.md) and [H0](../../docs/contracts/H0-hosted-foundation.md).
+
 Proves that scene order survives cache loss and metadata trouble, using only files. Builds on `@storyforge/format` (`../format`). Spec: `E:\StoryForgeHub\storyforge-v2-production-plan\spec\FORMAT-v1.md`. Decisions: `E:\StoryForgeHub\storyforge-v2-production-plan\DECISIONS.md` (6 = atomic writes, 4–5 = files are authoritative).
 
 ## Rules every operation obeys

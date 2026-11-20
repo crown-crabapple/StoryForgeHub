@@ -1,5 +1,7 @@
 # M01-J04 contract — watcher, external-edit reconciliation, status, repair, single-instance lock
 
+> **Superseded (2026-11-19)** by the hosted redesign: the file watcher and reconcile model are retired. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Binding: DECISIONS 1, 5, 6; FORMAT-v1 §9, §10; contracts J01–J03.
 
 ## Goal

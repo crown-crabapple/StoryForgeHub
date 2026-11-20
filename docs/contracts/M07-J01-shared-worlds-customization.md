@@ -1,5 +1,7 @@
 # M07-J01 contract — series worlds, cross-book links and customization data
 
+> **Amended (2026-11-19)** by the hosted redesign: the _templates/ folder-scanner rule changes. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: DECISIONS 1–5; FORMAT-v1 §1.3 IDs, §1.4 slugs, §1.8 links, §2 layout, §3 library/series/book, §5 entries, §5.1 type files; M04-J01 graph; packages/templates.
 
 Everything here is **additive within v1**: a v1 reader that ignores the new files and fields still reads every book correctly; nothing existing changes meaning, except that `[[x:slug]]` links (reserved since v1 and reported as `I402`) now resolve.

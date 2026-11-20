@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "webhooks": [
+    {
+      "id": "whk_01H00000000000000000000901",
+      "url": "https://hooks.example.com/storyforge",
+      "events": [
+        "scene.saved",
+        "suggestion.created"
+      ],
+      "books": "all",
+      "include_content": false,
+      "allow_local": false,
+      "plugin": null,
+      "secret_hash": "e78e69d9de00e6c2709b49e3dcafb983b9c2ee8840a27a25c6808aaf55d6873f",
+      "secret_store": "keystore",
+      "created": 1792908800000,
+      "revoked": false,
+      "disabled": false,
+      "failures": 0,
+      "last_delivery": null
+    }
+  ]
+}

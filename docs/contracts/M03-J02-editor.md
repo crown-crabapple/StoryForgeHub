@@ -1,5 +1,7 @@
 # M03-J02 contract — scene editor and safe autosave
 
+> **Superseded (2026-11-19)** by the hosted redesign: the CodeMirror editor, raw-file editing and file-based conflicts are retired. See [ADR 0004](../decisions/0004-hosted-database-canonical.md), [ADR 0005](../decisions/0005-rich-text-chapter-editor.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Binding: [ADR 0002](../decisions/0002-scene-editor-codemirror.md) (CodeMirror 6, text-preserving), DECISIONS 1, 6, FORMAT-v1 §1.1, §1.7, §1.8, contracts M01-J02 (body PUT with `base_sha256`, 409 conflict), M01-J04 (watcher/reconcile), M02-J01 (tokens, SaveStatus), M03-J01. Reference: `design/screens/Editor.dc.html` (centre column).
 
 Dependencies (exact pins, published ≤ 2026-10-18): `@codemirror/state@6.7.6`, `@codemirror/view@6.43.14`, `@codemirror/commands@6.11.1`, `@codemirror/language@6.13.1`, `@codemirror/lang-markdown@6.5.2`, `@lezer/markdown@1.8.0`, `@lezer/highlight@1.2.5` (and whatever exact peers they require at those versions). Nothing else.

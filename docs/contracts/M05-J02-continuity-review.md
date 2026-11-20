@@ -1,5 +1,7 @@
 # M05-J02 contract — continuity review experience
 
+> **Amended (2026-11-19)** by the hosted redesign: the file-addressed context route, write guard wording and CodeMirror underline change. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: contract M05-J01 (findings, fingerprints, exceptions, `GET /api/books/:b/continuity`); M03-J02 (editor, `?line=` jump), M03-J04 (editor rail), M04-J02/J04 (dialog and write patterns, Undo); DECISIONS 1, 6. Design tokens: `design/README.md` (dark graphite, warm gold for action/selection).
 
 Diagnostics are **advice**. Nothing in this job changes prose, Codex entries or events; the only files it writes are continuity exceptions (`planning/continuity/<slug>.md`).

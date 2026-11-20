@@ -1,5 +1,7 @@
 # M08-J02 contract — extension, API and webhook boundary
 
+> **Amended (2026-11-19)** by the hosted redesign: the "canonical file" wording and loopback-only plugin API auth change. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: DECISIONS 1, 9, 11, 12; FEATURE-REGISTER F18; M05-J06 suggestions (a proposal changes nothing until accepted); M07-J03 shared mode and policy; M07-J04 modules.
 
 **Principle:** StoryForge never runs plugin code. A plugin is a separate program the author starts. It talks to StoryForge over a versioned HTTP API with a scoped token the author granted. It can read what its scope allows and **propose** changes as suggestions. It can never write a canonical file. Failure isolation comes from the process boundary: a crashing or hostile plugin can only lose its own token.

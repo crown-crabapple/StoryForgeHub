@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "clients": [
+    {
+      "id": "sfc_eGd1ZWWaoyHiJ6j6Zyi9hA",
+      "secret_hash": null,
+      "name": "Fixture MCP client",
+      "redirect_uris": [
+        "https://client.example.com/callback"
+      ],
+      "auth_method": "none",
+      "created": 1792822400000
+    }
+  ],
+  "tokens": [
+    {
+      "hash": "c531e5c7257b6f8d187bc0269ea3b671494dd312cde31dfa224f7350c02c9d50",
+      "kind": "access",
+      "client": "sfc_eGd1ZWWaoyHiJ6j6Zyi9hA",
+      "grant": "tok_01H00000000000000000000801",
+      "created": 1793596400000,
+      "expires": 1793603600000
+    },
+    {
+      "hash": "3342714e637b36b7c89014280f7a441562a2206430d4ad90e7f7f0b2ec94ba83",
+      "kind": "refresh",
+      "client": "sfc_eGd1ZWWaoyHiJ6j6Zyi9hA",
+      "grant": "tok_01H00000000000000000000801",
+      "created": 1793596400000,
+      "expires": 1801289600000
+    }
+  ]
+}

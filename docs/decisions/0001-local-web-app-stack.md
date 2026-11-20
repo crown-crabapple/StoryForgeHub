@@ -1,5 +1,7 @@
 # ADR 0001 — Local web app on Node, React and built-in SQLite
 
+> **Superseded in part (2026-11-19)** by [ADR 0004](0004-hosted-database-canonical.md): storage, binding and accounts. The runtime, language, HTTP, UI, test and lint choices below still stand.
+
 **Status:** accepted 2026-11-01 (owner chose "local web app"). **Job:** M01-J01.
 
 ## Context

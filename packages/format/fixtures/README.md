@@ -34,3 +34,7 @@ One folder per defect, named `<code>-<short-name>`. Each is a minimal valid book
 `test/build-world-fixtures.mjs --write` regenerates `valid/tidewater` and the M07-J01 invalid cases (`E210`, `E303`, `W309`, `W311`, `W312`, `I403`, `E102-label-*`, `E102-field-*`, `E102-template-shape`, `E301-shared-private-link`, `E302-cross-book-reference`, `E208-shared-duplicate-slug`, `W303-cross-book-archived`) the same way.
 
 The M07-J02 invalid cases (`W313-task-target`, `E102-goal-shape`, `E102-task-shape`, `E301-goal-scope`, `W201-task-folder`) are hand-written minimal books (the committed files are the source of truth; no generator).
+
+## `hosted-import/`
+
+The Phase 0 import fixture for the hosted, database-first redesign: a series with two books, every `KINDS` kind, every preserved category, and a `shared-data/` store beside the library. `expected-import.json` is the executable requirement for the Phase 1 importer. Exactly three diagnostics: `E301` (deliberate unresolved link), `W303`, `I401`. See [H0 §6](../../../docs/contracts/H0-hosted-foundation.md#6-import-fixture).

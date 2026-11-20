@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "tokens": [
+    {
+      "id": "tok_01H00000000000000000000801",
+      "token_hash": "92ddaa90bb670f54791a490b6da827268365895984b7a5236cdcdf950e78472b",
+      "plugin": "tide-tracker",
+      "permissions": [
+        "canvas",
+        "read"
+      ],
+      "books": [
+        "salt-orchard"
+      ],
+      "created": 1792736000000,
+      "last_used": 1793513600000,
+      "revoked": false
+    }
+  ]
+}

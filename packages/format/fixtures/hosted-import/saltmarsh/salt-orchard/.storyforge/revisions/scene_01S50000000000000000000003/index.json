@@ -1,0 +1,46 @@
+[
+  {
+    "file": "20261101T090000Z-autosave.md",
+    "at": "2026-11-01T09:00:00.000Z",
+    "reason": "autosave",
+    "sha256": "47d56526294519c4c172b92da3fff593081bbf8b03e12b13d2390f04c3fb278a",
+    "words": 7
+  },
+  {
+    "file": "20261101T113000Z-autosave.md",
+    "at": "2026-11-01T11:30:00.000Z",
+    "reason": "autosave",
+    "sha256": "253a54fd62de3c35abccf6336007f9692d589bdd5a7d3591b6d37467960b7291",
+    "words": 17
+  },
+  {
+    "file": "20261102T081500Z-manual.md",
+    "at": "2026-11-02T08:15:00.000Z",
+    "reason": "manual",
+    "sha256": "b522127f2a26798ab8f486e988ad6bdae0e3fa7309fcafdab9be9a32645b935f",
+    "words": 28,
+    "label": "First pass"
+  },
+  {
+    "file": "20261102T164000Z-autosave.md",
+    "at": "2026-11-02T16:40:00.000Z",
+    "reason": "autosave",
+    "sha256": "444c4d117cda2c8d15cedd789dde81ff2693b60af9d8da15b0bef553159c329c",
+    "words": 37
+  },
+  {
+    "file": "20261103T100500Z-manual.md",
+    "at": "2026-11-03T10:05:00.000Z",
+    "reason": "manual",
+    "sha256": "306d6c307db56182bfa60c96c7f4da292ba6edafc054327e2db02c9edfd1af50",
+    "words": 45,
+    "label": "Before the tide fix"
+  },
+  {
+    "file": "20261105T120000Z-autosave.md",
+    "at": "2026-11-05T12:00:00.000Z",
+    "reason": "autosave",
+    "sha256": "d897c13457543de58583c593c6b2e3ecef27cd64b9ce5d39085746c3ac5a7329",
+    "words": 58
+  }
+]

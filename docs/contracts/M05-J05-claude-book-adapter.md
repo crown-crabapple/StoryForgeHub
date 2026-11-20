@@ -1,5 +1,7 @@
 # M05-J05 contract — Claude-Book local adapter
 
+> **Amended (2026-11-19)** by the hosted redesign: the "every canonical file read" source rule changes. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: CLAUDE-BOOK-INTEGRATION.md (adapter contract, modes, canon rule); DECISIONS 1, 5, 9, 10; contracts M04-J01 (resolver), M04-J04 (timeline/notes), M05-J01 (event `state`, findings). Audit of `E:\Claude-Book-main` (2026-11-02): context packs are built today by the orchestrator through hosted `codex_*` tools; agents are pure file-in/file-out under `.work/<book>/`; the only local deterministic tool is `scripts/style/style_checker.py` (stdlib Python, writes `<repo>/.work/chapter-NN-tech-report-<uuid8>.md`, chapter number taken from the **file name**); the "continuity check" is the hosted `codex_continuity_check`, reading ledgers only.
 
 The adapter **replaces the `codex_*` reads** (workflow steps 2, 5, 8) and turns step-12 write-backs into proposals. It does not change Claude-Book's rules, templates, agent prompts or scripts.

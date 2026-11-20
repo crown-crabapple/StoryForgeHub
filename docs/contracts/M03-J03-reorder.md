@@ -1,5 +1,7 @@
 # M03-J03 contract — drag-and-drop scene organisation
 
+> **Superseded (2026-11-19)** by the hosted redesign: reordering by renaming files is retired; order becomes a record ordering. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Binding: DECISIONS 4 (ordering lives with content), 6; FORMAT-v1 §4.2–§4.3; `packages/manuscript/CONTRACT.md` (`moveScene`, rules 1–7: bodies untouched, minimal line edits, atomic, refuse on broken book, verify + rollback, dry run); contracts M03-J01 (preview dialog, toasts) and M03-J02 (save controller: flush before structural ops).
 
 ## 1. Move operation (server + core)

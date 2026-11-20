@@ -1,5 +1,7 @@
 # M07-J02 contract — goals, sessions, dashboards and revision tasks
 
+> **Amended (2026-11-19)** by the hosted redesign: the byte-identical file round-trip rule changes. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: DECISIONS 1, 4, 5; FORMAT-v1 §3.3 `daily_word_goal`, §9.1 writing log; M03-J04 (activity routes, sessions, goal card); M04-J02/J03 (codex, board, threads matrix); M05-J01/J02 (continuity findings, fingerprints); M05-J06 (author check findings); M07-J01 (labels, shared entries).
 
 All new data is **portable project files**. Every chart is computed from the rebuildable index, or from the files when the index is not fresh. Nothing is stored only in SQLite.

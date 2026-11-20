@@ -1,5 +1,7 @@
 # ADR 0002 — Scene editor: CodeMirror 6 editing the Markdown text directly
 
+> **Superseded (2026-11-19)** by [ADR 0005](0005-rich-text-chapter-editor.md). Kept for the record; the CodeMirror editor is replaced in Phase 2 of the [hosted plan](../plans/hosted-authoring-plan.md).
+
 **Status:** accepted 2026-11-01. **Job:** M03-J02 (task 1: "Select editor technology only after proving Markdown/front-matter/comment preservation requirements").
 
 ## Evidence

@@ -1,5 +1,7 @@
 # M01-J01 contract — v2 application boundary (read-only)
 
+> **Superseded (2026-11-19)** by the hosted redesign: the file-backed boundary and loopback-only host guard are retired. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Stack and layers: [ADR 0001](../decisions/0001-local-web-app-stack.md). Format: `E:\StoryForgeHub\storyforge-v2-production-plan\spec\FORMAT-v1.md`. Design tokens: `E:\StoryForgeHub\storyforge-v2-production-plan\design\README.md`.
 
 ## Repo layout after this job

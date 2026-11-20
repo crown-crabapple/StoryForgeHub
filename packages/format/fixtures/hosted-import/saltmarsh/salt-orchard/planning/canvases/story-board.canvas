@@ -1,0 +1,78 @@
+{
+  "nodes": [
+    {
+      "id": "col-1",
+      "type": "group",
+      "x": 0,
+      "y": 0,
+      "width": 640,
+      "height": 420,
+      "label": "Opening image",
+      "storyforge": {
+        "kind": "column",
+        "ref": "note_01S50000000000000000000018"
+      }
+    },
+    {
+      "id": "card-arrival",
+      "type": "file",
+      "file": "manuscript/act-01-low-water/ch-001-the-drowned-rows/0010-arrival.md",
+      "x": 20,
+      "y": 40,
+      "width": 280,
+      "height": 160,
+      "storyforge": {
+        "ref": "scene_01S50000000000000000000002"
+      }
+    },
+    {
+      "id": "card-key",
+      "type": "file",
+      "file": "manuscript/act-01-low-water/ch-001-the-drowned-rows/0020-the-key.md",
+      "x": 330,
+      "y": 40,
+      "width": 280,
+      "height": 160,
+      "storyforge": {
+        "ref": "scene_01S50000000000000000000003"
+      }
+    },
+    {
+      "id": "card-maren",
+      "type": "file",
+      "file": "codex/characters/maren-hollis.md",
+      "x": 20,
+      "y": 240,
+      "width": 280,
+      "height": 140,
+      "storyforge": {
+        "ref": "entry_01S5000000000000000000000G"
+      }
+    },
+    {
+      "id": "note-1",
+      "type": "text",
+      "text": "Ask what the key really opens.",
+      "x": 330,
+      "y": 240,
+      "width": 280,
+      "height": 140,
+      "color": "3"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "fromNode": "card-arrival",
+      "toNode": "card-key",
+      "fromSide": "right",
+      "toSide": "left",
+      "toEnd": "arrow",
+      "label": "therefore"
+    }
+  ],
+  "storyforge": {
+    "schema": "storyforge.canvas/v1",
+    "title": "Story board"
+  }
+}

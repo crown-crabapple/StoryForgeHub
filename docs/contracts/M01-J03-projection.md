@@ -1,5 +1,7 @@
 # M01-J03 contract — rebuildable SQLite projection and search
 
+> **Superseded (2026-11-19)** by the hosted redesign: the index as a rebuildable projection of files is retired. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Binding: DECISIONS 1, 5 (SQLite is a cache), FORMAT-v1 §9, [ADR 0001](../decisions/0001-local-web-app-stack.md), [M01-J02](M01-J02-writer-recovery.md).
 
 ## Rules

@@ -1,5 +1,7 @@
 # M05-J01 contract — continuity rules, findings and exceptions
 
+> **Amended (2026-11-19)** by the hosted redesign: rule inputs read database records, not files. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: FORMAT-v1 §1.3 (IDs), §1.8 (links), §4.2 (scene order), §5 (entries, `fields`), §5.1 (`_types`), §6.1 (threads), §6.2 (events, chronological order, narrative position), §7 (research is non-canon unless `canon: true`), §11; DECISIONS 1, 5; contracts M04-J01 (link resolver, mentions), M04-J04 (timeline).
 
 The engine is **deterministic** (same files → same findings, same order, same fingerprints), **read-only** (it never writes a file), and **evidence-based** (every finding names at least one exact source location; most name two). It never edits prose or canon.
