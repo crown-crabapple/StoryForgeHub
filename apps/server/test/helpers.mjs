@@ -13,7 +13,8 @@ export const REPO_ROOT = path.resolve(here, '../../..');
 export async function copyFixture(rel) {
   const base = await fs.mkdtemp(path.join(os.tmpdir(), 'sf-srv-'));
   const dest = path.join(base, path.basename(rel));
-  await fs.cp(path.join(FIXTURES, rel), dest, { recursive: true });
+  // keep the fixture's mtimes (Windows' CopyFile does; Linux and macOS would stamp each copy with "now"), so two copies of one fixture answer the same updated_at
+  await fs.cp(path.join(FIXTURES, rel), dest, { recursive: true, preserveTimestamps: true });
   return dest;
 }
 

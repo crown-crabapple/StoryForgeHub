@@ -524,6 +524,7 @@ async function handleBackup(repository, bookId, params) {
   if (provenance === null) return badRequest('provenance must be 0 or 1');
   const root = await repository.bookRoot(bookId);
   if (!root) return NOT_FOUND;
+  await repository.flushActivity?.(); // the writing log's in-memory totals go to disk first, so the backup is complete (not "whatever the last timed flush wrote")
   const { bytes, filename } = await createBackup(root, { includeProvenance: provenance });
   return download({ bytes, filename, mime: 'application/zip' });
 }
