@@ -6,6 +6,8 @@ import { AiProvider, useAi } from './ai/AiContext.jsx';
 import { CoverDraftsButton } from './ai/CoverDrafts.jsx';
 import { EditorBridgeProvider, useEditorBridge } from './editor/bridge.jsx';
 import { SceneEditorPage } from './editor/SceneEditorPage.jsx';
+import { ChapterEditor } from './chapter/ChapterEditor.jsx';
+import { NAV_EVENT } from './nav-event.js';
 import { parseView } from './planning/model.js';
 import { noticeText, parseSelect } from './tasks/model.js';
 import { parseAt } from './style/model.js';
@@ -257,6 +259,16 @@ export function BookView({ bookId, sceneId, file }) {
     );
   }
   const chapter = book.acts.flatMap((a) => a.chapters).find((c) => c.scenes.some((s) => s.id === activeId));
+  const chapterAct = chapter ? book.acts.find((a) => a.chapters.includes(chapter)) : null;
+  // ?view=source opens the old Markdown editor for the scene (findings, suggestions and AI rewrite are not in the chapter editor yet); the chapter editor is the default
+  const sourceMode = new URLSearchParams(search).get('view') === 'source';
+  const onCursorScene = (id) => {
+    // the cursor entered another scene: the address (and so the rail and inspector) follows, without a new history entry
+    const params = new URLSearchParams(window.location.search);
+    params.set('scene', id);
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+    window.dispatchEvent(new Event(NAV_EVENT));
+  };
   const chapterLabel = chapter ? (chapter.title ? `${chapter.label}: ${chapter.title}` : chapter.label) : null;
 
   let main;
@@ -267,6 +279,18 @@ export function BookView({ bookId, sceneId, file }) {
         <h1>{book.title ?? book.slug ?? book.id}</h1>
         <p className="muted">This book has no scenes in its manuscript.</p>
       </>
+    );
+  } else if (!sourceMode && chapter && chapterAct) {
+    main = (
+      <ChapterEditor
+        book={book}
+        chapter={chapter}
+        act={chapterAct.act}
+        activeId={activeId}
+        chapterLabel={chapterLabel}
+        onStructureChanged={() => setBump((n) => n + 1)}
+        onCursorScene={onCursorScene}
+      />
     );
   } else if (sceneLoading) main = <p className="muted">Loading...</p>;
   else if (sceneError) main = <p className="error">{sceneError}</p>;
@@ -285,6 +309,17 @@ export function BookView({ bookId, sceneId, file }) {
         footerExtra={<ArchiveButton bookId={book.id} scene={scene} />}
         onStructureChanged={() => setBump((n) => n + 1)}
       />
+    );
+  }
+
+  if (sourceMode && !file && activeId !== null) {
+    main = (
+      <>
+        <p className="muted">
+          <Link to={`/books/${encodeURIComponent(book.id)}?scene=${encodeURIComponent(activeId)}`}>Back to the chapter view</Link>
+        </p>
+        {main}
+      </>
     );
   }
 

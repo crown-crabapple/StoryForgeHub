@@ -1,35 +1,26 @@
 // Revision policy (M03-J04 section 6): when to snapshot, what to keep, and how a snapshot splits into front matter and body.
 // Pure; the bytes themselves are stored by @storyforge/store (saveRevision / pruneRevisions).
 import { parse } from 'yaml';
-import { localDate } from './writing-log.mjs';
 
-export const KEEP_LATEST = 30;
-export const KEEP_DAYS = 90;
+/** Automatic restore points kept per scene (H0 section 2.2, hosted plan Phase 2: "the newest three or four versions"). */
+export const KEEP_LATEST = 4;
 /** A session ends after this long without a save. */
 export const SESSION_IDLE_MS = 10 * 60_000;
 /** While editing continues, one snapshot this often. */
 export const INTERVAL_MS = 15 * 60_000;
-const DAY_MS = 86_400_000;
 
 /**
- * Which snapshots to prune. All `manual` and `restore` ones are kept; of the rest the latest KEEP_LATEST are kept, plus the newest of each
- * further day for KEEP_DAYS days. Returns the files to move to the trash.
+ * Which snapshots to prune. Every `manual` and `restore` one is kept (the author asked for it, or it holds the text a restore replaced); of the
+ * automatic ones (session, interval, external) the newest KEEP_LATEST are kept. Returns the files to move to the trash (never deleted here).
  * @param {{ file: string, at: string, reason: string }[]} entries
- * @param {number} nowMs
  * @returns {string[]}
  */
-export function planRetention(entries, nowMs) {
-  const others = entries
+export function planRetention(entries) {
+  return entries
     .filter((e) => e.reason !== 'manual' && e.reason !== 'restore')
-    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.file < b.file ? 1 : -1));
-  const days = new Set(others.slice(0, KEEP_LATEST).map((e) => localDate(new Date(e.at))));
-  const prune = [];
-  for (const e of others.slice(KEEP_LATEST)) {
-    const day = localDate(new Date(e.at));
-    if (nowMs - new Date(e.at).getTime() > KEEP_DAYS * DAY_MS || days.has(day)) prune.push(e.file);
-    else days.add(day);
-  }
-  return prune;
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : a.file < b.file ? 1 : -1))
+    .slice(KEEP_LATEST)
+    .map((e) => e.file);
 }
 
 /**

@@ -86,7 +86,7 @@ export default [
           paths: ['fs', 'fs/promises', 'path'].map((name) => ({ name, message: 'The web app cannot use Node modules.' })),
           patterns: [
             { group: ['node:*'], message: 'The web app cannot use Node modules.' },
-            { group: ['@storyforge/*'], message: 'The web app talks to the server over /api only.' },
+            { regex: '^@storyforge/(?!format/rich$)', message: 'The web app talks to the server over /api only. (@storyforge/format/rich is the one exception: the pure Markdown <-> rich-document converter, no I/O.)' },
           ],
         },
       ],
@@ -97,7 +97,7 @@ export default [
   {
     files: ['apps/web/test/**/*.mjs'],
     rules: {
-      'no-restricted-imports': ['error', { patterns: [{ group: ['@storyforge/*'], message: 'The web app talks to the server over /api only.' }] }],
+      'no-restricted-imports': ['error', { patterns: [{ regex: '^@storyforge/(?!format/rich$)', message: 'The web app talks to the server over /api only. (@storyforge/format/rich is the one exception: the pure Markdown <-> rich-document converter, no I/O.)' }] }],
     },
   },
 

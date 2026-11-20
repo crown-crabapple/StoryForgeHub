@@ -9,8 +9,8 @@ const webDir = fileURLToPath(new URL('..', import.meta.url));
 const dist = join(webDir, 'dist');
 
 // XML namespace identifiers (never fetched) and React's production error-message text (a string in the
-// bundle that is shown to the developer, never requested).
-const ALLOWED = [/^http:\/\/www\.w3\.org\//, /^https:\/\/react\.dev\/errors\/?$/];
+// bundle that is shown to the developer, never requested), and ProseMirror's (the chapter editor's) schema error pointing at its docs.
+const ALLOWED = [/^http:\/\/www\.w3\.org\//, /^https:\/\/react\.dev\/errors\/?$/, /^https:\/\/prosemirror\.net\/docs\//];
 
 // M13-J02: the Harper grammar checker's worker chunk and WASM hold URLs as text (bundled library comments and sample sentences in its
 // word data); nothing requests them. Only these two exact build outputs are skipped. That the checker makes no requests is proved by

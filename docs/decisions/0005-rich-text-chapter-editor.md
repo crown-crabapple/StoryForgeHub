@@ -20,6 +20,8 @@
 | Markdown | Import: Markdown → schema v1 with a per-construct report. Export: schema v1 → Markdown with the FORMAT-v1 conventions. A golden-file test proves import → export → import is stable. |
 | Schema changes | A new `schema_version` comes with an upgrade function in `packages/db`, run on read and written back on the next save. |
 
+**Amendment (2026-11-20, owner decision "editor first"):** in Phase 2 the stored form stays the scene's Markdown body, through the existing routes and `base_sha256`. The browser converts it with `@storyforge/format/rich`, which is lossless on read and refuses a save that would not read back the same ([phase 2 design](../plans/phase2/design.md)). The JSON-per-scene stored form and version-number concurrency above arrive with the typed `scene` table, later.
+
 ## Consequences
 
 - The `apps/web` CodeMirror scene editor, its decorations and the Markdown formatting commands are replaced in Phase 2. The Read view renders the JSON instead of Markdown.

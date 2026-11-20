@@ -5,7 +5,10 @@
   "description": "Validator for the StoryForge Markdown format v1",
   "license": "AGPL-3.0-only",
   "type": "module",
-  "exports": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./rich": "./src/rich.mjs"
+  },
   "bin": {
     "sf-validate": "bin/sf-validate.mjs"
   },

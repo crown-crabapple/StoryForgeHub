@@ -15,7 +15,7 @@ export const COMMANDS = [
   { id: 'editor.link', label: 'Link to Codex or thread', scope: 'editor', binding: 'Mod+K', files: ['editor/SceneEditorPage.jsx', 'editor/Toolbar.jsx'] },
   { id: 'editor.note', label: 'Author note', scope: 'editor', binding: 'Mod+Alt+M', files: ['editor/SceneEditorPage.jsx', 'editor/Toolbar.jsx'] },
   { id: 'editor.sceneBreak', label: 'Scene break', scope: 'editor', binding: 'Mod+Enter', files: ['editor/SceneEditorPage.jsx', 'editor/Toolbar.jsx'] },
-  { id: 'editor.save', label: 'Save now', scope: 'editor', binding: 'Mod+S', files: ['editor/SceneEditorPage.jsx', 'editor/RawEditor.jsx'] },
+  { id: 'editor.save', label: 'Save now', scope: 'editor', binding: 'Mod+S', files: ['editor/SceneEditorPage.jsx', 'editor/RawEditor.jsx', 'chapter/ChapterEditor.jsx'] },
   { id: 'editor.checkScene', label: 'Check grammar now', scope: 'editor', binding: 'Mod+Alt+G', files: ['editor/SceneEditorPage.jsx'] },
   { id: 'focus.toggle', label: 'Focus mode on or off', scope: 'global', binding: 'Mod+Shift+F', files: ['writing/focus.js', 'writing/FocusContext.jsx', 'editor/Toolbar.jsx'] },
   { id: 'focus.exit', label: 'Leave focus mode', scope: 'global', binding: 'Escape', fixed: true, files: ['writing/focus.js', 'writing/FocusContext.jsx'] },
@@ -57,6 +57,7 @@ export const COMMANDS = [
  */
 export const WIDGET_KEYS = [
   { file: 'Outline.jsx', keys: 'Arrow Up, Arrow Down', what: 'move between scenes in the chapter list' },
+  { file: 'chapter/SceneBreakView.jsx', keys: 'Enter, Escape', what: 'save or cancel a scene rename on the scene break' },
   { file: 'SearchBox.jsx', keys: 'Escape', what: 'close the search results' },
   { file: 'shell/BookSwitcher.jsx', keys: 'Arrow keys, Enter, Escape, letters', what: 'pick a book (type the first letter to jump)' },
   { file: 'structure/RowMenu.jsx', keys: 'Arrow Up, Arrow Down, Escape, Tab', what: 'the row menu of a scene or chapter' },

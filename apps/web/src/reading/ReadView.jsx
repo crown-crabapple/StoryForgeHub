@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ProseView } from '../ProseView.jsx';
+import { RichView } from '../rich/RichView.jsx';
 import { Link } from '../router.jsx';
 import { viewHref } from '../planning/model.js';
-import { placeholderHeight, positionKey, readingOrder, readingProgress, readingTime, withoutComments } from './model.js';
+import { placeholderHeight, positionKey, readingOrder, readingProgress, readingTime } from './model.js';
 
 const PARALLEL = 6;
 const PREFS_KEY = 'storyforge.read.prefs';
@@ -94,7 +94,7 @@ function ReadScene({ bookId, entry, scene, showTitle, showNotes, headingLevel })
     );
   } else {
     const text = scene.body ?? '';
-    body = <ProseView source={showNotes ? text : withoutComments(text)} />;
+    body = <RichView source={text} showNotes={showNotes} />;
   }
   return (
     <section className="read-scene" id={`read-${entry.id}`} data-read-scene={entry.id} aria-label={entry.title || 'Untitled scene'} aria-busy={scene ? undefined : 'true'}>
