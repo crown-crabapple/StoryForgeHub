@@ -1,7 +1,7 @@
 # Installing and running StoryForge
 
 StoryForge runs on your own computer. You start a small program, and your browser shows the app at an address that only your computer can reach
-(`http://127.0.0.1:4317/`). There is no account, no sign-in and no cloud service.
+(`http://127.0.0.1:4317/`). In file mode there is no account, no sign-in and no cloud service.
 
 ## What you need
 
@@ -40,7 +40,11 @@ You can also start it without the launcher: `npm ci`, `npm run build`, then `npm
 | The index | `.storyforge/` inside each book folder. A cache that makes searching and lists fast. | No. It is **disposable**: delete it any time and StoryForge rebuilds it from the files. |
 | Settings for you | `%APPDATA%\StoryForge` on Windows, `~/.config/storyforge` on macOS and Linux (or `$XDG_CONFIG_HOME/storyforge`). It holds the list of recent libraries and your AI provider settings, **including a key if you chose "save the key in the settings file"** (it is stored as plain text). Keys kept in **secure storage** (the default for a new key) are encrypted: on Windows by your Windows user (DPAPI), on macOS and Linux by the system key store when there is one, else in `secrets.json` here with a key file beside it. They are never in a book, a backup or an export. | Optional. |
 
-Nothing else is written anywhere. In particular, StoryForge keeps no copy of your books outside the book folders.
+Nothing else is written anywhere. In file mode, StoryForge keeps no copy of your books outside the book folders.
+
+## With a database (hosted)
+
+A server can run StoryForge with a PostgreSQL database instead of a folder as the canonical copy. This is for a hosted app, not for writing on your own computer. See [database.md](database.md). Everything else on this page is file mode.
 
 ## How to back up
 

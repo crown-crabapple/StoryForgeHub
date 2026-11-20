@@ -207,11 +207,12 @@ function explain(d) {
 
 /**
  * @param {string} libraryRoot
- * @param {import('./watcher.mjs').WatchOptions & { watcher?: import('./watcher.mjs').WatchOptions }} [options]
+ * @param {import('./watcher.mjs').WatchOptions & { watcher?: import('./watcher.mjs').WatchOptions, onOutsideChange?: (dir: string, rels: string[]) => Promise<void> }} [options]
  *   Watching is on by default. Tests can pass `{ watch: false | 'fail', pollMs }` (also accepted under `watcher`),
  *   `debounceMs` and `maxWaitMs`. Call `close()` to stop the watchers and timers (and write the pending writing log).
  *   `clock: () => number | Date` is the time used for the writing log's dates, revision stamps and snapshot timing;
  *   `activityFlushMs` (default 60 000) is how often the writing log is flushed.
+ *   `onOutsideChange` (database mode, apps/server db-serve.mjs) is called by the watcher for changes made outside the app, before the index sees them (see watcher.mjs).
  * @returns {FileRepository}
  */
 export function createFsRepository(libraryRoot, options = {}) {
@@ -233,7 +234,7 @@ export function createFsRepository(libraryRoot, options = {}) {
   // M05-J07: the receipt writer of this library (staged into the batches of the changes themselves; the watcher attributes outside changes)
   const receipts = createReceiptEngine({ root, now: options.clock, readValidate });
   const unregisterReceipts = registerReceiptEngine(receipts);
-  const watcher = createWatcher({ root, manager, options: { ...options, ...(options.watcher ?? {}) }, onExternalChange: (bookPath, rels) => receipts.externalCheck(bookPath, rels),
+  const watcher = createWatcher({ root, manager, options: { ...options, ...(options.watcher ?? {}) }, onOutsideChange: options.onOutsideChange, onExternalChange: (bookPath, rels) => receipts.externalCheck(bookPath, rels),
     onRawEvent: (e) => {
       if ('rel' in e && typeof e.rel === 'string' && /^\.storyforge(-lock)?(\/|$)/.test(e.rel)) return;
       vcache.invalidate();

@@ -13,6 +13,7 @@
     "build": "npm run build -w @storyforge/web",
     "lint": "eslint .",
     "test": "npm test --workspaces --if-present",
+    "test:db": "node scripts/test-db.mjs",
     "start": "node scripts/start.mjs",
     "dev": "npm run dev -w @storyforge/web",
     "test:large": "npm run test:large -w @storyforge/server",

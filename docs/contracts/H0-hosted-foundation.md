@@ -11,6 +11,30 @@ Out: the editor UI (Phase 2), mention detection (Phase 3), diagnostics UI (Phase
 
 ## 2. Database model
 
+> **Delivered in stages (owner decision 2026-11-19: "storage swap first").** Phase 1 ships the **document store** in §2.0: every library file lives in the database, which is canonical, and the server keeps a disposable on-disk copy so the existing read code runs unchanged. The typed tables in §2.1–§2.5 arrive with the features that need them: scenes and restore points in Phase 2, aliases and mentions in Phase 3, findings in Phase 4, accounts and membership no later than Phase 5. Until a typed table exists, its rows live in §2.0.
+
+### 2.0 Phase 1: the document store
+
+| Table | Holds |
+| --- | --- |
+| `schema_migrations` | applied migration names and times. |
+| `library` | one row per library (one per server today): id, name, created_at. |
+| `library_file` | `(library_id, path)` primary key; `bytes bytea`, `sha256`, `size`, `updated_at`, `updated_by` (actor JSON), plus columns derived on write for querying: `schema` (e.g. `storyforge.scene/v1`), `doc_id`, `front_matter jsonb` (null when the file has none or does not parse). `path` is library-relative with forward slashes; `archive/` paths are archived records. Folders are implicit, except an empty folder, which is a row with `bytes` null and a path ending in `/`. |
+| `library_op` | the change log (§2.2 `change_log`): op id, library, op name, args, actor, time, files `[{path, before_sha256, after_sha256}]`. |
+| `library_trash` | `(op_id, path) → bytes`: the content each op replaced or removed, so Undo and rollback work. |
+| `scene_revision` | `(library_id, book_path, scene_id, file) → bytes, meta jsonb`: restore points (newest 4 per scene kept, §2.2). |
+| `shared_doc` | `(name) → bytes`: the shared-mode JSON files (users, members, sessions, invites, shares, setup, settings, oauth, plugin-tokens, webhooks, audit-head). |
+| `shared_line` | `(name, seq) → line`: append-only logs (`audit.jsonl`). |
+| `import_receipt` | id, library, source path, source fingerprint, time, report JSON. |
+
+**Write path.** `packages/store` keeps its API. When a database is attached, every batch (and `createTree`, `moveTree`, revisions, shared files) is written to the database **first, in one transaction** that checks each path's current `sha256` against the batch's `before_sha256` (a mismatch is `CONFLICT`), records `library_op` and `library_trash`, and upserts or deletes the `library_file` rows. Only after the commit is the on-disk copy updated. If the disk step fails, the batch is undone in the database too, so the result is still all-old or all-new.
+
+**The on-disk copy.** A private folder in the server's data directory, never edited by hand. At startup the server applies migrations, then makes the folder match the database exactly (writes changed files, removes extra ones, leaves `.storyforge/` caches alone). A change to the folder made outside the app is overwritten from the database and logged, never imported. The search index stays a disposable cache inside it.
+
+**Known limits (Phase 1).** Outside edits to non-Markdown files in the copy are fixed at the next restart, not while running. An outside edit racing a save can make that save be refused with a conflict; the database is never wrong, and a restart rebuilds the copy. Library switching is off in database mode (`POST /api/library/open` answers 409 `DATABASE_MODE`; the web app hides it).
+
+**Not in the database in Phase 1:** per-machine settings (profiles, recent libraries, AI provider settings) stay in the server's config folder, which the backup covers (§4).
+
 ### 2.1 Rules for every table
 
 - Primary key `id text` holding today's id form (`<prefix>_<ULID>`; ADR 0004). Imported records keep their id.
@@ -93,7 +117,7 @@ Every id-valued field that `packages/format` `REFERENCES` lists (scene `characte
 | Restore drill | Before every release: restore the latest backup into a clean PostgreSQL, run migrations, run the read-only compatibility suite (§7) against it, and compare row counts per table with the source. Recorded in `docs/release-checklist.md`. |
 | Author export | Any owner can download each book as a Markdown library (FORMAT-v1) at any time. This is the author's own escape hatch, independent of server backups. |
 | In-app history | `restore_point` (newest 4 per scene) and `change_log` (Undo, 30 days). These are not backups. |
-| Before migrations | The migration runner refuses to run on production unless a backup newer than 24 hours is recorded. |
+| Before migrations | Take a fresh `pg_dump` before running `storyforge db migrate` on production (docs/database.md). The runner does not check this yet; enforcing it ("refuse unless a backup newer than 24 hours is recorded") is Phase 5 hardening. |
 
 ## 5. Markdown import and export compatibility policy
 
@@ -141,7 +165,21 @@ Change list: *(none yet)*
 | §7.3 read shapes | `apps/server/test/v1-compat-shapes.test.mjs` |
 | §2–§5 | Phase 1 tests, written against this contract and the fixture |
 
+## 8a. Phase 1 proof
+
+| Rule | Test |
+| --- | --- |
+| Migrations apply in order, once, in a transaction; a failed one leaves nothing | `packages/db/test/migrate.test.mjs` |
+| Every store operation (batch, create, write, move, archive, restore, remove, createTree, moveTree, revisions, shared files) lands in the database first; a `CONFLICT` or a disk failure leaves both sides unchanged | `packages/store/test/db-sink.test.mjs` |
+| The whole existing test suite passes with a database attached (`STORYFORGE_TEST_DB=pglite`), and after every write the database and the on-disk copy are byte-identical | `npm run test:db` |
+| Import: dry run writes nothing; the fixture imports with the counts, order and restore points in `expected-import.json`; a second import of the same folder changes nothing; a changed folder is refused; the source folder is byte-identical afterwards | `packages/db/test/import.test.mjs` |
+| Export: database → folder passes `validate()` and re-imports identically | `packages/db/test/export.test.mjs` |
+| Startup: the on-disk copy is rebuilt to match the database; an outside edit is overwritten and logged | `apps/server/test/db-startup.test.mjs` |
+| `/api/v1` and MCP compat suite passes on a database-backed server | `v1-compat-*` under `test:db` |
+
 ## 9. Decisions recorded here
+
+- **Phase 1 is a document store with write-through** (§2.0), owner decision "storage swap first". Typed tables arrive with their features.
 
 - **Ids** stay as today (ADR 0004).
 - **Share links** are switched off and imported revoked (§3).

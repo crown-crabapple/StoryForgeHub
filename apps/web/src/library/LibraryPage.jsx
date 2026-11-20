@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useStatus } from '../status.jsx';
 import { CoverCard, SkeletonCard } from './CoverCard.jsx';
 import { SORTS, STATUS_FILTERS, filterBooks, groupBooks } from './filter.js';
 import { NewBookFlow, NewSeriesFlow, OpenFolderFlow, RestoreFlow } from './StartFlows.jsx';
@@ -38,6 +39,7 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
   const [filters, setFilters] = useState({ ...DEFAULT_FILTERS, ...initial });
   /** Which Start dialog is open: null, 'new' or 'open'. */
   const [dialog, setDialog] = useState(null);
+  const canSwitch = !useStatus().status?.database; // serve --database serves one library: no "Open folder…"
   const set = (patch) => setFilters((f) => ({ ...f, ...patch }));
   const query = search?.query ?? '';
   const hits = query !== '' ? (search?.hits ?? null) : null;
@@ -68,9 +70,11 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
           <button type="button" className="btn" onClick={() => setDialog('new-series')}>
             New series…
           </button>
-          <button type="button" className="btn" onClick={() => setDialog('open')}>
-            Open folder…
-          </button>
+          {canSwitch && (
+            <button type="button" className="btn" onClick={() => setDialog('open')}>
+              Open folder…
+            </button>
+          )}
         </div>
       </section>
 
@@ -103,7 +107,11 @@ export function LibraryPage({ books, library = null, error = null, loading = fal
               Library folder: <code>{library.root}</code>
             </p>
           )}
-          <p className="secondary">Use <strong>New book…</strong> above to start one, or <strong>Open folder…</strong> to open a folder that already has books.</p>
+          {canSwitch ? (
+            <p className="secondary">Use <strong>New book…</strong> above to start one, or <strong>Open folder…</strong> to open a folder that already has books.</p>
+          ) : (
+            <p className="secondary">Use <strong>New book…</strong> above to start one.</p>
+          )}
         </section>
       )}
 

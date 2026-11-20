@@ -8,3 +8,9 @@ if (!process.env.STORYFORGE_TEST_CONFIG) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-test-config-'));
   Object.assign(process.env, { STORYFORGE_TEST_CONFIG: dir, APPDATA: path.join(dir, 'AppData'), XDG_CONFIG_HOME: path.join(dir, 'xdg') });
 }
+
+// STORYFORGE_TEST_DB=pglite (`npm run test:db`): every store write in this process goes through an in-memory PGlite document store first (H0 §8a).
+if (process.env.STORYFORGE_TEST_DB === 'pglite') {
+  const { attachTestDatabase } = await import('../packages/store/test-support/pglite-sink.mjs');
+  await attachTestDatabase();
+}

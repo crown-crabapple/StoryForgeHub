@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { OpenFolderFlow } from '../library/StartFlows.jsx';
 import { Link, useNavigate } from '../router.jsx';
+import { useStatus } from '../status.jsx';
 import { ChevronDownIcon } from './icons.jsx';
 
 const titleOf = (b) => b.title ?? b.slug ?? b.id;
@@ -14,6 +15,7 @@ const titleOf = (b) => b.title ?? b.slug ?? b.id;
 export function BookSwitcher({ books, current }) {
   const list = books ?? [];
   const navigate = useNavigate();
+  const canSwitch = !useStatus().status?.database; // serve --database serves one library: no "Open another folder…"
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [folderOpen, setFolderOpen] = useState(false);
@@ -56,7 +58,7 @@ export function BookSwitcher({ books, current }) {
   }
 
   function onListKeyDown(e) {
-    const last = list.length; // the "Open another folder…" item comes after the books
+    const last = canSwitch ? list.length : Math.max(0, list.length - 1); // the "Open another folder…" item comes after the books
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -77,7 +79,7 @@ export function BookSwitcher({ books, current }) {
       case 'Enter':
       case ' ':
         e.preventDefault();
-        if (active === list.length) {
+        if (canSwitch && active === list.length) {
           close(true);
           setFolderOpen(true);
         } else if (list[active]) {
@@ -153,6 +155,7 @@ export function BookSwitcher({ books, current }) {
               </Link>
             </li>
           ))}
+          {canSwitch && (
           <li role="presentation" className="switcher-action">
             <button
               type="button"
@@ -169,6 +172,7 @@ export function BookSwitcher({ books, current }) {
               Open another folder…
             </button>
           </li>
+          )}
         </ul>
       )}
       {folderOpen && <OpenFolderFlow onClose={() => setFolderOpen(false)} />}

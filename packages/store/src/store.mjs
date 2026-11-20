@@ -17,6 +17,7 @@ import { withRootLock } from './lock.mjs';
 import { notifyWrite } from './write-hooks.mjs';
 import { isOwn, markOwn } from './ownwrites.mjs';
 import { recoverRoot, settleEntry } from './recover.mjs';
+import { sinkFor } from './sink.mjs';
 import { listRevisions, pruneRevisions, readRevision, saveRevision } from './revisions.mjs';
 import { copyToTrash, moveToTrash, trashPath } from './trash.mjs';
 
@@ -195,6 +196,39 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
       // by the change that produced them; within a change the new file lands before the old one leaves
       planned.sort((a, b) => a.group - b.group || (a.bytes ? 0 : 1) - (b.bytes ? 0 : 1));
       if (planned.length === 0) return { ok: true, code: 'OK', opId: null, changes, value };
+
+      // Database first (H0 §2.0): one transaction that checks every path's base, before any file on disk is touched.
+      const covered = sinkFor(root);
+      const dbFiles = (covered ? planned : []).map((f) => ({ path: covered.lib(f.rel), before_sha256: f.before_sha256, bytes: f.bytes ?? null }));
+      const dbOp = (op, id, files) => ({ opId: id, op, args: op === opName ? (args ?? null) : { undoes: opId }, actor: currentActor() ?? null, files });
+      if (covered) {
+        let r;
+        try {
+          r = await covered.sink.applyOp(dbOp(opName, opId, dbFiles));
+        } catch (e) {
+          return fail('ERROR', { message: `database write failed: ${String(e?.message ?? e)}`, changes });
+        }
+        if (!r?.ok) {
+          if (r?.code === 'CONFLICT') {
+            const hit = planned.find((f) => covered.lib(f.rel) === r.path);
+            const v = hit ? overlay.get(hit.rel) : null;
+            return fail('CONFLICT', { current: v?.origBytes ? { bytes: v.origBytes, sha256: v.origSha } : null, changes });
+          }
+          return fail('ERROR', { message: `database write refused: ${r?.code ?? 'unknown'}${r?.message ? ` (${r.message})` : ''}`, changes });
+        }
+      }
+      /** Undo the database side after a disk failure; returns an error text or null. */
+      const undoDatabase = async () => {
+        if (!covered) return null;
+        try {
+          const r = await covered.sink.applyOp(
+            dbOp('rollback', `${opId}-rb`, planned.map((f) => ({ path: covered.lib(f.rel), before_sha256: f.after_sha256, bytes: f.origBytes ?? null }))),
+          );
+          return r?.ok ? null : `database undo refused: ${r?.code ?? 'unknown'}${r?.path ? ` at ${r.path}` : ''}`;
+        } catch (e) {
+          return `database undo failed: ${String(e?.message ?? e)}`;
+        }
+      };
       // The watcher must not treat what follows as an external edit (marked now and again when settled).
       const ownRels = planned.flatMap((f) => {
         const out = f.tmp ? [f.rel, f.tmp] : [f.rel];
@@ -213,6 +247,7 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
         files: planned.map(({ rel, before_sha256, after_sha256, tmp }) => ({ rel, before_sha256, after_sha256, tmp })),
       };
       const createdDirs = [];
+      let success;
       try {
         // 1. journal (fsync'd) before any project file is touched
         await writeJournal(root, entry);
@@ -251,7 +286,7 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
         await writeJournal(root, { ...entry, state: 'done' });
         await archiveJournal(root, opId).catch(() => {}); // cosmetic: the entry is already 'done'
         markOwn(root, ownRels);
-        return { ok: true, code: 'OK', opId, changes, value, verified };
+        success = { ok: true, code: 'OK', opId, changes, value, verified };
       } catch (e) {
         let rollbackErrors;
         try {
@@ -262,6 +297,8 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
           rollbackErrors = [String(e2?.message ?? e2)];
         }
         markOwn(root, ownRels);
+        const undoError = await undoDatabase();
+        if (undoError) (rollbackErrors ??= []).push(undoError);
         for (const d of [...createdDirs].reverse()) {
           try {
             await rmdir(d);
@@ -277,6 +314,8 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
           ...(rollbackErrors ? { rollbackErrors } : {}),
         });
       }
+      await covered?.sink.afterDisk?.({ opId, op: opName, paths: dbFiles.map((f) => f.path) });
+      return success;
     });
   }
 
@@ -337,12 +376,32 @@ export async function openStore(projectRoot, { recover: doRecover = true } = {})
       const r = normRel(rel);
       if (!r || r === '.storyforge' || r.startsWith('.storyforge/') || (await escapesRoot(root, r))) return false;
       return withRootLock(root, async () => {
+        const covered = sinkFor(root);
+        const marker = covered ? `${covered.lib(r)}/` : null;
+        const opArgs = { rel: r };
+        if (covered) {
+          try {
+            if ((await kindOf(absOf(root, r))) !== 'dir' || (await readdir(absOf(root, r))).length > 0) return false;
+            const res = await covered.sink.applyOp({ opId: makeOpId(), op: 'removeEmptyDir', args: opArgs, actor: currentActor() ?? null, files: [], dirs: { remove: [marker] } });
+            if (!res?.ok) return false;
+          } catch {
+            return false; // nothing was removed on either side
+          }
+        }
         try {
           await rmdir(absOf(root, r));
-          return true;
         } catch {
+          if (covered) {
+            try {
+              await covered.sink.applyOp({ opId: makeOpId(), op: 'rollback', args: { undoes: 'removeEmptyDir', rel: r }, actor: currentActor() ?? null, files: [], dirs: { add: [marker] } });
+            } catch {
+              // the folder marker stays removed; the on-disk copy is rebuilt from the database at startup
+            }
+          }
           return false; // not empty, not a folder, or already gone
         }
+        await covered?.sink.afterDisk?.({ opId: null, op: 'removeEmptyDir', paths: [marker] });
+        return true;
       });
     },
     /** Derived-data files under .storyforge/ (e.g. the disposable index); atomic, not journaled. */

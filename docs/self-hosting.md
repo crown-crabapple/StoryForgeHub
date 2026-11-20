@@ -3,7 +3,7 @@
 This page is for the person who runs StoryForge for a small group on a server or a home machine: a few writers, editors and reviewers who log in with their own accounts. If you
 write alone on your own computer you do not need any of this; see [Installing and running](install.md).
 
-Shared mode is optional and sits on top of the same files. The library is still a folder of Markdown on the server's disk, and nothing moves into a database. Without
+Shared mode is optional and sits on top of the same files. In file mode the library is a folder of Markdown on the server's disk, and nothing moves into a database. Without
 `--shared` StoryForge has no accounts and listens on `127.0.0.1` only. Everything the command line can do is listed by:
 
 ```sh
@@ -22,7 +22,11 @@ One program, one port (4317), three folders:
 
 Inside each book, `.storyforge/` is a disposable cache (the search index). **Do not back it up**; it is rebuilt from the files.
 
-There is no database service. When the index format changes in a new version, StoryForge rebuilds each book's index by itself.
+In file mode there is no database service. When the index format changes in a new version, StoryForge rebuilds each book's index by itself.
+
+## With a database (hosted)
+
+StoryForge can also run with PostgreSQL as the canonical copy of the writing. You create a role and a database, import your library once with `db import`, and start the server with `serve --database <url> --library <private copy folder>`. Everything on this page below describes file mode. [database.md](database.md) has the steps. The deployment files in `deploy/` do not pass `--database` yet.
 
 ## Install
 

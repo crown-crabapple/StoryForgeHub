@@ -10,3 +10,4 @@ export { withScratchDir, withScratchFile } from './scratch.mjs';
 export { writeNewTree, writeOutFile, writeWorkFile, replaceWorkDir } from './foreign-files.mjs';
 export { onWrite } from './write-hooks.mjs';
 export { appendSharedLine, readSharedJson, readSharedText, writeSharedJson } from './shared-files.mjs';
+export { attachDatabase, attachSharedDatabase, detachDatabase, detachSharedDatabase } from './sink.mjs';

@@ -2,6 +2,7 @@
 //   shared init --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>] [--port <n>]   create the owner and print the one-time setup link
 //   shared reset-owner --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>] [--port <n>]   lost owner password: clear it and every session of that owner, print a new setup link
 //   audit verify [--shared-data <dir> | --library <path>]   check the audit chain (exit 0 intact, 1 broken or truncated, 2 usage)
+//   all three also take --database <url> [--library-id <id>] (or STORYFORGE_DATABASE): the shared documents are then the database's, and writes go to it first
 // and the helpers `serve --shared` uses (default shared-data folder, the folder-inside-the-library check, --host and --public-url checks).
 // No filesystem access here: the shared-data files go through @storyforge/shared and @storyforge/store.
 import { createHash } from 'node:crypto';
@@ -9,6 +10,7 @@ import path from 'node:path';
 import { ConfigError, LOCK_FILE, acquireLock, releaseLock, resolveConfig } from '@storyforge/core';
 import { userConfigDir } from '@storyforge/store';
 import { SharedDataError, createAudit, openSharedData } from '@storyforge/shared';
+import { DatabaseStartError, openSharedDatabase } from './db-serve.mjs';
 
 export const SHARED_COMMANDS = ['shared', 'audit'];
 
@@ -88,7 +90,7 @@ export async function runSharedCommand(command, argv) {
     complain(command === 'shared' ? 'usage: shared init|reset-owner --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>]' : 'usage: audit verify [--shared-data <dir> | --library <path>]');
     return 2;
   }
-  const parsed = parseFlags(rest, ['--owner', '--library', '--shared-data', '--public-url', '--port']);
+  const parsed = parseFlags(rest, ['--owner', '--library', '--shared-data', '--public-url', '--port', '--database', '--library-id']);
   if ('error' in parsed) {
     complain(parsed.error);
     return 2;
@@ -96,6 +98,12 @@ export async function runSharedCommand(command, argv) {
   const v = parsed.values;
   if (command === 'shared' && !v['--owner']) {
     complain(`shared ${sub} needs --owner <username>`);
+    return 2;
+  }
+  // --database (or STORYFORGE_DATABASE): the shared documents live in the database; this command works on them there (see openSharedDatabase)
+  const databaseUrl = v['--database'] ?? process.env.STORYFORGE_DATABASE;
+  if (!databaseUrl && v['--library-id']) {
+    complain('--library-id only works with --database');
     return 2;
   }
   let dir = v['--shared-data'] ? path.resolve(v['--shared-data']) : null;
@@ -131,7 +139,31 @@ export async function runSharedCommand(command, argv) {
     return 2;
   }
 
-  if (command === 'audit') return verifyAudit(dir);
+  /** @type {{ close: () => Promise<void> } | null} */
+  let dbHandle = null;
+  /** Open the database side when asked to; false (after saying why) when it cannot be used. @param {string} sharedDir */
+  const openDb = async (sharedDir) => {
+    if (!databaseUrl) return true;
+    try {
+      dbHandle = await openSharedDatabase({ url: databaseUrl, libraryId: v['--library-id'] ?? 'main', sharedDir });
+      return true;
+    } catch (e) {
+      if (e instanceof DatabaseStartError) {
+        complain(e.message);
+        return false;
+      }
+      throw e;
+    }
+  };
+
+  if (command === 'audit') {
+    if (!(await openDb(dir))) return 1;
+    try {
+      return await verifyAudit(dir);
+    } finally {
+      await dbHandle?.close();
+    }
+  }
 
   let base = `http://127.0.0.1:${port}`;
   if (v['--public-url']) {
@@ -157,6 +189,7 @@ export async function runSharedCommand(command, argv) {
     }
   }
   try {
+    if (!(await openDb(dir))) return 1;
     const data = await openSharedData(dir);
     if (sub === 'reset-owner') {
       const owner = /** @type {string} */ (v['--owner']);
@@ -188,6 +221,7 @@ ${base}/setup#token=${reset.token}
     }
     throw e;
   } finally {
+    await dbHandle?.close();
     if (lockPath) await releaseLock(lockPath).catch(() => {});
   }
 }

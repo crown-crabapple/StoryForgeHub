@@ -32,13 +32,16 @@ export function isIgnored(rel, eventType = 'rename') {
 /**
  * @param {{ root: string, manager: ReturnType<typeof import('./index-manager.mjs').createIndexManager>, options?: WatchOptions,
  *   onExternalChange?: (bookPath: string, rels: string[] | null) => Promise<void>,
- *   onRawEvent?: (e: { rel: string | null, eventType: string, own: boolean } | { live: boolean }) => void }} p
+ *   onRawEvent?: (e: { rel: string | null, eventType: string, own: boolean } | { live: boolean }) => void,
+ *   onOutsideChange?: (dir: string, rels: string[]) => Promise<void> }} p
  *   `onRawEvent` runs synchronously for EVERY watch event (own writes and ignored files included), before the debounce, and with `{ live }` whenever
  *   the watcher starts or stops delivering events (see `isLive()`).
+ *   `onOutsideChange(dir, rels)` (Phase 1, database mode only) runs first for every change made outside the app, before receipts and the index: `dir` is the library-relative
+ *   folder (a book path, or a folder holding library.md / series.md) and `rels` the files the watch event named. The database server restores them from the database there.
  *   `onExternalChange(bookPath, rels)` (M05-J07) runs before the index is reconciled for changes made outside the app: `rels` are the book-relative files the
  *   watch event named, or null for the catch-up when watching starts (every scene).
  */
-export function createWatcher({ root, manager, options = {}, onExternalChange, onRawEvent }) {
+export function createWatcher({ root, manager, options = {}, onExternalChange, onRawEvent, onOutsideChange }) {
   const watchOpt = options.watch ?? true;
   const pollMs = options.pollMs ?? DEFAULTS.pollMs;
   const debounceMs = options.debounceMs ?? DEFAULTS.debounceMs;
@@ -123,6 +126,8 @@ export function createWatcher({ root, manager, options = {}, onExternalChange, o
 
   /** Files named by watch events since the last run, by book (for the external-change receipts). */
   const touched = new Map();
+  /** library.md / series.md files named by events on the top folders since the last run, by folder. */
+  const touchedTop = new Map();
 
   function onBookEvent(bookPath, e) {
     raw(e);
@@ -132,6 +137,7 @@ export function createWatcher({ root, manager, options = {}, onExternalChange, o
     debounce(`book:${bookPath}`, async () => {
       const rels = [...(touched.get(bookPath) ?? [])];
       touched.delete(bookPath);
+      if (rels.length > 0) await onOutsideChange?.(bookPath, rels).catch(noop);
       if (rels.length > 0) await onExternalChange?.(bookPath, rels).catch(noop); // receipts first: the change is attributed before anything else acts on it
       await manager.reconcile(bookPath, 'watch');
     });
@@ -143,7 +149,11 @@ export function createWatcher({ root, manager, options = {}, onExternalChange, o
     const base = e.rel === null ? null : e.rel.split('/').pop();
     if (base === 'library.md' || base === 'series.md' || base === null) {
       lastEventAt = new Date().toISOString();
+      if (base !== null) (touchedTop.get(dir) ?? touchedTop.set(dir, new Set()).get(dir)).add(base);
       debounce(`top:${dir}`, async () => {
+        const named = [...(touchedTop.get(dir) ?? [])];
+        touchedTop.delete(dir);
+        if (named.length > 0) await onOutsideChange?.(dir, named).catch(noop);
         await reconcileBooks(books.filter((b) => under(dir, b)), 'series');
         sigs = await signatures(books);
       });

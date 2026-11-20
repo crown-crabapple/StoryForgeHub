@@ -1,6 +1,6 @@
 // The text of `node apps/server/src/main.mjs --help`: every command and flag the CLI knows (M06-J03). Kept in one place so a test can check it lists them all.
 
-export const HELP_COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'export', 'backup', 'restore', 'receipts verify', 'mcp', 'shared init', 'shared reset-owner', 'audit verify', 'import-legacy'];
+export const HELP_COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'export', 'backup', 'restore', 'receipts verify', 'mcp', 'shared init', 'shared reset-owner', 'audit verify', 'import-legacy', 'db'];
 
 export const HELP = `StoryForge - a Markdown-first novel studio that runs on this computer.
 
@@ -23,6 +23,8 @@ Commands
   audit verify                Check the shared-mode audit log chain (exit 1 when a line was changed or the end was cut off).
   import-legacy               Import a legacy StoryForgeHub dump into a NEW folder (--into), check it against the dump (--reconcile),
                               compare two imports (--compare), or only plan it (--dry-run; writes nothing).
+  db                          The hosted database: "db migrate", "db status", "db import <folder>" (a dry run that prints a report; --write imports),
+                              "db export <out>". Needs --database <url>.
 
 Options
   --library <path>            The library folder (a folder holding one or more books). Without it StoryForge uses the
@@ -57,6 +59,11 @@ Options
   --reconcile <folder>        import-legacy: check an existing imported library against the dump (read-only; exit 1 on any unexplained difference).
   --compare <A> <B>           import-legacy: say whether two libraries are byte-identical (ignores .storyforge/; read-only; exit 1 when they differ).
   --report <file.md>          import-legacy: write the report (plan, or reconciliation) to this new file instead of printing it.
+  --database <url>            serve, shared init, shared reset-owner, audit verify, db: postgres://..., pglite:memory or pglite:<folder> (or the STORYFORGE_DATABASE variable). The password is never printed.
+  --library-id <id>           serve, db: which library in the database (default main).
+  --shared-data <dir>         also db import: the shared-mode data folder (users.json, audit.jsonl, ...) to import with the library.
+  --shared-out <dir>          db export: write the shared-mode documents to this new or empty folder.
+  --write                     db import: really import (without it nothing is written).
   --help, -h                  Show this help.
 
 Environment

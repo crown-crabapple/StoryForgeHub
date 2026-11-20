@@ -15,7 +15,7 @@ import { styleScans } from './style-scans.mjs';
 
 /** @typedef {import('@storyforge/core').FileRepository} FileRepository */
 /** @typedef {{ status: number, body: unknown, raw?: { bytes: Buffer, headers: Record<string, string> } }} ApiResult  `raw` (cover images) is sent as is instead of `body`. */
-/** @typedef {{ lastRecover: any, instance?: { pid: number, started_at: string, lock: string }, host?: ReturnType<typeof import('@storyforge/core').createLibraryHost> | null }} ApiState  Report of the most recent recover() run; what this process knows about itself; the library host (which library is open, recent libraries, switching). */
+/** @typedef {{ lastRecover: any, database?: (() => Promise<{ kind: string, library_id: string, files: number }>) | null, instance?: { pid: number, started_at: string, lock: string }, host?: ReturnType<typeof import('@storyforge/core').createLibraryHost> | null }} ApiState  Report of the most recent recover() run; what this process knows about itself; the library host (which library is open, recent libraries, switching). */
 
 const NOT_FOUND = { status: 404, body: { error: 'not_found' } };
 const NOT_SUPPORTED = { status: 501, body: { error: 'not_supported' } };
@@ -69,6 +69,7 @@ export async function handleApi(repository, pathname, state, params = new URLSea
         watch: status.watch,
         books: status.books,
         recover: { needsAttention: last?.needsAttention ?? [], rolledBack: last?.rolledBack ?? [] },
+        ...(state?.database ? { database: await state.database() } : {}), // database mode only: { kind, library_id, files }; never the URL
       },
     };
   }
@@ -1175,6 +1176,7 @@ export async function handleWrite(repository, match, body, state, ctx = {}) {
     }
     case 'library-open': {
       if (!state?.host) return NOT_SUPPORTED;
+      if (state.database) return { status: 409, body: { ok: false, code: 'DATABASE_MODE', message: 'This server serves one library from its database.' } }; // serve --database: the folder is a private copy, never another library
       if (typeof body.path !== 'string' || body.path.trim() === '') return badRequest('path is required');
       const r = await state.host.open(body.path);
       if (r.ok) {

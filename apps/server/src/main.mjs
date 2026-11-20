@@ -1,6 +1,7 @@
 // CLI entry:
 //   node apps/server/src/main.mjs [--library <path>] [--port <n>] [--profile <name>] [--open]   serve the library (without --library: the last one used, else a StoryForge folder in the home folder)
 //   node apps/server/src/main.mjs --help                                lists every command and flag (help.mjs)
+//   node apps/server/src/main.mjs serve --library <empty folder> --database <url> [--library-id <id>]   the database is the source of truth; the folder is its private on-disk copy (STORYFORGE_DATABASE works too)
 //   node apps/server/src/main.mjs serve --shared [--shared-data <dir>] [--host <addr>] [--public-url <https://...>]   optional shared mode: accounts, roles, invites, share links, audit (M07-J03a)
 //   node apps/server/src/main.mjs shared init --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>]   create the owner and print the one-time setup link
 //   node apps/server/src/main.mjs shared reset-owner --owner <username> [--library <path>] [--shared-data <dir>] [--public-url <url>]   lost owner password: new setup link (needs the server stopped)
@@ -16,6 +17,7 @@
 //   node apps/server/src/main.mjs import-legacy --dump <dir> --reconcile <library folder> [--report <file.md>] [--json <file.json>]   check an imported library against the dump (read-only)
 //   node apps/server/src/main.mjs import-legacy --compare <library A> <library B>   are two imports byte-identical? (read-only)
 //   STORYFORGE_TOKEN=<plugin token> node apps/server/src/main.mjs mcp [--library <path>] [--port <n>]   stdio MCP bridge to the running server's POST /mcp
+//   node apps/server/src/main.mjs db migrate|status|import|export --database <url> [--library-id <id>] [--shared-data <dir>] [--shared-out <dir>] [--write]   the hosted database: migrations, one-time Markdown import (dry run unless --write), export
 //   node apps/server/src/main.mjs receipts verify --library <path> --book <slug> [--json]   check the provenance receipts (read-only; exit 1 on integrity problems)
 // Exit codes: 0 ok, 1 failed / needs hand repair / continuity errors found, 2 usage or cannot open the library, 3 another instance holds the library.
 import path from 'node:path';
@@ -28,6 +30,8 @@ import { LEGACY_COMMANDS, runLegacyCommand } from './legacy-cli.mjs';
 import { runMcpCommand } from './mcp-cli.mjs';
 import { profileNameFrom } from './preferences.mjs';
 import { runReceiptsCommand } from './receipts-cli.mjs';
+import { runDbCommand } from './db-cli.mjs';
+import { DatabaseStartError, startDatabaseMode } from './db-serve.mjs';
 import { createServer } from './server.mjs';
 import { createSharedGate } from './shared-gate.mjs';
 import { PERSONAL_HOST, SHARED_COMMANDS, defaultSharedDir, isLoopbackHost, parsePublicUrl, runSharedCommand, sharedDirProblem } from './shared-cli.mjs';
@@ -35,7 +39,7 @@ import { SharedDataError, createAudit, openSettings, openSharedData } from '@sto
 
 const webRoot = fileURLToPath(new URL('../../web/dist', import.meta.url));
 const argv = process.argv.slice(2);
-const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'receipts', 'mcp', ...SHARED_COMMANDS, ...LEGACY_COMMANDS, ...FILE_COMMANDS];
+const COMMANDS = ['serve', 'rebuild', 'repair', 'continuity', 'receipts', 'mcp', 'db', ...SHARED_COMMANDS, ...LEGACY_COMMANDS, ...FILE_COMMANDS];
 const command = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'serve';
 const apply = argv.includes('--apply');
 
@@ -49,7 +53,7 @@ if (argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') {
   process.stdout.write(HELP);
   process.exit(0);
 }
-if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, mcp, shared, audit, import-legacy, export, backup or restore; --help lists them all)`, 2);
+if (!COMMANDS.includes(command)) fail(`unknown command: ${command} (use serve, rebuild, repair, continuity, receipts, mcp, shared, audit, import-legacy, export, backup, restore or db; --help lists them all)`, 2);
 
 // import-legacy reads a legacy dump (and writes only a NEW folder with --into): no library config, no lock, no server
 if (command === 'import-legacy') process.exit(await runLegacyCommand(argv.slice(1)));
@@ -60,6 +64,9 @@ if (command === 'mcp') {
   await new Promise((resolve) => process.stdout.write('', resolve)); // let the last reply reach the client before exiting
   process.exit();
 }
+
+// db works on the database only (migrate, status, import, export): no library config, no lock, no server
+if (command === 'db') process.exit(await runDbCommand(argv.slice(1)));
 
 // receipts verify is read-only too: no lock, no server
 if (command === 'receipts') process.exit(await runReceiptsCommand(argv.slice(1)));
@@ -298,6 +305,30 @@ async function runServer() {
     if (hostFlag !== undefined && hostFlag !== PERSONAL_HOST) fail(`--host ${hostFlag} is refused: without --shared StoryForge listens on ${PERSONAL_HOST} only (shared mode adds accounts and roles; see --shared)`, 2);
   }
   const bindHost = shared ? (hostFlag ?? PERSONAL_HOST) : PERSONAL_HOST;
+  // Database mode: the library folder is the private on-disk copy of a database library. Migrate, claim the folder, settle the journals, rebuild the copy and attach the
+  // write-through BEFORE anything reads the folder (the shared data below included). The library lock is taken first so a second server cannot rebuild the copy under this one.
+  const databaseUrl = flagValue('--database') ?? process.env.STORYFORGE_DATABASE;
+  if (!databaseUrl && flagValue('--library-id') !== undefined) fail('--library-id only works with --database', 2);
+  /** @type {Awaited<ReturnType<typeof startDatabaseMode>> | null} */
+  let dbState = null;
+  /** @type {Awaited<ReturnType<typeof takeLock>> | null} */
+  let dbLock = null;
+  if (databaseUrl) {
+    if (config.source !== 'flag' && config.source !== 'env') fail('--database needs --library <folder>: the folder that holds the on-disk copy (an empty folder, or one a database copy was made in before)', 2);
+    const sharedDir = shared ? path.resolve(flagValue('--shared-data') ?? defaultSharedDir(config.libraryRoot)) : null;
+    if (sharedDir) {
+      const problem = sharedDirProblem(sharedDir, config.libraryRoot);
+      if (problem) fail(problem, 2);
+    }
+    await writeNewTree(config.libraryRoot, () => []).catch((e) => fail(`cannot create the library folder ${config.libraryRoot}: ${e.message}`, 2)); // a no-op for a folder that exists
+    dbLock = await takeLock(config.port);
+    try {
+      dbState = await startDatabaseMode({ url: databaseUrl, libraryId: flagValue('--library-id') ?? 'main', libraryRoot: config.libraryRoot, sharedDir });
+    } catch (e) {
+      if (e instanceof DatabaseStartError) return fail(e.message, 2);
+      throw e;
+    }
+  }
   const sharedState = shared ? await prepareShared(bindHost) : null;
   if (config.source === 'default') {
     // first run: no --library, no variable, no library used before. A StoryForge folder in the home folder holds the first books; Open folder... in the Library switches.
@@ -306,9 +337,9 @@ async function runServer() {
   } else if (config.source === 'recent') {
     process.stdout.write(`Using the library you used last: ${config.libraryRoot}\n`);
   }
-  const lock = await takeLock(config.port);
+  const lock = dbLock ?? (await takeLock(config.port));
 
-  const repository = createFsRepository(config.libraryRoot);
+  const repository = createFsRepository(config.libraryRoot, dbState ? { onOutsideChange: dbState.onOutsideChange } : undefined);
   try {
     await repository.libraryInfo();
   } catch (e) {
@@ -333,7 +364,7 @@ async function runServer() {
   } catch (e) {
     fail(e instanceof Error ? e.message : String(e), 2);
   }
-  const server = createServer({ host, webRoot, recoverReport, instance, shared: sharedState, profile });
+  const server = createServer({ host, webRoot, recoverReport, instance, shared: sharedState, profile, database: dbState?.status });
   const shownHost = bindHost.includes(':') ? `[${bindHost}]` : bindHost;
   server.on('error', (e) => fail(`cannot listen on ${bindHost}:${config.port}: ${e.message}`, 1));
 
@@ -344,6 +375,7 @@ async function runServer() {
     server.closeAllConnections?.();
     await new Promise((resolve) => server.close(() => resolve(undefined)));
     await host?.close().catch(() => {});
+    await dbState?.close();
     await releaseOwnLock();
     process.exit(0);
   };
