@@ -1,0 +1,19 @@
+---
+schema: storyforge.scene/v1
+id: scene_01S50000000000000000000002
+title: Arrival
+act: 1
+chapter: 1
+sequence: 10
+status: drafting
+pov: maren-hollis
+characters: [maren-hollis, tobin-reyes]
+locations: [port-aldine, salt-orchard]
+events: [the-return]
+summary: Maren steps off the ferry into the flooded rows.
+---
+The ferry nudged the jetty and [[tobin-reyes|the ferryman]] threw her bag ashore.
+
+In the glass of the ticket hut she caught her own face, green eyes ringed with salt, and looked away.
+
+Past the dunes lay [[salt-orchard]], half under water.

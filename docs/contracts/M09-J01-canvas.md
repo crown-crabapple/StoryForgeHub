@@ -1,5 +1,7 @@
 # M09-J01 contract — Canvas (visual moodboard and planning board)
 
+> **Amended (2026-11-19)** by the hosted redesign: canvas files as canonical and the changed-on-disk conflict banner change. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: FORMAT-v1 §1 (book folder, files are canonical), §6.3 (planning), §9 (`.storyforge/` is disposable); contracts M01-J01 (layer rule), M04-J03 (board patterns),
 M04-J04 §4 (attachments: upload, serve, allowlist), M07-J03 §3 (route policy), M07-J04 (modules).
 

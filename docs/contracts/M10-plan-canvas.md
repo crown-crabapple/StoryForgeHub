@@ -1,5 +1,7 @@
 # M10 contract — The Plan tab is a canvas
 
+> **Superseded (2026-11-19)** by the hosted redesign: plan canvas files as the only copy of the plan are retired; planning data moves to database records. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Binding: contract M09-J01 (the canvas file, its routes and its validation, all unchanged unless stated here); FORMAT-v1 §6.3 (planning files stay canonical); M05-J01 (findings); M07-J03 (read-only roles); M07-J04 (modules). The design and decisions are in [docs/plans/canvas-plan-integration.md](../plans/canvas-plan-integration.md).
 
 The planner files (`planning/story.md`, `structures/`, `arcs/`, `relationships/`, `synopses/`, `clues/`, `links/`, `scene-plans/`) stay the only copy of the plan. The canvas holds positions and refs; everything else it shows is read from the planner routes and drawn over the cards. Every edit goes through the planner's existing write routes. M10 adds no write route.

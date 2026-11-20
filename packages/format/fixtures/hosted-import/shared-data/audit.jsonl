@@ -1,0 +1,4 @@
+{"seq":1,"at":"2026-11-02T02:13:20.000Z","actor":"system","event":"setup.complete","prev":"0000000000000000000000000000000000000000000000000000000000000000"}
+{"seq":2,"at":"2026-11-02T03:13:20.000Z","actor":"fixture-owner","event":"invite.create","target":"inv_01H00000000000000000000601","result":"ok","prev":"ffb64a3dbe7b1d2b49de417d1f0d16f3eeec1522c0d20e253d9210dd4b0505b6"}
+{"seq":3,"at":"2026-11-02T04:13:20.000Z","actor":"fixture-owner","event":"member.role","target":"usr_01H00000000000000000000502","result":"ok","prev":"0d933b746b5713c525e57b27cb83624dc3fa2f423f72fb56f1376760c8489e86"}
+{"seq":4,"at":"2026-11-02T05:13:20.000Z","actor":"fixture-owner","event":"share.create","target":"shr_01H00000000000000000000701","result":"ok","prev":"f8575ecfa493d9f1489f82eb99596b9cd92b2cee96aff6db203bb55ebee1bcb1"}

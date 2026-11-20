@@ -1,5 +1,7 @@
 # M05-J06 contract — author writes, StoryForge checks; suggestions stay unapplied until accepted
 
+> **Amended (2026-11-19)** by the hosted redesign: the suggestion target becomes a record ID; the author-only rule stays. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: CLAUDE-BOOK-INTEGRATION.md (modes table, canon and state rule); DECISIONS 1, 6, 9, 11; contracts M05-J01 (findings), M05-J02 (review UI patterns), M05-J04 (AI rewrite, `recordProvenance` hook), M05-J05 (adapter, write boundary, context pack), M03-J03 (exact Undo).
 
 The author is the only one who changes prose. Every machine output is a **report** or an **unapplied suggestion**. A suggestion changes a canonical file only when the author accepts it, and then only the accepted part.

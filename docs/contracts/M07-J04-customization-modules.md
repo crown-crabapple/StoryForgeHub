@@ -1,5 +1,7 @@
 # M07-J04 contract — themes, layouts, shortcuts, modules and prompt workflows
 
+> **Amended (2026-11-19)** by the hosted redesign: the "files stay on disk" module off-switch rule changes. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: DECISIONS 1, 8 (the reference look is the default), 9 (AI optional; nothing sent without the author choosing); M02-J01 visual system (`theme/tokens.css`); M05-J04 AI workshop (preview-then-send, context disclosure); M06-J03 a11y rules (contrast, focus, reduced motion); M07-J01 (`library.md`, labels).
 
 Customization never changes what a book **means**. The manuscript order, canon and Markdown bytes are the same under every profile.

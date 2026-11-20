@@ -5,7 +5,7 @@
 // Decided before (and instead of) the member policy; a bearer request never carries a member's cookie authority.
 
 /** The v1 routes and the permission each needs. Anything else under /api/v1 is refused. */
-const V1 = [
+export const V1 = [
   { method: 'GET', re: /^\/api\/v1$/, need: 'read', book: false },
   { method: 'GET', re: /^\/api\/v1\/books$/, need: 'read', book: false },
   { method: 'GET', re: /^\/api\/v1\/books\/([^/]+)$/, need: 'read', book: true },

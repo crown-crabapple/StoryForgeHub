@@ -1,5 +1,7 @@
 # M08-J05 contract — CI, releases and contributor operation
 
+> **Superseded (2026-11-19)** by the hosted redesign: the "Markdown is canonical" release guarantee is retired. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Binding: owner decisions 2026-11-02: licence **AGPL-3.0-only**; there is no git remote yet, so CI files are written for GitHub Actions and the same steps run locally through one script. DECISIONS 1, 7, 9, 12; every M00–M08 contract.
 
 ## 1. One command that is the CI — `npm run ci`

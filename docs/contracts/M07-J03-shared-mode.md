@@ -1,5 +1,7 @@
 # M07-J03 contract — optional self-hosted shared mode
 
+> **Superseded (2026-11-19)** by the hosted redesign: file authority in shared mode (accounts as JSON files beside the library) is retired; the roles, invites and audit behaviour spec still stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Binding: DECISIONS 1, 5, 6, 7, 9, 11, 12; FEATURE-REGISTER F17 ("optional server layer retains file authority"); M01-J01 app boundary (write guard header, 127.0.0.1); M05-J06 suggestions; M05-J07 receipts; M07-J01.
 
 **Personal mode does not change.** No accounts, no login, `127.0.0.1` only, the same routes and the same files. Shared mode is opt-in per run (`serve --shared`). It adds identity, roles and review on top of **the same library folder**. Nothing canonical moves into a server database, and nothing is hosted elsewhere.

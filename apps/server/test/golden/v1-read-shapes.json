@@ -1,0 +1,1119 @@
+{
+  "volatile": [],
+  "skipped": [],
+  "empty": {
+    "GET /api/v1/books/:book/entries .entries[].aliases": "the fixture entry/event/thread has none",
+    "GET /api/v1/books/:book/entries .types[].fields": "the fixture has no custom fields on the first type",
+    "GET /api/v1/books/:book/threads .threads[].develop": "the fixture entry/event/thread has none",
+    "GET /api/v1/books/:book/events .events[].characters": "the fixture entry/event/thread has none",
+    "GET /api/v1/books/:book/events .events[].locations": "the fixture entry/event/thread has none",
+    "GET /api/v1/books/:book/plan/links .archived[].problems": "empty means no problem found; a healthy item is the normal case",
+    "GET /api/v1/books/:book/plan/links .links[].problems": "empty means no problem found; a healthy item is the normal case",
+    "GET /api/v1/books/:book/plan/arcs .archived[].milestones": "the archived spare arc was made without milestones",
+    "GET /api/v1/books/:book/plan/arcs .archived[].problems": "empty means no problem found; a healthy item is the normal case",
+    "GET /api/v1/books/:book/plan/arcs .arcs[].problems": "empty means no problem found; a healthy item is the normal case",
+    "GET /api/v1/books/:book/plan/relationships .relationships[].problems": "empty means no problem found; a healthy item is the normal case",
+    "GET /api/v1/books/:book/plan/clues .clues[].problems": "empty means no problem found; a healthy item is the normal case",
+    "GET /api/v1/books/:book/canvases .archived": "no canvas is archived (no archive step in this setup)",
+    "GET /api/v1/books/:book/canvases/compat-canvas .canvas.edges": "a new canvas is empty; filling it needs a sha-checked PUT with node geometry",
+    "GET /api/v1/books/:book/canvases/compat-canvas .canvas.nodes": "a new canvas is empty; filling it needs a sha-checked PUT with node geometry",
+    "GET /api/v1/books/:book/workspace/docs .archived": "no workspace doc is archived",
+    "GET /api/v1/books/:book/ledger .questions[].characters": "the spare question thread is bare (the promise thread covers the filled shapes)",
+    "GET /api/v1/books/:book/ledger .questions[].develop": "the spare question thread is bare",
+    "GET /api/v1/books/:book/ledger .questions[].develop_chapters": "the spare question thread is bare",
+    "GET /api/v1/books/:book/ledger .questions[].payoff": "the spare question thread is bare",
+    "GET /api/v1/books/:book/ledger .questions[].payoff_chapters": "the spare question thread is bare",
+    "GET /api/v1/books/:book/ledger .questions[].setup": "the spare question thread is bare",
+    "GET /api/v1/books/:book/ledger .questions[].setup_chapters": "the spare question thread is bare",
+    "GET /api/v1/books/:book/tasks .tasks[].targets": "the compat task has no targets",
+    "GET /api/v1/books/:book/tasks/compat-task .targets": "the compat task has no targets",
+    "GET /api/v1/books/:book/tasks/compat-task .task.targets": "the compat task has no targets",
+    "GET /api/v1/books/:book/continuity .findings[].related": "the first finding has no related items",
+    "GET /api/v1/books/:book/continuity .stale_exceptions": "the dismissed finding is still live, so no exception is stale",
+    "GET /api/v1/books/:book/continuity .suppressed[].finding.related": "the dismissed finding has no related items",
+    "GET /api/v1/books/:book/context?chapter=1 .truncated": "the pack fits its budget, so nothing is truncated"
+  },
+  "routes": {
+    "GET /api/v1": {
+      "status": 200,
+      "shape": {
+        "api": "number",
+        "server": "string"
+      }
+    },
+    "GET /api/v1/books": {
+      "status": 200,
+      "shape": {
+        "books": [
+          {
+            "ai_level": "string",
+            "id": "string",
+            "language": "string",
+            "scenes": "number",
+            "series": "null",
+            "series_number": "null",
+            "slug": "string",
+            "status": "string",
+            "title": "string",
+            "words": "number"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book": {
+      "status": 200,
+      "shape": {
+        "acts": [
+          {
+            "act": "number",
+            "chapters": [
+              {
+                "chapter": "number",
+                "label": "string",
+                "scenes": [
+                  {
+                    "act": "number",
+                    "chapter": "number",
+                    "id": "string",
+                    "order": "number",
+                    "path": "string",
+                    "pov": "string",
+                    "sequence": "number",
+                    "status": "string",
+                    "title": "string",
+                    "words": "number"
+                  }
+                ],
+                "title": "string"
+              }
+            ],
+            "label": "string"
+          }
+        ],
+        "id": "string",
+        "language": "string",
+        "scenes": "number",
+        "series": "null",
+        "series_number": "null",
+        "slug": "string",
+        "status": "string",
+        "title": "string",
+        "words": "number"
+      }
+    },
+    "GET /api/v1/books/:book/scenes/:scene": {
+      "status": 200,
+      "shape": {
+        "act": "number",
+        "body": "string",
+        "chapter": "number",
+        "front_matter": {
+          "act": "number",
+          "cast": [
+            {
+              "entry": "string",
+              "role": "string"
+            }
+          ],
+          "chapter": "number",
+          "characters": [
+            "string"
+          ],
+          "events": [
+            "string"
+          ],
+          "id": "string",
+          "locations": [
+            "string"
+          ],
+          "pov": "string",
+          "schema": "string",
+          "sequence": "number",
+          "status": "string",
+          "summary": "string",
+          "title": "string"
+        },
+        "id": "string",
+        "order": "number",
+        "path": "string",
+        "pov": "string",
+        "sequence": "number",
+        "sha256": "string",
+        "status": "string",
+        "title": "string",
+        "words": "number"
+      }
+    },
+    "GET /api/v1/books/:book/entries": {
+      "status": 200,
+      "shape": {
+        "entries": [
+          {
+            "aliases": [],
+            "archived": "boolean",
+            "id": "string",
+            "name": "string",
+            "path": "string",
+            "role": "null",
+            "slug": "string",
+            "status": "string",
+            "type": "string"
+          }
+        ],
+        "types": [
+          {
+            "fields": [],
+            "name": "string",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/threads": {
+      "status": 200,
+      "shape": {
+        "threads": [
+          {
+            "characters": [
+              "string"
+            ],
+            "develop": [],
+            "id": "string",
+            "kind": "string",
+            "path": "string",
+            "payoff": [
+              "string"
+            ],
+            "setup": [
+              "string"
+            ],
+            "slug": "string",
+            "status": "string",
+            "title": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/events": {
+      "status": 200,
+      "shape": {
+        "events": [
+          {
+            "characters": [],
+            "date": "string",
+            "id": "string",
+            "locations": [],
+            "order": "number",
+            "path": "string",
+            "scenes": [
+              "string"
+            ],
+            "slug": "string",
+            "title": "string",
+            "when": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/entries/ferry-bell": {
+      "status": 200,
+      "shape": {
+        "body": "string",
+        "fields": {},
+        "id": "string",
+        "name": "string",
+        "path": "string",
+        "sha256": "string",
+        "slug": "string",
+        "status": "string",
+        "type": "string"
+      }
+    },
+    "GET /api/v1/books/:book/search?q=bell": {
+      "status": 200,
+      "shape": {
+        "hits": [
+          {
+            "id": "string",
+            "kind": "string",
+            "path": "string",
+            "snippet": "string",
+            "title": "string"
+          }
+        ],
+        "query": "string"
+      }
+    },
+    "GET /api/v1/books/:book/graph": {
+      "status": 200,
+      "shape": {
+        "edges": [
+          {
+            "from": "string",
+            "kind": "string",
+            "rel": "string",
+            "to": "string"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "string",
+            "kind": "string",
+            "name": "string",
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/diagnostics": {
+      "status": 200,
+      "shape": {
+        "diagnostics": [
+          {
+            "code": "string",
+            "file": "string",
+            "location": "string",
+            "message": "string",
+            "severity": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/plan": {
+      "status": 200,
+      "shape": {
+        "counts": {
+          "archived_links": "number",
+          "arcs": "number",
+          "broken_links": "number",
+          "linked_scenes": "number",
+          "links": "number",
+          "planned_scenes": "number",
+          "relationships": "number",
+          "scenes": "number",
+          "structures": "number",
+          "threads": "number",
+          "unlinked_scenes": "number"
+        },
+        "primary_structure": "null",
+        "story": {
+          "body": "string",
+          "fields": {
+            "central_conflict": "null",
+            "logline": "null",
+            "premise": "null",
+            "primary_structure": "null",
+            "protagonist": "null",
+            "protagonist_goal": "null",
+            "stakes": "null",
+            "theme_question": "null"
+          },
+          "sha256": "null"
+        }
+      }
+    },
+    "GET /api/v1/books/:book/plan/links": {
+      "status": 200,
+      "shape": {
+        "archived": [
+          {
+            "branch": "null",
+            "created": "string",
+            "from": "string",
+            "from_kind": "string",
+            "from_title": "string",
+            "id": "string",
+            "problems": [],
+            "rationale": "string",
+            "relation": "string",
+            "sha256": "string",
+            "slug": "string",
+            "to": "string",
+            "to_kind": "string",
+            "to_title": "string"
+          }
+        ],
+        "links": [
+          {
+            "branch": "null",
+            "created": "string",
+            "from": "string",
+            "from_kind": "string",
+            "from_title": "string",
+            "id": "string",
+            "problems": [],
+            "rationale": "string",
+            "relation": "string",
+            "sha256": "string",
+            "slug": "string",
+            "to": "string",
+            "to_kind": "string",
+            "to_title": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/plan/arcs": {
+      "status": 200,
+      "shape": {
+        "archived": [
+          {
+            "arc_type": "string",
+            "body": "string",
+            "character": {
+              "id": "string",
+              "name": "string",
+              "shared": "boolean",
+              "slug": "string"
+            },
+            "character_id": "string",
+            "fields": {
+              "end_state": "null",
+              "false_belief": "null",
+              "fear": "null",
+              "need": "null",
+              "start_state": "null",
+              "want": "string",
+              "wound": "null"
+            },
+            "id": "string",
+            "milestones": [],
+            "problems": [],
+            "sha256": "string",
+            "slug": "string"
+          }
+        ],
+        "arcs": [
+          {
+            "arc_type": "string",
+            "body": "string",
+            "character": {
+              "id": "string",
+              "name": "string",
+              "shared": "boolean",
+              "slug": "string"
+            },
+            "character_id": "string",
+            "fields": {
+              "end_state": "null",
+              "false_belief": "null",
+              "fear": "null",
+              "need": "null",
+              "start_state": "null",
+              "want": "string",
+              "wound": "null"
+            },
+            "id": "string",
+            "milestones": [
+              {
+                "belief_after": "null",
+                "belief_before": "null",
+                "chapter": "number",
+                "choice": "string",
+                "cost": "null",
+                "index": "number",
+                "pressure": "null",
+                "scene": "string",
+                "scene_title": "string",
+                "sequence": "number"
+              }
+            ],
+            "problems": [],
+            "sha256": "string",
+            "slug": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/plan/structures": {
+      "status": 200,
+      "shape": {
+        "archived": [
+          {
+            "name": "string",
+            "slug": "string"
+          }
+        ],
+        "structures": [
+          {
+            "beats": [
+              {
+                "id": "string",
+                "name": "string",
+                "position": "null",
+                "purpose": "null",
+                "question": "null",
+                "scenes": [
+                  {
+                    "chapter": "number",
+                    "id": "string",
+                    "sequence": "number",
+                    "title": "string"
+                  }
+                ],
+                "state": "string"
+              }
+            ],
+            "body": "string",
+            "counts": {
+              "assigned": "number",
+              "beats": "number",
+              "omitted": "number"
+            },
+            "id": "string",
+            "name": "string",
+            "primary": "boolean",
+            "sha256": "string",
+            "slug": "string",
+            "template": "string",
+            "template_version": "number"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/plan/relationships": {
+      "status": 200,
+      "shape": {
+        "archived": [
+          {
+            "name": "string",
+            "slug": "string"
+          }
+        ],
+        "relationships": [
+          {
+            "a": {
+              "id": "string",
+              "name": "string",
+              "slug": "string",
+              "type": "string"
+            },
+            "b": {
+              "id": "string",
+              "name": "string",
+              "slug": "string",
+              "type": "string"
+            },
+            "baseline": "string",
+            "body": "string",
+            "developments": [
+              {
+                "a_view": "null",
+                "b_view": "null",
+                "change": "string",
+                "chapter": "number",
+                "scene": "string",
+                "scene_title": "string",
+                "sequence": "number"
+              }
+            ],
+            "end_state": "null",
+            "id": "string",
+            "name": "string",
+            "problems": [],
+            "sha256": "string",
+            "slug": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/plan/synopses": {
+      "status": 200,
+      "shape": {
+        "archived": [
+          {
+            "basis": "null",
+            "id": "string",
+            "name": "string",
+            "sha256": "string",
+            "slug": "string",
+            "stale": "boolean",
+            "target_words": "number",
+            "type": "string",
+            "words": "number"
+          }
+        ],
+        "synopses": [
+          {
+            "basis": "null",
+            "id": "string",
+            "name": "string",
+            "sha256": "string",
+            "slug": "string",
+            "stale": "boolean",
+            "target_words": "number",
+            "type": "string",
+            "words": "number"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/plan/clues": {
+      "status": 200,
+      "shape": {
+        "archived": [
+          {
+            "fact": "string",
+            "slug": "string"
+          }
+        ],
+        "clues": [
+          {
+            "body": "string",
+            "fact": "string",
+            "id": "string",
+            "kind": "string",
+            "knowers": [
+              {
+                "how": "null",
+                "reliable": "boolean",
+                "scene": {
+                  "id": "string",
+                  "position": "number",
+                  "title": "string"
+                },
+                "who": {
+                  "id": "string",
+                  "name": "null",
+                  "reader": "boolean"
+                }
+              }
+            ],
+            "planted": [
+              {
+                "id": "string",
+                "position": "number",
+                "title": "string"
+              }
+            ],
+            "problems": [],
+            "red_herring": "boolean",
+            "revealed": "null",
+            "sha256": "string",
+            "slug": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/plan/scene-plans/:scene": {
+      "status": 200,
+      "shape": {
+        "body": "string",
+        "characters": [
+          "string"
+        ],
+        "fields": {
+          "conflict": "null",
+          "consequence": "null",
+          "emotional_end": "null",
+          "emotional_start": "null",
+          "goal": "string",
+          "opposition": "null",
+          "outcome": "null",
+          "purpose": "null",
+          "stakes": "null",
+          "turn": "null"
+        },
+        "scene_id": "string",
+        "sha256": "string"
+      }
+    },
+    "GET /api/v1/books/:book/plan/check": {
+      "status": 200,
+      "shape": {
+        "findings": [
+          {
+            "message": "string",
+            "related": [
+              "string"
+            ],
+            "rule": "string",
+            "severity": "string",
+            "subject": {
+              "id": "string",
+              "kind": "string",
+              "name": "string"
+            },
+            "title": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/plan/templates": {
+      "status": 200,
+      "shape": {
+        "templates": [
+          {
+            "beats": [
+              {
+                "name": "string",
+                "position": "string",
+                "purpose": "string",
+                "question": "string"
+              }
+            ],
+            "description": "string",
+            "id": "string",
+            "name": "string",
+            "version": "number"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/canvases": {
+      "status": 200,
+      "shape": {
+        "archived": [],
+        "canvases": [
+          {
+            "edges": "number",
+            "nodes": "number",
+            "path": "string",
+            "problem": "null",
+            "sha256": "string",
+            "slug": "string",
+            "title": "string",
+            "updated_at": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/canvases/compat-canvas": {
+      "status": 200,
+      "shape": {
+        "canvas": {
+          "edges": [],
+          "nodes": [],
+          "storyforge": {
+            "schema": "string",
+            "title": "string"
+          }
+        },
+        "path": "string",
+        "problem": "null",
+        "refs": {},
+        "sha256": "string",
+        "slug": "string",
+        "targets": [
+          {
+            "kind": "string",
+            "ref": "string",
+            "slug": "null",
+            "subtitle": "string",
+            "title": "string"
+          }
+        ],
+        "title": "string"
+      }
+    },
+    "GET /api/v1/books/:book/workspace/docs": {
+      "status": 200,
+      "shape": {
+        "archived": [],
+        "docs": [
+          {
+            "chapter": "number",
+            "locked": "boolean",
+            "path": "string",
+            "sha256": "string",
+            "title": "string",
+            "updated_at": "string",
+            "workspace": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/ledger": {
+      "status": 200,
+      "shape": {
+        "clues": [
+          {
+            "fact": "string",
+            "id": "string",
+            "kind": "string",
+            "planted": [
+              "string"
+            ],
+            "planted_chapters": [
+              "number"
+            ],
+            "red_herring": "boolean",
+            "revealed": "null",
+            "revealed_chapter": "null",
+            "sha256": "string",
+            "slug": "string",
+            "status": "string"
+          }
+        ],
+        "counts": {
+          "clues": "number",
+          "open_promises": "number",
+          "open_questions": "number",
+          "promises": "number",
+          "questions": "number"
+        },
+        "promises": [
+          {
+            "characters": [
+              "string"
+            ],
+            "develop": [
+              "string"
+            ],
+            "develop_chapters": [
+              "number"
+            ],
+            "id": "string",
+            "kind": "string",
+            "open": "boolean",
+            "payoff": [
+              "string"
+            ],
+            "payoff_chapters": [
+              "number"
+            ],
+            "setup": [
+              "string"
+            ],
+            "setup_chapters": [
+              "number"
+            ],
+            "sha256": "string",
+            "slug": "string",
+            "status": "string",
+            "title": "string"
+          }
+        ],
+        "questions": [
+          {
+            "characters": [],
+            "develop": [],
+            "develop_chapters": [],
+            "id": "string",
+            "kind": "string",
+            "open": "boolean",
+            "payoff": [],
+            "payoff_chapters": [],
+            "setup": [],
+            "setup_chapters": [],
+            "sha256": "string",
+            "slug": "string",
+            "status": "string",
+            "title": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/cast": {
+      "status": 200,
+      "shape": {
+        "cast": [
+          {
+            "cast": [
+              {
+                "entry": "string",
+                "id": "string",
+                "name": "string",
+                "role": "string",
+                "slug": "string"
+              }
+            ],
+            "chapter": "number",
+            "scene": "string",
+            "title": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/knowledge?character=maren-hollis&at=1": {
+      "status": 200,
+      "shape": {
+        "at": "number",
+        "character": {
+          "id": "string",
+          "name": "string",
+          "slug": "string"
+        },
+        "facts": [
+          {
+            "chapter": "number",
+            "event": "string",
+            "event_id": "string",
+            "fact": "string",
+            "how": "string",
+            "text": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/state-events": {
+      "status": 200,
+      "shape": {
+        "events": [
+          {
+            "chapter": "number",
+            "event": "string",
+            "event_id": "string",
+            "kind": "string",
+            "subject": {
+              "id": "string",
+              "name": "string",
+              "slug": "string"
+            }
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/tasks": {
+      "status": 200,
+      "shape": {
+        "counts": {
+          "doing": "number",
+          "done": "number",
+          "dropped": "number",
+          "open": "number",
+          "total": "number"
+        },
+        "tasks": [
+          {
+            "created": "string",
+            "for": "string",
+            "id": "string",
+            "labels": [
+              "string"
+            ],
+            "sha256": "string",
+            "slug": "string",
+            "source": {
+              "code": "null",
+              "fingerprint": "null",
+              "kind": "string"
+            },
+            "status": "string",
+            "targets": [],
+            "title": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/tasks/compat-task": {
+      "status": 200,
+      "shape": {
+        "notes": "string",
+        "targets": [],
+        "task": {
+          "created": "string",
+          "for": "string",
+          "id": "string",
+          "labels": [
+            "string"
+          ],
+          "sha256": "string",
+          "slug": "string",
+          "source": {
+            "code": "null",
+            "fingerprint": "null",
+            "kind": "string"
+          },
+          "status": "string",
+          "targets": [],
+          "title": "string"
+        }
+      }
+    },
+    "GET /api/v1/books/:book/continuity": {
+      "status": 200,
+      "shape": {
+        "findings": [
+          {
+            "fingerprint": "string",
+            "message": "string",
+            "related": [],
+            "rule": "string",
+            "rule_version": "number",
+            "severity": "string",
+            "sources": [
+              {
+                "excerpt": "string",
+                "file": "string",
+                "heading": "string",
+                "id": "string",
+                "kind": "string",
+                "line": "number",
+                "location": "string",
+                "range": {
+                  "from": "number",
+                  "to": "number"
+                },
+                "role": "string"
+              }
+            ],
+            "subject": {
+              "id": "string",
+              "kind": "string",
+              "name": "string",
+              "slug": "string"
+            },
+            "title": "string"
+          }
+        ],
+        "settings": {
+          "overdue_chapters": "number",
+          "severity": {}
+        },
+        "stale_exceptions": [],
+        "suppressed": [
+          {
+            "exception": {
+              "file": "string",
+              "intentional": "boolean",
+              "slug": "string"
+            },
+            "finding": {
+              "fingerprint": "string",
+              "message": "string",
+              "related": [],
+              "rule": "string",
+              "rule_version": "number",
+              "severity": "string",
+              "sources": [
+                {
+                  "excerpt": "string",
+                  "file": "string",
+                  "heading": "string",
+                  "id": "string",
+                  "kind": "string",
+                  "line": "number",
+                  "location": "string",
+                  "range": {
+                    "from": "number",
+                    "to": "number"
+                  },
+                  "role": "string"
+                }
+              ],
+              "subject": {
+                "id": "string",
+                "kind": "string",
+                "name": "string",
+                "slug": "string"
+              },
+              "title": "string"
+            }
+          }
+        ]
+      }
+    },
+    "GET /api/v1/books/:book/context?chapter=1": {
+      "status": 200,
+      "shape": {
+        "budget": "number",
+        "cast": [
+          {
+            "id": "string",
+            "name": "string",
+            "role": "string",
+            "slug": "string",
+            "summary": "string",
+            "type": "string"
+          }
+        ],
+        "chapter": "number",
+        "chars": "number",
+        "continuity": [
+          {
+            "message": "string",
+            "rule": "string",
+            "severity": "string",
+            "title": "string"
+          }
+        ],
+        "knowledge": [
+          {
+            "character": "string",
+            "facts": [
+              "string"
+            ]
+          }
+        ],
+        "open_ledger": [
+          {
+            "kind": "string",
+            "planted_in_chapters": [
+              "number"
+            ],
+            "status": "string",
+            "title": "string"
+          }
+        ],
+        "previous_tail": "string",
+        "scene_plans": [
+          {
+            "beats": [
+              {
+                "beat": "string",
+                "purpose": "null",
+                "state": "string",
+                "structure": "string"
+              }
+            ],
+            "plan": {
+              "goal": "string"
+            },
+            "scene": "string",
+            "title": "string"
+          }
+        ],
+        "state_docs": [
+          {
+            "body": "string",
+            "path": "string",
+            "title": "string"
+          }
+        ],
+        "state_events": [
+          {
+            "chapter": "number",
+            "kind": "string",
+            "subject": "string"
+          }
+        ],
+        "story": {},
+        "truncated": [],
+        "workspace": [
+          {
+            "body": "string",
+            "path": "string",
+            "title": "string"
+          }
+        ]
+      }
+    },
+    "GET /api/v1/webhooks": {
+      "status": 200,
+      "shape": {
+        "webhooks": [
+          {
+            "allow_local": "boolean",
+            "books": [
+              "string"
+            ],
+            "created": "number",
+            "disabled": "boolean",
+            "events": [
+              "string"
+            ],
+            "failures": "number",
+            "id": "string",
+            "include_content": "boolean",
+            "last_delivery": "null",
+            "plugin": "string",
+            "revoked": "boolean",
+            "secret_hash": "string",
+            "url": "string"
+          }
+        ]
+      }
+    }
+  }
+}

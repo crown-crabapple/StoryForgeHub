@@ -1,5 +1,7 @@
 # M04-J02 contract — Codex browser, inspector, and entry editing
 
+> **Amended (2026-11-19)** by the hosted redesign: Codex writes go to database records, not canonical files. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Reference (binding look): `storyforge-v2-production-plan/design/screens/Codex.dc.html` — category sidebar ("Story bible" with counts), card grid with avatar initial / name / role / blurb / "First seen" / scene count, right inspector (avatar, name, role, facts grid, Arc, **Presence by chapter** bars, **Relationships**, "Open in manuscript"), "New entry" button, "need review" count. Binding data: FORMAT-v1 §5, §5.1; contracts M04-J01 (graph, `appears_in`, `related`, `codex/types`), M03-J01 (preview dialog, `editFrontMatterLine`), M02-J01 (tokens, shell), M01-J02 (single writer).
 
 ## 1. Route and layout — `/books/:id/codex` (replaces the M02 placeholder)

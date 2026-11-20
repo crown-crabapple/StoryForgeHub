@@ -1,5 +1,7 @@
 # M01-J02 contract — one writer, atomic saves, recovery, external-change detection
 
+> **Superseded (2026-11-19)** by the hosted redesign: file journaling, crash recovery and external-edit conflicts are retired. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Builds on [ADR 0001](../decisions/0001-local-web-app-stack.md) and [M01-J01](M01-J01-app-boundary.md). Binding: `DECISIONS.md` 1, 5, 6, 10; `FORMAT-v1.md` §8 (archive), §9 (`.storyforge/`).
 
 ## Goal

@@ -1,5 +1,7 @@
 # M02-J03 contract — new book from templates, open an existing folder
 
+> **Amended (2026-11-19)** by the hosted redesign: the "no database setup" gate wording and file-based templates change. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: DECISIONS 1–6, FORMAT-v1 (all of §1–§4, §6.3, §11), contracts M01-J02 (single writer), M01-J04 (lock), M02-J01/J02 (UI). The M02 gate: "A user can create, open, search, and archive a fixture book through the reference-style library with no database setup."
 
 ## 1. Templates — `packages/templates` (`@storyforge/templates`)

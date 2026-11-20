@@ -1,5 +1,7 @@
 # M05-J03 contract — manuscript export and portable backup
 
+> **Superseded (2026-11-19)** by the hosted redesign: folder restore is retired; export reads the database. Export fidelity checks still stand. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Binding: FORMAT-v1 §1.7 (HTML comments / app annotations — never exported to readers), §3.3 (book.md), §4.2 (order), §4.4 (variants), §4.5 (act/chapter labels), §8 (archive), §9 (`.storyforge/` disposable); DECISIONS 1, 5, 6, 7, 12.
 
 Export **reads** the canonical files and produces bytes. It never writes into the book folder, never changes a canonical file, and needs no SQLite index.

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "shares": [
+    {
+      "id": "shr_01H00000000000000000000701",
+      "token_hash": "074d4c5e16c0dbd2c5bf45abb939398511e817ace5e04e55a407875e2bf52449",
+      "book": "book_01S5000000000000000000000A",
+      "scope": [
+        "read"
+      ],
+      "created": 1793168000000,
+      "expires": 1795760000000,
+      "by": "usr_01H00000000000000000000501",
+      "revoked": false
+    }
+  ]
+}

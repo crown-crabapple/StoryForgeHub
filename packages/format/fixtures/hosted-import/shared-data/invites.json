@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "invites": [
+    {
+      "id": "inv_01H00000000000000000000601",
+      "token_hash": "afea704dae3a766005ad2f4c266ac8299ad6ea663bace1e46b7b500810f0f715",
+      "role": "reviewer",
+      "books": {
+        "book_01S5000000000000000000000A": "reviewer"
+      },
+      "created": 1793513600000,
+      "expires": 1794118400000,
+      "by": "usr_01H00000000000000000000501",
+      "used": null,
+      "revoked": false
+    },
+    {
+      "id": "inv_01H00000000000000000000602",
+      "token_hash": "c9687137adf811c08ae2ca0773747234a7f113275a1c1138b1c5d97bab13bf65",
+      "role": "viewer",
+      "books": null,
+      "created": 1791872000000,
+      "expires": 1792476800000,
+      "by": "usr_01H00000000000000000000501",
+      "used": "usr_01H00000000000000000000504",
+      "revoked": false
+    }
+  ]
+}

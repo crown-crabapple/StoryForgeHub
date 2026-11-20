@@ -1,5 +1,7 @@
 # M07-J05 contract — collaboration privacy and conflict proof
 
+> **Amended (2026-11-19)** by the hosted redesign: the loopback-only privacy proof item changes. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: DECISIONS 1, 9, 11, 12; contracts M07-J03 (shared mode) and M07-J04 (modules); M05-J04 AI zero-traffic rules; M05-J03 export/backup.
 
 This job **proves** properties; it does not add features. It is one consolidated suite, `apps/server/test/m07-proof.test.mjs` (plus `*.large.mjs` if a case is slow), driving the real server in both modes on copies of fixtures.

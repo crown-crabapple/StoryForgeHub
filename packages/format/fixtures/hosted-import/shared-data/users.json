@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "users": [
+    {
+      "id": "usr_01H00000000000000000000501",
+      "username": "fixture-owner",
+      "display_name": "Fixture Owner",
+      "created": 1791008000000,
+      "disabled": false,
+      "pw": {
+        "alg": "scrypt",
+        "N": 32768,
+        "r": 8,
+        "p": 1,
+        "salt": "E-3pUxh3l1ZdDbgHX57hOw",
+        "hash": "3BrKzsFsJwkjJMxHpCrRHuxw_MbRjiBO76htk41Dpho"
+      }
+    },
+    {
+      "id": "usr_01H00000000000000000000503",
+      "username": "fixture-editor",
+      "display_name": "Fixture Editor",
+      "created": 1791008000000,
+      "disabled": false,
+      "pw": {
+        "alg": "scrypt",
+        "N": 32768,
+        "r": 8,
+        "p": 1,
+        "salt": "Mz-m7dx35tu9-r5la9azJQ",
+        "hash": "BJgcCN2EVBqj2k5mBkiJtGLO9Qb5cL_yz9wzCTD0lrc"
+      }
+    },
+    {
+      "id": "usr_01H00000000000000000000502",
+      "username": "fixture-reviewer",
+      "display_name": "Fixture Reviewer",
+      "created": 1791008000000,
+      "disabled": false,
+      "pw": {
+        "alg": "scrypt",
+        "N": 32768,
+        "r": 8,
+        "p": 1,
+        "salt": "5RZ-P3H2zmo9lZcGwbOu8Q",
+        "hash": "D3UxNba4Yoqx9mB3jsd4jrC8l8DxOJy70UE8Ey4t3Cg"
+      }
+    },
+    {
+      "id": "usr_01H00000000000000000000504",
+      "username": "fixture-viewer",
+      "display_name": "Fixture Viewer",
+      "created": 1791008000000,
+      "disabled": false,
+      "pw": {
+        "alg": "scrypt",
+        "N": 32768,
+        "r": 8,
+        "p": 1,
+        "salt": "yW2zwGsb-Vdr00wu4ZkDig",
+        "hash": "MV-6wqliivcgmOCmHgzbLUZafWWOJxyMjAOddEY5tQI"
+      }
+    },
+    {
+      "id": "usr_01H00000000000000000000505",
+      "username": "fixture-scoped",
+      "display_name": "Fixture Scoped",
+      "created": 1791008000000,
+      "disabled": false,
+      "pw": {
+        "alg": "scrypt",
+        "N": 32768,
+        "r": 8,
+        "p": 1,
+        "salt": "0sTdFcPNnRTgElk0PqJQTw",
+        "hash": "2A7Hf3LMCiXkhO-1MGT0a3ovfHYVqXNWIT_L4d8qrEA"
+      }
+    }
+  ]
+}

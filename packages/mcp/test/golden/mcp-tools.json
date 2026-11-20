@@ -1,0 +1,4251 @@
+{
+  "tools": [
+    {
+      "name": "codex_add_plan_cards",
+      "title": "Add plan cards to a canvas",
+      "need": "canvas",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "canvas": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "The canvas slug (see codex_list_canvases)."
+          },
+          "refs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "description": "Ids to put on the canvas as story cards (see the targets of codex_get_canvas)."
+          }
+        },
+        "required": [
+          "book",
+          "canvas",
+          "refs"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_append_doc",
+      "title": "Append to a workspace doc",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The doc address, for example workspace/book, workspace/style, state/chapter-04/knowledge or development/ideas (see codex_list_docs)."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200000,
+            "description": "The markdown to append."
+          }
+        },
+        "required": [
+          "book",
+          "path",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_archive_arc",
+      "title": "Archive a arc",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the arc (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_archive_canvas",
+      "title": "Archive a canvas",
+      "need": "canvas",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "canvas": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "The canvas slug (see codex_list_canvases)."
+          }
+        },
+        "required": [
+          "book",
+          "canvas"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_archive_clue",
+      "title": "Archive a clue",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the clue (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_archive_link",
+      "title": "Archive a link",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the link (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_archive_relationship",
+      "title": "Archive a relationship",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the relationship (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_archive_structure",
+      "title": "Archive a structure",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the structure (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_archive_synopsis",
+      "title": "Archive a synopsis",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the synopsis (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_complete_task",
+      "title": "Complete a task",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "task": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The task id or slug (see codex_get_tasks)."
+          }
+        },
+        "required": [
+          "book",
+          "task"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_continuity_check",
+      "title": "Run the continuity check",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "chapter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Only findings that touch this chapter number."
+          },
+          "cast": {
+            "type": "array",
+            "description": "The planned cast of the chapter (needs chapter).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entry": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "A Codex entry slug or id."
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "pov",
+                    "appears",
+                    "mentioned"
+                  ]
+                }
+              },
+              "required": [
+                "entry",
+                "role"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_arc",
+      "title": "Create a character arc",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "character": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The Codex entry id (entry_...) of the character."
+          },
+          "arc_type": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "negative",
+              "flat",
+              "custom"
+            ]
+          },
+          "fields": {
+            "type": "object",
+            "description": "Arc fields to set.",
+            "properties": {
+              "want": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "need": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "false_belief": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fear": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "wound": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "start_state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "end_state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "book",
+          "character"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_canvas",
+      "title": "Create a canvas",
+      "need": "canvas",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The canvas title."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Optional file name: lower-case letters, digits and hyphens."
+          }
+        },
+        "required": [
+          "book",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_chapter",
+      "title": "Create a chapter",
+      "need": "draft",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The chapter title."
+          },
+          "after": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Insert after this chapter number."
+          },
+          "act": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The act (required when after is left out)."
+          }
+        },
+        "required": [
+          "book",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_clue",
+      "title": "Create a clue",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "fact": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The fact, in a sentence."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "clue",
+              "reveal",
+              "secret"
+            ]
+          },
+          "planted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scene ids where it is planted."
+          },
+          "revealed": {
+            "type": "string",
+            "description": "The scene id that reveals it."
+          },
+          "red_herring": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "book",
+          "fact"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_entry",
+      "title": "Create a codex entry",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[a-z]+$",
+            "description": "The codex type, for example \"character\", \"location\", \"faction\", \"object\" or \"lore\"."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The entry name."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+            "description": "Optional; made from the name when left out."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "seed",
+              "sketch"
+            ],
+            "description": "seed (default: an idea, barely described) or sketch (described, not yet settled)."
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            "description": "Field values by label, for example { \"Age\": \"34\", \"Occupation\": \"Ferry pilot\" }."
+          },
+          "body": {
+            "type": "string",
+            "description": "The entry body in Markdown, for example \"## Overview\\n\\n...\\n\\n## Appearance\\n\\n...\"."
+          }
+        },
+        "required": [
+          "book",
+          "type",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_link",
+      "title": "Create a planner link",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The scene (or beat) id the link starts from."
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The scene (or beat) id it leads to."
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "therefore",
+              "but",
+              "enables",
+              "reveals",
+              "motivates",
+              "prevents",
+              "foreshadows",
+              "pays_off",
+              "parallel",
+              "other"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "description": "Why the link holds."
+          },
+          "branch": {
+            "type": "string",
+            "description": "What-if branch slug (leave out for the main plan)."
+          }
+        },
+        "required": [
+          "book",
+          "from",
+          "to",
+          "relation"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_relationship",
+      "title": "Create a relationship",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "a": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The first Codex entry id (entry_...)."
+          },
+          "b": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The second Codex entry id (entry_...)."
+          },
+          "fields": {
+            "type": "object",
+            "description": "baseline and end_state texts.",
+            "properties": {
+              "baseline": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "end_state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "book",
+          "a",
+          "b"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_scene",
+      "title": "Create a draft scene",
+      "need": "draft",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "chapter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The chapter number the scene goes in."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The scene title."
+          },
+          "body": {
+            "type": "string",
+            "description": "The scene prose, in markdown."
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "One line about the scene (optional)."
+          },
+          "after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The scene id (scene_...) to put it after; null for the start of the chapter. Leave out for the end."
+          }
+        },
+        "required": [
+          "book",
+          "chapter",
+          "title",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_structure",
+      "title": "Create a story structure",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "template": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "A template id from codex_list_structure_templates."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The structure name."
+          }
+        },
+        "required": [
+          "book",
+          "template",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_synopsis",
+      "title": "Create a synopsis",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "premise",
+              "logline",
+              "elevator-pitch",
+              "short",
+              "one-page",
+              "long",
+              "chapter-treatment",
+              "custom"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "target_words": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "body": {
+            "type": "string",
+            "description": "The synopsis text."
+          }
+        },
+        "required": [
+          "book",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_create_task",
+      "title": "Create a task",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "One line."
+          },
+          "notes": {
+            "type": "string",
+            "description": "What to do, in text."
+          },
+          "labels": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            }
+          },
+          "for": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "author"
+            ],
+            "description": "Who the task is for (default author)."
+          }
+        },
+        "required": [
+          "book",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_dismiss_finding",
+      "title": "Dismiss a continuity finding",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "fingerprint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The fingerprint of a finding (from codex_continuity_check)."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 5000,
+            "description": "Why this is fine (required)."
+          }
+        },
+        "required": [
+          "book",
+          "fingerprint",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_edit_canvas",
+      "title": "Edit a canvas",
+      "need": "canvas",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "canvas": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "The canvas slug (see codex_list_canvases)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the canvas as codex_get_canvas returned it."
+          },
+          "add_nodes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Nodes to add; each needs a new id."
+          },
+          "update_nodes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Each { id, ...fields to merge } for an existing node."
+          },
+          "remove_nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ids of nodes to remove (their edges go too)."
+          },
+          "add_edges": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Edges to add; each needs a new id, fromNode and toNode."
+          },
+          "remove_edges": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ids of edges to remove."
+          }
+        },
+        "required": [
+          "book",
+          "canvas"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_canvas",
+      "title": "Read a canvas",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "canvas": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "The canvas slug (see codex_list_canvases)."
+          }
+        },
+        "required": [
+          "book",
+          "canvas"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_cast",
+      "title": "Read the chapter cast",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "chapter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Only this chapter number."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_chapter",
+      "title": "Read a chapter",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "chapter": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Chapter number, label or title."
+          },
+          "act": {
+            "type": "integer",
+            "description": "Act number, to disambiguate."
+          }
+        },
+        "required": [
+          "book",
+          "chapter"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_context",
+      "title": "Get the context pack for a chapter",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "chapter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The chapter number you are about to write."
+          },
+          "budget": {
+            "type": "integer",
+            "minimum": 500,
+            "maximum": 200000,
+            "description": "The most characters the pack may take (default 24000)."
+          }
+        },
+        "required": [
+          "book",
+          "chapter"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_diagnostics",
+      "title": "Book diagnostics",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_doc",
+      "title": "Read a workspace doc",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The doc address, for example workspace/book, workspace/style, state/chapter-04/knowledge or development/ideas (see codex_list_docs)."
+          }
+        },
+        "required": [
+          "book",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_entry",
+      "title": "Read a codex entry",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "entry": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The entry id or slug."
+          }
+        },
+        "required": [
+          "book",
+          "entry"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_ledger",
+      "title": "Read the promises and questions ledger",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_plan",
+      "title": "Read the story plan",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_plan_check",
+      "title": "Read the plan check",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_scene",
+      "title": "Read a scene",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "scene": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The scene id."
+          }
+        },
+        "required": [
+          "book",
+          "scene"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_scene_plan",
+      "title": "Read a scene plan",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "scene": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The scene id."
+          }
+        },
+        "required": [
+          "book",
+          "scene"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_state_events",
+      "title": "Read the state events",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "chapter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Only this chapter number."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_task",
+      "title": "Read one task",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "task": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The task id or slug (see codex_get_tasks)."
+          }
+        },
+        "required": [
+          "book",
+          "task"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_tasks",
+      "title": "Read the tasks",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "doing",
+              "done",
+              "dropped"
+            ]
+          },
+          "for": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "author"
+            ],
+            "description": "Only tasks for the AI or for the author."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_get_timeline",
+      "title": "Book timeline",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_knowledge_at",
+      "title": "What a character knows at a chapter",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "character": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The character: a Codex entry slug or id."
+          },
+          "at": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The chapter number; the facts known by the end of it."
+          }
+        },
+        "required": [
+          "book",
+          "character"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_arcs",
+      "title": "List character arcs",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_books",
+      "title": "List books",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_canvases",
+      "title": "List canvases",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_chapters",
+      "title": "List chapters",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_clues",
+      "title": "List clues",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_docs",
+      "title": "List workspace docs",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_entries",
+      "title": "List codex entries",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Only entries of this type, for example \"character\"."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_plan_links",
+      "title": "List planner links",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_relationships",
+      "title": "List relationships",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_structure_templates",
+      "title": "List structure templates",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_structures",
+      "title": "List story structures",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_synopses",
+      "title": "List synopses",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_list_threads",
+      "title": "List plot threads",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_lock_docs",
+      "title": "Lock workspace docs",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The doc address, for example workspace/book, workspace/style, state/chapter-04/knowledge or development/ideas (see codex_list_docs)."
+          },
+          "prefix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "A chapter state folder to lock whole, for example state/chapter-04."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_log_writing",
+      "title": "Log words an AI wrote",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "words": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000000,
+            "description": "The number of words."
+          },
+          "chapter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The chapter they belong to (optional)."
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "One line about what was written (optional)."
+          }
+        },
+        "required": [
+          "book",
+          "words"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_propose_edit",
+      "title": "Propose an edit",
+      "need": "propose",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The id to change: scene_..., entry_..., thread_... or event_...."
+          },
+          "text": {
+            "type": "string",
+            "description": "The complete new text of the target."
+          },
+          "hunks": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Replacements: [{ \"from\": 0, \"to\": 5, \"replacement\": \"text\" }]."
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 20000,
+            "description": "Why the author should accept this change (shown in the review)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the file you read; the proposal is marked stale if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_record_knowledge",
+      "title": "Record what a character learns",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "character": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The character: a Codex entry slug or id."
+          },
+          "fact": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The fact, one line of text."
+          },
+          "chapter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The chapter number where the character learns it."
+          }
+        },
+        "required": [
+          "book",
+          "character",
+          "fact",
+          "chapter"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_record_state_events",
+      "title": "Record state events",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "chapter": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The chapter number."
+          },
+          "items": {
+            "type": "array",
+            "description": "The state events.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "subject": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "The Codex entry (slug or id) the event is about."
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "died",
+                    "revived",
+                    "destroyed",
+                    "lost",
+                    "found",
+                    "holder",
+                    "location"
+                  ]
+                },
+                "value": {
+                  "type": "string",
+                  "maxLength": 200,
+                  "description": "Only for holder and location: a Codex entry slug or id."
+                }
+              },
+              "required": [
+                "subject",
+                "kind"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "book",
+          "chapter",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_restore_arc",
+      "title": "Restore a arc",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the arc (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_restore_canvas",
+      "title": "Restore a canvas",
+      "need": "canvas",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "canvas": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "The canvas slug (see codex_list_canvases)."
+          }
+        },
+        "required": [
+          "book",
+          "canvas"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_restore_clue",
+      "title": "Restore a clue",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the clue (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_restore_finding",
+      "title": "Restore a dismissed finding",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "finding": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The finding fingerprint or the slug of the dismissal."
+          }
+        },
+        "required": [
+          "book",
+          "finding"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_restore_link",
+      "title": "Restore a link",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the link (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_restore_relationship",
+      "title": "Restore a relationship",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the relationship (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_restore_structure",
+      "title": "Restore a structure",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the structure (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_restore_synopsis",
+      "title": "Restore a synopsis",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the synopsis (as the list tool shows it)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_save_canvas",
+      "title": "Save a whole canvas",
+      "need": "canvas",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "canvas": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "The canvas slug (see codex_list_canvases)."
+          },
+          "content": {
+            "type": "object",
+            "description": "The whole JSON Canvas: { \"nodes\": [...], \"edges\": [...], \"storyforge\": {...} }."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the canvas as codex_get_canvas returned it."
+          }
+        },
+        "required": [
+          "book",
+          "canvas",
+          "content",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_save_chapter",
+      "title": "Propose new scene text",
+      "need": "propose",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "scene": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The scene id (scene_...)."
+          },
+          "markdown": {
+            "type": "string",
+            "description": "The complete new body of the scene."
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 20000,
+            "description": "Why the author should accept this change (shown in the review)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the file you read; the proposal is marked stale if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "scene",
+          "markdown"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_save_doc",
+      "title": "Save a workspace doc",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The doc address, for example workspace/book, workspace/style, state/chapter-04/knowledge or development/ideas (see codex_list_docs)."
+          },
+          "body": {
+            "type": "string",
+            "description": "The complete markdown body of the doc."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "Optional new title."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the doc as you read it. Required to change an existing doc; leave it out to create one."
+          }
+        },
+        "required": [
+          "book",
+          "path",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_save_draft",
+      "title": "Revise your own draft scene",
+      "need": "draft",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "scene": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The scene id (scene_...)."
+          },
+          "body": {
+            "type": "string",
+            "description": "The complete new body of the scene."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the scene file as you read it."
+          }
+        },
+        "required": [
+          "book",
+          "scene",
+          "body",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_save_entry",
+      "title": "Propose new entry text",
+      "need": "propose",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "entry": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The entry id (entry_...) or slug."
+          },
+          "markdown": {
+            "type": "string",
+            "description": "The complete new body of the entry."
+          },
+          "rationale": {
+            "type": "string",
+            "maxLength": 20000,
+            "description": "Why the author should accept this change (shown in the review)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the file you read; the proposal is marked stale if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "entry",
+          "markdown"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_save_ledger_item",
+      "title": "Save a promise or question",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the thread (as the list tool shows it)."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "The title (required when creating)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "promise",
+              "question"
+            ],
+            "description": "promise or question (required when creating)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "planted",
+              "developed",
+              "paid",
+              "dropped",
+              "unresolved"
+            ]
+          },
+          "setup": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scene ids where it is set up (the whole list)."
+          },
+          "develop": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scene ids where it develops (the whole list)."
+          },
+          "payoff": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scene ids where it pays off (the whole list)."
+          },
+          "characters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Codex entry slugs or ids (the whole list)."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_save_scene_plan",
+      "title": "Save a scene plan",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "scene": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The scene id (scene_...)."
+          },
+          "fields": {
+            "type": "object",
+            "description": "Fields to set: a string, or null to empty it.",
+            "properties": {
+              "goal": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "opposition": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "conflict": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "turn": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "outcome": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "consequence": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stakes": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "emotional_start": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "emotional_end": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "purpose": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "characters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The whole list of Codex entry slugs in the scene."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "scene"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_save_story_plan",
+      "title": "Save the story plan",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "fields": {
+            "type": "object",
+            "description": "Fields to set: a string, or null to empty it.",
+            "properties": {
+              "premise": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "logline": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "theme_question": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "central_conflict": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "protagonist_goal": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stakes": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "protagonist": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "primary_structure": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "notes": {
+            "type": "string",
+            "description": "The whole new notes text of the story plan."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_search",
+      "title": "Search",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The text to look for."
+          },
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Maximum hits to return (default 20)."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_set_arc_milestones",
+      "title": "Set the milestones of an arc",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the arc (as the list tool shows it)."
+          },
+          "milestones": {
+            "type": "array",
+            "description": "The complete milestone list, in order.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scene": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "The scene id."
+                },
+                "pressure": {
+                  "type": "string"
+                },
+                "choice": {
+                  "type": "string"
+                },
+                "belief_before": {
+                  "type": "string"
+                },
+                "belief_after": {
+                  "type": "string"
+                },
+                "cost": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "scene"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "milestones",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_set_beats",
+      "title": "Set the beats of a structure",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the structure (as the list tool shows it)."
+          },
+          "beats": {
+            "type": "array",
+            "description": "The complete beat list, in order.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The beat id; keep it for an existing beat, leave it out for a new one."
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "purpose": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "question": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "position": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "done",
+                    "omitted"
+                  ]
+                },
+                "scenes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Scene ids in this beat."
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "beats",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_set_chapter_cast",
+      "title": "Set the cast of a scene",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "scene": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The scene id (scene_...)."
+          },
+          "cast": {
+            "type": "array",
+            "description": "The whole cast of the scene; an empty list clears it.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entry": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "A Codex entry slug or id."
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "pov",
+                    "appears",
+                    "mentioned"
+                  ]
+                }
+              },
+              "required": [
+                "entry",
+                "role"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "scene",
+          "cast"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_set_clue_knowers",
+      "title": "Set who learns a clue",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the clue (as the list tool shows it)."
+          },
+          "knowers": {
+            "type": "array",
+            "description": "The complete knower list.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "who": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "\"reader\" or a Codex entry id."
+                },
+                "scene": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "The scene id."
+                },
+                "how": {
+                  "type": "string"
+                },
+                "reliable": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "who",
+                "scene"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "knowers",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_set_first_appearance",
+      "title": "Set the first appearance of a Codex entry",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "entry": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The Codex entry: its slug or id."
+          },
+          "scene": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The scene id (scene_...) of the first appearance, or null to clear it."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "entry",
+          "scene"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_set_relationship_developments",
+      "title": "Set the developments of a relationship",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the relationship (as the list tool shows it)."
+          },
+          "developments": {
+            "type": "array",
+            "description": "The complete development list, in order.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "scene": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200,
+                  "description": "The scene id."
+                },
+                "change": {
+                  "type": "string"
+                },
+                "a_view": {
+                  "type": "string"
+                },
+                "b_view": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "scene",
+                "change"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "developments",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_setup_workspace",
+      "title": "Set up the workspace docs",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_status",
+      "title": "StoryForge status",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_update_arc",
+      "title": "Update a character arc",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the arc (as the list tool shows it)."
+          },
+          "arc_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "positive",
+              "negative",
+              "flat",
+              "custom",
+              null
+            ]
+          },
+          "fields": {
+            "type": "object",
+            "description": "Arc fields to set.",
+            "properties": {
+              "want": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "need": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "false_belief": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fear": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "wound": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "start_state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "end_state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "notes": {
+            "type": "string",
+            "description": "The whole new notes text."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_update_clue",
+      "title": "Update a clue",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the clue (as the list tool shows it)."
+          },
+          "fact": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "clue",
+              "reveal",
+              "secret"
+            ]
+          },
+          "planted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "revealed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "red_herring": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string",
+            "description": "The whole new notes text."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_update_event",
+      "title": "Repoint the scenes of a timeline event",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "event": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The timeline event: its id or slug."
+          },
+          "scenes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scene ids the event points at (the whole list)."
+          },
+          "add": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scene ids to add to the current list."
+          },
+          "remove": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scene ids to remove from the current list."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Optional: the sha256 of the item as you read it; the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "event"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_update_link",
+      "title": "Update a planner link",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the link (as the list tool shows it)."
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "New start scene id."
+          },
+          "to": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "New end scene id."
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "therefore",
+              "but",
+              "enables",
+              "reveals",
+              "motivates",
+              "prevents",
+              "foreshadows",
+              "pays_off",
+              "parallel",
+              "other"
+            ]
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_update_relationship",
+      "title": "Update a relationship",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the relationship (as the list tool shows it)."
+          },
+          "fields": {
+            "type": "object",
+            "description": "baseline and end_state texts.",
+            "properties": {
+              "baseline": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "end_state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "notes": {
+            "type": "string",
+            "description": "The whole new notes text."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_update_structure",
+      "title": "Update a story structure",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the structure (as the list tool shows it)."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "notes": {
+            "type": "string",
+            "description": "The whole new notes text."
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_update_synopsis",
+      "title": "Update a synopsis",
+      "need": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The slug of the synopsis (as the list tool shows it)."
+          },
+          "name": {
+            "type": "string"
+          },
+          "target_words": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "body": {
+            "type": "string",
+            "description": "The whole new synopsis text."
+          },
+          "basis": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "base_sha256": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The sha256 of the item as you read it (from the get/list tool); the write is refused as a conflict if the file changed since."
+          }
+        },
+        "required": [
+          "book",
+          "slug",
+          "base_sha256"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "codex_update_task",
+      "title": "Update a task",
+      "need": "workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The book: its slug or its id."
+          },
+          "task": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The task id or slug (see codex_get_tasks)."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "doing",
+              "done",
+              "dropped"
+            ]
+          },
+          "for": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "author"
+            ]
+          }
+        },
+        "required": [
+          "book",
+          "task"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "fetch",
+      "title": "Fetch (ChatGPT connectors)",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "description": "An id from search."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "search",
+      "title": "Search (ChatGPT connectors)",
+      "need": "read",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The text to look for."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    }
+  ],
+  "notOffered": [
+    "codex_push_files",
+    "codex_delete_ledger_item",
+    "codex_delete_knowledge",
+    "codex_delete_state_event",
+    "codex_set_continuity_thresholds"
+  ]
+}

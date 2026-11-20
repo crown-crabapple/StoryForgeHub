@@ -1,0 +1,317 @@
+[
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1$",
+    "need": "read",
+    "book": false
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books$",
+    "need": "read",
+    "book": false
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/scenes\\/[^/]+$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/(entries|threads|events)$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/entries\\/[^/]+$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/(search|graph|diagnostics)$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/proposals$",
+    "need": "propose",
+    "book": true,
+    "level": "advisor"
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan\\/(links|arcs|structures|relationships|synopses|clues)$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan\\/scene-plans\\/[^/]{1,120}$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan\\/(check|templates)$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan\\/story$",
+    "need": "plan",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan\\/scene-plans\\/[^/]{1,120}$",
+    "need": "plan",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan\\/(links|arcs|structures|relationships|clues|synopses)$",
+    "need": "plan",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan\\/(links|arcs|structures|relationships|clues|synopses)\\/[a-z0-9-]{1,120}$",
+    "need": "plan",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan\\/(links|arcs|structures|relationships|clues|synopses)\\/[a-z0-9-]{1,120}\\/(archive|restore)$",
+    "need": "plan",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/plan\\/(arcs\\/[a-z0-9-]{1,120}\\/milestones|structures\\/[a-z0-9-]{1,120}\\/beats|relationships\\/[a-z0-9-]{1,120}\\/developments|clues\\/[a-z0-9-]{1,120}\\/knowers)$",
+    "need": "plan",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/canvases$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/canvases\\/[a-z0-9-]{1,60}$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/canvases$",
+    "need": "canvas",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "PUT",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/canvases\\/[a-z0-9-]{1,60}$",
+    "need": "canvas",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/canvases\\/[a-z0-9-]{1,60}\\/(archive|restore)$",
+    "need": "canvas",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/workspace\\/docs$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/workspace\\/docs(\\/(append|lock|archive|restore))?$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/workspace\\/setup$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/(ledger|cast|knowledge|state-events|tasks)$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/tasks\\/[^/]{1,200}$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/ledger\\/threads$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/ledger\\/threads\\/[^/]{1,120}$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/timeline\\/events\\/[^/]{1,120}$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/codex\\/entries\\/[^/]{1,120}\\/first-appearance$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/entries$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/scenes\\/[^/]{1,120}\\/cast$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/(knowledge|state-events)$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/tasks$",
+    "need": "workspace",
+    "book": true,
+    "level": "advisor"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/tasks\\/[^/]{1,120}\\/status$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/activity\\/ai-words$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/continuity$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/continuity\\/exceptions$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/continuity\\/exceptions\\/[a-z0-9-]{1,120}\\/archive$",
+    "need": "workspace",
+    "book": true,
+    "level": "planner"
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/context$",
+    "need": "read",
+    "book": true
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/chapters$",
+    "need": "draft",
+    "book": true,
+    "level": "cowriter"
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/scenes$",
+    "need": "draft",
+    "book": true,
+    "level": "cowriter"
+  },
+  {
+    "method": "PUT",
+    "re": "^\\/api\\/v1\\/books\\/([^/]+)\\/scenes\\/[^/]{1,120}\\/draft$",
+    "need": "draft",
+    "book": true,
+    "level": "cowriter"
+  },
+  {
+    "method": "GET",
+    "re": "^\\/api\\/v1\\/webhooks$",
+    "need": "events",
+    "book": false
+  },
+  {
+    "method": "POST",
+    "re": "^\\/api\\/v1\\/webhooks$",
+    "need": "events",
+    "book": false
+  },
+  {
+    "method": "DELETE",
+    "re": "^\\/api\\/v1\\/webhooks\\/[^/]+$",
+    "need": "events",
+    "book": false
+  }
+]

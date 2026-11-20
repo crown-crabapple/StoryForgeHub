@@ -1,5 +1,7 @@
 # ADR 0003 — Story Planner: storage, API and UI foundations
 
+> **Amended (2026-11-19)** by the hosted redesign: the on-disk storage, folder-walk backup and file rollback sections change. The rest stands. See [ADR 0004](0004-hosted-database-canonical.md) and [H0](../contracts/H0-hosted-foundation.md).
+
 > Since M10 the Plan tab is a canvas, not the Overview, Flow, Structure, Lanes, Synopsis and Clues views named below; see [contracts/M10-plan-canvas.md](../contracts/M10-plan-canvas.md). The storage and API decisions here stand.
 
 **Status:** accepted 2026-11-05 (maintainer: "proceed with M1"). **Job:** Story Planner M0 / SP-001 ("Inspect current contracts and select data model"). Spec: `StoryForgeHub_Novel_Planning_Feature_Specification.md` (Draft 1.0, not in the repo).

@@ -1,5 +1,7 @@
 # M13-J01 contract — Findings foundation (editing and publishing, milestone 0)
 
+> **Amended (2026-11-19)** by the hosted redesign: CodeMirror document positions are re-anchored to rich-text ranges. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: M03-J02 (the editor buffer, line endings, save state machine, CodeMirror history as undo); M05-J04 (body-relative editor offsets, `rawOffset`, `selectRange`); M05-J07 (receipts); M07-J04 (preferences and layers).
 
 M13 adds four optional, local-only integrations: Harper grammar checks (J02), a curated textlint style review (J03), EPUBCheck validation (J04) and an experimental Paged.js book interior (J05, J06). J01 adds only what they share: the finding contract, the validation result contract, capability states, prose source mapping, the `checks` preference and an editor layer that shows a finding and applies one of its replacements. J01 adds no checker, no dependency, no route and no network code.

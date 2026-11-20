@@ -1,5 +1,7 @@
 # M05-J07 contract — keep the receipts: provenance ledger
 
+> **Amended (2026-11-19)** by the hosted redesign: the external.change receipt event for on-disk changes is retired. The rest stands. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md).
+
 Binding: DECISIONS 1, 5, 6, 11, 12 and "Provenance receipt v1 minimum"; CLAUDE-BOOK-INTEGRATION "Receipts in the author workflow"; contracts M01-J02 (store), M03-J02 (editor saves), M03-J04 (revisions), M01-J04 (watcher), M05-J03 (export, backup `includeProvenance`), M05-J04 (`recordProvenance` hook, AI), M05-J06 (suggestions, check, publish).
 
 Receipts are **records**, kept in the book folder, readable without StoryForge, and never sent anywhere except by an explicit author export. They never decide authorship or copyright.

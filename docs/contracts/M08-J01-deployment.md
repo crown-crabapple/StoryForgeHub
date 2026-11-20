@@ -1,5 +1,7 @@
 # M08-J01 contract — local, Docker and self-hosted deployment
 
+> **Superseded (2026-11-19)** by the hosted redesign: the no-database deployment and library-folder backup scope are retired. See [ADR 0004](../decisions/0004-hosted-database-canonical.md) and [H0](H0-hosted-foundation.md). Kept for the record.
+
 Binding: DECISIONS 1, 5, 7, 9, 12; M06-J03 launcher and `docs/install.md`; M07-J03 shared mode (`serve --shared`, `shared init`, `audit verify`); owner decision 2026-11-02: no live Docker run on the build machine. Docker files are written and checked statically, and the container's start-up path is tested without Docker.
 
 ## 1. Local paths (exist; tighten)
