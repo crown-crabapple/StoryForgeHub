@@ -6094,6 +6094,73 @@ kbd {
   color: var(--muted);
   letter-spacing: 0.6em;
 }
+.rich-prose {
+  color: var(--text-2);
+  font-family: var(--font-prose);
+  font-size: var(--fs-prose);
+  line-height: var(--lh-prose);
+  letter-spacing: var(--ls-prose, 0em);
+  overflow-wrap: anywhere;
+}
+.rich-prose > :first-child {
+  margin-top: 0;
+}
+.rich-prose p,
+.rich-prose ul,
+.rich-prose ol,
+.rich-prose blockquote {
+  margin: 0 0 var(--s4);
+}
+.rich-prose h2,
+.rich-prose h3,
+.rich-prose h4 {
+  margin: var(--s6) 0 var(--s3);
+  color: var(--text);
+  line-height: 1.3;
+}
+.rich-prose h2 {
+  font-size: 1.3em;
+}
+.rich-prose h3 {
+  font-size: 1.15em;
+}
+.rich-prose h4 {
+  font-size: 1em;
+}
+.rich-prose blockquote {
+  padding-left: var(--s4);
+  border-left: 2px solid var(--divider);
+  color: var(--muted);
+}
+.rich-prose ul,
+.rich-prose ol {
+  padding-left: 1.6em;
+}
+.rich-prose code,
+.rich-raw {
+  font-family: ui-monospace, Consolas, 'Courier New', monospace;
+  font-size: 0.9em;
+}
+.rich-prose a {
+  color: var(--accent);
+}
+.rich-prose .mention {
+  border-bottom: 1px dotted var(--accent);
+}
+.rich-prose .rich-cite {
+  color: var(--muted);
+  font-size: 0.8em;
+}
+.rich-prose .rich-note {
+  color: var(--muted);
+  font-style: italic;
+  font-size: 0.9em;
+}
+.rich-prose pre.rich-raw {
+  margin: 0 0 var(--s4);
+  white-space: pre-wrap;
+  color: var(--text-2);
+}
 .read-placeholder {
   border-radius: var(--r-control);
   background: repeating-linear-gradient(var(--surface-2) 0 1em, transparent 1em 1.7em);

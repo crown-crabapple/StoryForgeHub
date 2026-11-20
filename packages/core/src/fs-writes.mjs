@@ -480,7 +480,7 @@ export function createWriteMethods({ root, getScene, afterWrite = () => {}, reco
 
   /** Prune a scene's snapshots by the retention rules (moved to the trash, never deleted). */
   async function applyRetention(store, sceneId) {
-    const files = planRetention((await store.listRevisions(sceneId)) ?? [], nowMs());
+    const files = planRetention((await store.listRevisions(sceneId)) ?? []);
     if (files.length > 0) await store.pruneRevisions(sceneId, files);
   }
 

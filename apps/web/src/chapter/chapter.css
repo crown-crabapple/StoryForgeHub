@@ -1,0 +1,348 @@
+/* The chapter editor (Write view): prose first, quiet chrome. Colours and sizes come from the theme tokens. */
+
+.sf-chapter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+  max-width: calc(var(--measure) + 2 * 72px);
+  margin: 0 auto var(--s3);
+}
+.sf-chapter-title {
+  margin: 0;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-15);
+  font-weight: 600;
+}
+
+.sf-toolbar-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  max-width: calc(var(--measure) + 2 * 72px);
+  margin: 0 auto var(--s3);
+  min-height: 32px;
+}
+.sf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+  padding: var(--s1);
+  background: var(--surface-2);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-control);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease-out;
+}
+.sf-toolbar[data-visible='true'],
+.sf-toolbar:focus-within,
+.sf-toolbar:hover {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sf-tool,
+.sf-toolbar-toggle {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 var(--s2);
+  color: var(--text-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  font-family: var(--font-ui);
+  font-size: var(--fs-13);
+  cursor: pointer;
+}
+.sf-tool:hover,
+.sf-toolbar-toggle:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+.sf-tool[aria-pressed='true'],
+.sf-toolbar-toggle[aria-pressed='true'] {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+}
+.sf-tool:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.sf-toolbar-toggle {
+  margin-left: auto;
+}
+
+/* The text. The break rows and notes use the UI font; the prose keeps the paper's. */
+.sf-prose {
+  min-height: 40vh;
+  outline: none;
+}
+.sf-prose:focus-visible {
+  outline: none;
+}
+.sf-prose p {
+  margin: 0 0 1em;
+}
+.sf-prose h2,
+.sf-prose h3,
+.sf-prose h4 {
+  margin: 1.4em 0 0.5em;
+  color: var(--text);
+  line-height: 1.25;
+}
+.sf-prose blockquote {
+  margin: 0 0 1em;
+  padding-left: var(--s4);
+  border-left: 3px solid var(--divider);
+  color: var(--text-2);
+}
+.sf-prose blockquote p {
+  margin: 0;
+}
+.sf-prose ul,
+.sf-prose ol {
+  margin: 0 0 1em;
+  padding-left: 1.6em;
+}
+.sf-prose li p {
+  margin: 0;
+}
+.sf-prose a {
+  color: var(--accent);
+}
+.sf-prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+.sf-prose .sf-mention {
+  border-bottom: 1px dotted var(--text-3);
+}
+.sf-prose .sf-inscene-break {
+  margin: 1.5em auto;
+  width: 4em;
+  border: 0;
+  border-top: 1px solid var(--divider);
+}
+
+/* Author notes, citations and text kept as written: visible, never editable */
+.sf-note {
+  display: inline-block;
+  padding: 0 var(--s2);
+  color: var(--text-2);
+  background: var(--accent-soft);
+  border-radius: var(--r-control);
+  font-family: var(--font-ui);
+  font-size: 0.8em;
+  line-height: 1.6;
+  vertical-align: baseline;
+}
+.sf-cite {
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: 0.85em;
+}
+.sf-raw-inline,
+.sf-raw-block {
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-control);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+.sf-raw-inline {
+  padding: 0 var(--s1);
+}
+.sf-raw-block {
+  position: relative;
+  margin: 0 0 1em;
+  padding: var(--s3);
+}
+.sf-raw-block::before {
+  content: 'Kept as written';
+  display: block;
+  margin-bottom: var(--s1);
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: var(--fs-12);
+}
+.sf-raw-block pre {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+}
+
+/* The scene break */
+.sf-break {
+  position: relative;
+  margin: var(--s7) 0 var(--s4);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--divider);
+  font-family: var(--font-ui);
+  font-size: var(--fs-14);
+  line-height: 1.4;
+  user-select: none;
+}
+.sf-prose > .sf-break:first-child {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 0;
+}
+.sf-break-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+.sf-break-title {
+  margin: 0;
+  color: var(--text-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+.sf-break-name,
+.sf-break-link {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sf-break-name:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.sf-break-input {
+  min-width: 14em;
+  padding: var(--s1) var(--s2);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-input);
+  font: inherit;
+}
+.sf-break-tools {
+  display: inline-flex;
+  gap: var(--s3);
+  margin-left: auto;
+}
+.sf-break-link {
+  color: var(--text-3);
+  font-size: var(--fs-13);
+  text-decoration: none;
+}
+.sf-break-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.sf-break-note {
+  margin: var(--s2) 0 0;
+  color: var(--text-2);
+  font-size: var(--fs-13);
+}
+.sf-chip {
+  padding: 0 var(--s2);
+  color: var(--text-2);
+  border: 1px solid var(--divider);
+  border-radius: 999px;
+  font-size: var(--fs-12);
+}
+.sf-chip[data-state='conflict'],
+.sf-chip[data-state='error'] {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.sf-chip[data-state='offline'],
+.sf-chip[data-state='dirty'] {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+/* Scene notes margin: beside the text on wide screens, under the break otherwise */
+.sf-margin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin-top: var(--s3);
+  padding: var(--s3);
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--divider);
+  border-radius: var(--r-card);
+  font-size: var(--fs-13);
+  user-select: text;
+}
+@media (min-width: 1280px) {
+  .sf-margin {
+    position: absolute;
+    top: 0;
+    left: calc(100% + var(--s5));
+    width: 16rem;
+    max-height: 18rem;
+    margin-top: 0;
+    overflow: auto;
+    z-index: 1;
+  }
+}
+.sf-margin-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+.sf-margin-label {
+  color: var(--text-3);
+  font-size: var(--fs-12);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sf-margin textarea {
+  width: 100%;
+  padding: var(--s2);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-input);
+  font: inherit;
+  resize: vertical;
+}
+.sf-margin-notes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sf-margin-note {
+  display: block;
+  width: 100%;
+  padding: var(--s1) 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sf-margin-note:hover {
+  text-decoration: underline;
+}
+.sf-margin-empty {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sf-toolbar {
+    transition: none;
+  }
+}
+
+/* a hidden HTML comment: a quiet marker, the text on hover */
+.sf-raw-comment { color: var(--muted, #888); opacity: 0.6; font-size: 0.8em; cursor: help; user-select: none; }
+div.sf-raw-comment { margin: 0.25em 0; }

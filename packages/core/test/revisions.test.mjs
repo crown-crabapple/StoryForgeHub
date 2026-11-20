@@ -1,7 +1,7 @@
 // M03-J04 acceptance 3 (revisions) and the byte-level half of 4 (restore without erasing):
 //   - snapshot triggers (createSnapshotTracker, fake clock): session / interval
 //   - storage (store.saveRevision / listRevisions / readRevision / pruneRevisions): dedupe, names, index, byte fidelity
-//   - retention (planRetention, fake clock over 120 days) and pruning into the trash, never deleting
+//   - retention (planRetention: newest 4 automatic per scene; manual and restore kept) and pruning into the trash, never deleting
 //   - revisions follow the scene id across move / rename
 //   - splitRevision: front matter / body split used by restore
 // The HTTP restore flows (into / new / stale base 409) are in apps/server/test/j04-routes.test.mjs.
@@ -12,7 +12,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { openStore } from '@storyforge/store';
 import { createFsRepository } from '../src/index.mjs';
-import { INTERVAL_MS, KEEP_DAYS, KEEP_LATEST, SESSION_IDLE_MS, createSnapshotTracker, planRetention, splitRevision } from '../src/revisions.mjs';
+import { INTERVAL_MS, KEEP_LATEST, SESSION_IDLE_MS, createSnapshotTracker, planRetention, splitRevision } from '../src/revisions.mjs';
 import { copyFixture } from './helpers.mjs';
 
 const BOOK = 'book_01S5000000000000000000000A';
@@ -30,11 +30,10 @@ const revDir = (root, id = SCENE) => path.join(root, '.storyforge', 'revisions',
 
 // ------------------------------------------------------------------ triggers (fake clock)
 
-test('tracker: contract constants (10 min idle, 15 min interval, keep 30 latest + 90 days)', () => {
+test('tracker: contract constants (10 min idle, 15 min interval, keep the newest 4 automatic)', () => {
   assert.equal(SESSION_IDLE_MS, 10 * MIN);
   assert.equal(INTERVAL_MS, 15 * MIN);
-  assert.equal(KEEP_LATEST, 30);
-  assert.equal(KEEP_DAYS, 90);
+  assert.equal(KEEP_LATEST, 4);
 });
 
 test('tracker: the first save of a scene is a `session` snapshot', () => {
@@ -233,72 +232,38 @@ const entry = (daysAgo, hour, reason = 'session', now = NOW) => {
   return { file: `${at.replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')}-${reason}.md`, at, reason };
 };
 
-test('planRetention: nothing is pruned while a scene has 30 or fewer ordinary snapshots', () => {
-  const entries = Array.from({ length: 30 }, (_, i) => entry(i, 12));
-  assert.deepEqual(planRetention(entries, NOW), []);
-  assert.deepEqual(planRetention([], NOW), []);
+test('planRetention: nothing is pruned while a scene has 4 or fewer automatic snapshots', () => {
+  assert.deepEqual(planRetention(Array.from({ length: 4 }, (_, i) => entry(i, 12))), []);
+  assert.deepEqual(planRetention([]), []);
 });
 
-test('planRetention over 120 days, one snapshot a day: keeps the latest 30 and one per day up to 90 days, prunes older', () => {
-  const entries = Array.from({ length: 120 }, (_, d) => entry(d, 12));
-  const pruned = new Set(planRetention(entries, NOW));
-  entries.forEach((e, d) => {
-    if (d <= 88) assert.equal(pruned.has(e.file), false, `day ${d} ago is kept`);
-    if (d >= 91) assert.equal(pruned.has(e.file), true, `day ${d} ago is pruned`);
-  });
-  assert.ok(pruned.size >= 29 && pruned.size <= 31, `about 29-31 pruned, got ${pruned.size}`);
+test('planRetention keeps the newest 4 automatic snapshots (session, interval, external) and prunes the rest', () => {
+  const entries = Array.from({ length: 10 }, (_, d) => entry(d, 12, ['session', 'interval', 'external'][d % 3]));
+  const pruned = new Set(planRetention(entries));
+  entries.forEach((e, d) => assert.equal(pruned.has(e.file), d >= 4, `${d} days ago`));
 });
 
-test('planRetention keeps every manual and restore snapshot however old or many', () => {
+test('planRetention keeps every manual and restore snapshot however old or many, and they do not count against the 4', () => {
   const entries = [
     ...Array.from({ length: 50 }, (_, i) => entry(i * 3, 12, 'manual')),
     ...Array.from({ length: 50 }, (_, i) => entry(i * 3, 13, 'restore')),
-    entry(400, 9, 'manual'),
-    entry(400, 10, 'restore'),
+    ...Array.from({ length: 4 }, (_, i) => entry(0, i, 'session')),
   ];
-  assert.deepEqual(planRetention(entries, NOW), []);
+  assert.deepEqual(planRetention(entries), []);
 });
 
-test('planRetention: manual and restore do not count against the 30 latest', () => {
-  const entries = [...Array.from({ length: 40 }, (_, i) => entry(0, 0, 'manual', NOW - i * MIN)), ...Array.from({ length: 30 }, (_, i) => entry(0, 1, 'session', NOW - i * MIN))];
-  // 40 manual (kept) + 30 ordinary (the full allowance): nothing to prune
-  assert.deepEqual(planRetention(entries, NOW), []);
-});
-
-test('planRetention: many snapshots in one day: beyond the latest 30, only the newest of each older day survives', () => {
-  const entries = [];
-  for (let day = 0; day < 5; day++) for (let h = 0; h < 10; h++) entries.push(entry(day, 8 + h, h % 2 ? 'interval' : 'session'));
-  // 50 ordinary snapshots; latest 30 = all of days 0, 1, 2; days 3 and 4 keep only their newest
-  const pruned = new Set(planRetention(entries, NOW));
-  assert.equal(pruned.size, 18);
-  for (const day of [3, 4]) {
-    const ofDay = entries.filter((e) => localDate(e.at) === localDate(localAt(day, 12, NOW).toISOString())).sort((a, b) => (a.at < b.at ? 1 : -1));
-    assert.equal(pruned.has(ofDay[0].file), false, `newest of day ${day} kept`);
-    for (const e of ofDay.slice(1)) assert.equal(pruned.has(e.file), true);
-  }
-  for (const e of entries.slice(0, 30)) assert.equal(pruned.has(e.file), false);
-});
-
-function localDate(iso) {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
-test('planRetention returns only files present in the input and does not mutate it', () => {
-  const entries = Array.from({ length: 60 }, (_, i) => entry(i * 2, 12));
+test('planRetention: same instant, the file name decides; result only holds input files; input untouched', () => {
+  const entries = Array.from({ length: 6 }, (_, i) => ({ file: `20261101T120000Z-session${i ? `-${i}` : ''}.md`, at: '2026-11-01T12:00:00.000Z', reason: 'session' }));
   const copy = JSON.parse(JSON.stringify(entries));
-  const out = planRetention(entries, NOW);
+  const out = planRetention(entries);
   assert.deepEqual(entries, copy);
-  const files = new Set(entries.map((e) => e.file));
-  for (const f of out) assert.ok(files.has(f));
-  assert.equal(new Set(out).size, out.length, 'no duplicates');
+  assert.equal(out.length, 2);
+  for (const f of out) assert.ok(entries.some((e) => e.file === f));
 });
 
 test('planRetention does not depend on input order', () => {
-  const entries = Array.from({ length: 120 }, (_, d) => entry(d, 12));
-  const forward = planRetention(entries, NOW).sort();
-  const backward = planRetention([...entries].reverse(), NOW).sort();
-  assert.deepEqual(backward, forward);
+  const entries = Array.from({ length: 30 }, (_, d) => entry(d, 12));
+  assert.deepEqual(planRetention([...entries].reverse()).sort(), planRetention(entries).sort());
 });
 
 // ------------------------------------------------------------------ pruning moves to the trash
@@ -330,34 +295,30 @@ test('pruneRevisions ignores unknown or unsafe names and reports nothing pruned'
   assert.ok(await fs.stat(path.join(root, 'book.md')), 'book.md untouched');
 });
 
-test('retention end to end: 120 days of snapshots plus manual ones; plan then prune; trash holds every pruned file', async () => {
+test('retention end to end: 30 automatic snapshots plus a manual one; plan then prune; trash holds every pruned file', async () => {
   const { root, store } = await openFresh();
-  const saved = [];
-  for (let d = 119; d >= 0; d--) {
-    const at = localAt(d, 12, NOW);
-    const r = await store.saveRevision(SCENE, Buffer.from(`text of day ${d}`), { reason: 'session', at, words: d });
+  for (let d = 29; d >= 0; d--) {
+    const r = await store.saveRevision(SCENE, Buffer.from(`text of day ${d}`), { reason: 'session', at: localAt(d, 12, NOW), words: d });
     assert.equal(r.stored, true);
-    saved.push(r.entry);
   }
   const manual = await store.saveRevision(SCENE, Buffer.from('ancient manual'), { reason: 'manual', at: localAt(200, 12, NOW), label: 'keep forever' });
   const list = await store.listRevisions(SCENE);
-  assert.equal(list.length, 121);
+  assert.equal(list.length, 31);
 
-  const plan = planRetention(list, NOW);
-  assert.ok(plan.length >= 29);
+  const plan = planRetention(list);
+  assert.equal(plan.length, 26);
   assert.ok(!plan.includes(manual.entry.file));
   const r = await store.pruneRevisions(SCENE, plan);
-  assert.equal(r.pruned.length, plan.length);
+  assert.equal(r.pruned.length, 26);
 
   const left = await store.listRevisions(SCENE);
-  assert.equal(left.length, 121 - plan.length);
+  assert.equal(left.length, 5, 'the newest 4 automatic and the manual one');
   assert.ok(left.some((e) => e.file === manual.entry.file), 'manual survives');
-  assert.ok(left.length >= 90, 'about 90 days remain');
   for (const f of plan) {
     await assert.rejects(fs.stat(path.join(revDir(root), f)));
     await fs.stat(path.join(root, '.storyforge', 'trash', r.opId, 'revisions', SCENE, f));
   }
-  assert.deepEqual(planRetention(left, NOW), [], 'a second pass has nothing more to prune');
+  assert.deepEqual(planRetention(left), [], 'a second pass has nothing more to prune');
 });
 
 // ------------------------------------------------------------------ revisions follow the scene id

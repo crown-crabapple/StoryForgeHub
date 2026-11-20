@@ -43,7 +43,7 @@ Sections, top to bottom:
 ## 6. Revisions
 
 - **Snapshot** = the whole scene file's bytes, saved by the store to `.storyforge/revisions/<scene-id>/<YYYYMMDDTHHMMSSZ>-<reason>.md` with a sidecar line in `index.json` there (`{ file, at, reason, sha256, words, label? }`). Reasons: `session` (first save of each editing session, **before** writing), `interval` (every 15 min of active editing, before writing), `manual` ("Save a revision" button with optional label), `restore` (the current version, before a restore), `external` (before the editor reloads after an external change, when the buffer was clean but the disk changed — snapshot the **new** disk content so it's findable).
-- Never stored twice when the sha equals the latest snapshot. Retention: keep all `manual` and `restore`; for others keep the latest 30 per scene plus one per day for 90 days; pruning moves pruned files to the trash, never deletes.
+- Never stored twice when the sha equals the latest snapshot. Retention: keep all `manual` and `restore`; for others keep the newest 4 per scene (changed in hosted Phase 2 from "latest 30 plus one per day for 90 days", H0 §2.2); pruning moves pruned files to the trash, never deletes.
 - Revisions follow the scene id, so moves/renames don't lose them.
 - **List** in the rail: newest first, "Today 14:02 · session · 812 words", label if any.
 - **Compare**: revision vs current body, line diff (J02 `line-diff.js`).
