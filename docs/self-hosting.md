@@ -26,7 +26,7 @@ In file mode there is no database service. When the index format changes in a ne
 
 ## With a database (hosted)
 
-StoryForge can also run with PostgreSQL as the canonical copy of the writing. You create a role and a database, import your library once with `db import`, and start the server with `serve --database <url> --library <private copy folder>`. Everything on this page below describes file mode. [database.md](database.md) has the steps. The deployment files in `deploy/` do not pass `--database` yet.
+StoryForge can also run with PostgreSQL as the canonical copy of the writing. You create a role and a database, import your library once with `db import`, and start the server with `serve --database <url> --library <private copy folder>`. Everything on this page below describes file mode. [database.md](database.md) has the steps. On a bare server, set `STORYFORGE_DATABASE` in `/etc/storyforge/storyforge.env` and `deploy/entrypoint.mjs` passes it on: see [Running it on a server](database.md#running-it-on-a-server). The nightly encrypted database backup and how to restore it are in [Nightly backup of a bare server](backup-restore.md#nightly-backup-of-a-bare-server).
 
 ## Install
 

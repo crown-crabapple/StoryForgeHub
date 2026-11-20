@@ -1,0 +1,16 @@
+# The nightly database backup (deploy/storyforge-db-backup.sh). Started by storyforge-db-backup.timer; run it by hand with
+#   sudo systemctl start storyforge-db-backup && journalctl -u storyforge-db-backup
+# Install: sudo cp deploy/storyforge-db-backup.{service,timer} /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now storyforge-db-backup.timer
+[Unit]
+Description=StoryForge database backup (encrypted pg_dump)
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+# root, because it runs pg_dump as the postgres user (peer auth) and reads the StoryForge config folder
+ExecStart=/bin/bash /opt/storyforge/deploy/storyforge-db-backup.sh
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=true
+ProtectHome=true

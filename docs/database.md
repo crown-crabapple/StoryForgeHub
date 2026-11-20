@@ -131,6 +131,65 @@ If the `--shared-data` folder already holds files (accounts, invites, an audit l
 - An outside edit that races a save can make that save be refused with a conflict. The database is never wrong; a restart rebuilds the copy.
 - Library switching is off in database mode: the server serves one library from its database. `POST /api/library/open` answers 409 `DATABASE_MODE`, and the web app does not offer "Open folder".
 
+## Running it on a server
+
+This is the bare-server path (systemd, see [self-hosting.md](self-hosting.md#option-b-bare-node-with-systemd)). `deploy/entrypoint.mjs`, which `deploy/storyforge.service` runs, reads two more settings:
+
+- `STORYFORGE_DATABASE`: the `postgres://` URL. Every command the entrypoint starts reads it from the environment; it is never put on a command line.
+- `STORYFORGE_LIBRARY_ID`: which library in the database (default `main`). It only works together with `STORYFORGE_DATABASE`.
+
+With `STORYFORGE_DATABASE` set, `STORYFORGE_LIBRARY` is the database's private on-disk copy, an empty folder the first time, and never your Markdown library. The shared data comes from the database. The unit starts after, and wants, `postgresql.service`.
+
+1. Install PostgreSQL 16 or newer and make the role and the database:
+
+   ```sh
+   sudo -u postgres createuser --pwprompt storyforge
+   sudo -u postgres createdb --owner storyforge storyforge
+   ```
+
+2. Put the URL in `/etc/storyforge/storyforge.env` and keep the file at mode `600`:
+
+   ```sh
+   STORYFORGE_DATABASE=postgres://storyforge:CHANGE_ME@127.0.0.1:5432/storyforge
+   ```
+
+3. Make an empty copy folder and point `STORYFORGE_LIBRARY` at it, in the same file. Values in the environment file override the unit's `Environment=` lines, so this replaces `/srv/storyforge/library`:
+
+   ```sh
+   sudo mkdir -p /var/lib/storyforge/db-copy
+   sudo chown storyforge:storyforge /var/lib/storyforge/db-copy
+   ```
+
+   ```sh
+   STORYFORGE_LIBRARY=/var/lib/storyforge/db-copy
+   ```
+
+4. Stop the service and take a backup of the current library folder and the shared-data folder (a plain copy, see [backup-restore.md](backup-restore.md)).
+
+5. Create the tables and import. The commands need `STORYFORGE_DATABASE` in their environment, so load the file as root and run them as the `storyforge` user. Do the dry run first and read the report:
+
+   ```sh
+   sudo systemctl stop storyforge
+   cd /opt/storyforge
+   sudo bash -c 'set -a; . /etc/storyforge/storyforge.env; set +a; runuser -u storyforge --preserve-environment -- node apps/server/src/main.mjs db migrate'
+   sudo bash -c 'set -a; . /etc/storyforge/storyforge.env; set +a; runuser -u storyforge --preserve-environment -- node apps/server/src/main.mjs db import /srv/storyforge/library --shared-data /var/lib/storyforge/shared-data'
+   ```
+
+   When the report is right, run the same import command again with `--write` added. If `STORYFORGE_LIBRARY_ID` is not `main`, add `--library-id <id>` to the `db` commands too.
+
+6. Start the service and check it:
+
+   ```sh
+   sudo systemctl start storyforge
+   journalctl -u storyforge
+   ```
+
+`serve` refuses an empty database (`run db import first`), so a start before step 5 stops with that message.
+
+Import only reads the old library and shared-data folders. They are left as they were, and you can keep them as a fallback. Changes made in the app after the switch go to the database only.
+
+The nightly backup of the database is in [backup-restore.md](backup-restore.md#nightly-backup-of-a-bare-server).
+
 ## Check the database
 
 ```sh

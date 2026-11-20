@@ -8,7 +8,9 @@
 #   journalctl -u storyforge          the one-time setup link is printed here on the first start
 [Unit]
 Description=StoryForge (Markdown-first novel studio, shared mode)
-After=network.target
+After=network.target postgresql.service
+# with STORYFORGE_DATABASE set (docs/database.md) the database must be up first; on a server without PostgreSQL this line does nothing
+Wants=postgresql.service
 
 [Service]
 Type=simple

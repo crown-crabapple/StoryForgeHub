@@ -36,14 +36,14 @@ export async function freshDatabaseUrl() {
   return `pglite:${path.join(await tempDir('sf-pg-'), 'data')}`;
 }
 
-/** Migrate the database at `url` and import the library in `source` (default: the hosted-import fixture) into it; closes the database again. */
-export async function importInto(url, { source = HOSTED, libraryId = 'main' } = {}) {
+/** Migrate the database at `url` and import the library in `source` (default: the hosted-import fixture), plus the shared-mode data folder `sharedData` when given, into it; closes the database again. */
+export async function importInto(url, { source = HOSTED, libraryId = 'main', sharedData } = {}) {
   const db = await openDatabase(url);
   try {
     await migrate(db);
     const store = createDocumentStore(db, libraryId);
     await store.ensureLibrary();
-    const r = await importLibrary({ store, source, dryRun: false });
+    const r = await importLibrary({ store, source, sharedData, dryRun: false });
     if (r.ok === false) throw new Error(`import failed: ${r.code} ${r.message ?? ''}`);
     return r;
   } finally {
